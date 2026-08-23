@@ -23,14 +23,14 @@ def strict_compile(path: Path) -> None:
 
 
 def validate_source(path: Path) -> None:
-    """Require the escaped source line and compile with strict warning handling."""
     source = path.read_bytes()
-    good_count = source.count(GOOD_LINE)
+
     bad_count = source.count(BAD_LINE)
-    if good_count != 1 or bad_count != 0:
+
+    if bad_count != 0:
         raise RuntimeError(
-            f"{path}: expected exactly one escaped venv\\Scripts line "
-            f"(escaped={good_count}, invalid={bad_count})"
+            f"{path}: invalid venv\\Scripts source remains "
+            f"(invalid={bad_count})"
         )
 
     strict_compile(path)
@@ -38,23 +38,32 @@ def validate_source(path: Path) -> None:
 
 
 def patch_source(path: Path) -> bool:
-    """Patch the known invalid line once, or accept an already-patched source."""
     source = path.read_bytes()
+
     good_count = source.count(GOOD_LINE)
     bad_count = source.count(BAD_LINE)
 
     if bad_count == 1 and good_count == 0:
         path.write_bytes(source.replace(BAD_LINE, GOOD_LINE, 1))
         changed = True
+
     elif bad_count == 0 and good_count == 1:
+        # 과거 Hermes지만 이미 패치된 상태
         changed = False
+
+    elif bad_count == 0 and good_count == 0:
+        # Hermes upstream에서 해당 코드가 변경/제거된 경우.
+        # SyntaxWarning 자체가 해결됐는지만 검증한다.
+        strict_compile(path)
+        return False
+
     else:
         raise RuntimeError(
-            f"{path}: Hermes warning source did not match the expected original "
-            f"or patched state (escaped={good_count}, invalid={bad_count})"
+            f"{path}: unexpected Hermes warning source state "
+            f"(escaped={good_count}, invalid={bad_count})"
         )
 
-    validate_source(path)
+    strict_compile(path)
     return changed
 
 

@@ -78,6 +78,7 @@ function Test-EnvHelpers {
 HERMES_ENV_SELF_TEST_QUOTED="quoted value"
 HERMES_ENV_SELF_TEST_EMPTY=
 '@ | Set-Content -LiteralPath $Fixture -Encoding UTF8
+
         [Environment]::SetEnvironmentVariable($ProcessKey, "from-process", "Process")
         Import-DotEnv -Path $Fixture
 
@@ -90,6 +91,7 @@ HERMES_ENV_SELF_TEST_EMPTY=
         if ((Get-EnvOrDefault -Name "HERMES_ENV_SELF_TEST_EMPTY" -Default "fallback") -ne "fallback") {
             throw "Empty .env default self-test failed."
         }
+
         Write-Host "[PASS] .env helper self-test"
     }
     finally {
@@ -110,6 +112,12 @@ $ContainerWorkspacePath = Get-EnvOrDefault -Name "HERMES_CONTAINER_WORKSPACE_PAT
 $ContainerDataPath = "/opt/data"
 $ContainerCustomSkillsPath = Get-EnvOrDefault -Name "HERMES_CONTAINER_CUSTOM_SKILLS_PATH" -Default "/opt/custom-skills"
 $ContainerSharedPath = Get-EnvOrDefault -Name "HERMES_CONTAINER_SHARED_PATH" -Default "/opt/data/shared"
+
+# The official Hermes image keeps the immutable application and venv under /opt/hermes.
+# Use absolute paths instead of relying on the runtime user's PATH.
+$HermesCliPath = "/opt/hermes/.venv/bin/hermes"
+$PythonPath = "/opt/hermes/.venv/bin/python"
+
 $ExternalSkillDirs = @{
     orchestrator = Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "orchestrator"
     coder = Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "coder"
@@ -140,23 +148,52 @@ function Assert-Prerequisites {
         throw "Docker CLI cannot reach the Docker daemon. Start Docker Desktop and retry."
     }
 
-    $Running = & docker inspect --format "{{.State.Running}}" $Container 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    # Read the complete docker inspect JSON and parse it in PowerShell.
+    # This avoids Docker Go-template quoting/escaping differences on Windows.
+    $InspectOutput = & docker inspect $Container 2>$null
+    $InspectExitCode = $LASTEXITCODE
+
+    if ($InspectExitCode -ne 0) {
         throw "Container '$Container' does not exist. Start it with 'docker compose up -d'."
     }
 
-    if ($Running -ne "true") {
+    $InspectJson = $InspectOutput -join [Environment]::NewLine
+
+    try {
+        $InspectResult = ConvertFrom-Json -InputObject $InspectJson
+    }
+    catch {
+        throw "Failed to parse docker inspect JSON for container '$Container'. Error=$($_.Exception.Message)"
+    }
+
+    $ContainerInspect = @($InspectResult)[0]
+
+    if ($null -eq $ContainerInspect) {
+        throw "Docker inspect returned no data for container '$Container'."
+    }
+
+    if (-not $ContainerInspect.State.Running) {
         throw "Container '$Container' is not running. Start it with 'docker compose up -d'."
     }
 
-    $Mounts = @(& docker inspect --format '{{range .Mounts}}{{printf "%s|%s\n" .Type .Destination}}{{end}}' $Container)
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to inspect mounts for container '$Container'."
-    }
+    Write-Host "[OK] Container running: $Container"
 
-    foreach ($Destination in @($ContainerWorkspacePath, $ContainerCustomSkillsPath, $ContainerSharedPath)) {
-        if ($Mounts -notcontains "bind|$Destination") {
-            throw "Required bind mount is missing: $Destination"
+    $Mounts = @(
+        $ContainerInspect.Mounts | ForEach-Object {
+            "$($_.Type)|$($_.Destination)"
+        }
+    )
+
+    foreach ($Destination in @(
+        $ContainerWorkspacePath,
+        $ContainerCustomSkillsPath,
+        $ContainerSharedPath
+    )) {
+        $ExpectedMount = "bind|$Destination"
+
+        if ($Mounts -notcontains $ExpectedMount) {
+            $DetectedMounts = $Mounts -join ", "
+            throw "Required bind mount is missing: $Destination. Detected mounts: $DetectedMounts"
         }
 
         Write-Host "[OK] Bind mount: $Destination"
@@ -166,10 +203,20 @@ function Assert-Prerequisites {
         "exec",
         "--user", "hermes",
         $Container,
-        "sh", "-lc",
-        "command -v hermes >/dev/null 2>&1 && hermes --help >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml'"
+        $HermesCliPath,
+        "--help"
     )
-    Write-Host "[OK] Container CLI prerequisites: hermes, python3, PyYAML"
+    Write-Host "[OK] Hermes CLI: $HermesCliPath"
+
+    Run-Docker -Args @(
+        "exec",
+        "--user", "hermes",
+        $Container,
+        $PythonPath,
+        "-c",
+        "import yaml"
+    )
+    Write-Host "[OK] Python/PyYAML: $PythonPath"
 
     foreach ($Path in @(
         $ExternalSkillDirs["orchestrator"],
@@ -193,7 +240,7 @@ function Profile-Exists {
         [string]$Name
     )
 
-    & docker exec --user hermes $Container hermes profile show $Name 1>$null 2>$null
+    & docker exec --user hermes $Container $HermesCliPath profile show $Name 1>$null 2>$null
     return ($LASTEXITCODE -eq 0)
 }
 
@@ -217,7 +264,7 @@ function Ensure-Profile {
         "exec",
         "--user", "hermes",
         $Container,
-        "hermes",
+        $HermesCliPath,
         "profile", "create", $Name,
         "--description", $Description
     )
@@ -370,7 +417,7 @@ print(f"[UPDATE] External skills configured: {p}")
 '@
 
     Write-Host "[CONFIG] $Profile -> $ExternalDir"
-    $Py | & docker exec -i --user hermes $Container python3 - $Config $ExternalDir
+    $Py | & docker exec -i --user hermes $Container $PythonPath - $Config $ExternalDir
     $ExitCode = $LASTEXITCODE
 
     if ($ExitCode -ne 0) {
@@ -422,7 +469,7 @@ if external_dirs != [expected]:
 print(f"[PASS] YAML list verified: {p}")
 '@
 
-    $Py | & docker exec -i --user hermes $Container python3 - $Config $Expected
+    $Py | & docker exec -i --user hermes $Container $PythonPath - $Config $Expected
     $ExitCode = $LASTEXITCODE
 
     if ($ExitCode -ne 0) {
@@ -483,7 +530,7 @@ Run-Docker -Args @(
     "exec",
     "--user", "hermes",
     $Container,
-    "hermes",
+    $HermesCliPath,
     "profile", "list"
 )
 
