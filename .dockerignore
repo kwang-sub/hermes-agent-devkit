@@ -1,0 +1,20 @@
+.git
+.gitignore
+
+# Local environment and secrets
+.env
+.env.*
+
+# Python caches and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/

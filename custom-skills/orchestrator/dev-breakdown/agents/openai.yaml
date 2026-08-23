@@ -1,0 +1,4 @@
+interface:
+  display_name: "개발 작업 분석"
+  short_description: "소프트웨어 요구사항을 실행 가능한 구현 계획으로 분해"
+  default_prompt: "$dev-breakdown을 사용해 소프트웨어 요구사항, 버그, 개선사항 또는 이슈를 실제 프로젝트 근거에 기반한 우선순위 구현 작업으로 분해하세요. 구현은 하지 마세요."
