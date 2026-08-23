@@ -13,15 +13,25 @@ run_check() {
     printf '[PASS] %s\n' "$description"
 }
 
-check_mount_template_source() {
+check_init_mount_contract() {
     python3 - <<'PYTHON'
 from pathlib import Path
 
 source = Path("init-profiles.ps1").read_text(encoding="utf-8-sig")
-expected = r'''$Mounts = @(& docker inspect --format '{{range .Mounts}}{{printf "%s|%s\n" .Type .Destination}}{{end}}' $Container)'''
+required = (
+    "$InspectOutput = & docker inspect $Container",
+    "ConvertFrom-Json -InputObject $InspectJson",
+    "$ContainerInspect.Mounts | ForEach-Object",
+    '$HermesCliPath = "/opt/hermes/.venv/bin/hermes"',
+    '$PythonPath = "/opt/hermes/.venv/bin/python"',
+)
+missing = [term for term in required if term not in source]
+if missing:
+    raise SystemExit("init-profiles.ps1 missing current inspect/runtime contract: " + ", ".join(missing))
 
-if source.count(expected) != 1:
-    raise SystemExit("init-profiles.ps1 must pass the unescaped Docker mount template exactly once")
+legacy = "{{range .Mounts}}{{printf"
+if legacy in source:
+    raise SystemExit("init-profiles.ps1 still contains the deprecated Docker Go-template mount parser")
 PYTHON
 }
 
@@ -41,24 +51,13 @@ check_powershell_syntax() {
     "$powershell" -NoLogo -NoProfile -NonInteractive -Command '
         $tokens = $null
         $errors = $null
-        $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+        [void][System.Management.Automation.Language.Parser]::ParseFile(
             (Resolve-Path "init-profiles.ps1"),
             [ref]$tokens,
             [ref]$errors
         )
         if ($errors.Count -ne 0) {
             $errors | ForEach-Object { [Console]::Error.WriteLine($_.Message) }
-            exit 1
-        }
-
-        $expected = "{{range .Mounts}}{{printf `"%s|%s\n`" .Type .Destination}}{{end}}"
-        $templates = $ast.FindAll({
-            param($node)
-            $node -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
-                $node.Value -eq $expected
-        }, $true)
-        if ($templates.Count -ne 1) {
-            [Console]::Error.WriteLine("Expected exactly one valid Docker mount template string.")
             exit 1
         }
     '
@@ -83,7 +82,10 @@ check_docker_compose() {
     fi
 
     printf '[RUN ] Docker Compose configuration\n'
-    if ! docker compose config --quiet >/dev/null 2>&1; then
+    if ! HERMES_DASHBOARD_USERNAME=verify-user \
+         HERMES_DASHBOARD_PASSWORD=verify-password \
+         HERMES_DASHBOARD_SECRET=verify-secret-0123456789abcdef0123456789abcdef \
+         docker compose config --quiet >/dev/null 2>&1; then
         printf '[FAIL] Docker Compose configuration is invalid; diagnostic output is suppressed to avoid exposing secrets.\n' >&2
         return 1
     fi
@@ -112,7 +114,7 @@ run_check "dev-breakdown shell syntax" \
     bash -n custom-skills/orchestrator/dev-breakdown/scripts/collect_project_context.sh
 run_check "Environment contract" \
     python3 scripts/check_env_contract.py
-run_check "init-profiles Docker mount template" check_mount_template_source
+run_check "init-profiles inspect/runtime contract" check_init_mount_contract
 check_powershell_syntax
 check_docker_compose
 

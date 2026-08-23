@@ -16,6 +16,7 @@ DEFAULTS = {
     "HERMES_IMAGE_NAME": "hermes-dev",
     "HERMES_IMAGE_TAG": "0.1.0",
     "HERMES_DATA_VOLUME_NAME": "hermes-dev-data",
+    "HERMES_BASE_IMAGE": "nousresearch/hermes-agent:v2026.8.16.2",
     "HERMES_HOST_WORKSPACE_PATH": "D:/workspace",
     "HERMES_CONTAINER_WORKSPACE_PATH": "/workspace",
     "HERMES_HOST_CUSTOM_SKILLS_PATH": "./custom-skills",
@@ -23,11 +24,14 @@ DEFAULTS = {
     "HERMES_HOST_SHARED_PATH": "./shared",
     "HERMES_CONTAINER_SHARED_PATH": "/opt/data/shared",
     "HERMES_PORT_BIND_ADDRESS": "127.0.0.1",
+    "HERMES_TIMEZONE": "Asia/Seoul",
+    "HERMES_DASHBOARD_HOST": "0.0.0.0",
     "HERMES_DASHBOARD_HOST_PORT": "9119",
     "HERMES_DASHBOARD_CONTAINER_PORT": "9119",
-    "HERMES_GATEWAY_HOST_PORT": "8642",
-    "HERMES_GATEWAY_CONTAINER_PORT": "8642",
-    "HERMES_TIMEZONE": "Asia/Seoul",
+    "HERMES_API_SERVER_ENABLED": "false",
+    "HERMES_API_SERVER_HOST": "0.0.0.0",
+    "HERMES_API_SERVER_HOST_PORT": "8642",
+    "HERMES_API_SERVER_CONTAINER_PORT": "8642",
     "JIRA_API_VERSION": "3",
     "JIRA_ACCEPTANCE_CRITERIA_FIELDS": "Acceptance Criteria",
     "JIRA_INCLUDE_FIELD_NAMES": "",
@@ -39,6 +43,7 @@ SENSITIVE_SAMPLE_KEYS = {
     "HERMES_DASHBOARD_USERNAME",
     "HERMES_DASHBOARD_PASSWORD",
     "HERMES_DASHBOARD_SECRET",
+    "HERMES_API_SERVER_KEY",
     "JIRA_BASE_URL",
     "JIRA_EMAIL",
     "JIRA_API_TOKEN",
@@ -106,6 +111,11 @@ def main() -> int:
         reference = "${" + key + ":-" + default + "}"
         if reference not in compose:
             raise SystemExit(f"compose.yml missing defaulted reference: {reference}")
+
+    if 'HERMES_DASHBOARD: "1"' not in compose:
+        raise SystemExit("compose.yml must keep the baseline dashboard enabled for the healthcheck contract")
+    if "HERMES_DASHBOARD_ENABLED" in compose or "HERMES_DASHBOARD_ENABLED" in sample:
+        raise SystemExit("dashboard enabled toggle must not diverge from the baseline healthcheck contract")
     if re.search(r"^\s*source:\s*D:/workspace\s*$", compose, re.MULTILINE):
         raise SystemExit("compose.yml still hardcodes D:/workspace as a volume source")
     if "HERMES_CONTAINER_DATA_PATH" in compose or "HERMES_CONTAINER_DATA_PATH" in sample:
@@ -113,11 +123,19 @@ def main() -> int:
     if not re.search(r"^\s*target:\s*/opt/data\s*$", compose, re.MULTILINE):
         raise SystemExit("compose.yml must keep the official image data target /opt/data")
 
+    for required in (
+        "${HERMES_DASHBOARD_USERNAME:?Set HERMES_DASHBOARD_USERNAME in .env}",
+        "${HERMES_DASHBOARD_PASSWORD:?Set HERMES_DASHBOARD_PASSWORD in .env}",
+        "${HERMES_DASHBOARD_SECRET:?Set HERMES_DASHBOARD_SECRET in .env}",
+    ):
+        if required not in compose:
+            raise SystemExit(f"compose.yml must fail fast for dashboard credential: {required}")
+
     port_fixture = render_compose_vars(
         compose,
         {
             "HERMES_DASHBOARD_CONTAINER_PORT": "19119",
-            "HERMES_GATEWAY_CONTAINER_PORT": "18642",
+            "HERMES_API_SERVER_CONTAINER_PORT": "18642",
         },
     )
     for expected in (
@@ -125,13 +143,16 @@ def main() -> int:
         "API_SERVER_PORT: 18642",
         '"127.0.0.1:9119:19119"',
         '"127.0.0.1:8642:18642"',
-        "('127.0.0.1', 18642)",
+        "('127.0.0.1', 19119)",
     ):
         if expected not in port_fixture:
             raise SystemExit(
                 "compose.yml does not connect non-default container ports to "
                 f"listener/publish/healthcheck contract: {expected}"
             )
+
+    if "API_SERVER_ENABLED: ${HERMES_API_SERVER_ENABLED:-false}" not in compose:
+        raise SystemExit("OpenAI-compatible API server must be explicitly disabled by default")
 
     init = INIT.read_text(encoding="utf-8-sig")
     if 'Get-EnvOrDefault -Name "HERMES_CONTAINER_DATA_PATH"' in init:
@@ -146,9 +167,16 @@ def main() -> int:
         )
         if not re.search(pattern, init):
             raise SystemExit(f"init-profiles.ps1 missing env/default contract for {key}")
-    for required_term in ("Import-DotEnv", "Get-EnvOrDefault", "EnvSelfTest"):
+    for required_term in (
+        "Import-DotEnv",
+        "Get-EnvOrDefault",
+        "EnvSelfTest",
+        '/opt/hermes/.venv/bin/hermes',
+        '/opt/hermes/.venv/bin/python',
+        "ConvertFrom-Json",
+    ):
         if required_term not in init:
-            raise SystemExit(f"init-profiles.ps1 missing helper: {required_term}")
+            raise SystemExit(f"init-profiles.ps1 missing helper/runtime contract: {required_term}")
 
     print(f"[PASS] env contract verified ({len(REQUIRED_SAMPLE_KEYS)} public keys)")
     return 0

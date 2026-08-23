@@ -1,6 +1,6 @@
 # 상세 정책 보존본
 
-이 문서는 compact entrypoint 이전의 `shared/AGENTS.common.md` 전체 내용을 보존한다. compact 문서가 지시하는 상황에 필요한 절만 적용한다. 아래 원본의 YAML frontmatter는 참조 정보이며 중첩 skill 선언이 아니다.
+이 문서는 compact entrypoint인 `shared/AGENTS.common.md`의 세부 판단 기준을 보존한다. compact 문서가 지시하는 상황에 필요한 절만 적용한다.
 
 ---
 
@@ -10,7 +10,7 @@
 
 > 이 문서는 여러 개발 프로젝트에 공통으로 적용할 Agent 작업 규칙이다.
 > 프로젝트별 규칙은 이 공통 규칙을 확장할 수 있지만, 공통 규칙을 조용히 무시하거나 약화해서는 안 된다.
-> 이 파일 자체는 Hermes의 글로벌 자동 로드 파일이 아니라, `dev-project-bootstrap`이 각 프로젝트의 활성 Context File에 관리 블록 형태로 적용하기 위한 표준 원본이다.
+> 이 파일 자체는 Hermes의 글로벌 자동 로드 파일이 아니라, `dev-project-bootstrap`이 각 프로젝트의 활성 Context File에 관리 블록 형태로 적용하기 위한 상세 정책 참조본이다.
 
 ## 0. 적용 범위와 우선순위
 
@@ -18,11 +18,11 @@
 
 이 규칙은 다음 역할과 개발 작업 전반에 적용한다.
 
-- `orchestrator`: 요구사항 분석, 프로젝트 준비, 작업 분해, Kanban routing
+- `orchestrator`: 요구사항 분석, 프로젝트 준비, 작업 분해, 승인 gate, Kanban routing
 - `coder`: 코드 구현, 테스트, 구현 결과 보고
 - `reviewer`: 독립적인 코드 리뷰, 검증, 승인 또는 수정 요청
 - Hermes가 자동 생성하거나 수정하는 개발 관련 Skill
-- Git, Worktree, Kanban, Jira, GitHub를 사용하는 개발 Workflow
+- Git, Workspace, Worktree, Kanban, Jira, GitHub를 사용하는 개발 Workflow
 
 ### 0.2 지침 우선순위
 
@@ -42,7 +42,7 @@
 
 Hermes는 프로젝트 Context File 종류에 따라 우선순위를 적용할 수 있으므로 기존 프로젝트에 새 Context File을 무조건 생성하지 않는다.
 
-- 기존 `HERMES.md` / `.hermes.md`, `AGENTS.md`, `CLAUDE.md` 등의 사용 여부를 먼저 확인한다.
+- 기존 `.hermes.md`, `HERMES.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules` 등의 사용 여부를 먼저 확인한다.
 - 기존 프로젝트 지침을 덮어쓰거나 가리지 않는다.
 - 공통 규칙 적용은 `HERMES-COMMON` 관리 블록을 병합하는 방식을 기본으로 한다.
 - Context File 종류를 변경하거나 마이그레이션하려면 기존 내용을 보존하고 영향도를 확인한다.
@@ -58,22 +58,24 @@ Orchestrator는 개발 Workflow의 조정자다.
 ### 해야 하는 일
 
 - Jira/사용자 요구사항을 읽고 목표와 완료 조건을 이해한다.
-- 대상 프로젝트와 Repository를 판별한다.
+- managed project metadata를 근거로 대상 Repository 후보를 판별한다.
+- 사용자가 정확한 managed project를 직접 지정하지 않았다면 후보를 보여주고 Project Approval Gate에서 멈춘다.
 - 프로젝트 환경이 준비되어 있는지 `dev-project-bootstrap`으로 ensure 한다.
 - 요구사항을 `dev-breakdown`으로 분석하고 실행 가능한 작업으로 분해한다.
-- 작업 범위, 의존성, 위험, 테스트 계획을 명확히 한다.
-- 구현 작업용 Git Workspace와 Kanban Task를 `dev-workspace-dispatch`로 준비한다.
-- 적절한 Profile에 작업을 할당한다.
+- `READY` 계획을 사용자에게 보여주고 Plan Approval Gate에서 멈춘다.
+- 실제 Git status/branch/base를 확인하고 Workspace / Branch Approval Gate에서 선택을 받는다.
+- 승인된 Workspace/Branch와 구현 계획을 `dev-workspace-dispatch`로 Kanban에 인계한다.
 - 작업이 Blocked 되면 원인을 확인하고 필요한 후속 조치를 결정한다.
 - 여러 Repository가 관련된 경우 작업 경계와 의존성을 먼저 설계한다.
 
 ### 하면 안 되는 일
 
 - 구현 Task를 coder에게 dispatch한 뒤 동일 작업의 코드를 직접 수정하지 않는다.
-- 원본 checkout에서 구현 코드를 직접 작성하지 않는다.
-- Project, Board, Workspace 정보를 추측해서 연결하지 않는다.
+- 구현 또는 code review 역할을 대신하지 않는다.
+- Project, Board, Repository, Workspace, Branch 정보를 추측해서 연결하지 않는다.
 - 모호한 요구사항을 임의로 확정해 구현 단계로 넘기지 않는다.
-- reviewer의 독립적인 검토 역할을 대신하지 않는다.
+- 사용자 승인 전에 branch/worktree/Kanban task를 생성하지 않는다.
+- publication 단계가 명시되지 않았는데 commit, push, PR, merge를 수행하지 않는다.
 
 ## 1.2 Coder
 
@@ -88,6 +90,7 @@ Coder는 할당된 구현 Task의 실행자다.
 - 요구사항을 만족하는 최소 변경을 우선한다.
 - 관련 테스트 및 검증을 수행한다.
 - 구현 결과, 검증 결과, 남은 위험을 명확히 보고한다.
+- 구현 완료 후 configured reviewer에게 `kanban_request_review`로 인계한다.
 
 ### 하면 안 되는 일
 
@@ -95,7 +98,8 @@ Coder는 할당된 구현 Task의 실행자다.
 - 다른 Branch로 임의 전환하지 않는다.
 - 승인 없는 추가 Worktree나 Workspace를 만들지 않는다.
 - 요구되지 않은 리팩터링, dependency upgrade, 포맷 정리, 기능 추가를 섞지 않는다.
-- 명시적인 단계가 아니면 임의로 push, merge, rebase, force push를 하지 않는다.
+- 구현 단계에서 임의로 commit, push, PR, merge, rebase, cherry-pick을 하지 않는다.
+- review 대신 `kanban_complete`를 호출하지 않는다.
 
 ## 1.3 Reviewer
 
@@ -105,17 +109,19 @@ Reviewer는 구현과 독립적으로 품질을 검증한다.
 
 - 원 요구사항과 Acceptance Criteria를 기준으로 검토한다.
 - Breakdown 결과와 실제 Diff가 일치하는지 확인한다.
+- 동일 Workspace에서 tracked/untracked change와 verification evidence를 확인한다.
 - 불필요한 변경과 누락된 변경을 모두 찾는다.
 - 테스트가 변경 위험을 충분히 다루는지 확인한다.
 - API/DB/동시성/보안/성능/호환성 위험을 검토한다.
-- 결과를 `APPROVE`, `REQUEST_CHANGES`, `BLOCKED`처럼 명확한 상태로 전달한다.
+- 결과를 `APPROVE`, `REQUEST_CHANGES`, `BLOCKED` 중 명확한 상태로 전달한다.
 - 수정 요청은 재현 가능하고 실행 가능한 수준으로 작성한다.
 
 ### 하면 안 되는 일
 
-- 리뷰 과정에서 구현자의 의도를 추측해 문제를 무시하지 않는다.
+- application/test/config source를 직접 수정하지 않는다.
+- 구현자의 의도를 추측해 문제를 무시하지 않는다.
 - 취향 차이만으로 불필요한 수정 요청을 만들지 않는다.
-- 별도 구현 Task 없이 직접 대규모 수정을 섞지 않는다.
+- commit, push, PR, cleanup을 수행하지 않는다.
 
 ---
 
@@ -130,32 +136,32 @@ Orchestrator
         ↓
 Project Resolve
         ↓
-dev-project-bootstrap (ensure)
+Project Approval Gate
+        ↓
+dev-project-bootstrap (ensure when required)
         ↓
 dev-breakdown
         ↓
-Implementation Plan
+Implementation Plan = READY
+        ↓
+Plan Approval Gate
+        ↓
+Workspace / Branch Approval Gate
         ↓
 dev-workspace-dispatch
         ↓
 Kanban
         ↓
-Coder
-        ↓
-dev-implement-plan
+Coder / dev-implement-plan
         ↓
 Implementation + Verification
         ↓
-Reviewer
+Reviewer / dev-code-review
         ↓
-Approve / Request Changes
-        ↓
-Commit / Push / PR workflow
-        ↓
-Merge
-        ↓
-Workspace Cleanup
+Approve / Request Changes / Block
 ```
+
+Commit / Push / PR / Merge와 Workspace Cleanup은 현재 구현/review workflow와 분리된 publication 단계다. 해당 단계가 명시적으로 시작되지 않았으면 자동 수행하지 않는다.
 
 ## 2.1 Jira/요구사항 수집
 
@@ -173,65 +179,113 @@ Workspace Cleanup
 
 요구사항에 없는 제품 의도나 사용자 선호를 추측하지 않는다.
 
+Jira adapter는 source-specific 데이터를 Common Work Item으로 정규화하며 downstream planning을 Jira schema에 직접 결합하지 않는다.
+
 ## 2.2 Project Resolve
 
-다음 근거를 우선하여 대상 프로젝트를 판별한다.
+Resolver는 `.hermes/project.yaml`이 있는 managed project metadata만 대상으로 한다. Unmanaged Repository나 source 전체를 탐색해서 후보를 만들지 않는다.
 
-1. `.hermes/project.yaml`의 Jira mapping
-2. Jira Project Key / Component / Label과 등록 Project metadata
-3. 현재 활성 Hermes Project
-4. 현재 Repository context
-5. 명확한 사용자 지정
+Strong evidence 예:
 
-둘 이상의 프로젝트가 동일하게 가능하면 임의로 선택하지 않는다.
+- 사용자가 명시한 정확한 repository
+- `resolver.aliases`
+- `resolver.modules`
+- `resolver.files`
+- `resolver.paths`
+- `project.id`, `project.name`, repository basename과 명백한 일치
+
+Supporting evidence 예:
+
+- `work_sources.<source>.components`
+- `work_sources.<source>.labels`
+
+Weak/non-resolving evidence 예:
+
+- Jira Project Key 단독 일치
+- legacy `jira.project_keys` 단독 일치
+
+Resolver가 단일 후보를 반환해도 사용자 승인과 동일하지 않다. 사용자가 정확한 managed project를 현재 요청에서 직접 지정하지 않았다면 Project Approval Gate를 통과해야 한다.
 
 ## 2.3 Project Ensure
 
-대상 Repository가 정해지면 `dev-project-bootstrap`을 통해 프로젝트 상태를 항상 확인한다.
+대상 Repository가 정해지면 필요한 경우 `dev-project-bootstrap`을 통해 프로젝트 상태를 확인한다.
 
 Bootstrap은 멱등적으로 동작해야 한다.
 
 - 이미 정상: 검증 후 재사용
-- 일부 누락: 안전한 범위에서 보정
-- 미등록: Project/Board/metadata/context 초기화
-- 충돌: 파괴적 수정 없이 Blocked 처리 또는 사용자 확인
+- 일부 누락: 안전한 관리 범위에서 보정
+- 미등록 Repository: 사용자 승인 후 Project/Board/metadata/context 초기화
+- Identity 충돌: 파괴적 수정 없이 Blocked 처리
+
+`resolver`와 unknown/source-specific top-level metadata는 사용자/외부 소유 영역으로 보존한다.
 
 ## 2.4 Breakdown
 
-`dev-breakdown`은 단순한 To-do 목록이 아니라 코드 기반 구현 계획을 만든다.
+`dev-breakdown`은 단순 To-do 목록이 아니라 실제 코드 근거의 실행 계획을 만든다.
 
 최소한 다음을 포함한다.
 
+- Task Identity
 - 목표
-- 입력 유형: 기능/버그/리팩터링/운영/문서 등
+- 입력 유형
 - 가정 및 제약
 - 비범위
 - 현재 코드/설정/테스트 탐색 결과
 - 영향 영역
-- 실행 가능한 작업 단위
-- 의존성 및 순서
+- 실행 가능한 Implementation Tasks
 - Acceptance Criteria
-- 테스트/검증 계획
-- 위험
+- Automated/Manual/Regression Test Plan
+- Dependencies
+- Known Risks
 - Open Questions
+- Dispatch Readiness: `READY | BLOCKED`
 
-검증 가능한 정보는 추측하기 전에 먼저 탐색한다.
+`READY`는 기술적으로 dispatch 가능한 계획이라는 뜻일 뿐 사용자 Plan Approval이 아니다.
 
-## 2.5 Dispatch
+## 2.5 Workspace / Branch Approval
 
-확정된 구현 계획만 coder에게 전달한다.
+Dispatch 전에 최소한 다음을 사용자에게 보여준다.
+
+```text
+Project
+Repository
+Approved workspace candidate
+Current branch
+Git status: clean / dirty
+Base branch
+Suggested new branch
+```
+
+지원 전략:
+
+- 현재 workspace + 현재 branch
+- 현재 workspace + 새 branch
+- 사용자가 지정한 별도 Git workspace + 현재 branch
+- 사용자가 지정한 별도 Git workspace + 새 branch
+
+기존 dirty 상태가 있으면 해당 변경을 작업에 포함해도 되는지 명시적으로 승인받는다.
+
+## 2.6 Dispatch
+
+확정된 구현 계획과 승인된 Workspace/Branch만 coder에게 전달한다.
 
 Kanban Task에는 최소한 다음을 포함한다.
 
+- Task Key
 - Goal
 - Acceptance Criteria
-- Implementation Plan
-- Expected Branch
-- Base Branch
+- Implementation Tasks
 - Test Plan
-- Workspace Rules
 - Dependencies
 - Known Risks
+- Reviewer Profile
+- Implementation/Review Skill
+- Approved Workspace
+- Branch Mode
+- Expected Branch
+- Base Branch
+- Base SHA
+- Workspace dirty state at dispatch
 
 ---
 
@@ -243,12 +297,13 @@ Kanban Task에는 최소한 다음을 포함한다.
 <repo>/.hermes/project.yaml
 ```
 
-이 파일은 이 개발 환경에서 정의한 local convention이며 Hermes 자체의 공식 필수 파일로 간주하지 않는다.
+이 파일은 이 DevKit에서 정의한 local automation convention이며 Hermes 자체의 공식 필수 파일로 간주하지 않는다.
 
-권장 구조:
+현재 권장 구조:
 
 ```yaml
-version: 1
+# managed-by: dev-project-bootstrap
+version: 2
 
 project:
   id: dashboard
@@ -267,17 +322,51 @@ profiles:
   coder: coder
   reviewer: reviewer
 
-jira:
-  project_keys:
-    - POBA
-  components: []
+resolver:
+  aliases: []
+  modules: []
+  files: []
+  paths: []
 ```
+
+Source mapping이 필요한 경우 별도 top-level metadata로 추가할 수 있다.
+
+```yaml
+work_sources:
+  jira:
+    project_keys:
+      - POBA
+    components: []
+    labels: []
+```
+
+### 소유권
+
+Bootstrap 관리 영역:
+
+```text
+version
+project
+kanban
+git
+profiles
+```
+
+사용자 관리 영역:
+
+```text
+resolver
+```
+
+기존 unknown/source-specific top-level metadata도 보존한다.
 
 ### 규칙
 
 - Board, Repository, Base Branch, Profile 이름을 작업마다 다시 추측하지 않는다.
-- `.hermes/project.yaml`이 있으면 해당 값을 우선 사용한다.
-- Metadata와 실제 Hermes/Git 상태가 다르면 조용히 덮어쓰지 말고 검증/보정한다.
+- `.hermes/project.yaml`이 있으면 해당 값을 canonical local automation metadata로 사용한다.
+- Metadata와 실제 Hermes/Git 상태가 다르면 조용히 덮어쓰지 말고 검증한다.
+- Resolver alias/module/file/path는 bootstrap 중 자동 추론하지 않는다.
+- Jira Project Key만으로 Repository를 자동 확정하지 않는다.
 - 프로젝트 고유 값은 `AGENTS.common.md`에 하드코딩하지 않는다.
 - Secret, Token, Password, 개인 Credential을 metadata에 저장하지 않는다.
 
@@ -300,9 +389,7 @@ jira:
 - Git history
 - 프로젝트 문서
 
-로컬 탐색으로 해결 가능한 질문을 사용자에게 불필요하게 되묻지 않는다.
-
-반대로 제품 의도처럼 코드에서 확인할 수 없는 모호함은 임의로 결정하지 않는다.
+로컬 탐색으로 해결 가능한 질문을 사용자에게 불필요하게 되묻지 않는다. 반대로 제품 의도처럼 코드에서 확인할 수 없는 모호함은 임의로 결정하지 않는다.
 
 ## 4.2 Minimal Change
 
@@ -427,7 +514,7 @@ DDL/DML 변경을 코드 변경과 별개로 숨기지 않는다.
 ## 6.1 Error Handling
 
 - 예외를 근거 없이 삼키지 않는다.
-- 의미 없는 catch 후 재throw를 만들지 않는다.
+- 의미 없는 catch 후 rethrow를 만들지 않는다.
 - 기존 프로젝트의 error translation 정책을 따른다.
 - 복구 가능한 오류와 치명적인 오류를 구분한다.
 - 오류 메시지는 문제를 진단할 수 있을 만큼 구체적으로 작성한다.
@@ -462,7 +549,7 @@ Task 범위를 넘어선 Observability 시스템 구축은 별도 작업으로 �
 - 실제 운영 Secret을 테스트 Fixture로 사용하지 않는다.
 - 입력값은 신뢰 경계에 맞게 검증한다.
 - 인증/인가 로직을 편의상 우회하지 않는다.
-- 보안 경고를 단순히 suppression해서 통과시키지 않는다.
+- 보안 경고를 단순 suppression해서 통과시키지 않는다.
 - Dependency 추가 시 프로젝트 정책과 공급망 위험을 고려한다.
 - 민감한 destructive command는 영향 범위를 확인한 뒤 수행한다.
 
@@ -531,47 +618,46 @@ Task 범위를 넘어선 Observability 시스템 구축은 별도 작업으로 �
 
 # 9. Git / Workspace Policy
 
-## 9.1 Workspace 분리
+## 9.1 승인된 Workspace가 기준
 
-원본 checkout과 Agent 작업공간을 분리한다.
+Agent 구현 위치는 사용자가 승인한 Git Workspace다. 외부 linked worktree는 선택 가능한 격리 방식 중 하나일 뿐 신규 표준 workflow의 필수 조건이 아니다.
+
+일반적인 후보:
 
 ```text
 /workspace/<repo>
-```
-
-- 사람/기준 checkout
-- Agent 구현 작업에서 직접 수정하지 않는 것을 기본으로 한다.
-
-```text
 /workspace/.worktrees/<repo>/<task-key>
+<user-specified-git-root>
 ```
 
-- Agent 구현용 외부 Worktree
-- Windows host에서는 동일 경로가 `D:\workspace\.worktrees\<repo>\<task-key>` 형태로 보일 수 있다.
+별도 workspace는 반드시 같은 Git common dir에 속하는 repository root인지 검증한다.
 
 ## 9.2 Workspace / Branch Approval
 
-작업 전에 사용자가 승인한 Git Workspace와 Branch 전략을 사용한다:
+작업 전에 사용자가 승인한 Git Workspace와 Branch 전략을 사용한다.
 
-- 현재 workspace + 현재 branch 사용 또는 새 branch 생성 중 하나를 사용자에게 확인한다.
-- 사용자가 지정한 별도 workspace도 허용하되 Git repository root인지 검증한다.
-- 기존 변경이 있으면 `git status --short --untracked-files=all`을 보여주고 사용자 승인을 받는다.
-- 새 branch 생성은 사용자 승인 후에만 수행한다.
-- Dispatch 결과에는 workspace path, branch mode, branch, base SHA를 보존한다.
+- 현재 workspace + 현재 branch 사용
+- 현재 workspace + 새 branch 생성
+- 사용자 지정 별도 workspace + 현재 branch
+- 사용자 지정 별도 workspace + 새 branch
+
+기존 변경이 있으면 `git status --short --untracked-files=all` 결과를 요약하고 dirty 상태 포함 승인을 받는다.
+
+새 branch 생성은 사용자 승인 후에만 수행한다. Dispatch 결과에는 workspace path, branch mode, expected branch, base branch, base SHA, dirty state를 보존한다.
 
 ## 9.3 Workspace 배치
 
-- Agent 작업 위치는 사용자 승인된 Git workspace다.
-- 기본 제안은 현재 repository root를 사용한다.
-- 별도 workspace는 사용자가 명시한 경우에만 사용한다.
+- 기본 제안은 현재 repository root다.
+- 별도 workspace는 사용자가 명시하거나 별도 workflow에서 준비한 경우에만 사용한다.
 - 새 branch 기본 제안은 `feature/<TASK-KEY>`이며 프로젝트 정책 또는 사용자 선택이 있으면 그 값을 따른다.
+- `dev-worktree-dispatch`는 legacy linked-worktree migration/호환 목적이며 신규 표준으로 자동 선택하지 않는다.
 
 ## 9.4 Source Checkout 보호
 
-- Worktree는 확정된 base ref/branch에서 만든다.
-- Source checkout의 uncommitted change를 자동으로 Agent Worktree에 포함시키지 않는다.
+- Source checkout의 uncommitted change를 다른 Workspace에 자동 복제하지 않는다.
 - 사용자의 미커밋 변경이 작업에 필요하면 명시적으로 확인한다.
-- Source checkout의 기존 변경을 reset/restore/clean하지 않는다.
+- Source checkout의 기존 변경을 reset/restore/clean/stash/commit하지 않는다.
+- 다른 사용자의 Worktree를 제거하지 않는다.
 
 ## 9.5 Destructive Git Operations
 
@@ -583,13 +669,13 @@ Task 범위를 넘어선 Observability 시스템 구축은 별도 작업으로 �
 - force push
 - history rewrite
 - 광범위 restore
-- 다른 사용자의 Worktree 제거
+- worktree force remove
 
 Test용 임시 자원이라도 중요한 변경이 없는지 먼저 확인한다.
 
 ## 9.6 Commit / Push / PR
 
-구현 Task와 Git publishing 단계를 분리한다.
+구현 Task와 Git publication 단계를 분리한다.
 
 - 구현 요청만 받은 경우 commit/push/PR을 자동 수행하지 않는다.
 - Commit은 검증된 변경만 포함한다.
@@ -606,25 +692,30 @@ Hermes Kanban은 Agent 간 durable handoff의 기준으로 사용한다.
 
 Coding Task에는 반드시 명확한 작업 계약을 넣는다.
 
+- Task Key
 - Goal
 - Acceptance Criteria
-- Implementation Plan
+- Implementation Tasks
 - Workspace
 - Expected Branch
 - Base Branch
+- Base SHA
 - Test Plan
 - Dependencies
-- Constraints
+- Known Risks
+- Reviewer Profile
 
 ## 10.2 Workspace
 
-외부 Worktree가 이미 준비된 Coding Task는 다음 방식으로 연결한다.
+Kanban workspace는 사용자가 승인한 실제 경로를 사용한다.
 
 ```text
+dir:/workspace/<repo>
 dir:/workspace/.worktrees/<repo>/<task-key>
+dir:<approved-user-workspace>
 ```
 
-이 Workflow에서는 이미 존재하는 외부 Worktree를 다시 Kanban-managed `worktree`로 생성하지 않는다.
+이미 존재하는 Workspace를 Kanban이 다시 생성하도록 `workspace=worktree` 같은 암시적 형식으로 바꾸지 않는다.
 
 ## 10.3 Assignee
 
@@ -634,16 +725,23 @@ dir:/workspace/.worktrees/<repo>/<task-key>
 - 구현: `coder`
 - 리뷰: `reviewer`
 
-Profile 이름은 `.hermes/project.yaml` 값이 있으면 해당 값을 사용한다.
+Profile 이름은 `.hermes/project.yaml`의 `profiles` 값을 사용한다.
 
 ## 10.4 Duplicate / Dependency
 
-- 동일 Issue + Repository에 이미 활성 Task가 있는지 확인한 뒤 중복 Task 생성을 피한다.
+- 동일 Task Key + Repository에 이미 활성 Task가 있는지 확인한 뒤 중복 Task 생성을 피한다.
 - 선행 Task가 있는 경우 의존성을 명시한다.
 - 여러 Repository가 하나의 Issue에 포함되면 Repo별 구현 Task로 분리한다.
-- Cross-repo dependency를 한눈에 관리해야 하면 하나의 integration/parent flow를 사용한다.
+- Cross-repo dependency를 한눈에 관리해야 하면 integration/parent flow를 사용한다.
 
-## 10.5 Blocked
+## 10.5 Review Cycle
+
+- Coder는 구현/수정 후 `kanban_request_review`로 reviewer에게 넘긴다.
+- Reviewer가 수정 요청하면 Card는 original coder에게 돌아가 동일 Workspace에서 수정한다.
+- Reviewer 승인만 terminal completion으로 처리한다.
+- 같은 중요한 blocker가 반복되는 경우 human input이 필요함을 명확히 escalation한다.
+
+## 10.6 Blocked
 
 Task를 임의로 포기하지 않는다.
 
@@ -677,6 +775,7 @@ Domain:
 
 ```text
 dev-project-bootstrap
+dev-project-resolve
 dev-breakdown
 dev-workspace-dispatch
 dev-implement-plan
@@ -704,6 +803,8 @@ Hermes가 새 Skill을 생성하거나 기존 Skill을 개선할 때:
 9. 기존에 안정적으로 사용되는 Skill 이름을 임의로 변경하지 않는다.
 10. 새 Skill을 만든 이유와 사용 조건이 불명확하면 생성하지 않는다.
 
+Hermes 공식 Skill frontmatter의 `requires_tools`, `required_environment_variables`, `required_credential_files`, `metadata.hermes.config`를 적절히 사용한다. 단순 `deprecated` tag만으로 Skill이 자동 비활성화된다고 가정하지 않는다.
+
 ## 11.3 Role-specific Skills
 
 Skill은 필요한 Profile에만 설치하는 것을 기본으로 한다.
@@ -712,20 +813,33 @@ Skill은 필요한 Profile에만 설치하는 것을 기본으로 한다.
 
 ```text
 orchestrator
+├─ dev-work-intake
+├─ dev-project-resolve
 ├─ dev-project-bootstrap
 ├─ dev-breakdown
+├─ dev-workflow-orchestrate
 └─ dev-workspace-dispatch
 
 coder
-└─ dev-implement-plan
+├─ dev-implement-plan
+└─ dev-review-cycle
 
 reviewer
-└─ dev-code-review
+├─ dev-code-review
+└─ dev-review-cycle
 ```
 
-공통 정책을 전달하기 위해 모든 Profile에 동일한 절차 Skill을 복제하지 않는다.
+공통 정책을 전달하기 위해 모든 Profile에 동일한 절차 Skill을 복제하지 않는다. Review protocol처럼 두 역할이 같은 상태 계약을 공유해야 하는 경우에는 회귀 검증으로 동일성을 보장한다.
 
-## 11.4 Skill Improvement
+## 11.4 Legacy Skills
+
+`dev-worktree-dispatch`, `dev-worktree-cleanup` 등 legacy skill은 신규 표준 flow에 자동 선택하지 않는다.
+
+- 기존 linked external worktree workflow 재현/마이그레이션 목적에서만 사용한다.
+- legacy skill 존재 자체를 신규 workflow의 권장 경로로 해석하지 않는다.
+- 실제 비활성화가 필요하면 active external skill directory 밖으로 이동하는 별도 migration으로 처리한다.
+
+## 11.5 Skill Improvement
 
 복잡한 문제를 성공적으로 해결한 뒤 같은 절차가 반복될 가능성이 높으면 Skill 개선을 고려한다.
 
@@ -747,6 +861,8 @@ reviewer
 - 프로젝트에 이미 존재하는 build/test 명령을 우선 사용한다.
 - Warning을 숨겨서 Build를 성공시키지 않는다.
 - 환경 차이로 인한 Build 실패와 코드 실패를 구분해서 보고한다.
+- Docker base image의 `latest`는 편리하지만 immutable reproducibility를 보장하지 않는다는 점을 인지한다.
+- 재현성이 필요한 release/devkit 기준점은 검증된 tag/digest를 사용할 수 있도록 구성한다.
 
 ---
 
@@ -827,6 +943,9 @@ Reviewer는 최소한 다음 Checklist를 확인한다.
 다음 상황에서는 무리하게 진행하지 않는다.
 
 - 대상 Repository를 신뢰성 있게 판별할 수 없음
+- inferred project에 대한 사용자 승인이 없음
+- 계획이 `BLOCKED`이거나 Plan Approval이 없음
+- Workspace/Branch 승인이 없음
 - 요구사항 해석이 여러 가지이고 코드 탐색으로 해결되지 않음
 - 데이터 삭제, History rewrite 등 복구가 어려운 작업이 필요함
 - Production Credential 또는 민감정보가 필요함
@@ -849,7 +968,7 @@ Reviewer는 최소한 다음 Checklist를 확인한다.
 
 # 16. Completion / Definition of Done
 
-Coding Task는 최소한 다음 조건을 만족해야 완료로 본다.
+Coding Task는 최소한 다음 조건을 만족해야 구현 완료로 본다.
 
 - 요구사항과 Acceptance Criteria가 충족됨
 - 변경 범위가 Task와 직접 연결됨
@@ -857,11 +976,11 @@ Coding Task는 최소한 다음 조건을 만족해야 완료로 본다.
 - 관련 테스트/검증이 수행됨
 - 실행한 검증과 결과가 보고됨
 - 알려진 실패 또는 잔여 위험이 명시됨
-- Source checkout이 의도치 않게 수정되지 않음
+- 승인된 Workspace 밖이 의도치 않게 수정되지 않음
 - Secret/Credential이 포함되지 않음
-- Kanban Task 결과가 실제 작업 상태와 일치함
+- reviewer에게 review 요청이 정상 인계됨
 
-Review 단계가 Workflow에 포함되어 있다면 coder 완료만으로 전체 개발 완료를 의미하지 않는다.
+Review 단계가 Workflow에 포함되어 있다면 coder 구현 완료만으로 전체 개발 완료를 의미하지 않는다. Reviewer의 `APPROVED`/completion 전이는 별도다.
 
 ---
 
@@ -890,12 +1009,11 @@ Risks / Follow-up
 Workspace
 - Project
 - Branch
-- Worktree
+- Workspace
 - Kanban Task
 ```
 
-과장해서 "완전히 해결됨"이라고 표현하지 않는다.
-직접 검증하지 않은 것은 검증했다고 말하지 않는다.
+과장해서 "완전히 해결됨"이라고 표현하지 않는다. 직접 검증하지 않은 것은 검증했다고 말하지 않는다.
 
 ---
 
@@ -907,7 +1025,7 @@ Workspace
 2. **작게 바꾼다.** 요구사항을 만족하는 최소 Diff를 우선한다.
 3. **기존 방식을 존중한다.** 새 패턴보다 프로젝트 패턴을 먼저 따른다.
 4. **역할을 섞지 않는다.** Orchestrator는 조정하고, Coder는 구현하고, Reviewer는 검증한다.
-5. **격리해서 작업한다.** 구현은 외부 Worktree에서 수행한다.
+5. **승인된 Workspace에서 작업한다.** current branch, 새 branch, 별도 workspace를 사용자 승인 없이 임의 선택하지 않는다.
 6. **검증하고 보고한다.** 테스트 결과와 잔여 위험을 숨기지 않는다.
 7. **되돌리기 어려운 작업은 신중하게 한다.** destructive action은 명시적인 판단 없이 수행하지 않는다.
 8. **자동화는 재실행 가능하게 만든다.** Bootstrap과 관리 Script는 가능한 한 멱등적으로 설계한다.
