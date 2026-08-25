@@ -1,7 +1,7 @@
 ---
 name: dev-fast-flow
 description: 명확하고 작은 단일 Repository 작업을 Coder 대화에서 Kanban에 self-dispatch하고 worker가 risk에 따라 완료 또는 reviewer 인계한다.
-version: 0.2.0
+version: 0.2.1
 author: local
 platforms: [linux]
 metadata:
@@ -25,16 +25,17 @@ User → Coder intake → Kanban → Coder worker
 다음을 모두 만족해야 한다.
 - managed 단일 Repository가 명확함
 - 작은 기존 패턴 기반 변경
-- clean current branch
+- current branch에서 작업 가능
+- 기존 변경이 있으면 그대로 보존하며 작업 가능
 - architecture/product/public API/DB schema/dependency/cross-repo 결정 불필요
 - 완료 조건과 검증 방법이 명확함
 
 대표 후보: 작은 버그/null/edge-case, 기존 validation, 로그/메시지, 단순 Repository 수정, 테스트 보완, 문서/주석, 작은 리팩터링.
 
-다음은 Standard Flow로 보낸다: project/workspace 모호성, dirty workspace, 새 branch/worktree, 신규 기능 설계, multi-repo/module 영향, API/schema/dependency/transaction/security/concurrency 정책 결정, 복수 해석 요구사항.
+다음은 Standard Flow로 보낸다: project/workspace 모호성, 기존 변경을 안전하게 보존하기 어려움, 새 branch/worktree, 신규 기능 설계, multi-repo/module 영향, API/schema/dependency/transaction/security/concurrency 정책 결정, 복수 해석 요구사항.
 
 ## Intake 계약
-`<repo>/.hermes/project.yaml`, clean status, current branch, Base SHA를 확인하고 최소한 다음을 Kanban에 남긴다.
+`<repo>/.hermes/project.yaml`, current branch, Base SHA, 현재 `git status`를 확인하고 최소한 다음을 Kanban에 남긴다.
 
 ```text
 Flow: FAST
@@ -45,11 +46,13 @@ Implementation Tasks
 Test Plan
 Known Risks
 Workspace / Expected Branch / Base SHA
+Workspace dirty at dispatch
+Pre-existing changes
 Reviewer Profile
 Review Policy: RISK_BASED
 ```
 
-Task 생성은 `scripts/create_fast_task.py`를 사용한다. 성공 후 Interactive Coder는 멈추고 Gateway가 `dev-implement-plan` worker를 실행한다.
+Task 생성은 `scripts/create_fast_task.py`를 사용한다. 기존 변경은 baseline으로 기록할 뿐 stash/reset/clean/restore하지 않는다. 성공 후 Interactive Coder는 멈추고 Gateway가 `dev-implement-plan` worker를 실행한다.
 
 ## Worker 결과
 - 실제 source에서 Fast Flow 범위를 벗어나면 `FAST_FLOW_ESCALATION_REQUIRED`로 Block.
@@ -60,7 +63,8 @@ Task 생성은 `scripts/create_fast_task.py`를 사용한다. 성공 후 Interac
 
 ## 불변식
 - intake 세션은 source를 직접 수정하지 않는다.
+- 기존 사용자 변경을 덮어쓰거나 reset/restore/clean/stash하지 않는다.
 - risk 판정 때문에 검증을 생략하지 않는다.
 - LOW를 파일 수만으로 판정하지 않는다.
-- branch/worktree 생성, dirty 상태 정리, commit/push/PR/merge 금지.
+- branch/worktree 생성, commit/push/PR/merge 금지.
 - 애매하면 LOW가 아니라 REVIEW_REQUIRED 또는 Standard Flow를 선택한다.
