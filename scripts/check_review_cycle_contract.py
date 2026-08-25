@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify coder/reviewer review-cycle copies and transition invariants."""
+"""Verify coder/reviewer risk-based review-cycle copies and transition invariants."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -9,34 +9,7 @@ CODER_PROTOCOL = ROOT / "custom-skills/coder/dev-review-cycle/references/review-
 REVIEWER_PROTOCOL = ROOT / "custom-skills/reviewer/dev-review-cycle/references/review-protocol.md"
 IMPLEMENT = ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md"
 REVIEW = ROOT / "custom-skills/reviewer/dev-code-review/SKILL.md"
-
-COMMON_TERMS = (
-    "kanban_request_review",
-    "kanban_request_changes",
-    "kanban_complete",
-    "kanban_block",
-    "CHANGES_REQUESTED",
-    "original coder",
-    "동일 Workspace",
-    "needs_input",
-    "no commit/push",
-)
-CYCLE_TERMS = COMMON_TERMS + (
-    "허용 전이",
-    "금지 전이",
-    "source를 수정하지 않고",
-    "정확히 하나",
-    "terminal 상태가 아니다",
-    "구현 완료 후 `kanban_block`",
-    "Orchestrator",
-)
-PROTOCOL_TERMS = COMMON_TERMS + (
-    "Coder가 구현 또는 수정 후 `kanban_complete`",
-    "Reviewer가 application, test, config 또는 workflow source를 직접 수정",
-    "동일한 중요한 blocker가 3 review cycle",
-    "Workspace = remains",
-    "CHANGES_REQUESTED는 original coder ready로 이어지는 비-terminal",
-)
+FAST = ROOT / "custom-skills/coder/dev-fast-flow/SKILL.md"
 
 
 def read(path: Path) -> str:
@@ -47,52 +20,55 @@ def require(path: Path, terms: tuple[str, ...], failures: list[str]) -> None:
     text = read(path)
     missing = [term for term in terms if term not in text]
     if missing:
-        failures.append(f"{path.relative_to(ROOT)} missing: {", ".join(missing)}")
+        failures.append(f"{path.relative_to(ROOT)} missing: {', '.join(missing)}")
 
 
 def main() -> int:
     failures: list[str] = []
+
     if read(CODER_CYCLE) != read(REVIEWER_CYCLE):
         failures.append("coder/reviewer dev-review-cycle/SKILL.md copies differ")
     if read(CODER_PROTOCOL) != read(REVIEWER_PROTOCOL):
         failures.append("coder/reviewer review-protocol.md copies differ")
 
     for path in (CODER_CYCLE, REVIEWER_CYCLE):
-        require(path, CYCLE_TERMS, failures)
+        require(path, (
+            "Fast LOW", "REVIEW_REQUIRED", "kanban_complete", "kanban_request_review",
+            "kanban_request_changes", "kanban_block", "CHANGES_REQUESTED", "original coder",
+            "Standard Flow", "LOW 근거 없는", "source를 수정하지 않고", "no commit/push",
+        ), failures)
+
     for path in (CODER_PROTOCOL, REVIEWER_PROTOCOL):
-        require(path, PROTOCOL_TERMS, failures)
-    require(
-        IMPLEMENT,
-        (
-            "kanban_request_review`만 호출한 뒤 멈춘다",
-            "구현 완료 상태에서 `kanban_complete`",
-            "review 대용 `kanban_block`",
-            "CHANGES_REQUESTED",
-            "original coder",
-            "동일 Workspace",
-        ),
-        failures,
-    )
-    require(
-        REVIEW,
-        (
-            "source를 수정하지 않는다",
-            "kanban_request_changes",
-            "kanban_complete",
-            "kanban_block` 중 정확히 하나만 실행",
-            "CHANGES_REQUESTED는 terminal 상태가 아니며",
-            "original coder",
-            "같은 Workspace",
-            "needs_input",
-        ),
-        failures,
-    )
+        require(path, (
+            "Fast Flow", "Standard Flow", "Review Risk LOW", "review_skipped=true",
+            "CHANGES_REQUESTED", "original coder", "동일 Workspace", "kanban_complete",
+            "kanban_request_review", "kanban_request_changes", "kanban_block",
+            "Standard Flow Coder self-complete", "publication = no commit/push/PR",
+        ), failures)
+
+    require(FAST, (
+        "Review Policy: RISK_BASED", "LOW", "REVIEW_REQUIRED", "CHANGES_REQUESTED",
+        "kanban_complete", "kanban_request_review",
+    ), failures)
+
+    require(IMPLEMENT, (
+        "Flow: FAST", "Review Risk", "LOW", "REVIEW_REQUIRED", "kanban_complete",
+        "kanban_request_review", "Standard Flow", "CHANGES_REQUESTED", "original coder",
+        "동일 Workspace", "review 대용", "BLOCKED",
+    ), failures)
+
+    require(REVIEW, (
+        "source를 수정하지 않는다", "kanban_request_changes", "kanban_complete",
+        "kanban_block` 중 정확히 하나", "CHANGES_REQUESTED는 terminal 상태가 아니며",
+        "original coder", "같은 Workspace", "needs_input", "Review Risk: LOW",
+    ), failures)
 
     if failures:
         for failure in failures:
             print(f"[FAIL] {failure}")
         return 1
-    print("[PASS] dev-review-cycle copies and transition invariants")
+
+    print("[PASS] risk-based review-cycle copies and transition invariants")
     return 0
 
 
