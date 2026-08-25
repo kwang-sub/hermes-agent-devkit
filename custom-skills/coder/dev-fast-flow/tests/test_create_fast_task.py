@@ -55,36 +55,21 @@ def make_repo(root: Path) -> Path:
 def test_clean_repo_dry_run() -> None:
     with tempfile.TemporaryDirectory(prefix="fast-flow-test-") as temp_dir:
         repo = make_repo(Path(temp_dir))
-        result = run(
-            [
-                "python3",
-                str(SCRIPT),
-                "--workspace",
-                str(repo),
-                "--title",
-                "fix null handling",
-                "--goal",
-                "Prevent the known null-input failure.",
-                "--acceptance",
-                "Null input no longer triggers the reported exception.",
-                "--implementation",
-                "Inspect the existing null-handling pattern and apply the minimum fix.",
-                "--test",
-                "Run the relevant focused test.",
-                "--dry-run",
-            ]
-        )
+        result = run([
+            "python3", str(SCRIPT), "--workspace", str(repo),
+            "--title", "fix null handling",
+            "--goal", "Prevent the known null-input failure.",
+            "--acceptance", "Null input no longer triggers the reported exception.",
+            "--implementation", "Inspect the existing null-handling pattern and apply the minimum fix.",
+            "--test", "Run the relevant focused test.",
+            "--dry-run",
+        ])
         if result.returncode != 0:
             raise AssertionError(result.stderr or result.stdout)
         required = (
-            "PROJECT=demo",
-            "BOARD=demo",
-            "BRANCH=dev",
-            "CODER=coder",
-            "REVIEWER=reviewer",
-            "Flow: FAST",
-            "FAST_FLOW_ESCALATION_REQUIRED",
-            "STATUS=dry-run",
+            "PROJECT=demo", "BOARD=demo", "BRANCH=dev", "CODER=coder", "REVIEWER=reviewer",
+            "Flow: FAST", "Review Policy: RISK_BASED", "LOW -> coder", "REVIEW_REQUIRED -> coder",
+            "FAST_FLOW_ESCALATION_REQUIRED", "STATUS=dry-run",
         )
         for term in required:
             if term not in result.stdout:
@@ -95,25 +80,11 @@ def test_dirty_repo_rejected() -> None:
     with tempfile.TemporaryDirectory(prefix="fast-flow-dirty-test-") as temp_dir:
         repo = make_repo(Path(temp_dir))
         (repo / "app.txt").write_text("dirty\n", encoding="utf-8")
-        result = run(
-            [
-                "python3",
-                str(SCRIPT),
-                "--workspace",
-                str(repo),
-                "--title",
-                "small fix",
-                "--goal",
-                "Small fix.",
-                "--acceptance",
-                "Requested behavior works.",
-                "--implementation",
-                "Apply minimum fix.",
-                "--test",
-                "Run focused test.",
-                "--dry-run",
-            ]
-        )
+        result = run([
+            "python3", str(SCRIPT), "--workspace", str(repo), "--title", "small fix",
+            "--goal", "Small fix.", "--acceptance", "Requested behavior works.",
+            "--implementation", "Apply minimum fix.", "--test", "Run focused test.", "--dry-run",
+        ])
         if result.returncode == 0:
             raise AssertionError("dirty workspace was accepted")
         if "Fast Flow requires a clean workspace" not in result.stderr:
