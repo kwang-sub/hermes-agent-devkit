@@ -96,6 +96,8 @@ run_check "Context budget and compact policy invariants" \
     python3 scripts/context_budget.py
 run_check "Custom skill Python compilation" \
     python3 -m compileall -q custom-skills
+run_check "Custom skill metadata and progressive-disclosure contract" \
+    python3 scripts/check_skill_contract.py
 run_check "Hermes CLI SyntaxWarning patch and strict compile" \
     python3 scripts/patch_hermes_syntax_warning.py --self-test
 run_check "dev-fast-flow task creation regression tests" \
