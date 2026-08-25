@@ -93,14 +93,28 @@ hermes-agent-devkit
 │  └─ project.yaml
 ├─ custom-skills/
 │  ├─ orchestrator/
+│  │  ├─ dev-project-pattern/
+│  │  ├─ dev-breakdown/
+│  │  └─ dev-workspace-dispatch/
 │  ├─ coder/
 │  │  ├─ dev-fast-flow/
-│  │  └─ dev-implement-plan/
+│  │  ├─ dev-implement-plan/
+│  │  ├─ dev-spring-guidelines/
+│  │  ├─ dev-spring-feature/
+│  │  ├─ dev-spring-data/
+│  │  ├─ dev-spring-test/
+│  │  └─ dev-api-docs/
+│  │     └─ references/
+│  │        ├─ spring-openapi-reference.md
+│  │        └─ postman-reference.md
 │  └─ reviewer/
+│     └─ dev-code-review/
 ├─ shared/
 │  ├─ AGENTS.common.md
 │  └─ references/
+│     └─ project-pattern-rules.md
 └─ scripts/
+   └─ check_skill_contract.py
 ```
 
 Host Workspace와 컨테이너의 기본 연결 구조는 다음과 같다.
@@ -346,7 +360,19 @@ coder        -> /opt/custom-skills/coder
 reviewer     -> /opt/custom-skills/reviewer
 ```
 
-Coder의 External Skill에는 `dev-fast-flow`와 `dev-implement-plan`이 함께 제공된다.
+Coder External Skill에는 workflow Skill과 Spring/API capability Skill이 함께 제공된다.
+
+```text
+dev-fast-flow
+dev-implement-plan
+dev-spring-guidelines
+dev-spring-feature
+dev-spring-data
+dev-spring-test
+dev-api-docs
+```
+
+Orchestrator는 복잡한 작업에서 `dev-breakdown`이 `skill_view("dev-project-pattern")`으로 프로젝트 패턴 Skill 본문을 명시적으로 로드한다. Coder worker는 Kanban의 `Applicable Skills`를 읽고 각 capability를 `skill_view()`로 실제 로드한 후 구현한다. Skill 이름/description만으로 세부 규칙을 추측하지 않는다.
 
 각 Profile의 `skills.external_dirs`는 YAML scalar가 아니라 list로 저장된다.
 
@@ -457,6 +483,7 @@ bash scripts/verify.sh
 
 - compact policy/context invariant
 - Custom Skill Python compile
+- **Custom Skill frontmatter/name/description/reference/progressive-disclosure contract**
 - Hermes SyntaxWarning compatibility helper self-test
 - Fast Flow task creation regression tests
 - workspace dispatch regression tests
@@ -471,6 +498,25 @@ bash scripts/verify.sh
 - PowerShell syntax 및 `.env` helper self-test (`pwsh`/`powershell` 사용 가능 시)
 - Docker Compose configuration (`docker`/daemon 사용 가능 시)
 
+Skill metadata 검증은 다음 script가 담당한다.
+
+```bash
+python3 scripts/check_skill_contract.py
+```
+
+주요 검증 내용:
+
+```text
+SKILL.md frontmatter 존재
+name/description 존재
+name과 directory 이름 일치
+duplicate skill name 없음
+필수 capability skill 존재
+OpenAPI/Postman local reference 존재
+dev-breakdown의 dev-project-pattern skill_view 계약
+dev-implement-plan의 capability skill_view 계약
+```
+
 마지막에 다음과 같은 메시지가 출력되면 repository-level 검증이 완료된 것이다.
 
 ```text
@@ -479,7 +525,7 @@ bash scripts/verify.sh
 
 실제 `.env`의 Secret은 검증 출력에 표시하지 않는다. Compose 검증은 테스트용 placeholder credential을 process environment로 주입해서 수행한다.
 
-GitHub Actions의 `.github/workflows/verify.yml`도 branch push 및 pull request에서 동일한 검증을 실행한다.
+GitHub Actions의 `.github/workflows/verify.yml`도 `dev`, `fix/**`, `feat/**`, `feature/**` push 및 pull request에서 동일한 검증을 실행한다.
 
 > [!NOTE]
 > Windows PowerShell만 사용하고 Git Bash/WSL이 없는 경우 이 단계는 나중에 수행할 수 있지만, DevKit 변경을 `dev`에 병합하거나 다른 PC에 배포하기 전에는 반드시 한 번 실행하는 것을 권장한다.
@@ -539,6 +585,8 @@ User Request ────────────┤                            
                          │                               ↓
                          │                          Coder worker
                          │                               ↓
+                         │                     capability skill_view
+                         │                               ↓
                          │                            Reviewer
                          │
                          └─ 분석/설계가 필요한 작업
@@ -547,13 +595,19 @@ User Request ────────────┤                            
                                          ↓
                                 Project Resolve
                                          ↓
+                             dev-project-pattern
+                                         ↓
                                     Breakdown
                                          ↓
                                      Approval
                                          ↓
                                Workspace Dispatch
                                          ↓
+                       Pattern/Applicable Skills 보존
+                                         ↓
                                       Coder
+                                         ↓
+                             capability skill_view
                                          ↓
                                     Reviewer
 ```
@@ -576,6 +630,8 @@ Coder가 Kanban Task 등록
 Gateway dispatcher
   ↓
 Coder worker / dev-implement-plan
+  ↓
+Project Pattern 확인 + capability skill_view
   ↓
 Reviewer / dev-code-review
   ↓
@@ -610,7 +666,8 @@ Coder interactive session은 요청을 확인한 뒤 다음 순서로 처리한�
 6. assignee=coder, reviewer=reviewer 계약 저장
 7. interactive session은 source를 직접 수정하지 않고 종료
 8. Gateway dispatcher가 coder worker 실행
-9. worker가 구현/검증 후 reviewer에게 request_review
+9. worker가 project pattern을 확인하고 필요한 capability Skill 본문을 skill_view로 로드
+10. 구현/검증 후 reviewer에게 request_review
 ```
 
 > [!NOTE]
@@ -699,19 +756,23 @@ dev-project-bootstrap (필요 시)
     ↓
 dev-breakdown
     ↓
+skill_view("dev-project-pattern")
+    ↓
+Project Pattern Summary / Applicable Skills
+    ↓
 Plan Approval
     ↓
 Workspace / Branch Approval
     ↓
 dev-workspace-dispatch
     ↓
-Coder
+Kanban에 Pattern References / Applicable Skills 보존
     ↓
-dev-implement-plan
+Coder / dev-implement-plan
     ↓
-Reviewer
+Applicable Skills를 skill_view로 로드
     ↓
-dev-code-review
+Reviewer / dev-code-review
     ↓
 Approve / Request Changes / Block
 ```
@@ -734,7 +795,73 @@ Standard Flow는 다음 작업에 적합하다.
 - Architecture 변경
 - 여러 구현 Task로 나눠야 하는 작업
 
-## 9.3 Workspace / Branch 전략
+### Standard Flow Skill Handoff
+
+`dev-breakdown`은 최소 다음을 계획에 남긴다.
+
+```text
+Project Pattern Summary
+Pattern References
+Applicable Skills
+Pattern Conflicts
+Improvement Candidates
+```
+
+`dev-workspace-dispatch`는 이 값을 Kanban body에 그대로 보존한다. Coder는 `Applicable Skills`를 canonical handoff로 사용하며, 각 Skill을 `skill_view()`로 실제 로드한다. 실제 source evidence에서 명백한 누락이 발견될 때만 Coder가 capability를 추가 감지한다.
+
+Spring 프로젝트에서는 기본적으로 다음 후보를 사용한다.
+
+```text
+dev-spring-guidelines
+  Spring 공통 convention / response / transaction
+
+dev-spring-feature
+  Controller / Service / DTO / Validation / Exception
+
+dev-spring-data
+  JPA / DataJPA / QueryDSL / Entity / Repository / Converter
+
+dev-spring-test
+  Spring/JPA test
+
+dev-api-docs
+  OpenAPI / Swagger / Postman
+```
+
+JPA query 기본 우선순위는 다음이다.
+
+```text
+단순 조회 → Spring Data JPA Method Query
+복잡/동적 조회 → QueryDSL
+Native Query → 앞 두 방식으로 해결하기 어려운 근거가 있을 때만
+```
+
+API 응답은 대상 프로젝트의 기존 공통 Response 규격을 우선한다.
+
+## 9.3 API 문서화 Reference
+
+`dev-api-docs`는 외부 예시 저장소를 매 작업마다 다시 읽지 않고 local reference를 사용한다.
+
+```text
+custom-skills/coder/dev-api-docs/references/
+├─ spring-openapi-reference.md
+└─ postman-reference.md
+```
+
+Spring OpenAPI reference는 `backend-lab-archive/level-up-backend-gpt/level2-book-management-system`에서 합의한 다음 패턴을 요약한다.
+
+```text
+@Tag
+@Operation
+API별 ErrorCode example
+GroupedOpenApi
+OperationCustomizer
+실제 인증 방식에 맞는 SecurityScheme
+```
+
+예시 프로젝트의 `ResponseEntity<DTO>`는 기본 응답 규격으로 복제하지 않는다. 대상 프로젝트에 공통 Response wrapper가 있으면 OpenAPI/Postman도 해당 contract를 사용한다.
+
+## 9.4 Workspace / Branch 전략
 
 Standard Flow의 `dev-workspace-dispatch`는 다음 전략을 지원한다.
 
@@ -755,7 +882,7 @@ clean current workspace + current branch
 
 `dev-worktree-dispatch`, `dev-worktree-cleanup`은 과거 linked-worktree workflow 호환을 위한 legacy skill이다. 신규 작업에서는 자동 선택하지 않는다.
 
-## 9.4 Reviewer는 두 Flow 모두 유지
+## 9.5 Reviewer는 두 Flow 모두 유지
 
 Fast Flow라고 해서 Review를 생략하지 않는다.
 
@@ -770,9 +897,9 @@ Reviewer
    └─ BLOCKED → 사용자/외부 결정 필요
 ```
 
-Reviewer는 implementation source를 직접 수정하지 않는다.
+Reviewer는 implementation source를 직접 수정하지 않는다. Reviewer profile에 capability Skill이 실제 설치되어 있으면 `skill_view()`로 전체 계약을 읽고, profile 분리 때문에 Coder capability를 직접 로드할 수 없는 경우에는 Kanban에 보존된 Pattern/Applicable Skills 계약과 Coder handoff evidence를 기준으로 검증한다.
 
-## 9.5 DevKit 자체 managed project
+## 9.6 DevKit 자체 managed project
 
 이 DevKit 저장소 자체도 Hermes managed project로 사용할 수 있도록 다음 파일을 둔다.
 
@@ -1213,6 +1340,7 @@ Dashboard에서 해당 project board와 task status를 확인한다.
 | **Fast Flow / Coder 직접 요청** | `docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p coder chat` |
 | **Standard Flow / Orchestrator** | `docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator chat` |
 | Reviewer 직접 확인 | `docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p reviewer chat` |
+| Skill 계약 검증 | `python3 scripts/check_skill_contract.py` |
 | 통합 검증 | `bash scripts/verify.sh` |
 | 데이터 유지 종료 | `docker compose down` |
 | **완전 초기화** | `docker compose down -v` |
@@ -1228,12 +1356,17 @@ Dashboard에서 해당 project board와 task status를 확인한다.
 작고 명확한 개발 작업
 → Coder에게 직접 요청
 → Coder가 Kanban 등록
-→ Coder worker → Reviewer
+→ Coder worker
+→ project pattern + 필요한 capability skill_view
+→ Reviewer
 
 복잡한 개발 작업
 → Orchestrator
-→ Breakdown/Approval/Dispatch
-→ Coder → Reviewer
+→ dev-project-pattern 분석
+→ Breakdown에서 Applicable Skills 결정
+→ Dispatch에서 Pattern/Skill 계약 보존
+→ Coder가 capability skill_view
+→ Reviewer
 
 일반 운영
 → 10 참고
