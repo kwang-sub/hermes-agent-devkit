@@ -94,6 +94,8 @@ hermes-agent-devkit
 ├─ custom-skills/
 │  ├─ orchestrator/
 │  ├─ coder/
+│  │  ├─ dev-fast-flow/
+│  │  └─ dev-implement-plan/
 │  └─ reviewer/
 ├─ shared/
 │  ├─ AGENTS.common.md
@@ -344,6 +346,8 @@ coder        -> /opt/custom-skills/coder
 reviewer     -> /opt/custom-skills/reviewer
 ```
 
+Coder의 External Skill에는 `dev-fast-flow`와 `dev-implement-plan`이 함께 제공된다.
+
 각 Profile의 `skills.external_dirs`는 YAML scalar가 아니라 list로 저장된다.
 
 ```yaml
@@ -454,6 +458,7 @@ bash scripts/verify.sh
 - compact policy/context invariant
 - Custom Skill Python compile
 - Hermes SyntaxWarning compatibility helper self-test
+- Fast Flow task creation regression tests
 - workspace dispatch regression tests
 - coder workspace verification tests
 - reviewer context tests
@@ -523,7 +528,163 @@ docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p reviewe
 
 # 9. 실제 개발 Workflow 사용
 
-표준 역할 흐름은 다음과 같다.
+DevKit은 작업 크기에 따라 **Fast Flow**와 **Standard Flow** 두 가지 흐름을 사용한다.
+
+```text
+                         ┌─ 작고 명확한 작업 ─────────────┐
+User Request ────────────┤                               ↓
+                         │                         Coder intake
+                         │                               ↓
+                         │                       Kanban self-dispatch
+                         │                               ↓
+                         │                          Coder worker
+                         │                               ↓
+                         │                            Reviewer
+                         │
+                         └─ 분석/설계가 필요한 작업
+                                         ↓
+                                   Orchestrator
+                                         ↓
+                                Project Resolve
+                                         ↓
+                                    Breakdown
+                                         ↓
+                                     Approval
+                                         ↓
+                               Workspace Dispatch
+                                         ↓
+                                      Coder
+                                         ↓
+                                    Reviewer
+```
+
+두 Flow 모두 최종 구현과 Review 기록은 Kanban에 남긴다. 차이는 **작은 작업에서 Orchestrator의 project resolve/breakdown/approval 단계를 생략할 수 있는가**이다.
+
+## 9.1 Fast Flow — Coder에게 직접 요청
+
+Fast Flow는 다음 구조다.
+
+```text
+User
+  ↓
+Coder interactive chat
+  ↓
+dev-fast-flow
+  ↓
+Coder가 Kanban Task 등록
+  ↓
+Gateway dispatcher
+  ↓
+Coder worker / dev-implement-plan
+  ↓
+Reviewer / dev-code-review
+  ↓
+Approve / Request Changes / Block
+```
+
+사용자는 Kanban CLI를 직접 입력하지 않는다. Coder 대화에 일반적인 개발 요청처럼 작업 내용을 설명한다.
+
+Coder 실행:
+
+```powershell
+docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p coder chat
+```
+
+요청 예:
+
+```text
+/workspace/sample-api 프로젝트에서
+UserService의 null 입력 시 발생하는 NPE를 수정해줘.
+정상 입력 동작은 유지하고 관련 테스트도 확인해줘.
+간단한 작업이면 Fast Flow로 진행해줘.
+```
+
+Coder interactive session은 요청을 확인한 뒤 다음 순서로 처리한다.
+
+```text
+1. 대상 managed project 확인
+2. Fast Flow 적용 가능 여부 판단
+3. clean current branch인지 확인
+4. Goal / Acceptance Criteria / 최소 구현 단계 / Test Plan 작성
+5. dev-fast-flow helper로 Kanban Task 생성
+6. assignee=coder, reviewer=reviewer 계약 저장
+7. interactive session은 source를 직접 수정하지 않고 종료
+8. Gateway dispatcher가 coder worker 실행
+9. worker가 구현/검증 후 reviewer에게 request_review
+```
+
+> [!NOTE]
+> `Coder가 Kanban을 등록하고 작업한다`는 의미는 **같은 Coder profile이 intake와 implementation 역할을 이어서 담당한다**는 뜻이다. 다만 Kanban lifecycle을 보존하기 위해 interactive chat process가 코드를 직접 수정하는 것이 아니라, 생성된 Task를 Gateway가 동일 `coder` profile의 worker process로 다시 실행한다.
+
+Fast Flow Task에는 최소 다음 계약이 저장된다.
+
+```text
+Flow: FAST
+Task Key
+Goal
+Acceptance Criteria
+Implementation Tasks
+Test Plan
+Known Risks
+Workspace
+Expected Branch
+Base SHA
+Reviewer Profile
+```
+
+### Fast Flow에 적합한 작업
+
+- 작은 버그 수정
+- null/edge-case 처리
+- 기존 패턴 기반 Validation 추가
+- 로그/메시지 변경
+- 작은 설정 수정
+- 기존 Repository/Query 패턴의 단순 수정
+- 테스트 케이스 보완
+- 오타/문서/주석 수정
+- 범위가 명확한 작은 리팩터링
+
+Fast Flow의 기본 전제는 다음이다.
+
+```text
+단일 managed Repository
+clean workspace
+현재 branch 사용
+작고 명확한 요구사항
+기존 패턴으로 해결 가능
+Reviewer의 검증 기준이 명확함
+```
+
+### Fast Flow에서 Standard Flow로 승격
+
+Coder intake 단계에서 다음 조건이 보이면 Task를 Fast Flow로 생성하지 않는다.
+
+```text
+대상 Project가 모호함
+dirty workspace
+새 branch/worktree 결정 필요
+신규 기능 설계
+여러 Repository 영향
+Public API 변경
+DB Schema/Migration 변경
+Dependency 추가/Upgrade
+Architecture/Transaction/Concurrency 정책 결정
+요구사항 해석이 여러 가지
+```
+
+또한 intake에서는 단순해 보였지만 Coder worker가 실제 source를 읽은 뒤 범위가 커진 것을 발견할 수 있다.
+
+이 경우 구현 범위를 임의로 넓히지 않고 Kanban을 다음 이유로 Block한다.
+
+```text
+FAST_FLOW_ESCALATION_REQUIRED
+```
+
+그리고 확인한 Evidence와 Standard Flow에서 결정해야 할 항목을 남긴다. 이후 Orchestrator에서 해당 작업을 다시 분석한다.
+
+## 9.2 Standard Flow — Orchestrator부터 시작
+
+신규 기능, 복잡한 버그, 설계/분해가 필요한 작업은 기존 Standard Flow를 사용한다.
 
 ```text
 Request / Jira
@@ -555,9 +716,27 @@ dev-code-review
 Approve / Request Changes / Block
 ```
 
-현재 신규 표준은 `dev-workspace-dispatch`다.
+Orchestrator 실행:
 
-지원하는 Workspace/Branch 전략:
+```powershell
+docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator chat
+```
+
+Standard Flow는 다음 작업에 적합하다.
+
+- 신규 기능
+- 요구사항이 모호한 작업
+- 여러 module/repository 작업
+- Public API 변경
+- DB Schema/Migration
+- Dependency 추가/Upgrade
+- 대규모 리팩터링
+- Architecture 변경
+- 여러 구현 Task로 나눠야 하는 작업
+
+## 9.3 Workspace / Branch 전략
+
+Standard Flow의 `dev-workspace-dispatch`는 다음 전략을 지원한다.
 
 ```text
 현재 workspace + 현재 branch
@@ -566,11 +745,34 @@ Approve / Request Changes / Block
 사용자가 지정한 별도 workspace + 새 branch
 ```
 
+Fast Flow는 의도적으로 범위를 단순하게 유지하기 위해 다음만 지원한다.
+
+```text
+clean current workspace + current branch
+```
+
+새 branch 또는 별도 workspace가 필요하다면 Standard Flow를 사용한다.
+
 `dev-worktree-dispatch`, `dev-worktree-cleanup`은 과거 linked-worktree workflow 호환을 위한 legacy skill이다. 신규 작업에서는 자동 선택하지 않는다.
 
-`dev-workspace-dispatch`는 사용자가 승인한 Workspace/Branch를 coder에게 인계하며 신규 표준에서는 자동 linked-worktree 생성을 기본 동작으로 하지 않는다.
+## 9.4 Reviewer는 두 Flow 모두 유지
 
-## 9.1 DevKit 자체 managed project
+Fast Flow라고 해서 Review를 생략하지 않는다.
+
+```text
+Coder worker
+   ↓
+kanban_request_review
+   ↓
+Reviewer
+   ├─ APPROVE → done
+   ├─ REQUEST_CHANGES → original coder 재작업
+   └─ BLOCKED → 사용자/외부 결정 필요
+```
+
+Reviewer는 implementation source를 직접 수정하지 않는다.
+
+## 9.5 DevKit 자체 managed project
 
 이 DevKit 저장소 자체도 Hermes managed project로 사용할 수 있도록 다음 파일을 둔다.
 
@@ -961,6 +1163,27 @@ HERMES_DASHBOARD_SECRET=
 
 ---
 
+## 12.7 Fast Flow Task가 실행되지 않음
+
+Coder가 Kanban Task를 생성했는데 상태가 `ready`에서 움직이지 않으면 Gateway/dispatcher를 확인한다.
+
+```powershell
+docker compose ps
+docker compose logs --tail 200 hermes
+```
+
+현재 Compose는 다음 command로 Gateway를 실행한다.
+
+```text
+gateway run
+```
+
+Gateway가 정상이라면 embedded Kanban dispatcher가 Task를 가져간다.
+
+Dashboard에서 해당 project board와 task status를 확인한다.
+
+---
+
 # 13. 보안 및 운영 원칙
 
 - `.env`, OAuth Token, API Token, Password, Cookie를 commit하지 않는다.
@@ -971,6 +1194,7 @@ HERMES_DASHBOARD_SECRET=
 - Custom Skill과 shared policy bind는 read-only로 유지한다.
 - Dockerfile/Compose에 `USER hermes` 또는 `user: hermes`를 지정해 공식 s6 root bootstrap을 깨지 않는다.
 - runtime 자동화에서는 `/opt/hermes/.venv/bin/hermes`, `/opt/hermes/.venv/bin/python` 절대경로를 우선한다.
+- Fast/Standard Flow 모두 Reviewer 단계를 유지한다.
 - 구현 요청만 받은 상태에서 coder/reviewer workflow가 임의로 commit, push, PR, merge까지 진행하지 않는다.
 - destructive Git operation과 Workspace cleanup은 명시적인 승인 없이 수행하지 않는다.
 
@@ -986,9 +1210,9 @@ HERMES_DASHBOARD_SECRET=
 | 로그 | `docker compose logs -f hermes` |
 | Profile 초기화 | `.\init-profiles.ps1` |
 | Profile 목록 | `docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes profile list` |
-| Orchestrator | `docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator chat` |
-| Coder | `docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p coder chat` |
-| Reviewer | `docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p reviewer chat` |
+| **Fast Flow / Coder 직접 요청** | `docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p coder chat` |
+| **Standard Flow / Orchestrator** | `docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator chat` |
+| Reviewer 직접 확인 | `docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p reviewer chat` |
 | 통합 검증 | `bash scripts/verify.sh` |
 | 데이터 유지 종료 | `docker compose down` |
 | **완전 초기화** | `docker compose down -v` |
@@ -1001,8 +1225,18 @@ HERMES_DASHBOARD_SECRET=
 처음 설치
 → README 0 ~ 8을 순서대로 진행
 
+작고 명확한 개발 작업
+→ Coder에게 직접 요청
+→ Coder가 Kanban 등록
+→ Coder worker → Reviewer
+
+복잡한 개발 작업
+→ Orchestrator
+→ Breakdown/Approval/Dispatch
+→ Coder → Reviewer
+
 일반 운영
-→ 9 ~ 10 참고
+→ 10 참고
 
 예외 상황
 → 11 ~ 12의 해당 항목만 적용
@@ -1011,4 +1245,4 @@ HERMES_DASHBOARD_SECRET=
 → 13 참고
 ```
 
-처음 설치 과정에서는 `docker compose down -v`, Hermes base image 변경, API Server 활성화, Workspace container path 변경 같은 특수 작업을 섞지 않는다. 기본 환경을 먼저 정상 구성한 뒤 필요한 기능을 하나씩 추가하는 것을 원칙으로 한다.
+Fast Flow는 Orchestrator를 생략하기 위한 **작은 작업 최적화**이지 Review, Kanban, Workspace 검증을 생략하는 shortcut이 아니다. 작업이 예상보다 커지면 `FAST_FLOW_ESCALATION_REQUIRED`로 중단하고 Standard Flow로 전환한다.

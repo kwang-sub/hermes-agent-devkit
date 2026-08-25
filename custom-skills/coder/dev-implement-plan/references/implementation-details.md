@@ -1,56 +1,60 @@
-# 상세 정책 보존본
+# dev-implement-plan 상세 구현 규칙
 
-이 문서는 compact entrypoint 이전의 `custom-skills/coder/dev-implement-plan/SKILL.md` 전체 내용을 보존한다. compact 문서가 지시하는 상황에 필요한 절만 적용한다. 아래 원본의 YAML frontmatter는 참조 정보이며 중첩 skill 선언이 아니다.
-
----
+이 문서는 compact entrypoint인 `custom-skills/coder/dev-implement-plan/SKILL.md`의 상세 판단 기준이다. Coder worker는 Kanban Task가 Standard Flow에서 왔는지 Fast Flow에서 왔는지 먼저 확인하고, 공통 구현/검증/Reviewer handoff 계약을 동일하게 적용한다.
 
 ---
-name: dev-implement-plan
-description: 사용자 승인된 dev-breakdown 계획을 할당된 승인된 Git Workspace에서 구현·검증하고, commit/push 없이 동일 Kanban 카드를 설정된 reviewer에게 전달한다.
-version: 0.2.0
-author: local
-platforms: [linux]
-metadata:
-  hermes:
-    tags: [dev, implementation, coder, kanban, workspace, review]
-    related_skills: [dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review]
-    requires_tools: [terminal, kanban_show, kanban_request_review, kanban_block, kanban_heartbeat]
----
 
-# dev-implement-plan
+# 1. 지원 Workflow
 
-**coder** 프로필이 Dispatch 완료된 Implementation Plan을 실제 코드로 구현한다.
-
-이 Skill은 구현 전용이며 `dev-workspace-dispatch`가 이미 준비한 승인된 Git Workspace에서만 작업한다.
-
-표준 흐름:
+## Standard Flow
 
 ```text
+User / Jira
+  ↓
+Orchestrator
+  ↓
+Project Resolve / Breakdown / Approval
+  ↓
 dev-workspace-dispatch
-        ↓
-Kanban task를 coder가 claim
-        ↓
-dev-implement-plan
-        ↓
-구현 + 검증
-        ↓
-kanban_request_review
-        ↓
-reviewer
+  ↓
+Kanban
+  ↓
+Coder worker / dev-implement-plan
+  ↓
+Reviewer
 ```
 
-이 단계에서는 commit, push, merge, Workspace cleanup을 하지 않는다.
+Standard Flow Task는 Orchestrator가 승인된 Implementation Plan과 Workspace Contract를 준비한다.
+
+## Fast Flow
+
+```text
+User
+  ↓
+Coder interactive intake / dev-fast-flow
+  ↓
+Kanban self-dispatch
+  ↓
+Coder worker / dev-implement-plan
+  ↓
+Reviewer
+```
+
+Fast Flow는 full `dev-breakdown`을 생략하지만 구현 계약을 생략하지 않는다. Kanban Body에 최소한 `Flow: FAST`, Task Key, Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Known Risks, Reviewer Profile, Workspace/Branch/Base SHA가 있어야 한다.
+
+Fast Flow Coder worker는 interactive intake 세션과 별도의 dispatcher-owned worker다. Interactive Coder가 Task를 만든 뒤 직접 source를 수정하지 않는 이유는 Kanban lifecycle, worker ownership, reviewer handoff를 동일한 실행 계약으로 유지하기 위해서다.
 
 ---
 
-# 1. Worker 시작 절차
+# 2. Worker 시작 절차
 
 Kanban Worker로 실행되면 다음 순서를 지킨다.
 
-1. 먼저 `kanban_show()`를 호출한다.
-2. Task Body, 이전 Attempt, Comment, Review Feedback을 모두 읽는다.
+1. `kanban_show()`를 호출한다.
+2. Original Task Body, 이전 Attempt, Comment, Review Feedback을 읽는다.
 3. `$HERMES_KANBAN_WORKSPACE`로 이동한다.
-4. 파일 수정 전에 Workspace와 Branch를 검증한다.
+4. Task의 `Flow`를 확인한다.
+5. 파일 수정 전에 Workspace/Branch/Base SHA를 검증한다.
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/verify_workspace.py" \
@@ -61,166 +65,172 @@ python3 "${HERMES_SKILL_DIR}/scripts/verify_workspace.py" \
 
 Helper 검증 항목:
 
-- 현재 디렉터리가 Git Workspace Root인지
-- Kanban에 승인된 Workspace인지
-- Workspace가 Git repository root인지
-- 현재 Branch가 Task의 Expected Branch와 일치하는지
-- dispatch Base SHA가 full commit SHA로 resolve되는지
-- dispatch Base SHA가 현재 HEAD의 ancestor인지 (`git merge-base --is-ancestor`)
-- 중첩 Workspace를 만들지 않았는지
+- 현재 directory가 Git Workspace Root인지
+- Kanban Workspace와 실제 Workspace가 일치하는지
+- 현재 Branch가 Expected Branch인지
+- Base SHA가 full 40-character commit으로 resolve되는지
+- Base SHA가 현재 HEAD의 ancestor인지
+- 중첩 Workspace에서 실행되지 않는지
 
-검증 실패 시 파일을 수정하지 말고 `kanban_block`을 호출한다.
+검증 실패 시 source를 수정하지 않고 `kanban_block`한다.
 
 ---
 
-# 2. 필수 Task 계약
+# 3. 필수 Task 계약
 
-Kanban Body에는 다음 정보가 있어야 한다.
+Standard/Fast Flow 모두 다음 정보를 요구한다.
 
 ```text
 Task Key:
-...
-
 Goal:
-...
-
 Acceptance Criteria:
-...
-
 Implementation Tasks:
-...
-
 Test Plan:
-...
-
 Known Risks:
-...
-
 Expected Branch:
-<Kanban Workspace Contract의 Expected Branch>
-
 Base Branch:
-...
-
 Base SHA:
-...
-
 Reviewer Profile:
-reviewer
 ```
 
-Goal, Acceptance Criteria, Implementation Tasks, Reviewer Profile이 없고 Task History에서도 복구할 수 없다면 임의로 만들지 말고 Block한다.
+Fast Flow는 추가로 다음 marker를 갖는다.
 
-현재 Branch가 Kanban Workspace Contract의 Expected Branch와 다르거나 Base SHA 검증이 실패하면 작업을 시작하지 않는다.
+```text
+Flow: FAST
+```
+
+Standard Flow는 Orchestrator의 approved plan을 scope source로 사용하고, Fast Flow는 Coder intake가 작성한 작은 작업 계약을 scope source로 사용한다.
+
+Goal, Acceptance Criteria, Implementation Tasks, Reviewer Profile 또는 Workspace Contract가 없고 Task History에서도 복구할 수 없으면 임의로 작성하지 않고 Block한다.
 
 ---
 
-# 3. 최초 구현과 Review 재작업 구분
+# 4. Fast Flow 사전 재검증
+
+`Flow: FAST` Task는 실제 source를 수정하기 전에 **Fast Flow가 여전히 안전한지** 확인한다. Intake는 요청만 보고 판단하지만 worker는 실제 코드와 설정을 볼 수 있으므로 두 번째 gate가 필요하다.
+
+다음 중 하나가 실제 evidence에서 확인되면 구현을 확장하지 않는다.
+
+- 요구사항이 둘 이상으로 해석됨
+- 제품 정책 또는 사용자 의도가 추가로 필요함
+- Architecture 책임 경계를 바꿔야 함
+- Public API request/response contract를 바꿔야 함
+- DB schema/migration 변경이 필요함
+- 여러 Repository를 동시에 변경해야 함
+- dependency 추가/upgrade가 필요함
+- transaction/concurrency 정책 결정이 필요함
+- 예상보다 변경 범위가 크게 확장됨
+- clean current-branch 전제가 더 이상 성립하지 않음
+
+이 경우 다음 형식으로 `kanban_block`한다.
+
+```text
+FAST_FLOW_ESCALATION_REQUIRED
+
+Evidence:
+- <file/symbol/config/test에서 확인한 사실>
+
+Why Fast Flow is no longer safe:
+- <scope/design/compatibility 이유>
+
+Standard Flow decision needed:
+- <Orchestrator가 분석/승인해야 할 항목>
+```
+
+Fast Flow escalation은 실패가 아니라 올바른 routing 결과다. Coder가 속도를 위해 임의로 architecture/API/schema 결정을 내려서는 안 된다.
+
+---
+
+# 5. 최초 구현과 Review 재작업
 
 ## 최초 구현
 
-승인된 Breakdown을 따른다.
-
-수정 전 확인:
+수정 전 다음을 확인한다.
 
 ```bash
-git status --short
+git status --short --untracked-files=all
 git branch --show-current
 ```
 
-계획된 변경 주변의 실제 코드를 확인한다. 승인된 Plan은 Scope 계약이지만 실제 코드 증거를 무시해도 된다는 의미는 아니다.
+Task 계약 주변의 실제 source, 호출 흐름, config, tests, 기존 pattern을 읽는다. 계약은 scope를 고정하지만 실제 코드 증거를 무시하라는 의미가 아니다.
 
-## `CHANGES_REQUESTED` 이후 재작업
+구현은 요구사항을 만족하는 **가장 작은 변경**을 우선한다.
 
-`kanban_show()`에 이전 Attempt와 Review Feedback이 포함된다.
-
-재작업 시:
-
-- 이미 올바른 구현은 유지한다.
-- Reviewer의 Blocking Finding을 수정한다.
-- 이유 없이 처음부터 다시 구현하지 않는다.
-- 관계없는 Cleanup으로 Scope를 확장하지 않는다.
-- 영향받은 검증을 다시 실행한다.
-- 다음 Review Handoff에 어떤 Finding을 처리했는지 기록한다.
-
----
-
-# 4. 구현 원칙
-
-승인된 Plan을 만족하는 **가장 작은 변경**을 우선한다.
-
-새 Framework나 추측성 추상화보다 다음 기존 패턴을 우선한다.
-
-```text
-existing project conventions
-existing abstractions
-existing error model
-existing transaction boundaries
-existing test style
-```
-
-다음의 관계없는 변경은 하지 않는다.
+다음은 요청 범위에 직접 필요하지 않으면 섞지 않는다.
 
 - Rename
 - 대규모 Formatting
 - Dependency Upgrade
 - Architecture Rewrite
 - Legacy Cleanup
-- Plan에 없는 API/Schema 변경
+- API/Schema 변경
+- unrelated test cleanup
 
-실제 코드 증거가 승인된 Plan과 충돌해 제품/설계 결정이 필요해지면 임의로 다른 구현을 선택하지 말고 정확한 불일치 근거와 함께 Block한다.
+## `CHANGES_REQUESTED` 이후 재작업
+
+`kanban_show()`의 Review Feedback을 기준으로:
+
+- 이미 올바른 구현은 유지한다.
+- P0/P1 blocking finding만 정확히 처리한다.
+- 처음부터 다시 구현하지 않는다.
+- Scope를 관계없는 cleanup으로 넓히지 않는다.
+- 영향받은 검증을 다시 실행한다.
+- 다음 review handoff에 어떤 finding을 처리했는지 기록한다.
+
+Fast Flow가 review 중 더 큰 설계 문제로 드러났다면 동일하게 `FAST_FLOW_ESCALATION_REQUIRED`로 Block할 수 있다.
 
 ---
 
-# 5. 정확성 확인
+# 6. 정확성 확인
 
-관련 있는 경우 다음을 검토한다.
+관련 있는 항목만 적용한다.
 
 - Nullability
 - Input Validation
+- Failure Path
+- Error Propagation
 - Idempotency
+- Retry / Duplicate execution
 - Transaction Scope
 - Concurrency / Race Condition
-- Error Propagation
 - Backward Compatibility
 - Configuration Default
 - Data / Schema Compatibility
 - Security / Secret
-- Observable Logging
+- Logging / Observability
 - Rollback / Failure Behavior
 
-프로젝트에 필요하지 않은 과도한 방어 로직은 추가하지 않는다.
+단순 Fast Flow 작업에 필요하지 않은 추측성 방어 로직이나 새 abstraction을 추가하지 않는다.
 
 ---
 
-# 6. 검증
+# 7. 검증
 
-가장 좁고 직접적인 검증부터 실행하고, 필요할 때만 범위를 넓힌다.
+가장 좁고 직접적인 검증부터 실행하고 필요할 때만 범위를 넓힌다.
 
-예:
+권장 순서:
 
 ```text
 targeted unit test
-targeted integration test
-module test
-build/compile
-lint/static analysis
-git diff --check
+→ targeted integration test
+→ module test/build
+→ lint/static analysis
+→ git diff --check
 ```
 
-Repository/Tooling상 불가능하지 않은 한 항상 다음을 실행한다.
+Repository/Tooling상 불가능하지 않은 한 Reviewer handoff 전에 다음을 실행한다.
 
 ```bash
 git diff --check
 ```
 
-Reviewer에게 넘기기 전 변경 증거를 수집한다.
+그리고 변경 증거를 수집한다.
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/change_summary.py"
 ```
 
-출력 항목:
+확인 항목:
 
 - Branch
 - Tracked Changed Files
@@ -228,17 +238,15 @@ python3 "${HERMES_SKILL_DIR}/scripts/change_summary.py"
 - Git Status
 - Diff Check Result
 
-실제로 성공한 명령만 PASS라고 보고한다.
+실제로 성공한 command만 PASS라고 보고한다. 실행하지 못한 검증은 이유와 residual risk를 명시한다.
 
-환경/Dependency 문제로 필수 테스트를 실행할 수 없으면 Residual Risk에 명시한다. 해당 테스트 없이는 Correctness를 판단할 수 없다면 Review로 넘기지 말고 Block한다.
+필수 검증 없이는 correctness를 판단할 수 없다면 Reviewer에게 넘기지 않고 Block한다.
 
 ---
 
-# 7. Git Publication 금지
+# 8. Git Publication 금지
 
-이 단계는 Git Publication 이전에서 끝난다.
-
-다음 명령은 실행하지 않는다.
+Coder implementation 단계에서는 다음을 수행하지 않는다.
 
 ```text
 git commit
@@ -251,40 +259,42 @@ git clean
 git stash
 ```
 
-Workspace도 제거하지 않는다.
+Workspace cleanup도 하지 않는다.
 
-Git/PR 연동은 이후 별도 Workflow 단계다.
+기존 사용자 변경을 자동으로 정리하거나 숨기지 않는다. Publication은 별도 workflow 단계다.
 
 ---
 
-# 8. Reviewer Handoff
+# 9. Reviewer Handoff
 
-구현이 준비되면 `kanban_complete`를 호출하지 않는다.
+구현과 검증이 준비되면 `kanban_complete`를 호출하지 않는다.
 
-동일 Kanban Card에서 `kanban_request_review`를 호출한다.
+동일 Kanban Card에서 configured `Reviewer Profile`에게 `kanban_request_review`를 호출한다.
 
-Reviewer는 Task Body의 `Reviewer Profile` 값을 사용한다.
-
-권장 Handoff:
+권장 summary:
 
 ```text
-summary:
-Implemented <goal>.
+Implemented: <Goal 요약>
+
 Changed:
-- ...
+- <file/symbol>
+
 Verification:
 - <exact command> → PASS
+
 Residual risk:
-- none / ...
+- none / <risk>
+
 Review feedback addressed:
-- ... (retry only)
+- <retry인 경우 finding>
 ```
 
-권장 Metadata:
+권장 metadata:
 
 ```json
 {
   "phase": "implementation",
+  "flow": "FAST | STANDARD",
   "review_verdict": null,
   "changed_files": ["..."],
   "verification": ["<command> -> PASS"],
@@ -294,46 +304,58 @@ Review feedback addressed:
 }
 ```
 
-Metadata에는 Secret이나 Raw Credential/Config Value를 넣지 않는다.
+Metadata와 summary에는 Secret, raw credential, 실제 password/token/config secret value를 넣지 않는다.
 
-`kanban_request_review` 호출 후 작업을 멈춘다. 다음 실행은 Reviewer 소유다.
+`kanban_request_review` 호출 후 Coder worker는 멈춘다.
 
 ---
 
-# 9. BLOCKED 처리
+# 10. BLOCKED 처리
 
-다음 경우 `kanban_block`을 호출한다.
+다음 경우 `kanban_block`을 사용한다.
 
 - Task 계약이 불충분함
-- Workspace/Branch 검증 실패
-- Requirement와 실제 코드가 충돌하며 결정이 필요함
-- 필수 Dependency/Input 누락
+- Workspace/Branch/Base SHA 검증 실패
+- requirement와 실제 코드가 충돌하며 사용자/설계 결정 필요
+- 필수 dependency/input 누락
 - 안전한 구현을 완료할 수 없음
-- 필수 검증으로 Correctness를 확립할 수 없음
+- 필수 검증으로 correctness를 확립할 수 없음
+- Fast Flow가 실제 evidence상 더 이상 작은 작업이 아님
 
-Block Reason에는 간결하게 다음을 포함한다.
+일반 Block summary:
 
 ```text
-what is blocked
-evidence
-what decision/input is needed
-what has already been changed, if anything
+What is blocked:
+Evidence:
+Decision/input needed:
+Current change state:
+Resume condition:
 ```
 
-Review가 필요하다는 이유로 Block하지 않는다. Review는 `kanban_request_review`를 사용한다.
+Fast Flow scope escalation이면 첫 줄에 반드시 다음 reason을 사용한다.
+
+```text
+FAST_FLOW_ESCALATION_REQUIRED
+```
+
+Review가 필요하다는 이유로 Block하지 않는다. 정상 review handoff에는 `kanban_request_review`를 사용한다.
 
 ---
 
-# 10. 성공 기준
+# 11. 성공 기준
 
-다음을 모두 만족해야 구현 단계가 성공이다.
+Coder implementation 단계의 성공 조건:
 
-- 할당된 Git Workspace가 올바름
-- Branch가 Kanban Workspace Contract의 Expected Branch와 일치함
-- 승인된 Scope만 구현함
-- 관계없는 변경이 없음
-- 관련 Test/Check를 실행함
-- Changed/Untracked File을 보고함
-- Residual Risk를 명시함
-- commit/push하지 않음
-- 동일 Task를 `kanban_request_review`로 설정된 Reviewer에게 넘김
+- Kanban Task와 Workspace가 일치함
+- Expected Branch가 실제 Branch와 일치함
+- Base SHA가 검증됨
+- Fast Flow라면 scope 재검증을 통과함
+- Task 계약 범위만 구현함
+- unrelated diff가 없음
+- 관련 테스트/check가 수행됨
+- changed/untracked files가 보고됨
+- residual risk가 명시됨
+- commit/push/PR/merge를 수행하지 않음
+- 동일 Task를 `kanban_request_review`로 configured reviewer에게 넘김
+
+Reviewer 승인 전에는 전체 개발 Workflow가 완료된 것이 아니다.
