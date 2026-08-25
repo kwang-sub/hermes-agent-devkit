@@ -1,12 +1,12 @@
 ---
 name: dev-code-review
-description: 동일 Workspace의 미커밋 구현을 계획/AC 기준으로 독립 검토하고 승인·수정요청·차단한다.
-version: 0.4.0
+description: 동일 Workspace의 미커밋 구현을 계획/AC와 project pattern/stack capability 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
+version: 0.5.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, review, reviewer, kanban, quality, verification]
+    tags: [dev, review, reviewer, kanban, quality, verification, capability]
     related_skills: [dev-implement-plan, dev-review-cycle, dev-workspace-dispatch]
     requires_tools: [terminal, kanban_show, kanban_request_changes, kanban_complete, kanban_block, kanban_heartbeat]
 ---
@@ -14,13 +14,20 @@ metadata:
 # dev-code-review
 
 ## 실행 계약
-1. `kanban_show()`에서 original requirement/plan/AC, coder handoff, attempts/comments를 읽는다.
+1. `kanban_show()`에서 original requirement/plan/AC, Project Pattern Summary, Applicable Skills, coder handoff, attempts/comments를 읽는다.
 2. 같은 `$HERMES_KANBAN_WORKSPACE`에서 `scripts/review_context.py --base-branch <Base Branch> --base-sha <Base SHA>`로 dispatch Base SHA/Expected Branch를 검증한다.
 3. dispatch Base SHA에 고정된 tracked diff, full status, untracked files, `git diff --check`와 필요한 주변 flow를 read-only로 확인한다. `BASE_BRANCH_DRIFTED`는 별도 metadata로 보고하되 diff 기준을 바꾸지 않는다.
 4. Goal/AC/approved scope/correctness/compatibility/security/tests와 coder verification evidence를 비교한다.
-5. 모든 프로그래밍 작업에서 `/opt/data/shared/references/coding-rules.md`를 기준으로 기존 구현 재사용, Utility/Domain 책임 배치, 2-depth, documentation, 반복 DB/API/File/Network I/O와 프로젝트 architecture 일관성을 함께 검토한다.
-6. Task에 Stack/Capability Skill이 사용되었다면 해당 Skill의 stack-specific Acceptance Criteria, 생성 artifact, project convention 재사용 여부와 verification evidence도 추가로 검토한다.
+5. 모든 프로그래밍 작업에서 `/opt/data/shared/references/coding-rules.md`와 `/opt/data/shared/references/project-pattern-rules.md`를 기준으로 기존 구현 재사용, Utility/Domain 책임 배치, 2-depth, documentation, 반복 DB/API/File/Network I/O와 프로젝트 architecture/convention 일관성을 함께 검토한다.
+6. Task에 Stack/Capability Skill이 사용되었거나 diff가 명백히 해당 작업이면 해당 Skill의 계약, 생성 artifact, project convention 재사용 여부와 verification evidence를 추가로 검토한다.
 7. P0/P1이 있으면 `kanban_request_changes`; 없고 evidence가 충분하면 APPROVED `kanban_complete`; 안전한 판단 자체가 불가능하거나 외부 결정이 필요하면 `BLOCKED`로 `kanban_block` 중 정확히 하나만 실행하고 멈춘다.
+
+## Project Pattern Review Gate
+
+- 새 코드가 가장 가까운 기존 Controller/Service/Repository/DTO/Entity/Test 패턴과 불필요하게 다르지 않은지 확인한다.
+- package/layer/naming/response/error/test convention 차이가 요구사항 또는 명시 정책으로 설명되는지 확인한다.
+- 기존 pattern 개선을 핑계로 unrelated architecture/library/common-contract 변경을 섞지 않았는지 확인한다.
+- Coder handoff의 `Pattern References`, `Preserved Conventions`, `Intentional Deviations`, `Improvement Deferred`를 실제 diff와 대조한다.
 
 ## Common Coding Review Gate
 
@@ -35,26 +42,50 @@ metadata:
 
 ## Stack / Capability Review Gate
 
-전문 Skill이 사용된 경우 공통 Coding Review Gate에 추가해 해당 Skill의 계약을 검증한다.
-
-예정된 Spring 계열 Skill:
+현재 1차 capability set:
 
 ```text
-dev-spring-openapi
-dev-spring-validation
-dev-jpa-converter
+dev-spring-guidelines
+dev-spring-feature
+dev-spring-data
+dev-spring-test
+dev-api-docs
 ```
 
-Reviewer는 최소한 다음을 확인한다.
+### Spring 공통
+
+- 실제 Spring/Spring Boot version과 언어가 Coder evidence와 일치하는지 확인한다.
+- API 작업은 프로젝트의 기존 공통 Response/Error contract를 유지했는지 확인한다.
+- Controller/Service/DTO/Validation/Exception이 기존 프로젝트 구조와 일관적인지 확인한다.
+- 요구사항에 없는 dependency/architecture/common response 변경이 없는지 확인한다.
+
+### JPA / Data
+
+Query strategy가 다음 우선순위를 지켰는지 확인한다.
 
 ```text
-감지한 stack/version이 실제 project와 일치하는가
-기존 project pattern을 재사용했는가
-불필요한 dependency를 추가하지 않았는가
-Skill이 요구한 artifact/annotation/config/mapping이 실제 코드에 적용됐는가
-stack-specific test/verification이 실행됐는가
-Java/Kotlin 차이를 기존 project convention에 맞게 처리했는가
+단순 조회 → Spring Data JPA Method Query
+복잡/동적 조회 → QueryDSL
+Native Query → 앞 두 방식으로 해결하기 어려운 근거가 있을 때만
 ```
+
+- Native Query가 사용되었다면 Method Query와 QueryDSL이 부적합한 근거가 handoff에 있는지 확인한다.
+- QueryDSL dependency가 없는 프로젝트에 승인 없이 새 dependency를 추가하지 않았는지 확인한다.
+- mapping/fetch/join/paging/N+1/Converter 변경은 실제 persistence test 또는 타당한 verification evidence가 있는지 확인한다.
+
+### Test
+
+- 프로젝트가 쓰는 JUnit/Kotest/Mockito/MockK 등의 기존 stack과 style을 유지했는지 확인한다.
+- 실제 persistence behavior를 과도한 mock으로만 검증하거나 모든 것을 `@SpringBootTest`로 처리하지 않았는지 위험에 따라 판단한다.
+- bug fix의 회귀 테스트와 API validation/error contract 테스트가 필요한 경우 존재하는지 확인한다.
+
+### API Docs
+
+- `dev-api-docs`는 Spring 전용이 아님을 전제로 실제 source contract와 문서가 일치하는지 확인한다.
+- Spring OpenAPI에서는 기존 SpringDoc 설정을 재사용했는지, `@Tag`, `@Operation`, error example/group/customizer 패턴이 프로젝트 및 reference 정책과 일관적인지 확인한다.
+- 예시 프로젝트의 `ResponseEntity<DTO>`를 강제로 복사하지 않고 대상 프로젝트 공통 response wrapper schema를 반영했는지 확인한다.
+- Postman collection에 실제 secret/token이 포함되지 않았는지 확인한다.
+- OpenAPI와 Postman을 둘 다 만든 경우 request/response/error/auth contract가 서로 어긋나지 않는지 확인한다.
 
 Stack/Capability Skill 확장 기준은 `/opt/data/shared/references/stack-capability-skill-guide.md`를 따른다.
 
