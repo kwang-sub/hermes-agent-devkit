@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: 승인 계획을 할당 Workspace에서 기존 project pattern과 필요한 stack/capability skill을 적용해 최소 구현·검증하고 commit/push 없이 reviewer에게 인계한다.
-version: 0.8.0
+version: 0.8.1
 author: local
 platforms: [linux]
 metadata:
@@ -46,7 +46,9 @@ FAST_FLOW_ESCALATION_REQUIRED
 
 이미 최소 변경을 시작한 뒤 escalation 조건이 드러난 경우에는 추가 변경을 멈추고 현재 변경 상태를 Block summary에 정확히 남긴다. 기존 사용자 변경을 reset/restore/clean/stash하지 않는다.
 
-## Project Pattern 규칙
+## 공통 Coding Rules 핵심
+
+### Project Pattern 규칙
 
 - 새 helper/class/function을 만들기 전에 기존 Utility, Service, Policy, Calculator, Validator, Converter, Mapper, Domain Object, Data Access abstraction과 사용 중인 library를 검색하고 적절하면 재사용한다.
 - 동일/유사 기능의 기존 Controller/Service/Repository/DTO/Entity/Test를 reference로 삼고 새 스타일을 임의 도입하지 않는다.
