@@ -1,13 +1,13 @@
 ---
 name: dev-workspace-dispatch
-description: 승인된 구현 계획을 Git workspace와 Kanban으로 인계한다.
-version: 0.2.0
+description: 승인된 구현 계획과 project pattern/capability 계약을 Git workspace와 Kanban으로 인계한다.
+version: 0.3.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator]
-    related_skills: [dev-project-bootstrap, dev-breakdown, dev-workflow-orchestrate]
+    tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, capability]
+    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-workflow-orchestrate]
     requires_tools: [terminal, kanban_create, kanban_show, clarify]
 ---
 
@@ -23,6 +23,7 @@ metadata:
 
 - dev-breakdown이 구현 계획을 생성했다.
 - 계획의 Dispatch Readiness가 READY다.
+- `Project Pattern Summary`, `Pattern References`, `Applicable Skills`, `Pattern Conflicts`가 계획에 존재한다.
 - 사용자가 현재 Implementation Plan을 명시적으로 승인했다.
 - 사용자가 Git Workspace / Branch 방식을 명시적으로 승인했다.
 - 대상 Repository가 dev-project-bootstrap으로 관리되고 있다.
@@ -32,6 +33,7 @@ metadata:
 
 - Plan이 BLOCKED다.
 - Plan 승인 또는 Workspace/Branch 승인이 없다.
+- project pattern/capability handoff 필드가 누락되어 Coder가 승인된 판단을 재현할 수 없다.
 - workspace가 Git repository root가 아니다.
 - workspace가 project metadata의 repository와 같은 Git common dir에 속하지 않는다.
 - workspace에 기존 변경이 있는데 사용자가 그 상태를 승인하지 않았다.
@@ -121,7 +123,7 @@ Helper가 non-zero로 종료되면 Kanban Task를 만들지 않는다.
 
 ## 4. Kanban Body 계약
 
-Body에는 최소 다음을 포함한다.
+Body에는 `dev-breakdown`의 승인된 기술 판단을 축약하지 말고 다음을 보존한다.
 
 ```text
 Task Key:
@@ -131,6 +133,27 @@ Implementation Tasks:
 Test Plan:
 Dependencies:
 Known Risks:
+
+Project Pattern Summary:
+- Language / Framework / Persistence / Build / Test
+- Package / Naming
+- Response Contract
+- Error / Validation Contract
+- Data Access Convention
+- Test Convention
+
+Pattern References:
+- <path/class/symbol>
+
+Applicable Skills:
+- <skill-name>: <reason>
+
+Pattern Conflicts:
+- None | <conflict and approved handling>
+
+Improvement Candidates:
+- None | <not-auto-applied suggestion>
+
 Reviewer Profile:
 Implementation Skill: dev-implement-plan
 Review Skill: dev-code-review
@@ -147,6 +170,8 @@ Workspace Contract:
 - Coder는 다른 Git Worktree를 만들지 않는다.
 ```
 
+`Applicable Skills`는 Coder가 `skill_view()`로 실제 본문을 로드하는 canonical handoff다. Dispatch가 임의로 Skill을 추가/삭제하지 않는다. 단, Coder는 실제 source evidence에서 명백한 누락을 발견하면 `dev-implement-plan` 계약에 따라 보완할 수 있다.
+
 ## 5. 성공 기준
 
 - Plan Readiness = READY
@@ -157,7 +182,9 @@ Workspace Contract:
 - Expected Branch가 실제 현재 branch와 일치함
 - Base SHA가 기록됨
 - Kanban Workspace가 dir:<approved-workspace>임
-- Implementation Plan, Acceptance Criteria, Workspace Contract, Reviewer 정보가 보존됨
+- Goal/AC/Implementation Plan/Test/Risks가 보존됨
+- Project Pattern Summary/Pattern References/Applicable Skills/Pattern Conflicts가 보존됨
+- Reviewer 정보와 Workspace Contract가 보존됨
 
 ## 6. 회귀 검증
 
@@ -171,6 +198,7 @@ python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dis
 
 ```bash
 python3 -m compileall -q custom-skills
+python3 scripts/check_skill_contract.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
 python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_metadata_preservation.py
 python3 custom-skills/orchestrator/dev-project-resolve/tests/test_project_resolve.py

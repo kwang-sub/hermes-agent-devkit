@@ -1,26 +1,27 @@
 ---
 name: dev-code-review
 description: 동일 Workspace의 미커밋 구현을 계획/AC와 project pattern/stack capability 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
-version: 0.5.0
+version: 0.6.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, review, reviewer, kanban, quality, verification, capability]
     related_skills: [dev-implement-plan, dev-review-cycle, dev-workspace-dispatch]
-    requires_tools: [terminal, kanban_show, kanban_request_changes, kanban_complete, kanban_block, kanban_heartbeat]
+    requires_tools: [terminal, skill_view, kanban_show, kanban_request_changes, kanban_complete, kanban_block, kanban_heartbeat]
 ---
 
 # dev-code-review
 
 ## 실행 계약
-1. `kanban_show()`에서 original requirement/plan/AC, Project Pattern Summary, Applicable Skills, coder handoff, attempts/comments를 읽는다.
+1. `kanban_show()`에서 original requirement/plan/AC, Project Pattern Summary, Pattern References, Applicable Skills, Pattern Conflicts, coder handoff, attempts/comments를 읽는다.
 2. 같은 `$HERMES_KANBAN_WORKSPACE`에서 `scripts/review_context.py --base-branch <Base Branch> --base-sha <Base SHA>`로 dispatch Base SHA/Expected Branch를 검증한다.
 3. dispatch Base SHA에 고정된 tracked diff, full status, untracked files, `git diff --check`와 필요한 주변 flow를 read-only로 확인한다. `BASE_BRANCH_DRIFTED`는 별도 metadata로 보고하되 diff 기준을 바꾸지 않는다.
 4. Goal/AC/approved scope/correctness/compatibility/security/tests와 coder verification evidence를 비교한다.
 5. 모든 프로그래밍 작업에서 `/opt/data/shared/references/coding-rules.md`와 `/opt/data/shared/references/project-pattern-rules.md`를 기준으로 기존 구현 재사용, Utility/Domain 책임 배치, 2-depth, documentation, 반복 DB/API/File/Network I/O와 프로젝트 architecture/convention 일관성을 함께 검토한다.
-6. Task에 Stack/Capability Skill이 사용되었거나 diff가 명백히 해당 작업이면 해당 Skill의 계약, 생성 artifact, project convention 재사용 여부와 verification evidence를 추가로 검토한다.
-7. P0/P1이 있으면 `kanban_request_changes`; 없고 evidence가 충분하면 APPROVED `kanban_complete`; 안전한 판단 자체가 불가능하거나 외부 결정이 필요하면 `BLOCKED`로 `kanban_block` 중 정확히 하나만 실행하고 멈춘다.
+6. Task의 `Applicable Skills`와 Coder handoff의 `Applied Capability Skills`를 합쳐 중복 제거하고, Reviewer 프로필에서 사용 가능한 capability Skill은 각각 `skill_view("<skill-name>")`으로 본문을 로드한 뒤 그 계약을 검증한다. metadata/description만 보고 규칙을 추측하지 않는다. Reviewer 프로필에 해당 Skill이 설치되지 않아 로드할 수 없으면 Task의 보존된 contract와 Coder evidence를 기준으로 검토하고, correctness 판단에 핵심 세부 규칙이 없어 안전하게 판단할 수 없을 때만 BLOCKED한다.
+7. diff가 명백한 Spring/JPA/API-docs 작업인데 Applicable/Applied Skills에서 빠졌다면 누락 자체를 evidence로 기록하고 해당 capability 계약을 가능한 범위에서 추가 검토한다.
+8. P0/P1이 있으면 `kanban_request_changes`; 없고 evidence가 충분하면 APPROVED `kanban_complete`; 안전한 판단 자체가 불가능하거나 외부 결정이 필요하면 `BLOCKED`로 `kanban_block` 중 정확히 하나만 실행하고 멈춘다.
 
 ## Project Pattern Review Gate
 
@@ -88,6 +89,19 @@ Native Query → 앞 두 방식으로 해결하기 어려운 근거가 있을 �
 - OpenAPI와 Postman을 둘 다 만든 경우 request/response/error/auth contract가 서로 어긋나지 않는지 확인한다.
 
 Stack/Capability Skill 확장 기준은 `/opt/data/shared/references/stack-capability-skill-guide.md`를 따른다.
+
+## Reviewer Evidence
+
+Verdict에 최소 다음을 남긴다.
+
+```text
+Reviewed Pattern References
+Applicable / Applied Capability Skills
+Capability Skills Loaded via skill_view (가능한 경우)
+Contract Mismatches
+Verification Evidence Reviewed
+Residual Risk
+```
 
 ## 불변식
 - Reviewer는 application/test/config source를 수정하지 않는다.
