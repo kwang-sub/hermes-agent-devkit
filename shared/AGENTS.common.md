@@ -6,17 +6,33 @@
 
 ## 우선순위와 역할
 - 우선순위: platform/system → 현재 사용자 요청 → project context → common policy → loaded skill.
-- Orchestrator: project resolve/ensure, evidence-based `dev-breakdown`, 승인, `dev-workspace-dispatch`만 조정한다. dispatch한 구현이나 review를 직접 하지 않는다.
-- Coder: 승인된 Workspace/Branch에서 승인 계획만 최소 변경으로 구현·검증한다. workspace 밖 수정, branch 전환, 추가 worktree를 하지 않는다.
-- Reviewer: requirement/AC/plan과 diff·검증을 독립적으로 읽고 source를 수정하지 않은 채 approve/request-changes/block한다.
+- Orchestrator: 복잡한 작업의 project resolve/ensure, evidence-based `dev-breakdown`, 승인, `dev-workspace-dispatch`를 조정한다. dispatch한 구현이나 review를 직접 하지 않는다.
+- Coder: Fast Flow에서는 사용자 요청을 작은 작업 계약으로 정규화해 Kanban에 self-dispatch하고, worker 실행에서는 승인된 Workspace/Branch와 계약 안에서 최소 변경으로 구현·검증한다.
+- Reviewer: requirement/AC/scope와 diff·검증을 독립적으로 읽고 source를 수정하지 않은 채 approve/request-changes/block한다.
 
-## 필수 Gate와 계약
+## Workflow 선택
+
+### Fast Flow
+`User → Coder intake → Kanban self-dispatch → Coder worker → Reviewer`
+
+- 단일 managed Repository, clean current branch, 작고 명확한 변경, 기존 패턴 기반 구현에만 사용한다.
+- Architecture/Product 결정, public API/DB schema 변경, dependency 변경, cross-repo 작업, 모호한 요구사항에는 사용하지 않는다.
+- Interactive coder는 Fast Flow Task를 Kanban에 등록한 뒤 source를 직접 수정하지 않는다. Gateway dispatcher가 coder worker를 실행한다.
+- worker가 실제 evidence에서 범위 확대 조건을 발견하면 `FAST_FLOW_ESCALATION_REQUIRED`로 Block하고 Standard Flow로 전환한다.
+
+### Standard Flow
 `Request → Project Approval → Breakdown → Plan Approval → Workspace / Branch Approval → Dispatch → coder ↔ reviewer`
 
+- 신규 기능, 설계/분해가 필요한 작업, 여러 module/repository 영향, API/Schema/Dependency 변경, 모호한 요구사항은 Orchestrator부터 시작한다.
 - 사용자가 정확한 managed project를 직접 지정하지 않았다면 Project Approval Gate를 통과한다.
 - 모든 `READY` 계획은 별도의 Plan Approval Gate를 통과한다.
 - dirty 상태를 포함한 Git status와 current/create branch 선택을 보여주고 Workspace / Branch Approval Gate를 통과한다.
-- dispatch에는 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Dependencies, Risks, approved Workspace, Expected Branch, Base Branch, Base SHA, coder, reviewer를 보존한다.
+
+## Kanban 계약
+- Fast/Standard Flow 모두 coder→reviewer handoff는 Kanban에 남긴다.
+- Task에는 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Risks, approved Workspace, Expected Branch, Base Branch, Base SHA, coder, reviewer를 보존한다.
+- Fast Flow에는 `Flow: FAST`와 escalation 조건을 추가한다.
+- Reviewer 승인 전 coder가 task를 직접 complete하지 않는다.
 
 ## Evidence, scope, safety
 - source, call flow, tests, config, schema, history와 기존 pattern을 확인하고 product intent를 추측하지 않는다.

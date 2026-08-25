@@ -14,8 +14,14 @@ BASELINES = {
     "custom-skills/reviewer/dev-review-cycle/SKILL.md": 3300,
 }
 REQUIRED = {
-    "AGENTS.md": ["Orchestrator", "Coder", "Reviewer", "secret", "commit", "push", "한국어"],
-    "shared/AGENTS.common.md": ["Orchestrator", "Coder", "Reviewer", "secret", "commit", "push", "한국어"],
+    "AGENTS.md": [
+        "Orchestrator", "Coder", "Reviewer", "Fast Flow", "Standard Flow",
+        "FAST_FLOW_ESCALATION_REQUIRED", "secret", "commit", "push", "한국어",
+    ],
+    "shared/AGENTS.common.md": [
+        "Orchestrator", "Coder", "Reviewer", "Fast Flow", "Standard Flow",
+        "FAST_FLOW_ESCALATION_REQUIRED", "secret", "commit", "push", "한국어",
+    ],
     "custom-skills/orchestrator/dev-workflow-orchestrate/SKILL.md": [
         "Project Approval", "Plan Approval", "Workspace / Branch", "dev-workspace-dispatch",
         "Base SHA", "coder", "reviewer", "READY", "BLOCKED", "commit", "push", "한국어",
@@ -23,8 +29,17 @@ REQUIRED = {
     "custom-skills/orchestrator/dev-breakdown/SKILL.md": [
         "Plan Approval", "Workspace / Branch", "READY", "BLOCKED", "coder", "한국어", "commit", "push",
     ],
-    "custom-skills/coder/dev-implement-plan/SKILL.md": ["Workspace", "Reviewer Profile", "secret", "commit", "push", "BLOCKED"],
-    "custom-skills/reviewer/dev-code-review/SKILL.md": ["Reviewer", "source를 수정하지", "secret", "commit", "push", "BLOCKED"],
+    "custom-skills/coder/dev-fast-flow/SKILL.md": [
+        "Fast Flow", "Kanban", "coder", "reviewer", "clean", "current branch",
+        "FAST_FLOW_ESCALATION_REQUIRED", "Standard Flow", "commit", "push",
+    ],
+    "custom-skills/coder/dev-implement-plan/SKILL.md": [
+        "Workspace", "Reviewer Profile", "Flow: FAST", "FAST_FLOW_ESCALATION_REQUIRED",
+        "secret", "commit", "push", "BLOCKED",
+    ],
+    "custom-skills/reviewer/dev-code-review/SKILL.md": [
+        "Reviewer", "source를 수정하지", "secret", "commit", "push", "BLOCKED",
+    ],
 }
 
 def chars(rel: str) -> int:
