@@ -76,10 +76,9 @@ def current_head(repo: Path) -> str:
     return sha
 
 
-def ensure_clean(repo: Path) -> None:
+def workspace_status(repo: Path) -> list[str]:
     status = run(["git", "-C", str(repo), "status", "--porcelain=v1", "--untracked-files=all"]).stdout.rstrip()
-    if status:
-        raise FastFlowError("Fast Flow requires a clean workspace. Use Standard Flow or resolve existing changes first.\n" + status)
+    return status.splitlines() if status else []
 
 
 def logical_task_key(title: str, base_sha: str) -> str:
@@ -91,7 +90,9 @@ def bullet_lines(values: list[str]) -> str:
     return "\n".join(f"- {value}" for value in values)
 
 
-def build_body(*, task_key: str, goal: str, acceptance: list[str], implementation: list[str], tests: list[str], risks: list[str], reviewer: str, workspace: Path, branch: str, base_sha: str) -> str:
+def build_body(*, task_key: str, goal: str, acceptance: list[str], implementation: list[str], tests: list[str], risks: list[str], reviewer: str, workspace: Path, branch: str, base_sha: str, pre_existing: list[str]) -> str:
+    dirty = bool(pre_existing)
+    baseline = bullet_lines(pre_existing) if pre_existing else "- none"
     return f"""Flow: FAST
 Task Key: {task_key}
 Review Policy: RISK_BASED
@@ -136,7 +137,10 @@ Workspace Contract:
 - Expected branch: {branch}
 - Base branch: {branch}
 - Base SHA: {base_sha}
-- Workspace dirty at dispatch: false
+- Workspace dirty at dispatch: {str(dirty).lower()}
+- Pre-existing changes at dispatch:
+{baseline}
+- Coder must preserve pre-existing user changes and must not reset, restore, clean, or stash them.
 - Coder must not switch branches or create another worktree.
 - Coder must not commit, push, create a PR, or merge during implementation.
 """
@@ -167,12 +171,12 @@ def main() -> int:
     if configured_repo != repo:
         raise FastFlowError(f"project metadata repository mismatch: metadata={configured_repo}, actual={repo}")
 
-    ensure_clean(repo)
+    pre_existing = workspace_status(repo)
     branch = current_branch(repo)
     base_sha = current_head(repo)
     task_key = logical_task_key(args.title, base_sha)
     risks = args.risk or ["Fast Flow remains valid only while the task is local, unambiguous, and small."]
-    body = build_body(task_key=task_key, goal=args.goal, acceptance=args.acceptance, implementation=args.implementation, tests=args.test, risks=risks, reviewer=meta.reviewer, workspace=repo, branch=branch, base_sha=base_sha)
+    body = build_body(task_key=task_key, goal=args.goal, acceptance=args.acceptance, implementation=args.implementation, tests=args.test, risks=risks, reviewer=meta.reviewer, workspace=repo, branch=branch, base_sha=base_sha, pre_existing=pre_existing)
 
     print("=== Fast Flow Dispatch ===")
     print(f"PROJECT={meta.project_id}")
@@ -181,6 +185,7 @@ def main() -> int:
     print(f"WORKSPACE={repo}")
     print(f"BRANCH={branch}")
     print(f"BASE_SHA={base_sha}")
+    print(f"WORKSPACE_DIRTY={str(bool(pre_existing)).lower()}")
     print(f"CODER={meta.coder}")
     print(f"REVIEWER={meta.reviewer}")
 
