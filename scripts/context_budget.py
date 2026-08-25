@@ -19,13 +19,13 @@ REQUIRED = {
         "Orchestrator", "Coder", "Reviewer", "Fast Flow", "Standard Flow",
         "FAST_FLOW_ESCALATION_REQUIRED", "공통 코드 품질", "2-depth",
         "Stack/Capability Skill", "secret", "commit", "push", "한국어",
-        "Review Policy: RISK_BASED", "REVIEW_REQUIRED",
+        "Review Policy: RISK_BASED", "REVIEW_REQUIRED", "기존 변경",
     ],
     "shared/AGENTS.common.md": [
         "Orchestrator", "Coder", "Reviewer", "Fast Flow", "Standard Flow",
         "FAST_FLOW_ESCALATION_REQUIRED", "공통 코드 품질", "2-depth",
         "Stack/Capability Skill", "secret", "commit", "push", "한국어",
-        "Review Policy: RISK_BASED", "REVIEW_REQUIRED",
+        "Review Policy: RISK_BASED", "REVIEW_REQUIRED", "기존 변경",
     ],
     "custom-skills/orchestrator/dev-workflow-orchestrate/SKILL.md": [
         "Project Approval", "Plan Approval", "Workspace / Branch", "dev-workspace-dispatch",
@@ -35,7 +35,7 @@ REQUIRED = {
         "Plan Approval", "Workspace / Branch", "READY", "BLOCKED", "coder", "한국어", "commit", "push",
     ],
     "custom-skills/coder/dev-fast-flow/SKILL.md": [
-        "Fast Flow", "Kanban", "coder", "reviewer", "clean", "current branch",
+        "Fast Flow", "Kanban", "coder", "reviewer", "current branch", "기존 변경",
         "FAST_FLOW_ESCALATION_REQUIRED", "Standard Flow", "commit", "push",
         "Review Policy: RISK_BASED", "LOW", "REVIEW_REQUIRED",
     ],
