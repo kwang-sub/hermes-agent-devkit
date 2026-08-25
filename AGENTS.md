@@ -41,18 +41,18 @@
 
 > 이 블록은 `dev-project-bootstrap`이 관리한다. 프로젝트 자동화의 canonical 값은 `.hermes/project.yaml`이다.
 
-- Project ID: `hermes-agent`
-- Project Name: `hermes-agent`
-- Repository: `/workspace/hermes-agent`
-- Kanban Board: `hermes-agent`
-- Default Base Branch: `master`
-- Worktree Root: `/workspace/.worktrees/hermes-agent`
+- Project ID: `hermes-agent-devkit`
+- Project Name: `hermes-agent-devkit`
+- Repository: `/workspace/hermes-agent-devkit`
+- Kanban Board: `hermes-agent-devkit`
+- Default Base Branch: `dev`
+- Worktree Root: `/workspace/.worktrees/hermes-agent-devkit`
 - Orchestrator Profile: `orchestrator`
 - Coder Profile: `coder`
 - Reviewer Profile: `reviewer`
 
 `resolver:` 값은 사용자가 직접 관리한다. Agent는 Bootstrap 중 resolver alias/module/file/path를 추측해서 기록하지 않는다.
 
-개발 작업은 프로젝트 metadata를 먼저 확인하고, 구현용 Worktree는 원본 checkout 외부에 생성한다.
+개발 작업은 프로젝트 metadata를 먼저 확인하고, 사용자가 승인한 Workspace/Branch만 사용한다.
 
 <!-- HERMES-PROJECT:END -->

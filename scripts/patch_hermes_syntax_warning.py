@@ -24,7 +24,6 @@ def strict_compile(path: Path) -> None:
 
 def validate_source(path: Path) -> None:
     source = path.read_bytes()
-
     bad_count = source.count(BAD_LINE)
 
     if bad_count != 0:
@@ -36,39 +35,33 @@ def validate_source(path: Path) -> None:
     strict_compile(path)
 
 
-
-def patch_source(path: Path) -> bool:
+def patch_source(path: Path) -> str:
+    """Return patched, already-patched, or not-needed after strict validation."""
     source = path.read_bytes()
-
     good_count = source.count(GOOD_LINE)
     bad_count = source.count(BAD_LINE)
 
     if bad_count == 1 and good_count == 0:
         path.write_bytes(source.replace(BAD_LINE, GOOD_LINE, 1))
-        changed = True
-
+        state = "patched"
     elif bad_count == 0 and good_count == 1:
-        # 과거 Hermes지만 이미 패치된 상태
-        changed = False
-
+        state = "already-patched"
     elif bad_count == 0 and good_count == 0:
-        # Hermes upstream에서 해당 코드가 변경/제거된 경우.
-        # SyntaxWarning 자체가 해결됐는지만 검증한다.
-        strict_compile(path)
-        return False
-
+        # Upstream changed or removed the historical warning source.
+        # Accept it only when the file still compiles cleanly with SyntaxWarning fatal.
+        state = "not-needed"
     else:
         raise RuntimeError(
             f"{path}: unexpected Hermes warning source state "
             f"(escaped={good_count}, invalid={bad_count})"
         )
 
-    strict_compile(path)
-    return changed
+    validate_source(path)
+    return state
 
 
 def self_test() -> None:
-    """Exercise the patch, strict compile check, and idempotent second run."""
+    """Exercise patching, idempotency, and an upstream-fixed/not-needed state."""
     with tempfile.TemporaryDirectory(prefix="hermes-warning-patch-test-") as temp_dir:
         fixture = Path(temp_dir) / "update_cmd.py"
         fixture.write_bytes(
@@ -84,10 +77,15 @@ def self_test() -> None:
         else:
             raise RuntimeError("self-test: invalid escape did not fail strict compile")
 
-        if not patch_source(fixture):
-            raise RuntimeError("self-test: first patch did not report a change")
-        if patch_source(fixture):
+        if patch_source(fixture) != "patched":
+            raise RuntimeError("self-test: first patch did not report patched")
+        if patch_source(fixture) != "already-patched":
             raise RuntimeError("self-test: second patch was not idempotent")
+
+        upstream_fixed = Path(temp_dir) / "upstream_fixed.py"
+        upstream_fixed.write_text("def fixture():\n    return None\n", encoding="utf-8")
+        if patch_source(upstream_fixed) != "not-needed":
+            raise RuntimeError("self-test: upstream-fixed state was not accepted")
 
 
 def parse_args() -> argparse.Namespace:
@@ -113,9 +111,8 @@ def main() -> None:
         print(f"Hermes source strict SyntaxWarning check passed: {args.path}")
         return
 
-    changed = patch_source(args.path)
-    state = "patched" if changed else "already patched"
-    print(f"Hermes SyntaxWarning source {state} and validated: {args.path}")
+    state = patch_source(args.path)
+    print(f"Hermes SyntaxWarning source state={state} and validated: {args.path}")
 
 
 if __name__ == "__main__":

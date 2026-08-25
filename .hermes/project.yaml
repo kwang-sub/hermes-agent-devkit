@@ -1,0 +1,32 @@
+# managed-by: dev-project-bootstrap
+version: 2
+
+project:
+  id: hermes-agent-devkit
+  name: hermes-agent-devkit
+  repository: /workspace/hermes-agent-devkit
+
+kanban:
+  board: hermes-agent-devkit
+
+git:
+  default_base_branch: dev
+  worktree_root: /workspace/.worktrees/hermes-agent-devkit
+
+profiles:
+  orchestrator: orchestrator
+  coder: coder
+  reviewer: reviewer
+
+resolver:
+  aliases:
+    - hermes-agent-devkit
+    - hermes devkit
+  modules: []
+  files:
+    - compose.yml
+    - init-profiles.ps1
+    - Dockerfile
+  paths:
+    - custom-skills
+    - scripts
