@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: 승인된 Kanban 작업을 할당 Workspace에서 최소 구현·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.9.0
+version: 0.9.1
 author: local
 platforms: [linux]
 metadata:
@@ -31,34 +31,21 @@ Coder worker의 **compact 실행 계약**이다. 상세 구현/검증/risk 기�
    - **Standard Flow 또는 CHANGES_REQUESTED 재작업** → 항상 `kanban_request_review`.
    - **Fast Flow + LOW** → 근거와 verification을 기록하고 `kanban_complete`.
    - **Fast Flow + REVIEW_REQUIRED** → `kanban_request_review`.
-8. terminal action 하나를 실행한 뒤 즉시 멈춘다. 구현 불가/필수 입력 누락/필수 검증 불가만 `kanban_block`한다.
+8. terminal action 하나를 실행한 뒤 즉시 멈춘다. 구현 불가/필수 입력 누락/필수 검증 불가만 `kanban_block`한다. review 대용 `kanban_block`은 금지한다.
 
 ## Fast Flow Review Risk
-
-`LOW`는 다음을 **모두** 만족할 때만 허용한다.
-
-```text
-기존 패턴을 따르는 작은 국소 변경
-public API / DB schema / Entity relation 변경 없음
-dependency / transaction / security / concurrency 변경 없음
-복잡 QueryDSL / Native Query 없음
-공통 모듈·architecture 영향 없음
-요구사항과 diff가 명확하고 targeted verification PASS
-residual risk가 낮으며 reviewer의 독립 판단이 correctness에 실질적으로 필요하지 않음
-```
-
-하나라도 불확실하거나 위 위험 영역에 닿으면 `REVIEW_REQUIRED`다. 세부 예시는 `references/implementation-details.md`의 Risk-based Review 절을 읽는다.
+`LOW`는 기존 패턴의 작은 국소 변경이고 public API/DB schema/Entity relation/dependency/transaction/security/concurrency/복잡 QueryDSL/Native Query/공통 architecture 영향이 없으며 targeted verification이 PASS일 때만 허용한다. 불확실하면 `REVIEW_REQUIRED`다.
 
 ## 공통 Coding Rules 핵심
-- 기존 abstraction/library/pattern을 먼저 재사용하고 unrelated refactor를 섞지 않는다.
+- 기존 abstraction/library/pattern을 재사용하고 unrelated refactor를 섞지 않는다.
 - 함수/메서드 실행 block은 기본 `2-depth`; 반복 I/O/N+1을 확인한다.
 - Stack / Capability Skill은 기존 convention을 확장할 뿐 architecture/dependency/common contract를 임의 변경하지 않는다.
 - API는 기존 공통 response/error contract를 유지한다.
 - JPA 조회는 단순 Method Query → 복잡/동적 QueryDSL → 근거 있는 Native Query 순서다.
 
 ## Handoff / Completion Evidence
-
 ```text
+Reviewer Profile
 Pattern References
 Applied Capability Skills
 Changed Files
