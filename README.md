@@ -2,41 +2,120 @@
 
 Windows + Docker Desktop 환경에서 Hermes Agent를 `orchestrator`, `coder`, `reviewer` 멀티 프로필로 운영하기 위한 개발 환경이다.
 
-핵심 원칙은 다음과 같다.
+이 문서는 **처음 설치하는 사용자가 위에서 아래로 순서대로 실행하면 환경 구성이 끝나도록** 작성한다. 처음 설치라면 `0. 사전 준비`부터 `8. 최초 구성 완료 확인`까지 순서대로 진행하면 된다. 기존 환경 재사용, 완전 초기화, Workspace 변경, Hermes 버전 업그레이드처럼 일반 설치 흐름과 다른 작업은 뒤쪽의 **특수 상황 가이드**에서 별도로 다룬다.
 
-- Windows 개발 Workspace를 컨테이너 `/workspace`에 bind mount한다.
-- Hermes의 Profile/OAuth/Session/Memory/Kanban 상태는 `/opt/data` named volume에 영속화한다.
-- 역할별 Custom Skill은 read-only bind mount로 제공한다.
-- 컨테이너 시작은 공식 이미지의 s6-overlay/root bootstrap 계약을 유지한다.
-- 대화형 Hermes 명령은 runtime `hermes` 사용자로 실행한다.
-- 스크립트 자동화는 PATH 대신 `/opt/hermes/.venv/bin/hermes`와 `/opt/hermes/.venv/bin/python` 절대경로를 사용한다.
+## 처음 설치 순서
 
-> `docker compose down -v`는 일반 종료 명령이 아니다. Profile, OAuth, Session 등을 포함한 `hermes-dev-data` volume을 삭제하는 **완전 초기화 명령**이다.
+```text
+0. 사전 준비
+   ↓
+1. 저장소 준비
+   ↓
+2. .env 생성 및 필수값 설정
+   ↓
+3. Docker 이미지 빌드 및 컨테이너 실행
+   ↓
+4. 컨테이너 / Dashboard / Runtime 확인
+   ↓
+5. Profile 초기화
+   ↓
+6. Profile별 Model / OAuth 설정
+   ↓
+7. 저장소 통합 검증
+   ↓
+8. 최초 구성 완료 확인
+   ↓
+9. 실제 개발 Workflow 사용
+```
+
+> [!WARNING]
+> `docker compose down -v`는 일반 종료 명령이 아니다. Profile, OAuth, Session, Memory, Kanban 등을 포함한 `hermes-dev-data` volume을 삭제하는 **완전 초기화 명령**이다. 처음 설치 과정에서는 사용할 필요가 없다.
 
 ---
 
-## 1. 구성
+# 0. 사전 준비
+
+처음 설치하기 전에 다음 항목을 준비한다.
+
+- Windows 11 또는 Windows + Docker Desktop 사용 가능 환경
+- Docker Desktop 실행 상태
+- Git
+- PowerShell 5.1 이상
+- 개발 프로젝트를 둘 Host Workspace
+  - 기본값: `D:\workspace`
+- 저장소 통합 검증까지 실행하려면 Git Bash 또는 WSL 권장
+
+Docker가 정상 동작하는지 확인한다.
+
+```powershell
+docker version
+docker compose version
+```
+
+두 명령이 정상적으로 Client/Server 및 Compose 버전을 출력하면 다음 단계로 진행한다.
+
+> [!NOTE]
+> Docker CLI는 설치되어 있지만 `docker version`에서 daemon 연결 오류가 발생한다면 Docker Desktop을 먼저 실행한 뒤 다시 확인한다.
+
+---
+
+# 1. 저장소 준비
+
+GitHub에서 DevKit을 clone한다.
+
+```powershell
+cd D:\workspace
+git clone https://github.com/kwang-sub/hermes-agent-devkit.git
+cd .\hermes-agent-devkit
+```
+
+현재 branch를 확인한다.
+
+```powershell
+git branch --show-current
+```
+
+기본 운영 branch는 `dev`를 사용한다.
+
+```powershell
+git switch dev
+```
+
+저장소의 주요 구조는 다음과 같다.
+
+```text
+hermes-agent-devkit
+├─ Dockerfile
+├─ compose.yml
+├─ init-profiles.ps1
+├─ sample.env
+├─ .hermes/
+│  └─ project.yaml
+├─ custom-skills/
+│  ├─ orchestrator/
+│  ├─ coder/
+│  └─ reviewer/
+├─ shared/
+│  ├─ AGENTS.common.md
+│  └─ references/
+└─ scripts/
+```
+
+Host Workspace와 컨테이너의 기본 연결 구조는 다음과 같다.
 
 ```text
 Windows Host
 │
-├─ hermes-agent-devkit
-│  ├─ Dockerfile
-│  ├─ compose.yml
-│  ├─ init-profiles.ps1
-│  ├─ sample.env
-│  ├─ custom-skills/
-│  ├─ shared/
-│  └─ scripts/
+├─ D:\workspace\hermes-agent-devkit
 │
 └─ D:\workspace
    └─ 개발 프로젝트들
         │
         ▼
-Docker: hermes-dev
-├─ /workspace                    bind
-├─ /opt/custom-skills            bind, read-only
-├─ /opt/data/shared              bind, read-only
+Docker Container : hermes-dev
+├─ /workspace                    bind mount
+├─ /opt/custom-skills            bind mount, read-only
+├─ /opt/data/shared              bind mount, read-only
 └─ /opt/data                     named volume: hermes-dev-data
 ```
 
@@ -44,15 +123,9 @@ Docker: hermes-dev
 
 ---
 
-## 2. 최초 환경 설정
+# 2. `.env` 생성 및 필수값 설정
 
-PowerShell에서 저장소 루트로 이동한다.
-
-```powershell
-cd D:\workspace\hermes-agent-devkit
-```
-
-환경 파일을 만든다.
+처음 설치에서는 `sample.env`를 `.env`로 복사한 뒤 현재 PC에 맞게 수정한다.
 
 ```powershell
 if (Test-Path .env) { throw ".env already exists; update it manually instead of overwriting it." }
@@ -62,11 +135,9 @@ notepad .env
 
 `.env`는 Git에 commit하지 않는다.
 
-### 필수 Dashboard 인증값
+## 2.1 Dashboard 인증값 설정
 
-현재 Compose는 Dashboard를 baseline runtime으로 항상 활성화하며 Hermes의 non-loopback dashboard 보안 계약에 맞춰 username/password/secret을 필수로 요구한다.
-
-최소 다음 값을 실제 `.env`에 설정한다.
+현재 Compose는 Dashboard를 기본 runtime으로 항상 활성화한다. 따라서 다음 세 값은 반드시 설정한다.
 
 ```dotenv
 HERMES_DASHBOARD_USERNAME=admin
@@ -74,200 +145,169 @@ HERMES_DASHBOARD_PASSWORD=<strong-password>
 HERMES_DASHBOARD_SECRET=<long-random-secret>
 ```
 
-Secret 예시는 PowerShell에서 다음처럼 생성할 수 있다.
+Dashboard Secret은 PowerShell에서 다음처럼 생성할 수 있다.
 
 ```powershell
 [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
 ```
 
-`sample.env`의 credential 필드는 의도적으로 비어 있다.
+`sample.env`의 credential 필드는 의도적으로 비어 있으므로 실제 값은 로컬 `.env`에만 작성한다.
 
-### Workspace 경로
+> [!WARNING]
+> `.env`, Dashboard Password/Secret, OAuth Token, Jira API Token은 저장소에 commit하거나 채팅/로그에 그대로 출력하지 않는다.
 
-기본값:
+## 2.2 Host Workspace 경로 확인
+
+기본 설정은 다음과 같다.
 
 ```dotenv
 HERMES_HOST_WORKSPACE_PATH=D:/workspace
 HERMES_CONTAINER_WORKSPACE_PATH=/workspace
 ```
 
-다른 PC에서는 host path만 환경에 맞게 변경한다.
+`D:\workspace`를 그대로 사용할 경우 수정할 필요가 없다.
+
+다른 Host 경로를 사용한다면 **Host 경로만** 변경한다.
 
 ```dotenv
 HERMES_HOST_WORKSPACE_PATH=C:/Users/example/source
 ```
 
-`HERMES_CONTAINER_WORKSPACE_PATH`를 변경하면 기존 `.hermes/project.yaml`의 repository 경로와 달라질 수 있으므로 managed project metadata를 다시 bootstrap한다.
+컨테이너 내부 경로인 `/workspace`는 특별한 이유가 없다면 그대로 유지한다.
 
-### Hermes base image
+> [!NOTE]
+> 이미 Hermes managed project를 사용 중인 상태에서 `HERMES_CONTAINER_WORKSPACE_PATH` 자체를 변경하면 기존 `.hermes/project.yaml`의 repository 경로와 달라질 수 있다. 이런 경우는 일반 설치 흐름이 아니므로 뒤쪽의 `특수 상황 3. Workspace 경로 변경` 절차를 따른다.
 
-DevKit의 기본 Hermes release는 다음으로 고정한다.
+## 2.3 기본 Hermes 이미지 확인
+
+DevKit은 `latest`가 아니라 검증한 release tag를 기본값으로 사용한다.
 
 ```dotenv
 HERMES_BASE_IMAGE=nousresearch/hermes-agent:v2026.8.16.2
 ```
 
-이렇게 하면 서로 다른 PC에서 같은 DevKit commit을 build할 때 `latest` 이동으로 인한 차이를 줄일 수 있다. 완전히 immutable한 build가 필요한 시점에는 검증한 digest로 덮어쓴다.
+처음 설치에서는 이 값을 그대로 사용한다.
 
-예:
+> [!NOTE]
+> Hermes 버전을 올리거나 digest로 완전히 고정하려는 경우에는 처음 설치 중 임의로 값을 바꾸지 말고 뒤쪽의 `특수 상황 4. Hermes base image 업그레이드` 절차를 따른다.
 
-```dotenv
-HERMES_BASE_IMAGE=nousresearch/hermes-agent@sha256:<verified-digest>
-```
+## 2.4 선택 설정은 처음에는 그대로 둔다
 
-Hermes를 새 release로 올릴 때는 `HERMES_BASE_IMAGE` 기본값을 명시적으로 변경하고 `scripts/verify.sh`, Docker build, Profile 초기화 smoke test를 다시 수행한다.
-
-### OpenAI-compatible API server
-
-API server는 기본적으로 비활성화한다.
+OpenAI-compatible API Server는 기본적으로 비활성화되어 있다.
 
 ```dotenv
 HERMES_API_SERVER_ENABLED=false
 ```
 
-필요할 때만 활성화하고 key를 설정한다.
+Jira도 credential을 입력하지 않으면 사용하지 않는다.
 
 ```dotenv
-HERMES_API_SERVER_ENABLED=true
-HERMES_API_SERVER_HOST=0.0.0.0
-HERMES_API_SERVER_KEY=<strong-api-key>
+JIRA_BASE_URL=
+JIRA_EMAIL=
+JIRA_API_TOKEN=
 ```
 
-Host publish 기본 주소는 `127.0.0.1`이므로 외부 네트워크에 직접 노출하지 않는다.
+처음 설치 목적이 Hermes 멀티 프로필 환경 구축이라면 이 값들은 그대로 두고 다음 단계로 진행한다.
+
+> [!TIP]
+> API Server 또는 Jira 연동이 필요하면 기본 Hermes 구성을 완료한 뒤 뒤쪽의 `특수 상황 5. API Server 활성화`, `특수 상황 6. Jira 연동` 절차를 적용하는 편이 문제를 분리하기 쉽다.
 
 ---
 
-## 3. 이미지 빌드 및 실행
+# 3. Docker 이미지 빌드 및 컨테이너 실행
+
+`.env` 설정이 끝났으면 먼저 Compose 구성이 유효한지 확인한다.
+
+```powershell
+docker compose config --quiet
+```
+
+오류가 없다면 이미지를 빌드하고 컨테이너를 실행한다.
 
 ```powershell
 docker compose up -d --build
 ```
 
-상태 확인:
+처음 빌드에서는 Git 2.55.0을 source에서 compile하므로 `CC ...` 로그가 오래 표시될 수 있다. 이는 오류가 아니라 정상적인 Git build 과정이다.
+
+컨테이너 상태를 확인한다.
 
 ```powershell
 docker compose ps
 ```
 
-일반 재실행에서는 Dockerfile 변경이 없다면 다음으로 충분하다.
-
-```powershell
-docker compose up -d
-```
-
-### Hermes/Python runtime 확인
-
-자동화에서는 login shell의 PATH에 의존하지 않는다.
-
-```powershell
-docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes --help
-```
-
-```powershell
-docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/python -c "import yaml; print('PYTHON_OK')"
-```
-
-두 명령이 성공하면 Profile 초기화에 필요한 Hermes CLI와 PyYAML runtime이 준비된 것이다.
-
-### SyntaxWarning compatibility patch
-
-Docker build 중 `scripts/patch_hermes_syntax_warning.py`가 `/opt/hermes/hermes_cli/update_cmd.py`를 검사한다.
-
-지원 상태:
+기본적으로 다음 컨테이너가 실행되어야 한다.
 
 ```text
-patched          과거 upstream의 알려진 venv\Scripts 경고를 수정
-already-patched  동일 코드가 이미 escape 처리됨
-not-needed       최신 upstream에서 해당 코드가 변경/제거됨
+hermes-dev
 ```
 
-세 경우 모두 `SyntaxWarning`을 error로 취급하는 strict compile을 통과해야 build가 계속된다. 즉 특정 과거 문자열의 존재 자체가 아니라 **현재 upstream source가 strict compile 가능한지**를 최종 계약으로 사용한다.
+> [!NOTE]
+> Dockerfile 변경 없이 이미 build된 이미지를 다시 실행할 때는 이후부터 `docker compose up -d`만 사용해도 된다.
+
+> [!WARNING]
+> Dockerfile이나 Compose에 `USER hermes`, `user: hermes`를 추가하지 않는다. 공식 이미지의 s6-overlay/root bootstrap이 `/opt/data`와 Profile runtime을 초기화해야 하므로 컨테이너 시작은 root bootstrap 계약을 유지한다. 대화형 Hermes 명령만 `docker exec --user hermes`로 실행한다.
 
 ---
 
-## 4. Healthcheck와 Dashboard
+# 4. 컨테이너 / Dashboard / Runtime 확인
 
-Compose healthcheck는 Dashboard의 container-local `127.0.0.1:9119` listener readiness를 확인한다. API server `8642` 활성화 여부와 독립적이다.
+컨테이너가 실행되면 Profile을 만들기 전에 기본 runtime이 정상인지 확인한다.
+
+## 4.1 Healthcheck 확인
 
 ```powershell
 docker compose ps
 ```
 
-상세 health 상태:
+상세 health 상태가 필요하면 다음 명령을 사용한다.
 
 ```powershell
 docker inspect --format '{{json .State.Health}}' hermes-dev
 ```
 
-Dashboard 기본 접속 주소:
+Compose healthcheck는 Dashboard의 container-local `127.0.0.1:9119` listener readiness를 확인한다.
+
+Dashboard 기본 접속 주소는 다음과 같다.
 
 ```text
 http://127.0.0.1:9119
 ```
 
-`healthy`는 Dashboard listener가 준비됐음을 의미하며 Profile OAuth 또는 외부 LLM Provider까지 정상임을 보장하지 않는다.
+2단계에서 설정한 Dashboard 계정으로 로그인한다.
+
+> [!NOTE]
+> `healthy`는 Dashboard listener가 준비되었다는 뜻이다. Profile OAuth나 외부 LLM Provider 인증까지 정상이라는 의미는 아니다. 해당 검증은 뒤의 Profile 설정 단계에서 별도로 수행한다.
+
+## 4.2 Hermes CLI 확인
+
+자동화에서는 login shell의 PATH에 의존하지 않고 공식 이미지의 절대경로를 사용한다.
+
+```powershell
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes --help
+```
+
+정상적으로 help가 출력되면 Hermes CLI가 준비된 것이다.
+
+## 4.3 Python / PyYAML 확인
+
+```powershell
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/python -c "import yaml; print('PYTHON_OK')"
+```
+
+다음이 출력되면 정상이다.
+
+```text
+PYTHON_OK
+```
+
+이 단계까지 정상이라면 Profile 초기화를 진행한다.
 
 ---
 
-## 5. 컨테이너 관리
+# 5. Profile 초기화
 
-중지:
-
-```powershell
-docker compose stop
-```
-
-재시작:
-
-```powershell
-docker compose start
-```
-
-컨테이너 재시작:
-
-```powershell
-docker compose restart
-```
-
-컨테이너/Compose network만 제거하고 runtime data 유지:
-
-```powershell
-docker compose down
-```
-
-Hermes 사용자 shell:
-
-```powershell
-docker exec -it --user hermes hermes-dev sh
-```
-
----
-
-## 6. Profile 초기화
-
-최초 생성 또는 설정 복구 시:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\init-profiles.ps1
-```
-
-현재 PowerShell session에서 이미 script 실행이 허용된다면 두 번째 명령만 실행한다.
-
-스크립트는 다음을 사전 검증한다.
-
-- Docker CLI/daemon
-- `hermes-dev` container 존재 및 Running 상태
-- `/workspace`, `/opt/custom-skills`, `/opt/data/shared` bind mount
-- `/opt/hermes/.venv/bin/hermes`
-- `/opt/hermes/.venv/bin/python`
-- PyYAML
-- 역할별 Custom Skill directory
-- `/opt/data/shared/AGENTS.common.md`
-
-Mount 검사는 Docker Go Template을 사용하지 않고 `docker inspect` JSON을 PowerShell `ConvertFrom-Json`으로 파싱한다. 따라서 Windows PowerShell/Docker CLI의 quote escaping 차이에 의존하지 않는다.
-
-생성/보장하는 Profile:
+`init-profiles.ps1`은 다음 세 역할 Profile과 역할별 Custom Skill 연결을 생성 또는 보장한다.
 
 ```text
 orchestrator
@@ -275,7 +315,28 @@ coder
 reviewer
 ```
 
-External Skill 경로:
+PowerShell에서 실행한다.
+
+```powershell
+.\init-profiles.ps1
+```
+
+스크립트는 Profile을 수정하기 전에 다음을 먼저 검사한다.
+
+- Docker CLI / daemon
+- `hermes-dev` 컨테이너 존재 및 Running 상태
+- `/workspace` bind mount
+- `/opt/custom-skills` bind mount
+- `/opt/data/shared` bind mount
+- `/opt/hermes/.venv/bin/hermes`
+- `/opt/hermes/.venv/bin/python`
+- PyYAML
+- 역할별 Custom Skill directory
+- `/opt/data/shared/AGENTS.common.md`
+
+Mount 검사는 Docker Go Template을 사용하지 않고 `docker inspect` JSON을 PowerShell `ConvertFrom-Json`으로 파싱한다.
+
+역할별 External Skill 경로는 다음과 같다.
 
 ```text
 orchestrator -> /opt/custom-skills/orchestrator
@@ -283,7 +344,7 @@ coder        -> /opt/custom-skills/coder
 reviewer     -> /opt/custom-skills/reviewer
 ```
 
-Profile config의 `skills.external_dirs`는 YAML scalar가 아니라 list로 저장한다.
+각 Profile의 `skills.external_dirs`는 YAML scalar가 아니라 list로 저장된다.
 
 ```yaml
 skills:
@@ -291,63 +352,189 @@ skills:
     - /opt/custom-skills/coder
 ```
 
-기존 config 수정이 필요한 경우 timestamp backup 후 atomic replace하고, 저장 후 YAML 구조를 다시 검증한다.
+기존 config에 변경이 필요한 경우 timestamp backup을 만든 뒤 atomic replace하고 저장 후 YAML 구조를 다시 검증한다.
 
-스크립트는 idempotent하므로 재실행할 수 있다.
+스크립트는 idempotent하므로 정상적으로 한 번 실행된 뒤 다시 실행해도 된다.
 
 ```powershell
 .\init-profiles.ps1
-.\init-profiles.ps1
 ```
 
----
+재실행 시 이미 정상인 항목은 `[OK]`로 처리되어야 한다.
 
-## 7. Profile 명령
+> [!NOTE]
+> PowerShell에서 `이 시스템에서 스크립트를 실행할 수 없으므로 ... ps1 파일을 로드할 수 없습니다`가 표시되는 경우에만 현재 PowerShell session에 한해 다음을 실행한다.
+>
+> ```powershell
+> Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+> .\init-profiles.ps1
+> ```
+>
+> `Scope Process`는 현재 PowerShell 창을 닫으면 원래 정책으로 돌아간다.
 
-Profile 목록:
+## 5.1 Profile 생성 결과 확인
 
 ```powershell
 docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes profile list
 ```
 
-상세:
+최소 다음 Profile을 확인한다.
 
-```powershell
-docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes profile show orchestrator
-docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes profile show coder
-docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes profile show reviewer
+```text
+orchestrator
+coder
+reviewer
 ```
-
-Model/OAuth 설정:
-
-```powershell
-docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator model
-docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p coder model
-docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p reviewer model
-```
-
-Chat:
-
-```powershell
-docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator chat
-docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p coder chat
-docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p reviewer chat
-```
-
-OAuth 정보는 `/opt/data/profiles/<profile>/auth.json` 아래에 저장되며 named volume에 영속화된다.
 
 ---
 
-## 8. 개발 Workflow
+# 6. Profile별 Model / OAuth 설정
 
-표준 역할 흐름:
+Profile 초기화가 끝났으면 각 역할에 사용할 Model과 OAuth 인증을 설정한다.
+
+## 6.1 Orchestrator
+
+```powershell
+docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator model
+```
+
+안내에 따라 Provider, Model, OpenAI Codex OAuth를 설정한다.
+
+## 6.2 Coder
+
+```powershell
+docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p coder model
+```
+
+Coder에 사용할 계정과 Model을 설정한다.
+
+## 6.3 Reviewer
+
+```powershell
+docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p reviewer model
+```
+
+Reviewer에 사용할 계정과 Model을 설정한다.
+
+OAuth 정보는 다음 위치에 저장된다.
+
+```text
+/opt/data/profiles/<profile>/auth.json
+```
+
+이 파일은 `hermes-dev-data` named volume에 저장되므로 일반적인 컨테이너 재시작이나 `docker compose down`으로 삭제되지 않는다.
+
+> [!WARNING]
+> `auth.json`의 내용을 출력하거나 Git에 추가하지 않는다. OAuth 재인증이 필요하지 않은 일반적인 운영에서는 `hermes-dev-data` volume을 유지한다.
+
+## 6.4 Model 설정 확인
+
+```powershell
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator config get model --json
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p coder config get model --json
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p reviewer config get model --json
+```
+
+세 Profile에서 의도한 Provider/Model이 확인되면 다음 단계로 진행한다.
+
+---
+
+# 7. 저장소 통합 검증
+
+Docker runtime 구성이 끝났으면 DevKit 자체의 설정과 Skill 회귀 테스트를 실행한다.
+
+Git Bash 또는 WSL에서 저장소 루트로 이동한 뒤 실행한다.
+
+```bash
+bash scripts/verify.sh
+```
+
+검증 항목은 다음과 같다.
+
+- compact policy/context invariant
+- Custom Skill Python compile
+- Hermes SyntaxWarning compatibility helper self-test
+- workspace dispatch regression tests
+- coder workspace verification tests
+- reviewer context tests
+- coder/reviewer review-cycle contract
+- project bootstrap metadata preservation
+- project resolver tests
+- breakdown shell syntax
+- `sample.env` / Compose / init script environment contract
+- `init-profiles.ps1` JSON inspect + absolute runtime path contract
+- PowerShell syntax 및 `.env` helper self-test (`pwsh`/`powershell` 사용 가능 시)
+- Docker Compose configuration (`docker`/daemon 사용 가능 시)
+
+마지막에 다음과 같은 메시지가 출력되면 repository-level 검증이 완료된 것이다.
+
+```text
+[PASS] Repository verification completed.
+```
+
+실제 `.env`의 Secret은 검증 출력에 표시하지 않는다. Compose 검증은 테스트용 placeholder credential을 process environment로 주입해서 수행한다.
+
+GitHub Actions의 `.github/workflows/verify.yml`도 branch push 및 pull request에서 동일한 검증을 실행한다.
+
+> [!NOTE]
+> Windows PowerShell만 사용하고 Git Bash/WSL이 없는 경우 이 단계는 나중에 수행할 수 있지만, DevKit 변경을 `dev`에 병합하거나 다른 PC에 배포하기 전에는 반드시 한 번 실행하는 것을 권장한다.
+
+---
+
+# 8. 최초 구성 완료 확인
+
+여기까지 왔다면 설치 과정은 완료된 상태다. 마지막으로 실제 Agent가 실행되는지 각 Profile에서 간단히 확인한다.
+
+## 8.1 Orchestrator 실행
+
+```powershell
+docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator chat
+```
+
+## 8.2 Coder 실행
+
+```powershell
+docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p coder chat
+```
+
+## 8.3 Reviewer 실행
+
+```powershell
+docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p reviewer chat
+```
+
+각 Profile이 정상적으로 대화 세션을 시작하면 최초 구성이 완료된 것이다.
+
+최종 체크리스트:
+
+```text
+[ ] docker compose ps에서 hermes-dev 실행
+[ ] Dashboard http://127.0.0.1:9119 접속
+[ ] Hermes CLI 정상
+[ ] Python/PyYAML 정상
+[ ] orchestrator Profile 존재 및 OAuth 설정
+[ ] coder Profile 존재 및 OAuth 설정
+[ ] reviewer Profile 존재 및 OAuth 설정
+[ ] scripts/verify.sh 통과
+[ ] 각 Profile chat 실행 확인
+```
+
+---
+
+# 9. 실제 개발 Workflow 사용
+
+표준 역할 흐름은 다음과 같다.
 
 ```text
 Request / Jira
     ↓
 Orchestrator
     ↓
-Project Resolve / Approval
+Project Resolve
+    ↓
+Project Approval
+    ↓
+dev-project-bootstrap (필요 시)
     ↓
 dev-breakdown
     ↓
@@ -368,15 +555,24 @@ dev-code-review
 Approve / Request Changes / Block
 ```
 
-현재 신규 표준은 `dev-workspace-dispatch`다. `dev-worktree-dispatch`와 `dev-worktree-cleanup`은 과거 linked-worktree workflow 호환을 위한 legacy skill이므로 신규 작업에서 자동 선택하지 않는다.
+현재 신규 표준은 `dev-workspace-dispatch`다.
 
-`dev-workspace-dispatch`는 사용자가 승인한 current/create branch와 workspace를 인계한다. 자동 linked-worktree 생성은 신규 표준 workflow의 기본 동작이 아니다.
+지원하는 Workspace/Branch 전략:
 
----
+```text
+현재 workspace + 현재 branch
+현재 workspace + 새 branch
+사용자가 지정한 별도 workspace + 현재 branch
+사용자가 지정한 별도 workspace + 새 branch
+```
 
-## 9. DevKit 자체 managed project metadata
+`dev-worktree-dispatch`, `dev-worktree-cleanup`은 과거 linked-worktree workflow 호환을 위한 legacy skill이다. 신규 작업에서는 자동 선택하지 않는다.
 
-이 저장소 자체도 Hermes로 관리할 수 있도록 다음 canonical metadata를 둔다.
+`dev-workspace-dispatch`는 사용자가 승인한 Workspace/Branch를 coder에게 인계하며 신규 표준에서는 자동 linked-worktree 생성을 기본 동작으로 하지 않는다.
+
+## 9.1 DevKit 자체 managed project
+
+이 DevKit 저장소 자체도 Hermes managed project로 사용할 수 있도록 다음 파일을 둔다.
 
 ```text
 .hermes/project.yaml
@@ -391,22 +587,251 @@ Board: hermes-agent-devkit
 Base Branch: dev
 ```
 
-루트 `AGENTS.md`의 project block도 이 값과 일치해야 한다.
+루트 `AGENTS.md`의 `HERMES-PROJECT` block도 이 값과 일치해야 한다.
 
 ---
 
-## 10. Jira
+# 10. 일반 운영
 
-Jira 설정은 `.env`에서 제공한다.
+최초 설치가 끝난 뒤 일상적인 운영에서는 아래 명령만 주로 사용한다.
+
+## 10.1 상태 확인
+
+```powershell
+docker compose ps
+```
+
+로그:
+
+```powershell
+docker compose logs -f hermes
+```
+
+## 10.2 중지 / 시작
+
+중지:
+
+```powershell
+docker compose stop
+```
+
+다시 시작:
+
+```powershell
+docker compose start
+```
+
+재시작:
+
+```powershell
+docker compose restart
+```
+
+## 10.3 컨테이너만 다시 생성
+
+Runtime data를 유지하면서 컨테이너와 Compose network만 제거한다.
+
+```powershell
+docker compose down
+```
+
+다시 실행한다.
+
+```powershell
+docker compose up -d
+```
+
+`hermes-dev-data` volume은 유지되므로 Profile/OAuth/Session은 보존된다.
+
+## 10.4 Hermes 사용자 Shell
+
+```powershell
+docker exec -it --user hermes hermes-dev sh
+```
+
+## 10.5 Profile 조회
+
+```powershell
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes profile list
+```
+
+```powershell
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes profile show orchestrator
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes profile show coder
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes profile show reviewer
+```
+
+---
+
+# 11. 특수 상황 가이드
+
+아래 절차는 **처음 설치할 때 기본적으로 수행하지 않는다.** 해당 상황이 발생했을 때만 적용한다.
+
+## 특수 상황 1. 기존 `.env`가 이미 있는 경우
+
+새로운 `sample.env`를 기존 `.env` 위에 복사하지 않는다.
+
+> [!WARNING]
+> 기존 `.env`에는 Dashboard/Jira credential이 있을 수 있다. `Copy-Item sample.env .env -Force`처럼 덮어쓰지 않는다.
+
+새 key가 추가되었는지 `sample.env`와 비교하고 필요한 non-secret key만 기존 `.env`에 수동으로 추가한다.
+
+특히 현재 DevKit에서는 다음 항목을 확인한다.
 
 ```dotenv
-JIRA_BASE_URL=
-JIRA_EMAIL=
-JIRA_API_TOKEN=
+HERMES_BASE_IMAGE=nousresearch/hermes-agent:v2026.8.16.2
+HERMES_DASHBOARD_HOST=0.0.0.0
+HERMES_API_SERVER_ENABLED=false
+HERMES_API_SERVER_HOST=0.0.0.0
+```
+
+Dashboard credential의 기존 실제 값은 유지한다.
+
+---
+
+## 특수 상황 2. Hermes 데이터를 완전히 초기화해야 하는 경우
+
+다음 상황에서만 완전 초기화를 고려한다.
+
+- Profile/OAuth/Session을 모두 제거하고 처음부터 재검증
+- `/opt/data` 상태가 손상되어 재생성이 필요
+- 테스트 환경을 완전히 Fresh 상태로 재구성
+
+> [!WARNING]
+> 다음 명령은 `hermes-dev-data`를 삭제한다. Profile, OAuth, Session, Memory, Kanban, Work Item 등 `/opt/data`의 Hermes 상태가 삭제된다.
+
+```powershell
+docker compose down -v
+```
+
+`mssql-data` 등 Hermes와 관계없는 volume을 수동으로 삭제하지 않는다.
+
+삭제 후에는 이 README의 **3단계부터 다시 순서대로** 진행한다.
+
+```text
+3. Docker 이미지 빌드 및 컨테이너 실행
+4. Runtime 확인
+5. Profile 초기화
+6. Profile별 Model/OAuth 설정
+7. 저장소 통합 검증
+8. 최초 구성 완료 확인
+```
+
+---
+
+## 특수 상황 3. Workspace 경로 변경
+
+Host Workspace만 변경하는 경우 `.env`의 다음 값만 수정한다.
+
+```dotenv
+HERMES_HOST_WORKSPACE_PATH=C:/Users/example/source
+```
+
+가능하면 컨테이너 경로는 그대로 유지한다.
+
+```dotenv
+HERMES_CONTAINER_WORKSPACE_PATH=/workspace
+```
+
+컨테이너 경로까지 변경하면 기존 managed project의 다음 값이 실제 위치와 달라질 수 있다.
+
+```text
+.hermes/project.yaml
+project.repository
+git.worktree_root
+```
+
+이 경우 기존 metadata를 그대로 재사용하지 말고 실제 새 container path를 기준으로 `dev-project-bootstrap`을 다시 실행해 metadata를 수렴시킨다.
+
+---
+
+## 특수 상황 4. Hermes base image 업그레이드
+
+기본 이미지는 reproducibility를 위해 release tag로 고정한다.
+
+```dotenv
+HERMES_BASE_IMAGE=nousresearch/hermes-agent:v2026.8.16.2
+```
+
+새 Hermes release로 올릴 때는 다음 순서로 진행한다.
+
+```text
+1. 새 tag/digest 확인
+2. 별도 branch에서 HERMES_BASE_IMAGE 변경
+3. scripts/verify.sh
+4. docker compose build --no-cache
+5. docker compose up -d
+6. Hermes/Python runtime 확인
+7. init-profiles.ps1 재실행
+8. Profile/OAuth smoke test
+9. 문제 없으면 dev 반영
+```
+
+완전히 immutable한 build가 필요하면 검증한 digest를 사용할 수 있다.
+
+```dotenv
+HERMES_BASE_IMAGE=nousresearch/hermes-agent@sha256:<verified-digest>
+```
+
+> [!NOTE]
+> `latest`를 기본값으로 사용하지 않는다. 동일한 DevKit commit이라도 build 시점에 따라 다른 upstream image가 내려와 재현성이 깨질 수 있다.
+
+---
+
+## 특수 상황 5. OpenAI-compatible API Server 활성화
+
+API Server는 기본 비활성화다.
+
+```dotenv
+HERMES_API_SERVER_ENABLED=false
+```
+
+필요할 때만 `.env`를 다음처럼 설정한다.
+
+```dotenv
+HERMES_API_SERVER_ENABLED=true
+HERMES_API_SERVER_HOST=0.0.0.0
+HERMES_API_SERVER_KEY=<strong-api-key>
+```
+
+설정 후 컨테이너를 재생성한다.
+
+```powershell
+docker compose up -d
+```
+
+기본 publish 주소는 다음 설정으로 Host loopback에 제한한다.
+
+```dotenv
+HERMES_PORT_BIND_ADDRESS=127.0.0.1
+HERMES_API_SERVER_HOST_PORT=8642
+```
+
+> [!WARNING]
+> `HERMES_PORT_BIND_ADDRESS=0.0.0.0`으로 바꾸면 Host 외부에서도 접근 가능해질 수 있다. 인증과 네트워크 경계를 검토하지 않은 상태에서는 변경하지 않는다.
+
+---
+
+## 특수 상황 6. Jira 연동
+
+기본 설치에서는 Jira 설정이 비어 있어도 Hermes 멀티 프로필 구성에 문제가 없다.
+
+Jira 연동이 필요할 때 `.env`에 다음 값을 입력한다.
+
+```dotenv
+JIRA_BASE_URL=https://<your-domain>.atlassian.net
+JIRA_EMAIL=<account-email>
+JIRA_API_TOKEN=<api-token>
 JIRA_API_VERSION=3
 JIRA_ACCEPTANCE_CRITERIA_FIELDS=Acceptance Criteria,완료 조건,인수 조건
 JIRA_INCLUDE_FIELD_NAMES=
 JIRA_VERIFY_SSL=true
+```
+
+설정 후 컨테이너를 재생성한다.
+
+```powershell
+docker compose up -d
 ```
 
 Credential을 source, Skill 문서, Kanban body 또는 로그에 기록하지 않는다.
@@ -415,82 +840,149 @@ Credential을 source, Skill 문서, Kanban body 또는 로그에 기록하지 �
 
 ---
 
-## 11. 완전 초기화
+# 12. 문제 해결
 
-다음 경우에만 사용한다.
+## 12.1 PowerShell `.ps1` 실행 차단
 
-- Profile/OAuth/Session을 전부 제거하고 fresh 검증
-- `/opt/data` 상태를 완전히 재생성
-- 테스트 환경을 처음부터 재구성
+오류 예:
 
-삭제:
-
-```powershell
-docker compose down -v
+```text
+PSSecurityException
+이 시스템에서 스크립트를 실행할 수 없으므로 ... init-profiles.ps1 파일을 로드할 수 없습니다.
 ```
 
-삭제 대상에는 `hermes-dev-data`가 포함된다. `mssql-data` 등 Hermes와 관계없는 volume을 수동으로 삭제하지 않는다.
-
-재구성:
+현재 PowerShell session에서만 허용한다.
 
 ```powershell
-docker compose up -d --build
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\init-profiles.ps1
 ```
 
-그 후 각 Profile의 Model/OAuth를 다시 설정한다.
+영구적으로 정책을 낮출 필요는 없다.
 
 ---
 
-## 12. 저장소 통합 검증
+## 12.2 `template parsing error: unexpected "%" in operand`
 
-```bash
-bash scripts/verify.sh
+과거 `init-profiles.ps1`이 Docker Go Template의 `printf`로 mount를 검사할 때 Windows PowerShell quote escaping 차이로 발생하던 오류다.
+
+현재 스크립트는 다음 구조를 사용한다.
+
+```text
+docker inspect
+    ↓
+PowerShell ConvertFrom-Json
+    ↓
+Mounts 검사
 ```
 
-검증 항목:
+현재 branch에서 같은 오류가 난다면 먼저 최신 `init-profiles.ps1`을 사용 중인지 확인한다.
 
-- compact policy/context invariant
-- Custom Skill Python compile
-- Hermes SyntaxWarning compatibility helper self-test
-- workspace dispatch regression tests
-- coder workspace verification tests
-- reviewer context tests
-- coder/reviewer review-cycle contract
-- project bootstrap metadata preservation
-- project resolver tests
-- breakdown shell syntax
-- `sample.env` / Compose / init script environment contract
-- `init-profiles.ps1`의 JSON inspect + absolute runtime path contract
-- PowerShell syntax와 `.env` helper self-test (`pwsh`/`powershell` 사용 가능 시)
-- Docker Compose configuration (`docker`/daemon 사용 가능 시)
-
-실제 `.env`의 secret은 검증 출력에 표시하지 않는다. Compose 검증은 test placeholder credential을 process environment로 주입해서 수행한다.
-
-GitHub Actions의 `.github/workflows/verify.yml`도 branch push와 pull request에서 동일한 repository verification을 실행한다.
+```powershell
+git status
+git log -1 --oneline
+```
 
 ---
 
-## 13. 보안 및 운영 규칙
+## 12.3 `ExitCode=127` / `hermes` 명령을 찾지 못함
 
-- `.env`, OAuth token, API token, password, cookie를 commit하지 않는다.
-- Dashboard/API host publish 기본값은 `127.0.0.1`을 유지한다.
+login shell의 PATH에 의존하면 `hermes` 사용자 환경에서 CLI가 잡히지 않을 수 있다.
+
+다음 절대경로로 직접 확인한다.
+
+```powershell
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes --help
+```
+
+```powershell
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/python -c "import yaml; print('PYTHON_OK')"
+```
+
+현재 자동화 스크립트도 이 절대경로를 사용한다.
+
+---
+
+## 12.4 Docker build 중 많은 `CC ...` 로그가 출력됨
+
+Dockerfile은 Git 2.55.0을 source에서 compile한다.
+
+다음과 같은 로그는 정상이다.
+
+```text
+CC shallow.o
+CC sideband.o
+CC statinfo.o
+...
+```
+
+오류 메시지 없이 계속 진행 중이라면 기다린다.
+
+---
+
+## 12.5 Hermes `SyntaxWarning` 관련 build 오류
+
+Docker build 중 `scripts/patch_hermes_syntax_warning.py`가 `/opt/hermes/hermes_cli/update_cmd.py`를 검사한다.
+
+지원 상태:
+
+```text
+patched          과거 upstream의 알려진 venv\Scripts 경고를 수정
+already-patched  동일 코드가 이미 escape 처리됨
+not-needed       최신 upstream에서 해당 코드가 변경/제거됨
+```
+
+세 상태 모두 `SyntaxWarning`을 error로 취급하는 strict compile을 통과해야 build가 계속된다.
+
+즉 현재 검증 기준은 특정 과거 문자열의 존재 여부가 아니라 **현재 upstream source가 strict compile 가능한가**이다.
+
+Hermes image를 임의로 `latest`로 바꾼 뒤 오류가 발생했다면 먼저 `HERMES_BASE_IMAGE`를 DevKit 기본 release로 되돌려 재현 여부를 확인한다.
+
+---
+
+## 12.6 Dashboard가 열리지 않음
+
+상태를 확인한다.
+
+```powershell
+docker compose ps
+docker compose logs --tail 200 hermes
+```
+
+`.env`의 다음 항목이 비어 있지 않은지 확인한다.
+
+```dotenv
+HERMES_DASHBOARD_USERNAME=
+HERMES_DASHBOARD_PASSWORD=
+HERMES_DASHBOARD_SECRET=
+```
+
+실제 값을 화면이나 로그에 출력할 필요는 없다. 텍스트 편집기로 직접 확인한다.
+
+---
+
+# 13. 보안 및 운영 원칙
+
+- `.env`, OAuth Token, API Token, Password, Cookie를 commit하지 않는다.
+- Dashboard/API Host publish 기본값은 `127.0.0.1`을 유지한다.
 - Dashboard를 non-loopback container interface에 bind할 때 인증 provider를 반드시 설정한다.
-- `docker compose config` 출력에는 secret이 render될 수 있으므로 외부 공유하지 않는다.
-- `/opt/data` volume 삭제는 인증과 세션 삭제를 의미한다.
+- `docker compose config` 전체 출력에는 Secret이 render될 수 있으므로 외부 공유하지 않는다.
+- `/opt/data` volume 삭제는 Profile/OAuth/Session 등 Hermes 영속 상태 삭제를 의미한다.
 - Custom Skill과 shared policy bind는 read-only로 유지한다.
 - Dockerfile/Compose에 `USER hermes` 또는 `user: hermes`를 지정해 공식 s6 root bootstrap을 깨지 않는다.
-- runtime 자동화는 `/opt/hermes/.venv/bin/*` 절대경로를 우선한다.
+- runtime 자동화에서는 `/opt/hermes/.venv/bin/hermes`, `/opt/hermes/.venv/bin/python` 절대경로를 우선한다.
+- 구현 요청만 받은 상태에서 coder/reviewer workflow가 임의로 commit, push, PR, merge까지 진행하지 않는다.
+- destructive Git operation과 Workspace cleanup은 명시적인 승인 없이 수행하지 않는다.
 
 ---
 
-## 자주 사용하는 명령
+# 14. 자주 사용하는 명령
 
 | 목적 | 명령 |
 |---|---|
-| 빌드/실행 | `docker compose up -d --build` |
+| 최초 빌드/실행 | `docker compose up -d --build` |
 | 일반 실행 | `docker compose up -d` |
-| 상태 | `docker compose ps` |
+| 상태 확인 | `docker compose ps` |
 | 로그 | `docker compose logs -f hermes` |
 | Profile 초기화 | `.\init-profiles.ps1` |
 | Profile 목록 | `docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes profile list` |
@@ -499,4 +991,24 @@ GitHub Actions의 `.github/workflows/verify.yml`도 branch push와 pull request�
 | Reviewer | `docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p reviewer chat` |
 | 통합 검증 | `bash scripts/verify.sh` |
 | 데이터 유지 종료 | `docker compose down` |
-| 완전 초기화 | `docker compose down -v` |
+| **완전 초기화** | `docker compose down -v` |
+
+---
+
+## 핵심 원칙 요약
+
+```text
+처음 설치
+→ README 0 ~ 8을 순서대로 진행
+
+일반 운영
+→ 9 ~ 10 참고
+
+예외 상황
+→ 11 ~ 12의 해당 항목만 적용
+
+보안/운영 기준
+→ 13 참고
+```
+
+처음 설치 과정에서는 `docker compose down -v`, Hermes base image 변경, API Server 활성화, Workspace container path 변경 같은 특수 작업을 섞지 않는다. 기본 환경을 먼저 정상 구성한 뒤 필요한 기능을 하나씩 추가하는 것을 원칙으로 한다.
