@@ -2,58 +2,42 @@
 
 # Common Agent Development Rules
 
-이 관리 블록은 개발 작업의 항상 적용되는 최소 정책이다. 세부 판단이 필요하면 `shared/references/common-agent-rules.md`와 `/opt/data/shared/references/coding-rules.md`를 읽는다. Stack/Capability Skill 확장 기준은 `/opt/data/shared/references/stack-capability-skill-guide.md`를 따른다. 프로젝트별 규칙과 전문 Skill은 이 정책을 확장할 수 있으나 조용히 약화할 수 없다.
+항상 적용되는 최소 정책이다. 세부 규칙은 필요할 때만 `shared/references/common-agent-rules.md`, `/opt/data/shared/references/coding-rules.md`, `/opt/data/shared/references/stack-capability-skill-guide.md`를 읽는다.
 
-## 우선순위와 역할
-- 우선순위: platform/system → 현재 사용자 요청 → project context → common policy → loaded skill.
-- Orchestrator: 복잡한 작업의 project resolve/ensure, evidence-based `dev-breakdown`, 승인, `dev-workspace-dispatch`를 조정한다. dispatch한 구현이나 review를 직접 하지 않는다.
-- Coder: Fast Flow에서는 사용자 요청을 작은 작업 계약으로 정규화해 Kanban에 self-dispatch하고, worker 실행에서는 승인된 Workspace/Branch와 계약 안에서 최소 변경으로 구현·검증한다.
-- Reviewer: requirement/AC/scope와 diff·검증을 독립적으로 읽고 source를 수정하지 않은 채 approve/request-changes/block한다.
-
-## Workflow 선택
+## 역할 / Workflow
+- Orchestrator: 복잡한 작업의 resolve → `dev-breakdown` → 승인 → `dev-workspace-dispatch`; 구현/review는 하지 않는다.
+- Coder: 승인 Workspace/Branch에서 최소 변경·검증한다. Fast Flow intake는 Kanban만 만들고 source를 수정하지 않는다.
+- Reviewer: requirement/AC와 diff/evidence를 독립 검토하며 source를 수정하지 않는다.
 
 ### Fast Flow
-`User → Coder intake → Kanban self-dispatch → Coder worker → Reviewer`
+`User → Coder intake → Kanban → Coder worker → LOW done | REVIEW_REQUIRED → Reviewer`
 
-- 단일 managed Repository, clean current branch, 작고 명확한 변경, 기존 패턴 기반 구현에만 사용한다.
-- Architecture/Product 결정, public API/DB schema 변경, dependency 변경, cross-repo 작업, 모호한 요구사항에는 사용하지 않는다.
-- Interactive coder는 Fast Flow Task를 Kanban에 등록한 뒤 source를 직접 수정하지 않는다. Gateway dispatcher가 coder worker를 실행한다.
-- worker가 실제 evidence에서 범위 확대 조건을 발견하면 `FAST_FLOW_ESCALATION_REQUIRED`로 Block하고 Standard Flow로 전환한다.
+단일 managed Repository, clean current branch, 작고 명확한 기존 패턴 기반 작업에만 사용한다. 실제 evidence에서 architecture/product/public API/DB schema/dependency/cross-repo 등 범위 확대가 확인되면 `FAST_FLOW_ESCALATION_REQUIRED`로 Standard Flow 전환한다.
+
+Fast worker는 구현 후 risk를 판정한다. `LOW`는 위험 영역이 없고 targeted verification이 충분할 때만 Coder가 근거를 남기고 complete한다. 불확실하거나 API/schema/entity/dependency/transaction/security/concurrency/complex query/common architecture 영향이 있으면 `REVIEW_REQUIRED`. `CHANGES_REQUESTED` 재작업은 항상 다시 Reviewer에게 보낸다.
 
 ### Standard Flow
-`Request → Project Approval → Breakdown → Plan Approval → Workspace / Branch Approval → Dispatch → coder ↔ reviewer`
+`Request → Project Approval → Breakdown → Plan Approval → Workspace / Branch Approval → Dispatch → Coder ↔ Reviewer`
 
-- 신규 기능, 설계/분해가 필요한 작업, 여러 module/repository 영향, API/Schema/Dependency 변경, 모호한 요구사항은 Orchestrator부터 시작한다.
-- 사용자가 정확한 managed project를 직접 지정하지 않았다면 Project Approval Gate를 통과한다.
-- 모든 `READY` 계획은 별도의 Plan Approval Gate를 통과한다.
-- dirty 상태를 포함한 Git status와 current/create branch 선택을 보여주고 Workspace / Branch Approval Gate를 통과한다.
+신규 기능, 설계/분해, multi-module/repository, API/Schema/Dependency 변경, 모호한 요구사항은 Standard Flow이며 Reviewer를 생략하지 않는다.
 
 ## Kanban 계약
-- Fast/Standard Flow 모두 coder→reviewer handoff는 Kanban에 남긴다.
-- Task에는 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Risks, approved Workspace, Expected Branch, Base Branch, Base SHA, coder, reviewer를 보존한다.
-- Fast Flow에는 `Flow: FAST`와 escalation 조건을 추가한다.
-- Reviewer 승인 전 coder가 task를 직접 complete하지 않는다.
+Task에는 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Risks, Workspace, Expected/Base Branch, Base SHA, coder/reviewer를 보존한다. Fast Flow에는 `Flow: FAST`, `Review Policy: RISK_BASED`를 추가한다. Standard Flow에서 Coder self-complete는 금지한다.
 
 ## 공통 코드 품질
-- 새 helper/class/function을 만들기 전에 기존 Utility/Service/Policy/Calculator/Validator/Converter/Mapper/Domain Object/Data Access abstraction과 사용 중인 library를 검색하고 적절하면 재사용한다.
-- 범용 기술 로직과 Domain Logic을 구분한다. Domain Logic은 특정 Entity/Value Object/Domain Object의 책임이면 해당 객체에 두고, 하나에 귀속하기 어렵다면 DDD에서는 Domain Component를 검토한다. 비DDD에서는 기존 Model 역할과 프로젝트 패턴을 따른다.
-- 함수/메서드 실행 block은 기본 최대 2-depth로 유지하고, 초과하면 guard clause 또는 의미 있는 책임 단위로 분리한다. 주요 함수와 비직관적 흐름에는 목적/이유를 설명하는 프로젝트 표준 documentation을 작성한다.
-- loop/collection pipeline 내부 DB/API/File/Network I/O는 반복 호출/N+1 가능성을 확인한다. Reviewer는 이 기준을 취향이 아니라 실제 correctness/maintainability/performance와 프로젝트 pattern에 근거해 검증한다.
-- Stack/Capability Skill은 공통 Coding Rules 위에 기술별 규칙만 추가하며 dependency나 architecture를 임의로 확장하지 않는다.
+- 새 구현 전 기존 Utility/Service/Policy/Validator/Converter/Mapper/Domain/Data abstraction과 library를 검색해 재사용한다.
+- Domain Logic은 프로젝트 architecture를 따르고 새 modeling style을 임의 도입하지 않는다.
+- 함수/메서드 block은 기본 `2-depth`; 반복 DB/API/File/Network I/O와 N+1을 확인한다.
+- Stack/Capability Skill은 기존 convention을 확장할 뿐 dependency/architecture/common contract를 임의 변경하지 않는다.
+- Task의 Pattern References/Applicable Skills를 재사용해 같은 프로젝트를 역할마다 전체 재분석하지 않는다.
 
-## Evidence, scope, safety
-- source, call flow, tests, config, schema, history와 기존 pattern을 확인하고 product intent를 추측하지 않는다.
-- 요구사항에 직접 필요한 최소 diff만 만들며 unrelated refactor/format/dependency upgrade를 섞지 않는다.
-- 관련 있을 때 failure/null/input/state, compatibility, transaction, concurrency, idempotency/retry, security와 rollback을 확인한다.
-- credential, token, password, cookie, raw PII 등 secret을 source/context/skill/Kanban/log에 기록하지 않는다.
-- 기존 사용자 변경을 reset/restore/clean/stash/commit하거나 덮어쓰지 않는다. 승인 없는 destructive git, force push/history rewrite/worktree removal을 금지한다.
-- publication 단계가 명시되지 않으면 commit, push, PR, merge를 하지 않는다.
-
-## Metadata, verification, completion
-- local automation source는 `<repo>/.hermes/project.yaml`이며 Board/repository/base/profile을 추측하지 않는다. 이 파일을 Hermes 공식 필수 파일로 간주하지 않는다.
-- context file discovery는 Hermes 공식 규칙을 따르고 기존 project instructions를 보존한다.
-- 위험 기반 targeted test부터 실행하고 실제 command/result, 미실행 이유와 residual risk를 보고한다.
-- BLOCKED에는 확인된 사실, blocker, 필요한 입력, 재개 조건을 기록한다.
-- 계획과 사용자 진행 보고는 한국어로 작성한다.
+## Scope / safety / verification
+- 요구사항에 직접 필요한 최소 diff만 만들고 unrelated refactor/format/upgrade를 섞지 않는다.
+- 관련 있을 때 null/failure/compatibility/transaction/concurrency/security를 위험 기반으로 확인한다.
+- secret, credential, token, password, raw PII를 source/context/Kanban/log에 기록하지 않는다.
+- 사용자 변경을 reset/restore/clean/stash/commit하거나 덮어쓰지 않는다. publication 요청 전 commit, push, PR, merge 금지.
+- targeted test부터 실행하고 실제 command/result, 미실행 이유, residual risk를 기록한다.
+- `BLOCKED`에는 evidence, blocker, 필요한 입력, 재개 조건을 남긴다.
+- 계획/진행 보고는 한국어로 작성한다.
 
 <!-- HERMES-COMMON:END -->
