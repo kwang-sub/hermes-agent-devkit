@@ -1,7 +1,7 @@
 ---
 name: dev-code-review
 description: 동일 Workspace의 미커밋 구현을 requirement/AC와 project pattern/capability 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
-version: 0.7.0
+version: 0.7.1
 author: local
 platforms: [linux]
 metadata:
@@ -21,7 +21,7 @@ Reviewer의 **compact 실행 계약**이다. 상세 severity/checklist/escalatio
 3. 전체 프로젝트를 다시 분석하지 않는다. Kanban의 Pattern References와 실제 diff 주변 코드부터 보고, correctness 판단에 필요한 경우에만 범위를 넓힌다.
 4. requirement/AC/correctness/compatibility/security/tests와 Coder verification claim을 대조한다.
 5. Task에 capability가 적용되었고 Reviewer profile에서도 해당 Skill을 사용할 수 있으면 `skill_view()`로 로드한다. 설치되어 있지 않으면 Kanban contract와 coder evidence를 기준으로 검토하며 이를 blocker로 삼지 않는다.
-6. P0/P1이 있으면 `kanban_request_changes`; 없고 evidence가 충분하면 `kanban_complete`; 안전한 판단 불가·외부 결정 필요·반복 blocker면 `kanban_block` 중 정확히 하나만 실행한다.
+6. P0/P1이 있으면 `kanban_request_changes`; 없고 evidence가 충분하면 `kanban_complete`; 안전한 판단 불가·외부 결정 필요·반복 blocker면 `BLOCKED`로 `kanban_block` 중 정확히 하나만 실행한다.
 
 ## Common Coding Review Gate
 - `/opt/data/shared/references/coding-rules.md`와 project pattern을 기준으로 기존 abstraction 재사용, scope, `2-depth`, 반복 I/O/N+1을 확인한다.
