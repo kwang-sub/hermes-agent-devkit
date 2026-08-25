@@ -467,6 +467,88 @@ docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p reviewer co
 
 세 Profile에서 의도한 Provider/Model이 확인되면 다음 단계로 진행한다.
 
+## 6.5 선택 사항: GitHub Copilot Fallback Provider 설정
+
+Primary Provider가 일시적으로 사용할 수 없을 때 다른 Provider/Model로 요청을 넘기려면 Profile별 Fallback Provider를 설정할 수 있다.
+
+현재 DevKit의 권장 예시는 다음과 같다.
+
+```text
+orchestrator
+  Primary  : OpenAI Codex
+  Fallback : GitHub Copilot
+
+coder
+  Primary  : OpenAI Codex
+  Fallback : GitHub Copilot
+
+reviewer
+  Primary  : GitHub Copilot 또는 별도 Reviewer Provider
+```
+
+Fallback은 Profile별 설정이므로 `orchestrator`, `coder`, `reviewer`에 각각 독립적으로 구성한다.
+
+### Fallback 추가
+
+Orchestrator에 Fallback을 추가한다.
+
+```powershell
+docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator fallback add
+```
+
+Coder에 Fallback을 추가한다.
+
+```powershell
+docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p coder fallback add
+```
+
+대화형 선택 화면에서 `GitHub Copilot`과 사용할 Model을 선택한다. 해당 Provider 인증이 아직 없다면 안내에 따라 GitHub 인증을 진행한다.
+
+> [!NOTE]
+> GitHub Copilot 인증은 Hermes가 안내하는 GitHub OAuth/Device Code 흐름을 사용하는 것을 권장한다. 인증정보는 Profile의 Hermes runtime data에 저장되므로 Token을 README나 `.env`에 직접 기록하지 않는다.
+
+### Fallback 설정 확인
+
+```powershell
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator fallback list
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p coder fallback list
+```
+
+짧은 alias가 지원되는 버전에서는 다음처럼 확인할 수도 있다.
+
+```powershell
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator fallback ls
+```
+
+설정 파일에서는 개념적으로 다음과 같은 구조를 가진다.
+
+```yaml
+fallback_providers:
+  - provider: copilot
+    model: <selected-model>
+```
+
+여러 Fallback을 등록한 경우 등록된 순서대로 대체 Provider를 시도한다.
+
+### Fallback 제거
+
+특정 Fallback을 제거하려면:
+
+```powershell
+docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator fallback remove
+```
+
+전체 Fallback 설정을 비우려면:
+
+```powershell
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator fallback clear
+```
+
+Fallback 설정은 Primary Provider 자체를 변경하는 설정이 아니다. 정상 상태에서는 기존 Primary Provider를 먼저 사용하고, 해당 요청에서 Provider 오류나 rate limit 등으로 Primary 요청을 처리할 수 없을 때 등록된 Fallback 체인을 사용한다.
+
+> [!WARNING]
+> `docker compose down -v`로 `hermes-dev-data` volume을 삭제하면 Profile 설정과 인증정보도 함께 제거된다. 완전 초기화 후에는 Primary Model/OAuth뿐 아니라 필요한 Fallback Provider도 다시 설정한다.
+
 ---
 
 # 7. 저장소 통합 검증
@@ -566,6 +648,7 @@ docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p reviewe
 [ ] orchestrator Profile 존재 및 OAuth 설정
 [ ] coder Profile 존재 및 OAuth 설정
 [ ] reviewer Profile 존재 및 OAuth 설정
+[ ] 필요한 Profile의 Fallback Provider 설정 확인 (선택)
 [ ] scripts/verify.sh 통과
 [ ] 각 Profile chat 실행 확인
 ```
@@ -990,6 +1073,13 @@ docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes profile show c
 docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes profile show reviewer
 ```
 
+## 10.6 Fallback Provider 조회
+
+```powershell
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator fallback list
+docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p coder fallback list
+```
+
 ---
 
 # 11. 특수 상황 가이드
@@ -1042,6 +1132,7 @@ docker compose down -v
 4. Runtime 확인
 5. Profile 초기화
 6. Profile별 Model/OAuth 설정
+   └─ 필요한 경우 Fallback Provider 재설정
 7. 저장소 통합 검증
 8. 최초 구성 완료 확인
 ```
@@ -1337,6 +1428,8 @@ Dashboard에서 해당 project board와 task status를 확인한다.
 | 로그 | `docker compose logs -f hermes` |
 | Profile 초기화 | `.\init-profiles.ps1` |
 | Profile 목록 | `docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes profile list` |
+| Fallback 추가 | `docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p <profile> fallback add` |
+| Fallback 조회 | `docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p <profile> fallback list` |
 | **Fast Flow / Coder 직접 요청** | `docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p coder chat` |
 | **Standard Flow / Orchestrator** | `docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator chat` |
 | Reviewer 직접 확인 | `docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p reviewer chat` |
