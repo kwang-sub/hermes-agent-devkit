@@ -16,11 +16,13 @@ BASELINES = {
 REQUIRED = {
     "AGENTS.md": [
         "Orchestrator", "Coder", "Reviewer", "Fast Flow", "Standard Flow",
-        "FAST_FLOW_ESCALATION_REQUIRED", "secret", "commit", "push", "한국어",
+        "FAST_FLOW_ESCALATION_REQUIRED", "공통 코드 품질", "2-depth",
+        "Stack/Capability Skill", "secret", "commit", "push", "한국어",
     ],
     "shared/AGENTS.common.md": [
         "Orchestrator", "Coder", "Reviewer", "Fast Flow", "Standard Flow",
-        "FAST_FLOW_ESCALATION_REQUIRED", "secret", "commit", "push", "한국어",
+        "FAST_FLOW_ESCALATION_REQUIRED", "공통 코드 품질", "2-depth",
+        "Stack/Capability Skill", "secret", "commit", "push", "한국어",
     ],
     "custom-skills/orchestrator/dev-workflow-orchestrate/SKILL.md": [
         "Project Approval", "Plan Approval", "Workspace / Branch", "dev-workspace-dispatch",
@@ -35,10 +37,12 @@ REQUIRED = {
     ],
     "custom-skills/coder/dev-implement-plan/SKILL.md": [
         "Workspace", "Reviewer Profile", "Flow: FAST", "FAST_FLOW_ESCALATION_REQUIRED",
+        "공통 Coding Rules 핵심", "2-depth", "Stack / Capability Skill", "coding-rules.md",
         "secret", "commit", "push", "BLOCKED",
     ],
     "custom-skills/reviewer/dev-code-review/SKILL.md": [
-        "Reviewer", "source를 수정하지", "secret", "commit", "push", "BLOCKED",
+        "Reviewer", "source를 수정하지", "Common Coding Review Gate", "2-depth",
+        "Stack / Capability Review Gate", "coding-rules.md", "secret", "commit", "push", "BLOCKED",
     ],
 }
 
@@ -70,6 +74,8 @@ def main() -> int:
             failed = True
     refs = [
         "shared/references/common-agent-rules.md",
+        "shared/references/coding-rules.md",
+        "shared/references/stack-capability-skill-guide.md",
         "custom-skills/orchestrator/dev-workflow-orchestrate/references/workflow-details.md",
         "custom-skills/orchestrator/dev-breakdown/references/planning-details.md",
         "custom-skills/coder/dev-implement-plan/references/implementation-details.md",

@@ -2,7 +2,7 @@
 
 # Common Agent Development Rules
 
-이 관리 블록은 개발 작업의 항상 적용되는 최소 정책이다. 세부 판단이 필요하면 `shared/references/common-agent-rules.md`를 읽는다. 프로젝트별 규칙은 이 정책을 확장할 수 있으나 조용히 약화할 수 없다.
+이 관리 블록은 개발 작업의 항상 적용되는 최소 정책이다. 세부 판단이 필요하면 `shared/references/common-agent-rules.md`와 `/opt/data/shared/references/coding-rules.md`를 읽는다. Stack/Capability Skill 확장 기준은 `/opt/data/shared/references/stack-capability-skill-guide.md`를 따른다. 프로젝트별 규칙과 전문 Skill은 이 정책을 확장할 수 있으나 조용히 약화할 수 없다.
 
 ## 우선순위와 역할
 - 우선순위: platform/system → 현재 사용자 요청 → project context → common policy → loaded skill.
@@ -33,6 +33,13 @@
 - Task에는 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Risks, approved Workspace, Expected Branch, Base Branch, Base SHA, coder, reviewer를 보존한다.
 - Fast Flow에는 `Flow: FAST`와 escalation 조건을 추가한다.
 - Reviewer 승인 전 coder가 task를 직접 complete하지 않는다.
+
+## 공통 코드 품질
+- 새 helper/class/function을 만들기 전에 기존 Utility/Service/Policy/Calculator/Validator/Converter/Mapper/Domain Object/Data Access abstraction과 사용 중인 library를 검색하고 적절하면 재사용한다.
+- 범용 기술 로직과 Domain Logic을 구분한다. Domain Logic은 특정 Entity/Value Object/Domain Object의 책임이면 해당 객체에 두고, 하나에 귀속하기 어렵다면 DDD에서는 Domain Component를 검토한다. 비DDD에서는 기존 Model 역할과 프로젝트 패턴을 따른다.
+- 함수/메서드 실행 block은 기본 최대 2-depth로 유지하고, 초과하면 guard clause 또는 의미 있는 책임 단위로 분리한다. 주요 함수와 비직관적 흐름에는 목적/이유를 설명하는 프로젝트 표준 documentation을 작성한다.
+- loop/collection pipeline 내부 DB/API/File/Network I/O는 반복 호출/N+1 가능성을 확인한다. Reviewer는 이 기준을 취향이 아니라 실제 correctness/maintainability/performance와 프로젝트 pattern에 근거해 검증한다.
+- Stack/Capability Skill은 공통 Coding Rules 위에 기술별 규칙만 추가하며 dependency나 architecture를 임의로 확장하지 않는다.
 
 ## Evidence, scope, safety
 - source, call flow, tests, config, schema, history와 기존 pattern을 확인하고 product intent를 추측하지 않는다.
