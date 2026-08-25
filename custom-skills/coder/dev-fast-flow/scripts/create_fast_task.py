@@ -29,9 +29,7 @@ def run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess[st
     result = subprocess.run(cmd, text=True, capture_output=True)
     if check and result.returncode != 0:
         detail = (result.stderr or result.stdout).strip()
-        raise FastFlowError(
-            f"command failed ({result.returncode}): {' '.join(cmd)}\n{detail}"
-        )
+        raise FastFlowError(f"command failed ({result.returncode}): {' '.join(cmd)}\n{detail}")
     return result
 
 
@@ -44,14 +42,10 @@ def resolve_git_root(path: Path) -> Path:
 
 def parse_managed_metadata(path: Path) -> ProjectMetadata:
     if not path.is_file():
-        raise FastFlowError(
-            f"project metadata is missing: {path}; use Standard Flow to bootstrap the project first"
-        )
+        raise FastFlowError(f"project metadata is missing: {path}; use Standard Flow to bootstrap the project first")
     text = path.read_text(encoding="utf-8")
     if MANAGED_MARKER not in text.splitlines()[:5]:
-        raise FastFlowError(
-            f"project metadata is not managed by dev-project-bootstrap: {path}"
-        )
+        raise FastFlowError(f"project metadata is not managed by dev-project-bootstrap: {path}")
 
     def field(pattern: str, name: str) -> str:
         match = re.search(pattern, text, flags=re.MULTILINE)
@@ -63,14 +57,8 @@ def parse_managed_metadata(path: Path) -> ProjectMetadata:
         project_id=field(r"^\s{2}id:\s*(.+?)\s*$", "project.id"),
         repository=field(r"^\s{2}repository:\s*(.+?)\s*$", "project.repository"),
         board=field(r"^kanban:\s*\n\s{2}board:\s*(.+?)\s*$", "kanban.board"),
-        coder=field(
-            r"^profiles:\s*\n(?:.*\n)*?\s{2}coder:\s*(.+?)\s*$",
-            "profiles.coder",
-        ),
-        reviewer=field(
-            r"^profiles:\s*\n(?:.*\n)*?\s{2}reviewer:\s*(.+?)\s*$",
-            "profiles.reviewer",
-        ),
+        coder=field(r"^profiles:\s*\n(?:.*\n)*?\s{2}coder:\s*(.+?)\s*$", "profiles.coder"),
+        reviewer=field(r"^profiles:\s*\n(?:.*\n)*?\s{2}reviewer:\s*(.+?)\s*$", "profiles.reviewer"),
     )
 
 
@@ -89,43 +77,24 @@ def current_head(repo: Path) -> str:
 
 
 def ensure_clean(repo: Path) -> None:
-    status = run(
-        ["git", "-C", str(repo), "status", "--porcelain=v1", "--untracked-files=all"]
-    ).stdout.rstrip()
+    status = run(["git", "-C", str(repo), "status", "--porcelain=v1", "--untracked-files=all"]).stdout.rstrip()
     if status:
-        raise FastFlowError(
-            "Fast Flow requires a clean workspace. Use Standard Flow or resolve existing changes first.\n"
-            + status
-        )
+        raise FastFlowError("Fast Flow requires a clean workspace. Use Standard Flow or resolve existing changes first.\n" + status)
 
 
 def logical_task_key(title: str, base_sha: str) -> str:
-    slug = re.sub(r"[^A-Za-z0-9]+", "-", title).strip("-").upper()
-    if not slug:
-        slug = "TASK"
-    slug = slug[:32].rstrip("-")
-    return f"FAST-{base_sha[:8].upper()}-{slug}"
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", title).strip("-").upper() or "TASK"
+    return f"FAST-{base_sha[:8].upper()}-{slug[:32].rstrip('-')}"
 
 
 def bullet_lines(values: list[str]) -> str:
     return "\n".join(f"- {value}" for value in values)
 
 
-def build_body(
-    *,
-    task_key: str,
-    goal: str,
-    acceptance: list[str],
-    implementation: list[str],
-    tests: list[str],
-    risks: list[str],
-    reviewer: str,
-    workspace: Path,
-    branch: str,
-    base_sha: str,
-) -> str:
+def build_body(*, task_key: str, goal: str, acceptance: list[str], implementation: list[str], tests: list[str], risks: list[str], reviewer: str, workspace: Path, branch: str, base_sha: str) -> str:
     return f"""Flow: FAST
 Task Key: {task_key}
+Review Policy: RISK_BASED
 
 Goal:
 {goal}
@@ -147,7 +116,13 @@ Known Risks:
 
 Fast Flow Escalation:
 - If source evidence reveals ambiguous product intent, architecture decisions, public API/schema changes, cross-repository work, dependency changes, or materially broader scope, do not expand implementation.
-- Call kanban_block with reason FAST_FLOW_ESCALATION_REQUIRED and include the evidence required to restart through Standard Flow.
+- Call kanban_block with reason FAST_FLOW_ESCALATION_REQUIRED and include evidence required to restart through Standard Flow.
+
+Review Policy Contract:
+- After implementation and targeted verification, coder evaluates Review Risk using dev-implement-plan.
+- LOW -> coder records risk reasons and verification, then kanban_complete.
+- REVIEW_REQUIRED -> coder calls kanban_request_review for {reviewer}.
+- Any CHANGES_REQUESTED retry must return to reviewer after the fix.
 
 Reviewer Profile:
 {reviewer}
@@ -168,9 +143,7 @@ Workspace Contract:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Create a Fast Flow Kanban task for the configured coder/reviewer profiles."
-    )
+    parser = argparse.ArgumentParser(description="Create a Fast Flow Kanban task for the configured coder/reviewer profiles.")
     parser.add_argument("--workspace", required=True)
     parser.add_argument("--title", required=True)
     parser.add_argument("--goal", required=True)
@@ -187,37 +160,19 @@ def main() -> int:
     requested = Path(args.workspace).resolve()
     repo = resolve_git_root(requested)
     if repo != requested:
-        raise FastFlowError(
-            f"Fast Flow workspace must be the Git repository root: requested={requested}, root={repo}"
-        )
+        raise FastFlowError(f"Fast Flow workspace must be the Git repository root: requested={requested}, root={repo}")
 
     meta = parse_managed_metadata(repo / ".hermes" / "project.yaml")
     configured_repo = Path(meta.repository).resolve()
     if configured_repo != repo:
-        raise FastFlowError(
-            f"project metadata repository mismatch: metadata={configured_repo}, actual={repo}"
-        )
+        raise FastFlowError(f"project metadata repository mismatch: metadata={configured_repo}, actual={repo}")
 
     ensure_clean(repo)
     branch = current_branch(repo)
     base_sha = current_head(repo)
     task_key = logical_task_key(args.title, base_sha)
-
-    risks = args.risk or [
-        "Fast Flow remains valid only while the task is local, unambiguous, and small."
-    ]
-    body = build_body(
-        task_key=task_key,
-        goal=args.goal,
-        acceptance=args.acceptance,
-        implementation=args.implementation,
-        tests=args.test,
-        risks=risks,
-        reviewer=meta.reviewer,
-        workspace=repo,
-        branch=branch,
-        base_sha=base_sha,
-    )
+    risks = args.risk or ["Fast Flow remains valid only while the task is local, unambiguous, and small."]
+    body = build_body(task_key=task_key, goal=args.goal, acceptance=args.acceptance, implementation=args.implementation, tests=args.test, risks=risks, reviewer=meta.reviewer, workspace=repo, branch=branch, base_sha=base_sha)
 
     print("=== Fast Flow Dispatch ===")
     print(f"PROJECT={meta.project_id}")
@@ -235,28 +190,7 @@ def main() -> int:
         print("\nSTATUS=dry-run")
         return 0
 
-    idempotency_key = f"fast:{meta.project_id}:{task_key}"
-    command = [
-        HERMES_CLI,
-        "kanban",
-        "--board",
-        meta.board,
-        "create",
-        args.title,
-        "--body",
-        body,
-        "--assignee",
-        meta.coder,
-        "--workspace",
-        f"dir:{repo}",
-        "--created-by",
-        "coder-fast-flow",
-        "--idempotency-key",
-        idempotency_key,
-        "--skill",
-        "dev-implement-plan",
-        "--json",
-    ]
+    command = [HERMES_CLI, "kanban", "--board", meta.board, "create", args.title, "--body", body, "--assignee", meta.coder, "--workspace", f"dir:{repo}", "--created-by", "coder-fast-flow", "--idempotency-key", f"fast:{meta.project_id}:{task_key}", "--skill", "dev-implement-plan", "--json"]
     result = run(command)
     print(result.stdout.rstrip())
     print("STATUS=created")
