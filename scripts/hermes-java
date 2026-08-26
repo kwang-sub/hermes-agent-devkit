@@ -28,6 +28,7 @@ if [ -z "${JAVA_HOME:-}" ] || [ ! -x "$JAVA_HOME/bin/java" ]; then
   exit 2
 fi
 
+
 export JAVA_HOME
 export PATH="$JAVA_HOME/bin:$PATH"
 exec "$@"
