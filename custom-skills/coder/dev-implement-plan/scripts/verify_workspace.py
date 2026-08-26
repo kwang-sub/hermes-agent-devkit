@@ -15,6 +15,15 @@ def run(cmd: list[str], check=True):
         raise GuardError((p.stderr or p.stdout).strip() or "command failed")
     return p
 
+def ensure_safe_directory(path: Path) -> None:
+    resolved = str(path.resolve())
+    current = run(["git", "config", "--global", "--get-all", "safe.directory"], check=False)
+    configured = {line.strip() for line in current.stdout.splitlines() if line.strip()}
+    if resolved not in configured:
+        added = run(["git", "config", "--global", "--add", "safe.directory", resolved], check=False)
+        if added.returncode != 0:
+            raise GuardError((added.stderr or added.stdout).strip() or f"cannot register safe.directory: {resolved}")
+
 def resolve_base_sha(root: Path, value: str) -> str:
     if not re.fullmatch(r"[0-9a-fA-F]{40}", value):
         raise GuardError("base SHA must be a full 40-character hexadecimal commit ID")
@@ -33,6 +42,7 @@ def main():
     args = ap.parse_args()
 
     workspace = Path(args.workspace or ".").resolve()
+    ensure_safe_directory(workspace)
     top = run(["git", "-C", str(workspace), "rev-parse", "--show-toplevel"]).stdout.strip()
     root = Path(top).resolve()
     if root != workspace:
@@ -62,6 +72,7 @@ def main():
     print(f"BRANCH={branch}")
     print(f"BASE_SHA={base_sha}")
     print(f"TASK_KEY={args.task_key}")
+    print("GIT_SAFE_DIRECTORY=true")
     print("GIT_WORKSPACE=true")
     print("STATUS=valid")
     return 0

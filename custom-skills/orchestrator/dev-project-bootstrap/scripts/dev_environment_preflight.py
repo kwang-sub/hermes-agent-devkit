@@ -65,6 +65,20 @@ def require_tool(name: str) -> None:
         raise PreflightError(f"required development tool is not available on PATH: {name}")
 
 
+def ensure_safe_directory(requested: Path) -> None:
+    resolved = str(requested.resolve())
+    current = run(["git", "config", "--global", "--get-all", "safe.directory"], check=False)
+    configured = {line.strip() for line in current.stdout.splitlines() if line.strip()}
+    if resolved not in configured:
+        added = run(["git", "config", "--global", "--add", "safe.directory", resolved], check=False)
+        if added.returncode != 0:
+            detail = (added.stderr or added.stdout).strip()
+            raise PreflightError(f"cannot register Git safe.directory for {resolved}: {detail}")
+        print(f"[UPDATE] Git safe.directory: {resolved}")
+    else:
+        print(f"[OK] Git safe.directory: {resolved}")
+
+
 def resolve_repo(value: str) -> Path:
     requested = Path(value)
     if not requested.is_absolute():
@@ -72,9 +86,11 @@ def resolve_repo(value: str) -> Path:
     if not requested.is_dir():
         raise PreflightError(f"repository path does not exist or is not a directory: {requested}")
 
+    ensure_safe_directory(requested)
     result = run(["git", "-C", str(requested), "rev-parse", "--show-toplevel"], check=False)
     if result.returncode != 0:
-        raise PreflightError(f"not a Git repository: {requested}")
+        detail = (result.stderr or result.stdout).strip()
+        raise PreflightError(f"not a Git repository: {requested}: {detail}")
 
     root = Path(result.stdout.strip()).resolve()
     if root != requested.resolve():
@@ -82,6 +98,37 @@ def resolve_repo(value: str) -> Path:
             f"--repo must point at the Git repository root; requested={requested.resolve()}, root={root}"
         )
     return root
+
+
+def _nonempty_lines(text: str) -> list[str]:
+    return [line for line in text.splitlines() if line.strip()]
+
+
+def inspect_git_changes(repo: Path) -> tuple[list[str], list[str]]:
+    """Return effective user changes and tracked EOL-only noise.
+
+    Windows bind mounts often contain CRLF working-tree files while the Git index
+    stores LF. Linux Git may report those files as modified even though the host
+    checkout is clean. Treat a tracked unstaged change as effective only when it
+    survives --ignore-cr-at-eol. Staged and untracked changes are always real.
+    """
+    normal = _nonempty_lines(run([
+        "git", "-C", str(repo), "diff", "--name-only",
+    ]).stdout)
+    effective_unstaged = _nonempty_lines(run([
+        "git", "-C", str(repo), "diff", "--name-only", "--ignore-cr-at-eol",
+    ]).stdout)
+    staged = _nonempty_lines(run([
+        "git", "-C", str(repo), "diff", "--cached", "--name-only",
+    ]).stdout)
+    untracked = _nonempty_lines(run([
+        "git", "-C", str(repo), "ls-files", "--others", "--exclude-standard",
+    ]).stdout)
+
+    effective_set = set(effective_unstaged) | set(staged) | set(untracked)
+    eol_only = sorted(set(normal) - set(effective_unstaged) - set(staged))
+    effective = sorted(effective_set)
+    return effective, eol_only
 
 
 def assert_repository_writable(repo: Path) -> None:
@@ -206,9 +253,6 @@ def gradle_wrapper_version(repo: Path) -> tuple[int, int] | None:
 def select_runtime_java(repo: Path, build_type: str, target_java: int) -> tuple[int, list[str]]:
     warnings: list[str] = []
     runtime_java = target_java
-
-    # Gradle 9 requires a Java 17+ runtime even when the project still compiles
-    # Java 8 bytecode. Keep target and build-runtime Java separate in that case.
     wrapper_version = gradle_wrapper_version(repo) if build_type == "gradle" else None
     if wrapper_version and wrapper_version[0] >= 9 and runtime_java < 17:
         runtime_java = 17
@@ -216,7 +260,6 @@ def select_runtime_java(repo: Path, build_type: str, target_java: int) -> tuple[
             f"Gradle {wrapper_version[0]}.{wrapper_version[1]} requires a newer build runtime; "
             f"using Java 17 to build Java {target_java} target sources."
         )
-
     return runtime_java, warnings
 
 
@@ -228,7 +271,6 @@ def validate_java_home(version: int) -> Path:
         raise PreflightError(f"Java {version} runtime is missing from DevKit image: {java}")
     if not javac.is_file() or not os.access(javac, os.X_OK):
         raise PreflightError(f"Java {version} compiler is missing from DevKit image: {javac}")
-
     java_result = run([str(java), "-version"], check=False)
     javac_result = run([str(javac), "-version"], check=False)
     if java_result.returncode != 0 or javac_result.returncode != 0:
@@ -246,7 +288,6 @@ def write_toolchain_env(repo: Path, target_java: int, runtime_java: int, java_ho
             raise PreflightError(
                 f"existing toolchain file is not managed by dev-project-bootstrap; refusing overwrite: {path}"
             )
-
     content = "\n".join([
         TOOLCHAIN_MARKER,
         f"HERMES_PROJECT_JAVA_TARGET={target_java}",
@@ -263,7 +304,6 @@ def configure_java_toolchain(repo: Path, build_type: str) -> tuple[str, list[str
     if build_type not in {"gradle", "maven"}:
         print("[SKIP] Java toolchain: no Gradle/Maven project detected")
         return "none", []
-
     target_java, warnings = detect_java_target(repo, build_type)
     runtime_java, runtime_warnings = select_runtime_java(repo, build_type, target_java)
     warnings.extend(runtime_warnings)
@@ -276,7 +316,6 @@ def _rule_state(lines: list[str], pattern: str, expected_eol: str) -> tuple[bool
     desired = False
     conflicts: list[str] = []
     expected = expected_eol.split("eol=", 1)[1]
-
     for raw in lines:
         stripped = raw.strip()
         if not stripped or stripped.startswith("#"):
@@ -284,14 +323,12 @@ def _rule_state(lines: list[str], pattern: str, expected_eol: str) -> tuple[bool
         parts = stripped.split()
         if not parts or parts[0] != pattern:
             continue
-
         attrs = parts[1:]
         if "text" in attrs and f"eol={expected}" in attrs:
             desired = True
         for attr in attrs:
             if attr.startswith("eol=") and attr != f"eol={expected}":
                 conflicts.append(stripped)
-
     return desired, conflicts
 
 
@@ -300,7 +337,6 @@ def ensure_gitattributes(repo: Path) -> str:
     original = path.read_text(encoding="utf-8") if path.exists() else ""
     lines = original.splitlines()
     missing: list[str] = []
-
     for pattern, attributes in GIT_ATTRIBUTES_RULES:
         desired, conflicts = _rule_state(lines, pattern, attributes)
         if conflicts:
@@ -311,11 +347,9 @@ def ensure_gitattributes(repo: Path) -> str:
             )
         if not desired:
             missing.append(f"{pattern} {attributes}")
-
     if not missing:
         print(f"[OK] .gitattributes EOL policy: {path}")
         return "unchanged"
-
     block = ["# Hermes development defaults", *missing]
     if original:
         updated = original.rstrip("\r\n") + "\n\n" + "\n".join(block) + "\n"
@@ -323,7 +357,6 @@ def ensure_gitattributes(repo: Path) -> str:
     else:
         updated = "\n".join(block) + "\n"
         action = "created"
-
     path.write_text(updated, encoding="utf-8", newline="\n")
     print(f"[{action.upper()}] .gitattributes EOL policy: {path}")
     return action
@@ -334,12 +367,10 @@ def inspect_wrapper_eol(repo: Path, build_type: str) -> list[str]:
     wrapper_name = "gradlew" if build_type == "gradle" else "mvnw" if build_type == "maven" else ""
     if not wrapper_name:
         return warnings
-
     wrapper = repo / wrapper_name
     if not wrapper.is_file():
         warnings.append(f"{build_type} project detected but {wrapper_name} is missing")
         return warnings
-
     data = wrapper.read_bytes()
     if b"\r\n" in data:
         warnings.append(
@@ -361,6 +392,11 @@ def main() -> int:
     print(f"Repository : {repo}")
 
     assert_repository_writable(repo)
+    effective_before, eol_only_before = inspect_git_changes(repo)
+    print(f"[OK] Effective Git changes before bootstrap: {len(effective_before)}")
+    if eol_only_before:
+        print(f"[INFO] Ignoring {len(eol_only_before)} tracked EOL-only change(s) from Windows bind mount")
+
     build_type = detect_build(repo)
     print(f"Build      : {build_type}")
     toolchain_file, warnings = configure_java_toolchain(repo, build_type)
@@ -370,6 +406,7 @@ def main() -> int:
         gitattributes = ensure_gitattributes(repo)
 
     warnings.extend(inspect_wrapper_eol(repo, build_type))
+    effective_after, eol_only_after = inspect_git_changes(repo)
     for warning in warnings:
         print(f"[WARN] {warning}")
 
@@ -377,6 +414,9 @@ def main() -> int:
     print(f"BUILD_TYPE={build_type}")
     print(f"TOOLCHAIN_FILE={toolchain_file}")
     print(f"GITATTRIBUTES={gitattributes}")
+    print(f"EFFECTIVE_DIRTY={'true' if bool(effective_after) else 'false'}")
+    print(f"EFFECTIVE_CHANGE_COUNT={len(effective_after)}")
+    print(f"EOL_ONLY_CHANGE_COUNT={len(eol_only_after)}")
     print(f"WARNINGS={len(warnings)}")
     print("PREFLIGHT_STATUS=ready" if not warnings else "PREFLIGHT_STATUS=ready-with-warnings")
     return 0

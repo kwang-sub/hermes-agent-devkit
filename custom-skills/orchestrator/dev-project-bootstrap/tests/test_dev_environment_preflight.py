@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
@@ -11,6 +12,10 @@ SPEC = importlib.util.spec_from_file_location("dev_environment_preflight", SCRIP
 assert SPEC and SPEC.loader
 preflight = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(preflight)
+
+
+def git(cmd: list[str], repo: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", *cmd], cwd=repo, text=True, capture_output=True)
 
 
 class GitAttributesPreflightTest(unittest.TestCase):
@@ -63,6 +68,43 @@ class GitAttributesPreflightTest(unittest.TestCase):
             self.assertEqual(1, len(warnings))
             self.assertIn("CRLF", warnings[0])
             self.assertEqual(b"#!/bin/sh\r\necho ok\r\n", wrapper.read_bytes())
+
+
+class GitChangeClassificationTest(unittest.TestCase):
+    def make_repo(self, root: Path) -> Path:
+        repo = root / "repo"
+        repo.mkdir()
+        git(["init", "-b", "dev"], repo)
+        git(["config", "user.email", "test@example.invalid"], repo)
+        git(["config", "user.name", "Preflight Test"], repo)
+        git(["config", "core.autocrlf", "false"], repo)
+        (repo / "app.txt").write_text("baseline\n", encoding="utf-8")
+        git(["add", "app.txt"], repo)
+        result = git(["commit", "-m", "baseline"], repo)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr or result.stdout)
+        return repo
+
+    def test_ignores_crlf_only_tracked_change(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self.make_repo(Path(tmp))
+            (repo / "app.txt").write_bytes(b"baseline\r\n")
+
+            effective, eol_only = preflight.inspect_git_changes(repo)
+
+            self.assertEqual([], effective)
+            self.assertEqual(["app.txt"], eol_only)
+
+    def test_keeps_real_and_untracked_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self.make_repo(Path(tmp))
+            (repo / "app.txt").write_text("real change\n", encoding="utf-8")
+            (repo / "new.txt").write_text("new\n", encoding="utf-8")
+
+            effective, eol_only = preflight.inspect_git_changes(repo)
+
+            self.assertEqual(["app.txt", "new.txt"], effective)
+            self.assertEqual([], eol_only)
 
 
 class JavaToolchainDetectionTest(unittest.TestCase):

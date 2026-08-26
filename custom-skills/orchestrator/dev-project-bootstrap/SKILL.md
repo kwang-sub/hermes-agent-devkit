@@ -1,12 +1,12 @@
 ---
 name: dev-project-bootstrap
 description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, 개발환경 preflight·프로젝트 Java toolchain·EOL 정책·공유 Kanban Board·Profile Binding·Context·.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
-version: 0.4.0
+version: 0.4.1
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, project, bootstrap, kanban, context, orchestration, resolver, preflight, eol, java, toolchain]
+    tags: [dev, project, bootstrap, kanban, context, orchestration, resolver, preflight, eol, java, toolchain, git]
     requires_tools: [terminal]
 ---
 
@@ -16,7 +16,9 @@ metadata:
 
 핵심 원칙:
 - 개발환경 preflight를 Project/Board 변경보다 먼저 실행한다.
+- Repository를 Hermes runtime user의 Git `safe.directory`에 idempotent하게 등록한다.
 - Repository 실제 쓰기 가능 여부를 확인한다.
+- Windows bind mount에서 raw `git status`의 CRLF/LF noise를 실제 사용자 변경과 구분한다.
 - Gradle/Maven 프로젝트의 Java target을 감지하고 DevKit의 JDK 8/17/21 중 적절한 runtime을 선택한다.
 - 프로젝트 build file을 Java toolchain 선택을 위해 임의 수정하지 않는다.
 - 선택 결과는 `.hermes/toolchain.env`에 기록한다.
@@ -27,9 +29,11 @@ metadata:
 ## 1. 책임 범위
 
 ```text
+Git safe.directory ensure
 Git repository validation
 Development environment preflight
 Workspace write validation
+Effective Git dirty/EOL-noise classification
 Gradle/Maven detection
 Java target detection
 JDK 8/17/21 runtime selection
@@ -63,15 +67,30 @@ Gradle/Maven은 전역 설치하지 않고 Repository의 `gradlew`/`mvnw`를 사
 
 ```text
 1. git / python3 확인
-2. --repo가 정확한 Git root인지 확인
-3. Repository root write probe
-4. Gradle/Maven 프로젝트 유형 감지
-5. Java target 감지
-6. DevKit JDK 8/17/21 중 runtime 선택 및 java/javac self-check
-7. .hermes/toolchain.env 생성/갱신
-8. .gitattributes 생성/보강
-9. gradlew/mvnw 현재 EOL 확인
+2. --repo 경로를 Git safe.directory에 등록
+3. --repo가 정확한 Git root인지 확인
+4. Repository root write probe
+5. effective Git changes와 EOL-only noise 분리
+6. Gradle/Maven 프로젝트 유형 감지
+7. Java target 감지
+8. DevKit JDK 8/17/21 중 runtime 선택 및 java/javac self-check
+9. .hermes/toolchain.env 생성/갱신
+10. .gitattributes 생성/보강
+11. gradlew/mvnw 현재 EOL 확인
 ```
+
+Windows Host의 bind mount는 Host checkout이 CRLF이고 Git index가 LF인 경우 Linux Git의 raw `git status`에서 대량 `M`으로 보일 수 있다. 이 숫자만으로 dirty workspace를 판정하거나 사용자에게 중단 확인을 요청하지 않는다.
+
+Effective change 규칙:
+
+```text
+unstaged tracked -> git diff --ignore-cr-at-eol 에 남는 변경만 실제 변경
+staged            -> 항상 실제 변경
+untracked         -> 항상 실제 변경
+CRLF/LF-only      -> EOL-only noise로 집계, 실제 dirty에서는 제외
+```
+
+Bootstrap은 이 분류를 위해 reset/restore/checkout/renormalize를 실행하지 않는다.
 
 Java target 감지 근거 예:
 
@@ -184,6 +203,7 @@ bootstrap_project.py
 다음 경우 중단한다.
 
 - Repo Path 오류 / Git root 불일치
+- Git safe.directory 등록 실패
 - Repository가 Hermes runtime user에게 writable하지 않음
 - 감지된 Java target 값이 서로 충돌
 - 감지된 Java target이 DevKit 지원 범위(8/17/21) 밖임
@@ -222,6 +242,7 @@ CLAUDE.md
 - Java version/toolchain을 맞추기 위한 Application build file 임의 수정
 - `.gitattributes` 충돌 정책 자동 덮어쓰기
 - 전체 Repository 자동 renormalize
+- EOL noise 제거 목적으로 reset/restore/checkout 수행
 - Task 중 JDK/Gradle/Maven 임의 설치
 - Resolver 값 자동 추론
 - Source-system Mapping 자동 생성
@@ -237,6 +258,9 @@ Preflight:
 BUILD_TYPE=gradle|maven|other
 TOOLCHAIN_FILE=/workspace/.../.hermes/toolchain.env|none
 GITATTRIBUTES=created|updated|unchanged|skipped
+EFFECTIVE_DIRTY=true|false
+EFFECTIVE_CHANGE_COUNT=...
+EOL_ONLY_CHANGE_COUNT=...
 WARNINGS=0
 PREFLIGHT_STATUS=ready
 ```
@@ -259,7 +283,10 @@ STATUS=ready
 ## 11. 권장 검증
 
 ```text
+safe.directory registration is idempotent
 workspace write probe succeeds
+CRLF-only tracked changes are EOL noise, not effective dirty
+real tracked/staged/untracked changes remain effective dirty
 Java 8/17/21 target detection works
 selected JDK java/javac self-check succeeds
 .hermes/toolchain.env is idempotent
