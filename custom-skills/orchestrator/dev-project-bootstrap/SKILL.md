@@ -1,12 +1,12 @@
 ---
 name: dev-project-bootstrap
-description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, 공유 Kanban Board·Profile Binding·Context·.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
-version: 0.2.1
+description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, 개발환경 preflight·공유 Kanban Board·Profile Binding·Context·.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
+version: 0.3.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, project, bootstrap, kanban, context, orchestration, resolver]
+    tags: [dev, project, bootstrap, kanban, context, orchestration, resolver, preflight, eol]
     requires_tools: [terminal]
 ---
 
@@ -16,12 +16,15 @@ metadata:
 
 이 Skill은 idempotent하게 동작한다.
 
+- 개발환경 preflight를 먼저 실행한다.
+- Repository가 실제로 쓰기 가능한지 확인한다.
+- Gradle/Maven 프로젝트면 Java/Javac 사용 가능 여부를 확인한다.
+- `.gitattributes`의 Hermes 권장 EOL 규칙을 보장한다.
 - 이미 유효한 Project/Board 상태는 재사용한다.
 - 빠진 Hermes 상태만 생성한다.
-- 충돌하는 Identity는 Block한다.
+- 충돌하는 Identity 또는 EOL 정책은 Block한다.
 - 사용자가 관리하는 Resolver Metadata는 보존한다.
 - Legacy/Source-specific Metadata도 보존한다.
-- Application Source Code는 수정하지 않는다.
 
 이 Skill은 Application Repository 자체를 새로 만드는 기능이 아니다.
 
@@ -29,10 +32,14 @@ metadata:
 
 # 1. 책임 범위
 
-`dev-project-bootstrap`은 Project Infrastructure만 관리한다.
+`dev-project-bootstrap`은 Project Infrastructure와 Hermes 개발 준비 상태를 관리한다.
 
 ```text
 Git repository validation
+Development environment preflight
+Workspace write validation
+Java toolchain validation for Gradle/Maven projects
+.gitattributes EOL policy ensure
 Hermes Project registration
 Kanban Board ensure
 Profile bindings
@@ -53,18 +60,80 @@ source project-key mappings
 Work Item fetching
 repository resolution
 implementation analysis
+JDK/Gradle/Maven installation at task time
+tracked-file mass renormalization
 ```
 
-이 영역은 `dev-work-intake`, `dev-project-resolve` 등 별도 Skill 책임이다.
+JDK와 공통 개발 도구는 DevKit Docker image가 제공해야 한다. Gradle/Maven 프로젝트는 전역 설치본보다 Repository의 `gradlew`/`mvnw`를 우선한다.
 
 ---
 
-# 2. 표준 결과
+# 2. Development Environment Preflight
+
+Project/Board를 변경하기 전에 다음을 검사한다.
+
+```text
+1. git / python3 존재
+2. --repo가 정확한 Git root인지 확인
+3. Repository root에 임시 파일을 생성/삭제해 write 가능 여부 확인
+4. Gradle/Maven 프로젝트 유형 감지
+5. Gradle/Maven 프로젝트이면 java / javac 확인
+6. .gitattributes 생성/보강
+7. gradlew/mvnw 현재 EOL 확인
+```
+
+Preflight 실패 시 Project/Board Bootstrap을 시작하지 않는다.
+
+실행:
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/dev_environment_preflight.py" \
+  --repo "/workspace/dashboard"
+```
+
+일반 Bootstrap에서는 직접 실행하지 않고 `bootstrap.py` launcher가 먼저 호출한다.
+
+---
+
+# 3. `.gitattributes` 정책
+
+Repository에 다음 규칙을 보장한다.
+
+```gitattributes
+gradlew text eol=lf
+mvnw text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+```
+
+처리 규칙:
+
+```text
+.gitattributes 없음
+  -> 생성
+
+파일 있음 + 필요한 규칙 없음
+  -> 기존 내용 보존 후 필요한 규칙만 추가
+
+같은 pattern에 충돌하는 eol 규칙 존재
+  -> 자동 덮어쓰기 금지
+  -> Bootstrap Block
+```
+
+`git add --renormalize .` 같은 전체 Repository renormalize는 자동 실행하지 않는다.
+
+이미 checkout된 `gradlew`/`mvnw`가 CRLF이면 경고만 출력한다. Repository 정책 변경과 기존 tracked file의 대량 변경을 하나의 Bootstrap 작업에서 섞지 않는다.
+
+---
+
+# 4. 표준 결과
 
 성공 후 Repository:
 
 ```text
 <repo>/
+├─ .gitattributes
 ├─ <active context file>
 └─ .hermes/
    └─ project.yaml
@@ -94,7 +163,7 @@ reviewer
 
 ---
 
-# 3. Canonical `.hermes/project.yaml`
+# 5. Canonical `.hermes/project.yaml`
 
 신규 Managed Project의 기본 구조:
 
@@ -126,9 +195,7 @@ resolver:
   paths: []
 ```
 
-Section별 소유권이 다르다.
-
-## Bootstrap 관리 영역
+Bootstrap 관리 영역:
 
 ```text
 version
@@ -138,42 +205,19 @@ git
 profiles
 ```
 
-Bootstrap이 필요한 경우 이 값을 수렴시킬 수 있다.
-
-## 사용자 관리 영역
+사용자 관리 영역:
 
 ```text
 resolver
 ```
 
-Bootstrap은 `resolver:` Section이 없을 때만 빈 Skeleton을 생성한다.
-
-그 이후 값은 **사용자가 직접 편집**한다.
-
-예:
-
-```yaml
-resolver:
-  aliases:
-    - XCommServer
-    - xcomm-server
-
-  modules:
-    - XCommServer
-
-  files:
-    - properties.cfg
-
-  paths: []
-```
-
-재실행 시 Bootstrap은 Resolver 값을 추론·추가·삭제·정렬·교체하지 않는다.
+Bootstrap은 `resolver:` Section이 없을 때만 빈 Skeleton을 생성한다. 그 이후 Resolver 값은 사용자가 직접 관리한다.
 
 ---
 
-# 4. Source-specific Metadata
+# 6. Source-specific Metadata
 
-Bootstrap v0.2.x는 다음 Section을 새로 만들지 않는다.
+Bootstrap은 다음 Section을 새로 만들지 않는다.
 
 ```yaml
 jira:
@@ -187,21 +231,9 @@ work_sources:
 
 기존 Managed `project.yaml`에 Legacy/Source-specific Section이 이미 있으면 Additional Top-level Metadata로 그대로 보존한다.
 
-예:
-
-```yaml
-jira:
-  project_keys:
-    - POBA
-```
-
-Bootstrap 재실행 시 이 값을 삭제하지 않고, 새로운 Jira Mapping도 만들지 않는다.
-
-Source-specific Migration이 필요하면 별도 명시적 Workflow에서 수행한다.
-
 ---
 
-# 5. 입력
+# 7. 입력
 
 필수:
 
@@ -224,25 +256,23 @@ description
 common_context
 ```
 
-의도적으로 `--jira-key`나 Resolver 값 입력용 CLI Option은 제공하지 않는다.
-
 Resolver 값은 사용자가 `.hermes/project.yaml`에서 직접 관리한다.
 
 ---
 
-# 6. 실행
+# 8. 실행
 
-일반 실행:
+일반 실행은 반드시 launcher를 사용한다.
 
 ```bash
-python3 "${HERMES_SKILL_DIR}/scripts/bootstrap_project.py" \
+python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
   --repo "/workspace/dashboard"
 ```
 
 명시 실행:
 
 ```bash
-python3 "${HERMES_SKILL_DIR}/scripts/bootstrap_project.py" \
+python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
   --repo "/workspace/xcomm-server-jre17" \
   --project-id "xcomm-server-jre17" \
   --name "XCommServer" \
@@ -250,17 +280,28 @@ python3 "${HERMES_SKILL_DIR}/scripts/bootstrap_project.py" \
   --base "dev"
 ```
 
-`dev-workflow-orchestrate`에서 Managed Project가 아닌 Repository를 Bootstrap할 때는 **사용자가 정확한 Repository를 명시했고 Bootstrap을 승인한 경우에만** 호출한다.
+`bootstrap.py` 실행 순서:
+
+```text
+dev_environment_preflight.py
+        ↓ success
+bootstrap_project.py
+```
+
+`dev-workflow-orchestrate`에서 Managed Project가 아닌 Repository를 Bootstrap할 때는 사용자가 정확한 Repository를 명시했고 Bootstrap을 승인한 경우에만 호출한다.
 
 ---
 
-# 7. Repository 검증
+# 9. Repository 검증 / Block 조건
 
 다음 경우 중단한다.
 
 - Repo Path가 절대경로가 아님
 - Path가 존재하지 않음
 - Git Repository Root가 아님
+- Repository가 Hermes runtime user에게 writable하지 않음
+- Gradle/Maven 프로젝트인데 `java` 또는 `javac`가 없음
+- `.gitattributes`에 Hermes EOL 정책과 충돌하는 규칙이 있음
 - 요청 Base가 Commit으로 Resolve되지 않음
 - Common Context Source가 없음
 - 기존 Managed Core Metadata가 요청 Identity와 충돌
@@ -268,21 +309,17 @@ python3 "${HERMES_SKILL_DIR}/scripts/bootstrap_project.py" \
 - 필수 Profile이 없음
 - Hermes CLI 동작 실패
 
-다른 Repository로 탐색 범위를 넓히지 않는다.
-
-특히 아직 Initial Commit이 없어 Base Branch가 Commit으로 Resolve되지 않으면 Bootstrap이 Commit을 대신 생성하지 않는다.
+Java/JDK가 없을 때 Agent가 작업 중 JDK를 다운로드하거나 Windows host Java를 탐색해서 우회하지 않는다. DevKit image를 수정한 뒤 재실행한다.
 
 ---
 
-# 8. Kanban / Project Ensure
+# 10. Kanban / Project Ensure
 
 Board:
 
 - 기존 Board가 있으면 재사용
 - 없으면 생성
 - Bootstrap 중 삭제/이름변경 금지
-
-Project State는 Profile별로 관리된다.
 
 필수 Role Profile마다:
 
@@ -294,7 +331,7 @@ Project State는 Profile별로 관리된다.
 
 ---
 
-# 9. Context File
+# 11. Context File
 
 Repository Root의 Context는 다음 우선순위로 선택한다.
 
@@ -306,35 +343,13 @@ CLAUDE.md
 .cursorrules
 ```
 
-없으면 다음을 생성한다.
-
-```text
-AGENTS.md
-```
-
-Managed Block:
-
-```text
-<!-- HERMES-COMMON:START -->
-...
-<!-- HERMES-COMMON:END -->
-```
-
-그리고:
-
-```text
-<!-- HERMES-PROJECT:START -->
-...
-<!-- HERMES-PROJECT:END -->
-```
+없으면 `AGENTS.md`를 생성한다.
 
 Managed Block 밖의 기존 내용은 보존한다.
 
-Project Block에는 Resolver 값이 User-managed이며 자동 추론하면 안 된다는 정책을 포함한다.
-
 ---
 
-# 10. Metadata 보존 계약
+# 12. Metadata 보존 계약
 
 `.hermes/project.yaml`이 이미 있고 상단에 다음 Marker가 있으면:
 
@@ -355,48 +370,14 @@ Helper는:
 
 ---
 
-# 11. Resolver Workflow
-
-최초 Bootstrap:
-
-```text
-dev-project-bootstrap
-        ↓
-resolver skeleton:
-  aliases: []
-  modules: []
-  files: []
-  paths: []
-```
-
-그 후 사용자가 직접:
-
-```text
-.hermes/project.yaml
-```
-
-에 안정적인 Project Identity를 추가한다.
-
-권장 값:
-
-```text
-aliases
-modules
-distinctive files
-stable paths
-```
-
-단일 Ticket을 억지로 Match시키기 위한 일회성 Issue 문구나 Customer Name을 추가하지 않는다.
-
-Resolver Metadata가 준비되면 `dev-project-resolve`가 Managed Project Metadata만을 기준으로 Work Item과 매칭한다.
-
----
-
-# 12. 안전 규칙
+# 13. 안전 규칙
 
 절대 하지 않는다.
 
-- Application Source 수정
+- Application Source Code 임의 수정
+- `.gitattributes` 충돌 정책 자동 덮어쓰기
+- 전체 Repository 자동 renormalize
+- Task 중 JDK/Gradle/Maven 임의 설치
 - Resolver 값 자동 추론
 - Resolver 생성을 위한 Source Scan
 - Source-system Mapping 자동 생성
@@ -405,13 +386,22 @@ Resolver Metadata가 준비되면 `dev-project-resolve`가 Managed Project Metad
 - Unmanaged Metadata 덮어쓰기
 - Legacy/Custom Top-level Metadata 삭제
 
-Project ID와 Board Slug는 안정적인 Identity로 취급한다.
+예외적으로 `.gitattributes`는 Hermes 개발환경 호환성을 위해 Bootstrap 관리 대상이며, 기존 내용은 보존하고 필요한 비충돌 규칙만 추가한다.
 
 ---
 
-# 13. 예상 출력
+# 14. 예상 출력
 
-성공:
+Preflight:
+
+```text
+BUILD_TYPE=gradle|maven|other
+GITATTRIBUTES=created|updated|unchanged|skipped
+WARNINGS=0
+PREFLIGHT_STATUS=ready
+```
+
+Bootstrap 성공:
 
 ```text
 PROJECT_ID=...
@@ -428,39 +418,19 @@ STATUS=ready
 
 ---
 
-# 14. 권장 검증
+# 15. 권장 검증
 
-## 기존 프로젝트 재실행
-
-예: `dashboard`
-
-기대:
+신규/기존 Repository 모두 다음을 확인한다.
 
 ```text
-existing Project reused
-existing Board reused
-existing resolver values preserved
+workspace write probe succeeds
+java/javac available for Gradle/Maven
+.gitattributes rules are idempotent
+existing .gitattributes contents are preserved
+conflicting EOL rule blocks without overwrite
+gradlew/mvnw CRLF is reported without mass renormalization
+existing Project/Board reused
+resolver values preserved
 legacy/custom metadata preserved
 no duplicate Project/Board
 ```
-
-## 신규 Managed Repository
-
-실제 Git Repository 하나를 Bootstrap한다.
-
-기대:
-
-```text
-.hermes/project.yaml created
-resolver empty skeleton created
-```
-
-그 후 사용자가 `resolver:`를 수정하고 Bootstrap을 다시 실행한다.
-
-기대:
-
-```text
-resolver values unchanged
-```
-
-이 보존 검증은 많은 Repository에 적용하기 전에 반드시 확인한다.
