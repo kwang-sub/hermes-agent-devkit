@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +19,16 @@ def forbid(text: str, terms: tuple[str, ...], label: str) -> None:
     present = [term for term in terms if term in text]
     if present:
         raise SystemExit(f"{label} contains forbidden destructive terms: {', '.join(present)}")
+
+
+def executable_text(text: str) -> str:
+    without_help = re.sub(r"<#.*?#>", "", text, flags=re.DOTALL)
+    lines = [
+        line
+        for line in without_help.splitlines()
+        if not line.lstrip().startswith("#")
+    ]
+    return "\n".join(lines)
 
 
 def main() -> int:
@@ -53,8 +64,9 @@ def main() -> int:
 
     # Persistent auth/profile/session/Kanban state must never be destroyed by an
     # ordinary update. Local source must also never be rewritten automatically.
+    executable = executable_text(text).lower()
     forbid(
-        text.lower(),
+        executable,
         (
             "compose down -v",
             '"down", "-v"',
