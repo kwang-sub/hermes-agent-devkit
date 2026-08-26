@@ -65,9 +65,13 @@ function Invoke-NativeCapture {
 
 function Get-CapturedText {
     param(
-        [Parameter(Mandatory = $true)]
-        [object[]]$Output
+        [AllowNull()]
+        [object]$Output
     )
+
+    if ($null -eq $Output) {
+        return ""
+    }
 
     return ((@($Output) | ForEach-Object { [string]$_ }) -join [Environment]::NewLine).Trim()
 }
@@ -108,7 +112,7 @@ function Test-ContainerRunning {
         return $false
     }
 
-    return (Get-CapturedText -Output @($Output)).ToLowerInvariant() -eq "true"
+    return (Get-CapturedText -Output $Output).ToLowerInvariant() -eq "true"
 }
 
 function Invoke-RuntimeVerification {
@@ -223,8 +227,6 @@ try {
         }
     }
 
-    # These files are copied into the image by the current Dockerfile contract.
-    # Dockerfile/.dockerignore changes also require a new image.
     $ImageBuildInputs = @(
         "Dockerfile",
         ".dockerignore",
@@ -236,8 +238,6 @@ try {
         (Test-AnyPathMatch -Paths $ChangedFiles -ExactPaths $ImageBuildInputs)
     $RecreateRequired = $BuildRequired -or ($ChangedFiles -contains "compose.yml")
 
-    # A Compose default base-image change is also an image-build change even if
-    # Dockerfile itself did not change.
     if (-not $BuildRequired -and $ChangedFiles -contains "compose.yml" -and $BeforeSha -ne $AfterSha) {
         $ComposeDiff = Get-CapturedText -Output (Invoke-NativeCapture -FilePath "git" -Arguments @(
             "diff", "--unified=0", $BeforeSha, $AfterSha, "--", "compose.yml"
