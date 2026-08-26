@@ -33,10 +33,23 @@ def run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess[st
     return result
 
 
+def ensure_safe_directory(path: Path) -> None:
+    resolved = str(path.resolve())
+    current = run(["git", "config", "--global", "--get-all", "safe.directory"], check=False)
+    configured = {line.strip() for line in current.stdout.splitlines() if line.strip()}
+    if resolved not in configured:
+        added = run(["git", "config", "--global", "--add", "safe.directory", resolved], check=False)
+        if added.returncode != 0:
+            detail = (added.stderr or added.stdout).strip()
+            raise FastFlowError(f"cannot register Git safe.directory for {resolved}: {detail}")
+
+
 def resolve_git_root(path: Path) -> Path:
+    ensure_safe_directory(path)
     result = run(["git", "-C", str(path), "rev-parse", "--show-toplevel"], check=False)
     if result.returncode != 0:
-        raise FastFlowError(f"workspace is not a Git repository: {path}")
+        detail = (result.stderr or result.stdout).strip()
+        raise FastFlowError(f"workspace is not a Git repository: {path}: {detail}")
     return Path(result.stdout.strip()).resolve()
 
 
@@ -76,9 +89,36 @@ def current_head(repo: Path) -> str:
     return sha
 
 
-def workspace_status(repo: Path) -> list[str]:
-    status = run(["git", "-C", str(repo), "status", "--porcelain=v1", "--untracked-files=all"]).stdout.rstrip()
-    return status.splitlines() if status else []
+def _lines(text: str) -> list[str]:
+    return [line for line in text.splitlines() if line.strip()]
+
+
+def workspace_status(repo: Path) -> tuple[list[str], list[str]]:
+    """Return effective pre-existing changes and tracked EOL-only noise.
+
+    Raw `git status` is unreliable for Windows bind mounts when the host checkout
+    uses CRLF and Linux Git sees the LF-normalized index. Unstaged tracked files
+    only count as real changes when their diff survives --ignore-cr-at-eol.
+    Staged and untracked paths always count as real changes.
+    """
+    normal_unstaged = set(_lines(run([
+        "git", "-C", str(repo), "diff", "--name-only",
+    ]).stdout))
+    effective_unstaged = set(_lines(run([
+        "git", "-C", str(repo), "diff", "--name-only", "--ignore-cr-at-eol",
+    ]).stdout))
+    staged = set(_lines(run([
+        "git", "-C", str(repo), "diff", "--cached", "--name-only",
+    ]).stdout))
+    untracked = set(_lines(run([
+        "git", "-C", str(repo), "ls-files", "--others", "--exclude-standard",
+    ]).stdout))
+
+    changes = [f"M {path}" for path in sorted(effective_unstaged - staged)]
+    changes.extend(f"STAGED {path}" for path in sorted(staged))
+    changes.extend(f"?? {path}" for path in sorted(untracked))
+    eol_only = sorted(normal_unstaged - effective_unstaged - staged)
+    return changes, eol_only
 
 
 def logical_task_key(title: str, base_sha: str) -> str:
@@ -90,7 +130,7 @@ def bullet_lines(values: list[str]) -> str:
     return "\n".join(f"- {value}" for value in values)
 
 
-def build_body(*, task_key: str, goal: str, acceptance: list[str], implementation: list[str], tests: list[str], risks: list[str], reviewer: str, workspace: Path, branch: str, base_sha: str, pre_existing: list[str]) -> str:
+def build_body(*, task_key: str, goal: str, acceptance: list[str], implementation: list[str], tests: list[str], risks: list[str], reviewer: str, workspace: Path, branch: str, base_sha: str, pre_existing: list[str], eol_only_count: int) -> str:
     dirty = bool(pre_existing)
     baseline = bullet_lines(pre_existing) if pre_existing else "- none"
     return f"""Flow: FAST
@@ -138,8 +178,10 @@ Workspace Contract:
 - Base branch: {branch}
 - Base SHA: {base_sha}
 - Workspace dirty at dispatch: {str(dirty).lower()}
-- Pre-existing changes at dispatch:
+- Ignored tracked EOL-only changes at dispatch: {eol_only_count}
+- Pre-existing effective changes at dispatch:
 {baseline}
+- Raw `git status` may contain Windows bind-mount EOL noise; do not use raw modified-file counts as the dirty baseline.
 - Coder must preserve pre-existing user changes and must not reset, restore, clean, or stash them.
 - Coder must not switch branches or create another worktree.
 - Coder must not commit, push, create a PR, or merge during implementation.
@@ -171,12 +213,12 @@ def main() -> int:
     if configured_repo != repo:
         raise FastFlowError(f"project metadata repository mismatch: metadata={configured_repo}, actual={repo}")
 
-    pre_existing = workspace_status(repo)
+    pre_existing, eol_only = workspace_status(repo)
     branch = current_branch(repo)
     base_sha = current_head(repo)
     task_key = logical_task_key(args.title, base_sha)
     risks = args.risk or ["Fast Flow remains valid only while the task is local, unambiguous, and small."]
-    body = build_body(task_key=task_key, goal=args.goal, acceptance=args.acceptance, implementation=args.implementation, tests=args.test, risks=risks, reviewer=meta.reviewer, workspace=repo, branch=branch, base_sha=base_sha, pre_existing=pre_existing)
+    body = build_body(task_key=task_key, goal=args.goal, acceptance=args.acceptance, implementation=args.implementation, tests=args.test, risks=risks, reviewer=meta.reviewer, workspace=repo, branch=branch, base_sha=base_sha, pre_existing=pre_existing, eol_only_count=len(eol_only))
 
     print("=== Fast Flow Dispatch ===")
     print(f"PROJECT={meta.project_id}")
@@ -186,6 +228,8 @@ def main() -> int:
     print(f"BRANCH={branch}")
     print(f"BASE_SHA={base_sha}")
     print(f"WORKSPACE_DIRTY={str(bool(pre_existing)).lower()}")
+    print(f"EFFECTIVE_CHANGE_COUNT={len(pre_existing)}")
+    print(f"EOL_ONLY_CHANGE_COUNT={len(eol_only)}")
     print(f"CODER={meta.coder}")
     print(f"REVIEWER={meta.reviewer}")
 
