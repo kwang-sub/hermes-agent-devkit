@@ -68,16 +68,31 @@ capabilities = (
     "dev-spring-test",
     "dev-api-docs",
 )
+
+if 'target: ${HERMES_CONTAINER_CUSTOM_SKILLS_PATH:-/opt/custom-skills}' not in compose:
+    raise SystemExit("compose.yml missing main read-only custom-skills mount")
+if 'read_only: true' not in compose:
+    raise SystemExit("compose.yml must keep skill mounts read-only")
+
 for skill in capabilities:
     source = f"/coder/{skill}"
-    target = f"/reviewer/{skill}"
+    target = f"${{HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}}/{skill}"
     if source not in compose or target not in compose:
-        raise SystemExit(f"compose.yml missing reviewer capability mount: {skill}")
+        raise SystemExit(f"compose.yml missing separate reviewer capability mount: {skill}")
+
+for skill in ("dev-code-review", "dev-review-cycle"):
+    source = f"/reviewer/{skill}"
+    target = f"${{HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}}/{skill}"
+    if source not in compose or target not in compose:
+        raise SystemExit(f"compose.yml missing separate reviewer role mount: {skill}")
+
+if "/opt/custom-skills}/reviewer/" in compose:
+    raise SystemExit("compose.yml still nests reviewer mounts under the read-only custom-skills bind")
 
 review = Path("custom-skills/reviewer/dev-code-review/SKILL.md").read_text(encoding="utf-8")
 for skill in capabilities:
-    if skill not in review:
-        raise SystemExit(f"reviewer contract missing capability: {skill}")
+    if f"/opt/reviewer-skills/{skill}/SKILL.md" not in review:
+        raise SystemExit(f"reviewer contract missing canonical capability path: {skill}")
 if "hermes-java" not in review:
     raise SystemExit("reviewer contract missing project Java launcher")
 PYTHON

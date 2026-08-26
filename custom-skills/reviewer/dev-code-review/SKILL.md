@@ -1,7 +1,7 @@
 ---
 name: dev-code-review
 description: 동일 Workspace의 미커밋 구현을 requirement/AC와 project pattern/capability 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
-version: 0.8.0
+version: 0.8.1
 author: local
 platforms: [linux]
 metadata:
@@ -20,13 +20,13 @@ Reviewer의 **compact 실행 계약**이다. 상세 severity/checklist/escalatio
 2. 같은 Workspace에서 `scripts/review_context.py`로 Base SHA/Expected Branch를 검증하고 해당 Base SHA 기준 diff + untracked + `git diff --check`를 read-only로 확인한다.
 3. 전체 프로젝트를 다시 분석하지 않는다. Kanban의 Pattern References와 실제 diff 주변 코드부터 보고, correctness 판단에 필요한 경우에만 범위를 넓힌다.
 4. requirement/AC/correctness/compatibility/security/tests와 Coder verification claim을 대조한다.
-5. Task에 capability가 적용되었으면 Reviewer profile에서도 **동일 canonical capability Skill**을 `skill_view()`로 로드한다. DevKit Compose는 coder의 capability 디렉터리를 reviewer namespace에 read-only bind mount하므로 아래 Skill은 Reviewer에서도 존재해야 한다.
-   - `dev-spring-guidelines`
-   - `dev-spring-feature`
-   - `dev-spring-data`
-   - `dev-spring-test`
-   - `dev-api-docs`
-   해당 Skill이 없으면 단순 무시하지 말고 DevKit profile/mount 구성 문제로 보고한다. 다만 이미 충분한 Kanban evidence만으로 판정 가능한 경우 capability 재탐색을 위해 전체 repo를 다시 분석하지 않는다.
+5. Task에 capability가 적용되었으면 Coder가 사용한 **동일 canonical capability 문서**를 확인한다. Reviewer role Skill은 `skill_view()`를 그대로 사용하고, Coder canonical capability는 Docker의 별도 read-only root `/opt/reviewer-skills/<skill>/SKILL.md`에서 읽는다.
+   - `/opt/reviewer-skills/dev-spring-guidelines/SKILL.md`
+   - `/opt/reviewer-skills/dev-spring-feature/SKILL.md`
+   - `/opt/reviewer-skills/dev-spring-data/SKILL.md`
+   - `/opt/reviewer-skills/dev-spring-test/SKILL.md`
+   - `/opt/reviewer-skills/dev-api-docs/SKILL.md`
+   필요한 capability 파일이 없으면 DevKit mount 구성 문제로 보고한다. capability 재탐색을 위해 전체 repo를 다시 분석하지 않는다.
 6. Java/Gradle/Maven verification을 재실행해야 하면 프로젝트가 bootstrap한 `.hermes/toolchain.env`를 사용하는 `hermes-java` launcher를 사용한다. 예: `hermes-java ./gradlew test`. Reviewer가 임의 JDK를 다운로드하거나 host Java를 탐색하지 않는다.
 7. P0/P1이 있으면 `kanban_request_changes`; 없고 evidence가 충분하면 `kanban_complete`; 안전한 판단 불가·외부 결정 필요·반복 blocker면 `BLOCKED`로 `kanban_block` 중 정확히 하나만 실행한다.
 
