@@ -62,6 +62,10 @@ services:
         target: ${HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}/dev-spring-test
         read_only: true
       - type: bind
+        source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}/coder/dev-spring-refactor
+        target: ${HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}/dev-spring-refactor
+        read_only: true
+      - type: bind
         source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}/coder/dev-api-docs
         target: ${HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}/dev-api-docs
         read_only: true
