@@ -80,27 +80,29 @@ RUN ln -sf /opt/jdks/temurin-17/bin/java /usr/local/bin/java \
 
 COPY --chmod=0755 scripts/hermes-java /usr/local/bin/hermes-java
 
-# Hermes CLI를 스크립트/인터랙티브 셸에서도 `hermes` 명령으로 호출할 수 있도록
-# 안정적인 PATH 엔트리를 보장한다. Runtime scripts should still prefer the
-# immutable /opt/hermes/.venv/bin/hermes path when reproducibility matters.
-RUN if ! command -v hermes >/dev/null 2>&1; then \
-      set -eu; \
-      for candidate in \
-        /usr/local/bin/hermes \
-        /opt/hermes/bin/hermes \
-        /opt/hermes/.venv/bin/hermes \
-        /opt/hermes-agent/.venv/bin/hermes \
-        /opt/data/hermes-agent/.venv/bin/hermes \
-        /root/.local/bin/hermes \
-        /home/hermes/.local/bin/hermes; do \
-        if [ -x "$candidate" ]; then \
-          ln -sf "$candidate" /usr/local/bin/hermes; \
-          break; \
-        fi; \
-      done; \
-    fi \
-    && command -v hermes \
-    && hermes --help >/dev/null
+# Always publish Hermes through /usr/local/bin as a stable DevKit contract.
+# Worker/profile shells can have a narrower PATH than direct docker exec sessions,
+# so relying only on `command -v hermes` during image build is not sufficient.
+RUN set -eu; \
+    hermes_target=""; \
+    for candidate in \
+      /opt/hermes/.venv/bin/hermes \
+      /opt/hermes/bin/hermes \
+      /opt/hermes-agent/.venv/bin/hermes \
+      /opt/data/hermes-agent/.venv/bin/hermes \
+      /root/.local/bin/hermes \
+      /home/hermes/.local/bin/hermes; do \
+      if [ -x "$candidate" ]; then \
+        hermes_target="$candidate"; \
+        break; \
+      fi; \
+    done; \
+    if [ -z "$hermes_target" ]; then \
+      echo "Hermes CLI executable was not found in the base image" >&2; \
+      exit 1; \
+    fi; \
+    ln -sf "$hermes_target" /usr/local/bin/hermes; \
+    /usr/local/bin/hermes --help >/dev/null
 
 WORKDIR /workspace
 
