@@ -41,6 +41,10 @@ services:
     environment:
       TZ: ${HERMES_TIMEZONE:-Asia/Seoul}
 
+      # File tools may write only inside explicit development/persistent roots.
+      # Multiple roots are separated with ':' on the Linux container.
+      HERMES_WRITE_SAFE_ROOT: ${HERMES_WRITE_SAFE_ROOT:-/workspace:/opt/data}
+
       # Dashboard is part of the baseline DevKit runtime. Keep it enabled so the
       # healthcheck has a deterministic listener contract.
       HERMES_DASHBOARD: "1"

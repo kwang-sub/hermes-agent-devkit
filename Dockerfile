@@ -13,6 +13,10 @@ COPY scripts/patch_hermes_syntax_warning.py /tmp/patch_hermes_syntax_warning.py
 RUN python3 /tmp/patch_hermes_syntax_warning.py /opt/hermes/hermes_cli/update_cmd.py \
     && rm /tmp/patch_hermes_syntax_warning.py
 
+# DevKit toolchain baseline.
+# - JDK 21 is baked into the image so Java/Spring workers never download a JDK at task time.
+# - Gradle/Maven are intentionally not installed globally: repositories must use gradlew/mvnw
+#   so each project controls its own build-tool version.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
@@ -25,6 +29,9 @@ RUN apt-get update && \
         curl \
         ca-certificates \
         xz-utils \
+        unzip \
+        zip \
+        openjdk-21-jdk-headless \
         less \
     && curl -fsSL \
         "https://www.kernel.org/pub/software/scm/git/git-${GIT_VERSION}.tar.xz" \
@@ -35,9 +42,21 @@ RUN apt-get update && \
     && make NO_RUST=1 prefix=/usr/local all \
     && make NO_RUST=1 prefix=/usr/local install \
     && git --version \
+    && java -version \
+    && javac -version \
     && rm -rf /tmp/git-src /tmp/git.tar.xz \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Keep JAVA_HOME architecture-neutral. Debian's JDK path ends in an arch-specific
+# directory, so resolve javac once at build time and expose a stable /opt/java link.
+RUN set -eu; \
+    java_home="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"; \
+    ln -sfn "$java_home" /opt/java; \
+    test -x /opt/java/bin/java; \
+    test -x /opt/java/bin/javac
+ENV JAVA_HOME=/opt/java
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 # Hermes CLI를 스크립트/인터랙티브 셸에서도 `hermes` 명령으로 호출할 수 있도록
 # 안정적인 PATH 엔트리를 보장한다. Runtime scripts should still prefer the
