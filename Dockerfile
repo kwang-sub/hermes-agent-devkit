@@ -1,4 +1,12 @@
 ARG HERMES_BASE_IMAGE=nousresearch/hermes-agent:v2026.8.16.2
+
+# Keep project JDKs independent from the Hermes base image. Temurin images expose
+# their JDK under /opt/java/openjdk; copying the trees avoids apt repository
+# differences and keeps Java 8/17/21 available on both amd64 and arm64 builds.
+FROM eclipse-temurin:8-jdk-jammy AS jdk8
+FROM eclipse-temurin:17-jdk-jammy AS jdk17
+FROM eclipse-temurin:21-jdk-jammy AS jdk21
+
 FROM ${HERMES_BASE_IMAGE}
 
 # Hermes 공식 이미지의 s6-overlay 초기화는 root로 시작해야 한다.
@@ -13,10 +21,8 @@ COPY scripts/patch_hermes_syntax_warning.py /tmp/patch_hermes_syntax_warning.py
 RUN python3 /tmp/patch_hermes_syntax_warning.py /opt/hermes/hermes_cli/update_cmd.py \
     && rm /tmp/patch_hermes_syntax_warning.py
 
-# DevKit toolchain baseline.
-# - JDK 21 is baked into the image so Java/Spring workers never download a JDK at task time.
-# - Gradle/Maven are intentionally not installed globally: repositories must use gradlew/mvnw
-#   so each project controls its own build-tool version.
+# DevKit baseline tools. Gradle/Maven are intentionally not installed globally:
+# repositories use gradlew/mvnw so the build-tool version remains project-owned.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
@@ -31,7 +37,6 @@ RUN apt-get update && \
         xz-utils \
         unzip \
         zip \
-        openjdk-21-jdk-headless \
         less \
     && curl -fsSL \
         "https://www.kernel.org/pub/software/scm/git/git-${GIT_VERSION}.tar.xz" \
@@ -42,21 +47,32 @@ RUN apt-get update && \
     && make NO_RUST=1 prefix=/usr/local all \
     && make NO_RUST=1 prefix=/usr/local install \
     && git --version \
-    && java -version \
-    && javac -version \
     && rm -rf /tmp/git-src /tmp/git.tar.xz \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Keep JAVA_HOME architecture-neutral. Debian's JDK path ends in an arch-specific
-# directory, so resolve javac once at build time and expose a stable /opt/java link.
+COPY --from=jdk8 /opt/java/openjdk /opt/jdks/temurin-8
+COPY --from=jdk17 /opt/java/openjdk /opt/jdks/temurin-17
+COPY --from=jdk21 /opt/java/openjdk /opt/jdks/temurin-21
+
+# Java 17 is the DevKit default. Project bootstrap detects the repository target
+# and writes .hermes/toolchain.env; `hermes-java <command...>` then executes with
+# the selected project JDK without modifying the repository build files.
+ENV JAVA_HOME_8=/opt/jdks/temurin-8
+ENV JAVA_HOME_17=/opt/jdks/temurin-17
+ENV JAVA_HOME_21=/opt/jdks/temurin-21
+ENV JAVA_HOME=/opt/jdks/temurin-17
+ENV PATH="/opt/jdks/temurin-17/bin:${PATH}"
+
 RUN set -eu; \
-    java_home="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"; \
-    ln -sfn "$java_home" /opt/java; \
-    test -x /opt/java/bin/java; \
-    test -x /opt/java/bin/javac
-ENV JAVA_HOME=/opt/java
-ENV PATH="${JAVA_HOME}/bin:${PATH}"
+    /opt/jdks/temurin-8/bin/java -version; \
+    /opt/jdks/temurin-8/bin/javac -version; \
+    /opt/jdks/temurin-17/bin/java -version; \
+    /opt/jdks/temurin-17/bin/javac -version; \
+    /opt/jdks/temurin-21/bin/java -version; \
+    /opt/jdks/temurin-21/bin/javac -version
+
+COPY --chmod=0755 scripts/hermes-java /usr/local/bin/hermes-java
 
 # Hermes CLI를 스크립트/인터랙티브 셸에서도 `hermes` 명령으로 호출할 수 있도록
 # 안정적인 PATH 엔트리를 보장한다. Runtime scripts should still prefer the

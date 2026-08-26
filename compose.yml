@@ -33,6 +33,31 @@ services:
         target: ${HERMES_CONTAINER_CUSTOM_SKILLS_PATH:-/opt/custom-skills}
         read_only: true
 
+      # Reviewer keeps its own role-specific root, but Spring/API capability
+      # contracts are mounted from the coder canonical source into the reviewer
+      # namespace. This avoids duplicated skill files while allowing skill_view()
+      # to resolve the exact same capability contract during independent review.
+      - type: bind
+        source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}/coder/dev-spring-guidelines
+        target: ${HERMES_CONTAINER_CUSTOM_SKILLS_PATH:-/opt/custom-skills}/reviewer/dev-spring-guidelines
+        read_only: true
+      - type: bind
+        source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}/coder/dev-spring-feature
+        target: ${HERMES_CONTAINER_CUSTOM_SKILLS_PATH:-/opt/custom-skills}/reviewer/dev-spring-feature
+        read_only: true
+      - type: bind
+        source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}/coder/dev-spring-data
+        target: ${HERMES_CONTAINER_CUSTOM_SKILLS_PATH:-/opt/custom-skills}/reviewer/dev-spring-data
+        read_only: true
+      - type: bind
+        source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}/coder/dev-spring-test
+        target: ${HERMES_CONTAINER_CUSTOM_SKILLS_PATH:-/opt/custom-skills}/reviewer/dev-spring-test
+        read_only: true
+      - type: bind
+        source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}/coder/dev-api-docs
+        target: ${HERMES_CONTAINER_CUSTOM_SKILLS_PATH:-/opt/custom-skills}/reviewer/dev-api-docs
+        read_only: true
+
       - type: bind
         source: ${HERMES_HOST_SHARED_PATH:-./shared}
         target: ${HERMES_CONTAINER_SHARED_PATH:-/opt/data/shared}

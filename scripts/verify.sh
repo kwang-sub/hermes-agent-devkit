@@ -35,6 +35,54 @@ if legacy in source:
 PYTHON
 }
 
+check_multi_jdk_contract() {
+    python3 - <<'PYTHON'
+from pathlib import Path
+
+dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
+required = (
+    "FROM eclipse-temurin:8-jdk-jammy AS jdk8",
+    "FROM eclipse-temurin:17-jdk-jammy AS jdk17",
+    "FROM eclipse-temurin:21-jdk-jammy AS jdk21",
+    "/opt/jdks/temurin-8",
+    "/opt/jdks/temurin-17",
+    "/opt/jdks/temurin-21",
+    "ENV JAVA_HOME=/opt/jdks/temurin-17",
+    "scripts/hermes-java",
+)
+missing = [term for term in required if term not in dockerfile]
+if missing:
+    raise SystemExit("Dockerfile missing multi-JDK contract: " + ", ".join(missing))
+PYTHON
+}
+
+check_reviewer_capability_mounts() {
+    python3 - <<'PYTHON'
+from pathlib import Path
+
+compose = Path("compose.yml").read_text(encoding="utf-8")
+capabilities = (
+    "dev-spring-guidelines",
+    "dev-spring-feature",
+    "dev-spring-data",
+    "dev-spring-test",
+    "dev-api-docs",
+)
+for skill in capabilities:
+    source = f"/coder/{skill}"
+    target = f"/reviewer/{skill}"
+    if source not in compose or target not in compose:
+        raise SystemExit(f"compose.yml missing reviewer capability mount: {skill}")
+
+review = Path("custom-skills/reviewer/dev-code-review/SKILL.md").read_text(encoding="utf-8")
+for skill in capabilities:
+    if skill not in review:
+        raise SystemExit(f"reviewer contract missing capability: {skill}")
+if "hermes-java" not in review:
+    raise SystemExit("reviewer contract missing project Java launcher")
+PYTHON
+}
+
 check_powershell_syntax() {
     local powershell=""
 
@@ -118,6 +166,10 @@ run_check "dev-project-resolve tests" \
     python3 custom-skills/orchestrator/dev-project-resolve/tests/test_project_resolve.py
 run_check "dev-breakdown shell syntax" \
     bash -n custom-skills/orchestrator/dev-breakdown/scripts/collect_project_context.sh
+run_check "hermes-java shell syntax" \
+    bash -n scripts/hermes-java
+run_check "Multi-JDK image contract" check_multi_jdk_contract
+run_check "Reviewer capability mount contract" check_reviewer_capability_mounts
 run_check "Environment contract" \
     python3 scripts/check_env_contract.py
 run_check "init-profiles inspect/runtime contract" check_init_mount_contract

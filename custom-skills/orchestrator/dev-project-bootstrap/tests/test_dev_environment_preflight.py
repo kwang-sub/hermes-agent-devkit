@@ -65,5 +65,93 @@ class GitAttributesPreflightTest(unittest.TestCase):
             self.assertEqual(b"#!/bin/sh\r\necho ok\r\n", wrapper.read_bytes())
 
 
+class JavaToolchainDetectionTest(unittest.TestCase):
+    def test_detects_gradle_java_8_legacy_syntax(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "build.gradle").write_text(
+                "sourceCompatibility = '1.8'\ntargetCompatibility = '1.8'\n",
+                encoding="utf-8",
+            )
+
+            version, warnings = preflight.detect_java_target(repo, "gradle")
+
+            self.assertEqual(8, version)
+            self.assertEqual([], warnings)
+
+    def test_detects_gradle_java_17_toolchain(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "build.gradle.kts").write_text(
+                "java { toolchain { languageVersion.set(JavaLanguageVersion.of(17)) } }\n",
+                encoding="utf-8",
+            )
+
+            version, warnings = preflight.detect_java_target(repo, "gradle")
+
+            self.assertEqual(17, version)
+            self.assertEqual([], warnings)
+
+    def test_detects_maven_java_21_release(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "pom.xml").write_text(
+                "<project><properties><maven.compiler.release>21</maven.compiler.release>"
+                "</properties></project>",
+                encoding="utf-8",
+            )
+
+            version, warnings = preflight.detect_java_target(repo, "maven")
+
+            self.assertEqual(21, version)
+            self.assertEqual([], warnings)
+
+    def test_defaults_to_java_17_when_target_is_not_declared(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "build.gradle").write_text("plugins { id 'java' }\n", encoding="utf-8")
+
+            version, warnings = preflight.detect_java_target(repo, "gradle")
+
+            self.assertEqual(17, version)
+            self.assertEqual(1, len(warnings))
+
+    def test_blocks_conflicting_java_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "build.gradle").write_text(
+                "sourceCompatibility = '1.8'\ntargetCompatibility = '17'\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(preflight.PreflightError):
+                preflight.detect_java_target(repo, "gradle")
+
+    def test_gradle_9_uses_java_17_runtime_for_java_8_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            wrapper = repo / "gradle" / "wrapper"
+            wrapper.mkdir(parents=True)
+            (wrapper / "gradle-wrapper.properties").write_text(
+                "distributionUrl=https\\://services.gradle.org/distributions/gradle-9.0.0-bin.zip\n",
+                encoding="utf-8",
+            )
+
+            runtime, warnings = preflight.select_runtime_java(repo, "gradle", 8)
+
+            self.assertEqual(17, runtime)
+            self.assertEqual(1, len(warnings))
+
+    def test_writes_managed_toolchain_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            path = preflight.write_toolchain_env(repo, 8, 8, Path("/opt/jdks/temurin-8"))
+            text = path.read_text(encoding="utf-8")
+
+            self.assertIn("HERMES_PROJECT_JAVA_TARGET=8", text)
+            self.assertIn("HERMES_PROJECT_JAVA_RUNTIME=8", text)
+            self.assertIn("JAVA_HOME=/opt/jdks/temurin-8", text)
+
+
 if __name__ == "__main__":
     unittest.main()

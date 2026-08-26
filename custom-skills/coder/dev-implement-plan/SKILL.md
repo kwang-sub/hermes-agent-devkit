@@ -1,12 +1,12 @@
 ---
 name: dev-implement-plan
 description: 승인된 Kanban 작업을 할당 Workspace에서 최소 구현·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.9.1
+version: 0.10.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, implementation, coder, kanban, workspace, review, fast-flow, capability]
+    tags: [dev, implementation, coder, kanban, workspace, review, fast-flow, capability, java]
     related_skills: [dev-fast-flow, dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-api-docs]
     requires_tools: [terminal, kanban_show, kanban_request_review, kanban_complete, kanban_block, kanban_heartbeat, skill_view]
 ---
@@ -26,12 +26,38 @@ Coder worker의 **compact 실행 계약**이다. 상세 구현/검증/risk 기�
    - JPA/Repository/QueryDSL/Converter/Paging → `skill_view("dev-spring-data")`
    - **테스트 작성/수정** → `skill_view("dev-spring-test")` (단순 테스트 실행만으로는 로드하지 않음)
    - OpenAPI/Swagger/Postman 작업 → `skill_view("dev-api-docs")`
-6. targeted verification → `git diff --check` → `scripts/change_summary.py` 순으로 필요한 범위만 검증한다.
-7. 구현 후 `Review Risk`를 판정한다.
+6. Java/Gradle/Maven 프로젝트는 Bootstrap이 생성한 `.hermes/toolchain.env`를 사용한다. build/test/compile 명령은 `hermes-java` launcher를 우선한다.
+   - Gradle: `hermes-java ./gradlew <task>`
+   - Maven: `hermes-java ./mvnw <goal>`
+   - `JAVA_HOME`을 임의 추측하거나 Windows host Java를 탐색하거나 Task 중 JDK를 다운로드하지 않는다.
+   - `.hermes/toolchain.env`가 없거나 선택 JDK가 유효하지 않으면 개발환경 bootstrap 문제로 `BLOCKED`한다.
+7. targeted verification → `git diff --check` → `scripts/change_summary.py` 순으로 필요한 범위만 검증한다. 전체 test suite는 변경 위험이나 기존 계약상 필요할 때만 실행하며 동일 실패를 환경 우회 목적으로 반복하지 않는다.
+8. 구현 후 `Review Risk`를 판정한다.
    - **Standard Flow 또는 CHANGES_REQUESTED 재작업** → 항상 `kanban_request_review`.
    - **Fast Flow + LOW** → 근거와 verification을 기록하고 `kanban_complete`.
    - **Fast Flow + REVIEW_REQUIRED** → `kanban_request_review`.
-8. terminal action 하나를 실행한 뒤 즉시 멈춘다. 구현 불가/필수 입력 누락/필수 검증 불가만 `kanban_block`한다. review 대용 `kanban_block`은 금지한다.
+9. terminal action 하나를 실행한 뒤 즉시 멈춘다. 구현 불가/필수 입력 누락/필수 검증 불가만 `kanban_block`한다. review 대용 `kanban_block`은 금지한다.
+
+## Java Toolchain Contract
+DevKit image는 다음 JDK를 제공한다.
+
+```text
+/opt/jdks/temurin-8
+/opt/jdks/temurin-17
+/opt/jdks/temurin-21
+```
+
+DevKit 기본 `JAVA_HOME`은 Java 17이지만 프로젝트 작업에서는 기본값에 의존하지 않는다. `dev-project-bootstrap`이 Gradle/Maven 설정에서 target을 감지해 `.hermes/toolchain.env`를 만들며 Coder는 그 결과를 사용한다.
+
+예:
+
+```bash
+hermes-java ./gradlew test
+hermes-java ./gradlew compileJava
+hermes-java ./mvnw test
+```
+
+Project build file을 Java version/toolchain 자동 변경 목적으로 수정하지 않는다.
 
 ## Fast Flow Review Risk
 `LOW`는 기존 패턴의 작은 국소 변경이고 public API/DB schema/Entity relation/dependency/transaction/security/concurrency/복잡 QueryDSL/Native Query/공통 architecture 영향이 없으며 targeted verification이 PASS일 때만 허용한다. 불확실하면 `REVIEW_REQUIRED`다.
@@ -48,6 +74,7 @@ Coder worker의 **compact 실행 계약**이다. 상세 구현/검증/risk 기�
 Reviewer Profile
 Pattern References
 Applied Capability Skills
+Java Target / Runtime (Java project)
 Changed Files
 Verification Commands / Results
 Review Risk: LOW | REVIEW_REQUIRED
@@ -60,6 +87,7 @@ LOW completion metadata에는 `flow=FAST`, `review_risk=LOW`, 근거와 verifica
 ## 불변식
 - Workspace 밖 수정, branch 전환, 다른 worktree 생성, commit, push, PR, merge, reset, clean, stash 금지.
 - secret/raw credential 기록 금지.
+- JDK/Gradle/Maven task-time 설치 금지.
 - `CHANGES_REQUESTED`는 terminal 상태가 아니며 original coder가 동일 Workspace에서 blocking finding만 수정 후 반드시 재-review한다.
 - Standard Flow에서 Coder self-complete 금지.
 
