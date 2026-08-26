@@ -43,6 +43,7 @@ def make_repo(root: Path) -> Path:
     run(["git", "init", "-b", "dev"], repo)
     run(["git", "config", "user.email", "test@example.invalid"], repo)
     run(["git", "config", "user.name", "Fast Flow Test"], repo)
+    run(["git", "config", "core.autocrlf", "false"], repo)
     write_metadata(repo)
     (repo / "app.txt").write_text("baseline\n", encoding="utf-8")
     run(["git", "add", "."], repo)
@@ -68,8 +69,9 @@ def test_clean_repo_dry_run() -> None:
             raise AssertionError(result.stderr or result.stdout)
         required = (
             "PROJECT=demo", "BOARD=demo", "BRANCH=dev", "WORKSPACE_DIRTY=false",
+            "EFFECTIVE_CHANGE_COUNT=0", "EOL_ONLY_CHANGE_COUNT=0",
             "CODER=coder", "REVIEWER=reviewer", "Flow: FAST", "Review Policy: RISK_BASED",
-            "Workspace dirty at dispatch: false", "Pre-existing changes at dispatch:", "- none",
+            "Workspace dirty at dispatch: false", "Pre-existing effective changes at dispatch:", "- none",
             "LOW -> coder", "REVIEW_REQUIRED -> coder", "FAST_FLOW_ESCALATION_REQUIRED", "STATUS=dry-run",
         )
         for term in required:
@@ -86,8 +88,9 @@ def test_dirty_repo_is_accepted_and_recorded() -> None:
             raise AssertionError(result.stderr or result.stdout)
         required = (
             "WORKSPACE_DIRTY=true",
+            "EFFECTIVE_CHANGE_COUNT=1",
             "Workspace dirty at dispatch: true",
-            "Pre-existing changes at dispatch:",
+            "Pre-existing effective changes at dispatch:",
             "M app.txt",
             "must preserve pre-existing user changes",
         )
@@ -96,9 +99,36 @@ def test_dirty_repo_is_accepted_and_recorded() -> None:
                 raise AssertionError(f"missing dirty-workspace contract term: {term}\n{result.stdout}")
 
 
+def test_crlf_only_tracked_change_is_not_dirty() -> None:
+    with tempfile.TemporaryDirectory(prefix="fast-flow-eol-test-") as temp_dir:
+        repo = make_repo(Path(temp_dir))
+        (repo / "app.txt").write_bytes(b"baseline\r\n")
+
+        normal = run(["git", "diff", "--name-only"], repo)
+        ignored = run(["git", "diff", "--name-only", "--ignore-cr-at-eol"], repo)
+        if "app.txt" not in normal.stdout or ignored.stdout.strip():
+            raise AssertionError("test fixture did not create an EOL-only tracked change")
+
+        result = invoke(repo, "ignore eol noise")
+        if result.returncode != 0:
+            raise AssertionError(result.stderr or result.stdout)
+        required = (
+            "WORKSPACE_DIRTY=false",
+            "EFFECTIVE_CHANGE_COUNT=0",
+            "EOL_ONLY_CHANGE_COUNT=1",
+            "Workspace dirty at dispatch: false",
+            "Ignored tracked EOL-only changes at dispatch: 1",
+            "Pre-existing effective changes at dispatch:\n- none",
+        )
+        for term in required:
+            if term not in result.stdout:
+                raise AssertionError(f"missing EOL-noise contract term: {term}\n{result.stdout}")
+
+
 def main() -> int:
     test_clean_repo_dry_run()
     test_dirty_repo_is_accepted_and_recorded()
+    test_crlf_only_tracked_change_is_not_dirty()
     print("[PASS] dev-fast-flow task creation tests")
     return 0
 
