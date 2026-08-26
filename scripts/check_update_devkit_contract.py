@@ -62,9 +62,6 @@ def main() -> int:
         "update-devkit.ps1",
     )
 
-    # PowerShell emits no pipeline object for successful commands that write no
-    # stdout (for example `git status --porcelain` on a clean checkout). The
-    # text helper must therefore accept null and normalize it to an empty string.
     require(
         text,
         (
@@ -74,6 +71,20 @@ def main() -> int:
             'return ""',
         ),
         "update-devkit.ps1 empty-output contract",
+    )
+
+    # An up-to-date checkout produces an empty changed-file array. PowerShell
+    # rejects empty array arguments for typed parameters unless the function
+    # explicitly permits them.
+    require(
+        text,
+        (
+            'function Test-AnyPathMatch',
+            '[AllowEmptyCollection()]',
+            '[string[]]$Paths',
+            '$ChangedFiles = @()',
+        ),
+        "update-devkit.ps1 empty-change contract",
     )
 
     executable = executable_text(text).lower()
