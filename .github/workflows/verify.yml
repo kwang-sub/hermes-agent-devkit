@@ -29,3 +29,22 @@ jobs:
       - name: Verify repository contracts
         shell: bash
         run: bash scripts/verify.sh
+
+      - name: Verify DevKit updater contract
+        shell: bash
+        run: python3 scripts/check_update_devkit_contract.py
+
+      - name: Validate DevKit updater PowerShell syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "update-devkit.ps1"),
+            [ref]$tokens,
+            [ref]$errors
+          )
+          if ($errors.Count -ne 0) {
+            $errors | ForEach-Object { [Console]::Error.WriteLine($_.Message) }
+            exit 1
+          }
