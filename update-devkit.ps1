@@ -2,8 +2,8 @@
 
 <#
 .SYNOPSIS
-Updates the local Hermes Agent DevKit checkout and applies only the runtime work
-required by the files that changed.
+Updates the local Hermes Agent DevKit checkout, refreshes the DevKit image from
+the latest Hermes Agent base image, and recreates the runtime safely.
 
 .DESCRIPTION
 The script keeps the persistent hermes-data volume intact. It never runs
@@ -13,19 +13,24 @@ configured operational branch.
 Default behavior:
 1. Refuse to run on a dirty DevKit checkout.
 2. Fetch the remote and fast-forward the current branch.
-3. Classify changed files.
-4. Build the image only for image-build inputs.
-5. Force-recreate the container for Compose/runtime contract changes.
-6. Leave bind-mounted custom-skills/shared-only updates in place without a build.
-7. Verify the running container contract.
-8. If verification fails, perform one normal cached rebuild + recreate repair and
+3. Classify changed files for warnings and runtime context.
+4. Temporarily override HERMES_BASE_IMAGE with nousresearch/hermes-agent:latest.
+5. Build with `docker compose build --pull` so the latest Hermes base image is checked.
+6. Force-recreate the container only after the build succeeds.
+7. Keep the existing hermes-data volume and profile/OAuth/session state intact.
+8. Verify the running container contract.
+9. If verification fails, perform one normal cached rebuild + recreate repair and
    verify once more unless -NoRepair is specified.
+
+The HERMES_BASE_IMAGE override is process-local and restored before the script exits,
+so normal `docker compose up` continues to use the version configured in .env.
 #>
 
 param(
     [string]$Branch = "dev",
     [string]$Remote = "origin",
     [string]$Container = "hermes-dev",
+    [string]$HermesBaseImage = "nousresearch/hermes-agent:latest",
     [switch]$NoPull,
     [switch]$ForceRebuild,
     [switch]$NoRepair,
@@ -139,6 +144,8 @@ $OriginalLocation = Get-Location
 $ImageRebuilt = $false
 $ContainerRecreated = $false
 $AutomaticRepairUsed = $false
+$PreviousHermesBaseImageExists = Test-Path Env:HERMES_BASE_IMAGE
+$PreviousHermesBaseImage = if ($PreviousHermesBaseImageExists) { $env:HERMES_BASE_IMAGE } else { $null }
 
 try {
     Set-Location $RepoRoot
@@ -216,13 +223,14 @@ try {
 
     Write-Host ""
     Write-Host "== DevKit update plan =="
-    Write-Host "Before : $BeforeSha"
-    Write-Host "After  : $AfterSha"
+    Write-Host "Before            : $BeforeSha"
+    Write-Host "After             : $AfterSha"
+    Write-Host "Hermes base image : $HermesBaseImage"
     if ($ChangedFiles.Count -eq 0) {
-        Write-Host "Changes: none"
+        Write-Host "Changes           : none"
     }
     else {
-        Write-Host "Changes: $($ChangedFiles.Count) file(s)"
+        Write-Host "Changes           : $($ChangedFiles.Count) file(s)"
         foreach ($ChangedFile in $ChangedFiles) {
             Write-Host "  - $ChangedFile"
         }
@@ -235,40 +243,11 @@ try {
         "scripts/patch_hermes_syntax_warning.py"
     )
 
-    $BuildRequired = $ForceRebuild.IsPresent -or
-        (Test-AnyPathMatch -Paths $ChangedFiles -ExactPaths $ImageBuildInputs)
-    $RecreateRequired = $BuildRequired -or ($ChangedFiles -contains "compose.yml")
-
-    if (-not $BuildRequired -and $ChangedFiles -contains "compose.yml" -and $BeforeSha -ne $AfterSha) {
-        $ComposeDiff = Get-CapturedText -Output (Invoke-NativeCapture -FilePath "git" -Arguments @(
-            "diff", "--unified=0", $BeforeSha, $AfterSha, "--", "compose.yml"
-        ))
-        if ($ComposeDiff -match '(?m)^[+-].*HERMES_BASE_IMAGE') {
-            $BuildRequired = $true
-            $RecreateRequired = $true
-        }
-    }
-
-    $BindMountedOnly = $false
-    if ($ChangedFiles.Count -gt 0 -and -not $BuildRequired -and -not $RecreateRequired) {
-        $RuntimeRelevant = @($ChangedFiles | Where-Object {
-            $_ -like "custom-skills/*" -or $_ -like "shared/*"
-        })
-        $BindMountedOnly = $RuntimeRelevant.Count -gt 0
-    }
-
-    if ($BuildRequired) {
-        Write-Host "Action  : build + force-recreate"
-    }
-    elseif ($RecreateRequired) {
-        Write-Host "Action  : force-recreate"
-    }
-    elseif ($BindMountedOnly) {
-        Write-Host "Action  : bind-mounted content is already live; no build required"
-    }
-    else {
-        Write-Host "Action  : no image/container contract change detected"
-    }
+    # update-devkit.ps1 is the explicit Hermes upgrade boundary. Even when the
+    # DevKit Git checkout did not change, running this script must check and use
+    # the newest Hermes base image before recreating the runtime.
+    $BuildRequired = $true
+    $RecreateRequired = $true
 
     if ($ChangedFiles -contains "sample.env") {
         Write-Warning "sample.env changed. Existing .env is intentionally not overwritten; review the new sample manually."
@@ -277,28 +256,21 @@ try {
         Write-Warning "init-profiles.ps1 changed. Profile initialization is intentionally not run automatically; execute .\init-profiles.ps1 after this update if the profile contract changed."
     }
 
+    # Process environment overrides values loaded from .env by Docker Compose.
+    # This makes the updater follow latest while normal compose commands remain
+    # pinned to the version configured by the user.
+    $env:HERMES_BASE_IMAGE = $HermesBaseImage
+
+    Write-Host "Action            : pull latest Hermes base + build + force-recreate"
     Invoke-Native -FilePath "docker" -Arguments @("compose", "config", "--quiet")
 
-    if ($BuildRequired) {
-        Write-Host "[RUN ] docker compose build"
-        Invoke-Native -FilePath "docker" -Arguments @("compose", "build")
-        $ImageRebuilt = $true
-        Write-Host "[RUN ] docker compose up -d --force-recreate"
-        Invoke-Native -FilePath "docker" -Arguments @("compose", "up", "-d", "--force-recreate")
-        $ContainerRecreated = $true
-    }
-    elseif ($RecreateRequired) {
-        Write-Host "[RUN ] docker compose up -d --force-recreate"
-        Invoke-Native -FilePath "docker" -Arguments @("compose", "up", "-d", "--force-recreate")
-        $ContainerRecreated = $true
-    }
-    elseif (-not (Test-ContainerRunning -Name $Container)) {
-        Write-Host "[RUN ] Container is missing/stopped; docker compose up -d"
-        Invoke-Native -FilePath "docker" -Arguments @("compose", "up", "-d")
-    }
-    else {
-        Write-Host "[OK] Container is already running; runtime recreation not required."
-    }
+    Write-Host "[RUN ] docker compose build --pull"
+    Invoke-Native -FilePath "docker" -Arguments @("compose", "build", "--pull")
+    $ImageRebuilt = $true
+
+    Write-Host "[RUN ] docker compose up -d --force-recreate"
+    Invoke-Native -FilePath "docker" -Arguments @("compose", "up", "-d", "--force-recreate")
+    $ContainerRecreated = $true
 
     if ($SkipVerify) {
         Write-Host "[SKIP] Runtime verification disabled by -SkipVerify."
@@ -334,10 +306,17 @@ try {
     Write-Host "[PASS] DevKit update completed."
     Write-Host "UPDATED_FROM=$BeforeSha"
     Write-Host "UPDATED_TO=$AfterSha"
+    Write-Host "HERMES_BASE_IMAGE=$HermesBaseImage"
     Write-Host "IMAGE_REBUILT=$($ImageRebuilt.ToString().ToLowerInvariant())"
     Write-Host "CONTAINER_RECREATED=$($ContainerRecreated.ToString().ToLowerInvariant())"
     Write-Host "AUTOMATIC_REPAIR_USED=$($AutomaticRepairUsed.ToString().ToLowerInvariant())"
 }
 finally {
+    if ($PreviousHermesBaseImageExists) {
+        $env:HERMES_BASE_IMAGE = $PreviousHermesBaseImage
+    }
+    else {
+        Remove-Item Env:HERMES_BASE_IMAGE -ErrorAction SilentlyContinue
+    }
     Set-Location $OriginalLocation
 }

@@ -42,19 +42,21 @@ def main() -> int:
         (
             '#requires -Version 5.1',
             '[string]$Branch = "dev"',
+            '[string]$HermesBaseImage = "nousresearch/hermes-agent:latest"',
             'git" -Arguments @("status", "--porcelain=v1"',
             'git" -Arguments @("fetch", "--prune", $Remote)',
             'git" -Arguments @("merge", "--ff-only", $RemoteRef)',
             '$ImageBuildInputs = @(',
             '"Dockerfile"',
             '"scripts/hermes-java"',
-            '$ChangedFiles -contains "compose.yml"',
-            'docker" -Arguments @("compose", "build")',
+            '$env:HERMES_BASE_IMAGE = $HermesBaseImage',
+            'docker" -Arguments @("compose", "build", "--pull")',
             'docker" -Arguments @("compose", "up", "-d", "--force-recreate")',
             'scripts\\verify-container-runtime.ps1',
             'Runtime verification failed. Performing one cached rebuild + force-recreate repair.',
             'sample.env changed. Existing .env is intentionally not overwritten',
             'init-profiles.ps1 changed. Profile initialization is intentionally not run automatically',
+            'HERMES_BASE_IMAGE=$HermesBaseImage',
             'IMAGE_REBUILT=',
             'CONTAINER_RECREATED=',
             'AUTOMATIC_REPAIR_USED=',
@@ -73,9 +75,6 @@ def main() -> int:
         "update-devkit.ps1 empty-output contract",
     )
 
-    # An up-to-date checkout produces an empty changed-file array. PowerShell
-    # rejects empty array arguments for typed parameters unless the function
-    # explicitly permits them.
     require(
         text,
         (
@@ -85,6 +84,17 @@ def main() -> int:
             '$ChangedFiles = @()',
         ),
         "update-devkit.ps1 empty-change contract",
+    )
+
+    require(
+        text,
+        (
+            '$PreviousHermesBaseImageExists = Test-Path Env:HERMES_BASE_IMAGE',
+            '$PreviousHermesBaseImage = if ($PreviousHermesBaseImageExists)',
+            'if ($PreviousHermesBaseImageExists)',
+            'Remove-Item Env:HERMES_BASE_IMAGE -ErrorAction SilentlyContinue',
+        ),
+        "update-devkit.ps1 process-local base-image override contract",
     )
 
     executable = executable_text(text).lower()
@@ -104,9 +114,14 @@ def main() -> int:
         "update-devkit.ps1",
     )
 
-    if text.count('docker" -Arguments @("compose", "build")') < 2:
+    if text.count('docker" -Arguments @("compose", "build", "--pull")') != 1:
         raise SystemExit(
-            "update-devkit.ps1 must keep both planned build and one repair build paths"
+            "update-devkit.ps1 must have exactly one planned pull-build path"
+        )
+
+    if text.count('docker" -Arguments @("compose", "build")') < 1:
+        raise SystemExit(
+            "update-devkit.ps1 must keep one cached repair build path"
         )
 
     print("[PASS] DevKit updater contract verified.")
