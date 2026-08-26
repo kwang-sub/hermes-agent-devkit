@@ -1,6 +1,6 @@
 #requires -Version 5.1
 
-<#+
+<#
 .SYNOPSIS
 Updates the local Hermes Agent DevKit checkout and applies only the runtime work
 required by the files that changed.
@@ -131,6 +131,9 @@ function Invoke-RuntimeVerification {
 
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $OriginalLocation = Get-Location
+$ImageRebuilt = $false
+$ContainerRecreated = $false
+$AutomaticRepairUsed = $false
 
 try {
     Set-Location $RepoRoot
@@ -278,12 +281,15 @@ try {
     if ($BuildRequired) {
         Write-Host "[RUN ] docker compose build"
         Invoke-Native -FilePath "docker" -Arguments @("compose", "build")
+        $ImageRebuilt = $true
         Write-Host "[RUN ] docker compose up -d --force-recreate"
         Invoke-Native -FilePath "docker" -Arguments @("compose", "up", "-d", "--force-recreate")
+        $ContainerRecreated = $true
     }
     elseif ($RecreateRequired) {
         Write-Host "[RUN ] docker compose up -d --force-recreate"
         Invoke-Native -FilePath "docker" -Arguments @("compose", "up", "-d", "--force-recreate")
+        $ContainerRecreated = $true
     }
     elseif (-not (Test-ContainerRunning -Name $Container)) {
         Write-Host "[RUN ] Container is missing/stopped; docker compose up -d"
@@ -310,8 +316,11 @@ try {
             }
 
             Write-Warning "Runtime verification failed. Performing one cached rebuild + force-recreate repair."
+            $AutomaticRepairUsed = $true
             Invoke-Native -FilePath "docker" -Arguments @("compose", "build")
+            $ImageRebuilt = $true
             Invoke-Native -FilePath "docker" -Arguments @("compose", "up", "-d", "--force-recreate")
+            $ContainerRecreated = $true
 
             Write-Host "[RUN ] Runtime verification after repair"
             if (-not (Invoke-RuntimeVerification -Verifier $Verifier -ContainerName $Container)) {
@@ -324,8 +333,9 @@ try {
     Write-Host "[PASS] DevKit update completed."
     Write-Host "UPDATED_FROM=$BeforeSha"
     Write-Host "UPDATED_TO=$AfterSha"
-    Write-Host "IMAGE_REBUILT=$($BuildRequired.ToString().ToLowerInvariant())"
-    Write-Host "CONTAINER_RECREATED=$($RecreateRequired.ToString().ToLowerInvariant())"
+    Write-Host "IMAGE_REBUILT=$($ImageRebuilt.ToString().ToLowerInvariant())"
+    Write-Host "CONTAINER_RECREATED=$($ContainerRecreated.ToString().ToLowerInvariant())"
+    Write-Host "AUTOMATIC_REPAIR_USED=$($AutomaticRepairUsed.ToString().ToLowerInvariant())"
 }
 finally {
     Set-Location $OriginalLocation
