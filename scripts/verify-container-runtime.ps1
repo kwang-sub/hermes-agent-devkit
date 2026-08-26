@@ -28,7 +28,7 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 $PreviousPreference = $ErrorActionPreference
 try {
     $ErrorActionPreference = "SilentlyContinue"
-    & docker inspect $Container 1>$null 2>$null
+    $InspectOutput = & docker inspect $Container 2>$null
     $InspectExitCode = $LASTEXITCODE
 }
 finally {
@@ -39,11 +39,32 @@ if ($InspectExitCode -ne 0) {
     throw "Container '$Container' does not exist. Start it first with: docker compose up -d --force-recreate"
 }
 
-$JavaHome = (& docker exec --user hermes $Container printenv JAVA_HOME 2>$null | Select-Object -First 1).Trim()
-if ($LASTEXITCODE -ne 0 -or $JavaHome -ne "/opt/jdks/temurin-17") {
-    throw "[FAIL] JAVA_HOME. Expected /opt/jdks/temurin-17, got '$JavaHome'. Rebuild/recreate the DevKit container."
+try {
+    $InspectResult = ConvertFrom-Json -InputObject ($InspectOutput -join [Environment]::NewLine)
+    $ContainerInspect = @($InspectResult)[0]
 }
-Write-Host "[OK] JAVA_HOME -> $JavaHome"
+catch {
+    throw "Failed to parse docker inspect JSON for container '$Container'. Error=$($_.Exception.Message)"
+}
+
+if ($null -eq $ContainerInspect) {
+    throw "Docker inspect returned no data for container '$Container'."
+}
+
+if (-not $ContainerInspect.State.Running) {
+    throw "Container '$Container' is not running. Start it with: docker compose up -d --force-recreate"
+}
+
+$ExpectedJavaHomeEntry = "JAVA_HOME=/opt/jdks/temurin-17"
+$ContainerEnv = @($ContainerInspect.Config.Env)
+if ($ContainerEnv -notcontains $ExpectedJavaHomeEntry) {
+    $DetectedJavaHome = @($ContainerEnv | Where-Object { $_ -like "JAVA_HOME=*" }) | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($DetectedJavaHome)) {
+        $DetectedJavaHome = "<missing>"
+    }
+    throw "[FAIL] JAVA_HOME. Expected '$ExpectedJavaHomeEntry', got '$DetectedJavaHome'. Rebuild/recreate the DevKit container."
+}
+Write-Host "[OK] JAVA_HOME -> /opt/jdks/temurin-17"
 
 Invoke-DockerCheck -Label "Default Java 17 command" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "/usr/local/bin/java", "-version"
