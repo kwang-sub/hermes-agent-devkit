@@ -1,7 +1,7 @@
 ---
 name: dev-fast-flow
 description: 명확하고 작은 단일 Repository 작업을 Coder 대화에서 Kanban에 self-dispatch하고 worker가 risk에 따라 완료 또는 reviewer 인계한다.
-version: 0.2.1
+version: 0.2.2
 author: local
 platforms: [linux]
 metadata:
@@ -35,7 +35,17 @@ User → Coder intake → Kanban → Coder worker
 다음은 Standard Flow로 보낸다: project/workspace 모호성, 기존 변경을 안전하게 보존하기 어려움, 새 branch/worktree, 신규 기능 설계, multi-repo/module 영향, API/schema/dependency/transaction/security/concurrency 정책 결정, 복수 해석 요구사항.
 
 ## Intake 계약
-`<repo>/.hermes/project.yaml`, current branch, Base SHA, 현재 `git status`를 확인하고 최소한 다음을 Kanban에 남긴다.
+`<repo>/.hermes/project.yaml`, current branch, Base SHA를 확인하고 `scripts/create_fast_task.py`가 계산한 **effective Git changes**를 dirty baseline으로 사용한다.
+
+Windows Host bind mount에서는 Host checkout의 CRLF와 Linux Git의 LF index 비교 때문에 raw `git status`가 대량 `M`을 표시할 수 있다. 따라서 raw status의 modified-file 개수만으로 dirty 여부를 판정하거나 사용자에게 중단 확인을 요청하지 않는다.
+
+Effective change 규칙:
+- unstaged tracked: `git diff --ignore-cr-at-eol`에서 남는 변경만 실제 변경
+- staged: 항상 실제 변경
+- untracked: 항상 실제 변경
+- CRLF/LF 차이만 있는 tracked 파일: EOL-only noise로 기록하되 dirty baseline에서는 제외
+
+Kanban에는 최소한 다음을 남긴다.
 
 ```text
 Flow: FAST
@@ -47,12 +57,13 @@ Test Plan
 Known Risks
 Workspace / Expected Branch / Base SHA
 Workspace dirty at dispatch
-Pre-existing changes
+Ignored tracked EOL-only changes at dispatch
+Pre-existing effective changes
 Reviewer Profile
 Review Policy: RISK_BASED
 ```
 
-Task 생성은 `scripts/create_fast_task.py`를 사용한다. 기존 변경은 baseline으로 기록할 뿐 stash/reset/clean/restore하지 않는다. 성공 후 Interactive Coder는 멈추고 Gateway가 `dev-implement-plan` worker를 실행한다.
+Task 생성은 `scripts/create_fast_task.py`를 사용한다. 스크립트는 workspace를 Git `safe.directory`로 idempotent하게 등록한다. 기존 effective 변경은 baseline으로 기록할 뿐 stash/reset/clean/restore하지 않는다. 성공 후 Interactive Coder는 멈추고 Gateway가 `dev-implement-plan` worker를 실행한다.
 
 ## Worker 결과
 - 실제 source에서 Fast Flow 범위를 벗어나면 `FAST_FLOW_ESCALATION_REQUIRED`로 Block.
@@ -64,6 +75,7 @@ Task 생성은 `scripts/create_fast_task.py`를 사용한다. 기존 변경은 b
 ## 불변식
 - intake 세션은 source를 직접 수정하지 않는다.
 - 기존 사용자 변경을 덮어쓰거나 reset/restore/clean/stash하지 않는다.
+- raw `git status`의 EOL noise를 사용자 변경으로 오인하지 않는다.
 - risk 판정 때문에 검증을 생략하지 않는다.
 - LOW를 파일 수만으로 판정하지 않는다.
 - branch/worktree 생성, commit/push/PR/merge 금지.
