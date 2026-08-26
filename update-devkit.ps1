@@ -79,6 +79,7 @@ function Get-CapturedText {
 function Test-AnyPathMatch {
     param(
         [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
         [string[]]$Paths,
         [Parameter(Mandatory = $true)]
         [string[]]$ExactPaths
