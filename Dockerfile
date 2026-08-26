@@ -64,13 +64,19 @@ ENV JAVA_HOME_21=/opt/jdks/temurin-21
 ENV JAVA_HOME=/opt/jdks/temurin-17
 ENV PATH="/opt/jdks/temurin-17/bin:${PATH}"
 
-RUN set -eu; \
-    /opt/jdks/temurin-8/bin/java -version; \
-    /opt/jdks/temurin-8/bin/javac -version; \
-    /opt/jdks/temurin-17/bin/java -version; \
-    /opt/jdks/temurin-17/bin/javac -version; \
-    /opt/jdks/temurin-21/bin/java -version; \
-    /opt/jdks/temurin-21/bin/javac -version
+# Login shells in the upstream image may rebuild PATH and drop JAVA_HOME/bin.
+# Stable /usr/local/bin links keep the DevKit default JDK available regardless of
+# shell startup behavior. Project-specific builds still use hermes-java.
+RUN ln -sf /opt/jdks/temurin-17/bin/java /usr/local/bin/java \
+    && ln -sf /opt/jdks/temurin-17/bin/javac /usr/local/bin/javac \
+    && /opt/jdks/temurin-8/bin/java -version \
+    && /opt/jdks/temurin-8/bin/javac -version \
+    && /opt/jdks/temurin-17/bin/java -version \
+    && /opt/jdks/temurin-17/bin/javac -version \
+    && /opt/jdks/temurin-21/bin/java -version \
+    && /opt/jdks/temurin-21/bin/javac -version \
+    && /usr/local/bin/java -version \
+    && /usr/local/bin/javac -version
 
 COPY --chmod=0755 scripts/hermes-java /usr/local/bin/hermes-java
 
