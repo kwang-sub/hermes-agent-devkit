@@ -62,8 +62,20 @@ def main() -> int:
         "update-devkit.ps1",
     )
 
-    # Persistent auth/profile/session/Kanban state must never be destroyed by an
-    # ordinary update. Local source must also never be rewritten automatically.
+    # PowerShell emits no pipeline object for successful commands that write no
+    # stdout (for example `git status --porcelain` on a clean checkout). The
+    # text helper must therefore accept null and normalize it to an empty string.
+    require(
+        text,
+        (
+            'function Get-CapturedText',
+            '[AllowNull()]',
+            'if ($null -eq $Output)',
+            'return ""',
+        ),
+        "update-devkit.ps1 empty-output contract",
+    )
+
     executable = executable_text(text).lower()
     forbid(
         executable,
