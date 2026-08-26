@@ -66,6 +66,7 @@ capabilities = (
     "dev-spring-feature",
     "dev-spring-data",
     "dev-spring-test",
+    "dev-spring-refactor",
     "dev-api-docs",
 )
 
@@ -95,6 +96,37 @@ for skill in capabilities:
         raise SystemExit(f"reviewer contract missing canonical capability path: {skill}")
 if "hermes-java" not in review:
     raise SystemExit("reviewer contract missing project Java launcher")
+PYTHON
+}
+
+check_refactor_gate_contract() {
+    python3 - <<'PYTHON'
+from pathlib import Path
+
+skill = Path("custom-skills/coder/dev-spring-refactor/SKILL.md")
+if not skill.is_file():
+    raise SystemExit("dev-spring-refactor skill is missing")
+text = skill.read_text(encoding="utf-8")
+required = (
+    "Post-Implementation Structural Quality Gate",
+    "task-coupled refactoring",
+    "Javadoc / Comment Quality Gate",
+    "메서드 흐름 주석",
+    "Structural Quality Check: PASS | REFACTORED | ESCALATED",
+)
+missing = [term for term in required if term not in text]
+if missing:
+    raise SystemExit("dev-spring-refactor missing contract terms: " + ", ".join(missing))
+
+implement = Path("custom-skills/coder/dev-implement-plan/SKILL.md").read_text(encoding="utf-8")
+for term in ("dev-spring-refactor", "Post-Implementation Structural Quality Gate", "Javadoc/Comment Review"):
+    if term not in implement:
+        raise SystemExit(f"dev-implement-plan missing refactor gate term: {term}")
+
+review = Path("custom-skills/reviewer/dev-code-review/SKILL.md").read_text(encoding="utf-8")
+for term in ("dev-spring-refactor", "Structural Quality Review Gate", "Javadoc/Comment"):
+    if term not in review:
+        raise SystemExit(f"dev-code-review missing structural review term: {term}")
 PYTHON
 }
 
@@ -185,6 +217,7 @@ run_check "hermes-java shell syntax" \
     bash -n scripts/hermes-java
 run_check "Multi-JDK image contract" check_multi_jdk_contract
 run_check "Reviewer capability mount contract" check_reviewer_capability_mounts
+run_check "Post-implementation refactor gate contract" check_refactor_gate_contract
 run_check "Environment contract" \
     python3 scripts/check_env_contract.py
 run_check "init-profiles inspect/runtime contract" check_init_mount_contract
