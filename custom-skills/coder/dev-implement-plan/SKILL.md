@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: 승인된 Kanban 작업을 할당 Workspace에서 최소 구현·구조 품질 점검·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.13.0
+version: 0.14.0
 author: local
 platforms: [linux]
 metadata:
@@ -31,7 +31,7 @@ Coder worker의 **compact 실행 계약**이다. 상세 구현/검증/risk 기�
 7. **Post-Implementation Structural Quality Gate**를 verification 전에 수행한다. Standard Flow의 Spring source 변경은 필요한 경우 `dev-spring-refactor`를 읽고 구조 품질을 점검한다. Fast Flow는 구조 trigger가 없으면 refactor 없이 진행한다. public API/schema/dependency/transaction/security/concurrency/package/module architecture 의미 변경이 필요하면 자동 refactor하지 않고 `REVIEW_REQUIRED` 또는 Fast Flow escalation으로 전환한다.
 8. 구현이 안정된 뒤 Verification Mode와 Task Test Plan에 따라 최소 검증을 수행하고, 최종 source 변경 후 필요한 검증만 한 번 더 수행한다. 동일한 PASS 검증을 관련 source 변경 없이 반복하지 않는다.
 9. 최종 변경 범위는 scoped `scripts/change_summary.py`로 한 번에 검증한다. `EOL_ONLY_*`는 Windows bind-mount noise로 기록만 하고 source 파일을 수동 normalize하지 않는다.
-10. 구현 후 `Review Risk`를 판정한다. Standard Flow 또는 CHANGES_REQUESTED 재작업은 항상 review, Fast Flow + LOW는 complete, Fast Flow + REVIEW_REQUIRED는 review로 보낸다.
+10. 구현 후 `Review Risk`를 **positive eligibility** 방식으로 판정한다. `LOW`임을 근거로 증명하지 못하면 `REVIEW_REQUIRED`다. Standard Flow 또는 CHANGES_REQUESTED 재작업은 항상 review, Fast Flow + LOW는 complete, Fast Flow + REVIEW_REQUIRED는 review로 보낸다.
 11. terminal action 하나를 실행한 뒤 즉시 멈춘다. 구현 불가/필수 입력 누락/필수 검증 불가만 `kanban_block`한다. review 대용 `kanban_block`은 금지한다.
 
 ## Canonical Workspace Verification
@@ -46,21 +46,55 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/verify_workspace.py 
   --base-sha "<Base SHA>"
 ```
 
-## Source Exploration Budget
-토큰과 반복 탐색을 줄이되 correctness evidence는 유지한다.
+## Source Evidence Map
+탐색 중 확인한 source/symbol을 짧은 Evidence Map으로 유지하고 동일 목적의 재탐색을 피한다. 별도 산출물 파일을 만들 필요는 없다.
 
-1. Task body에 정확한 파일 경로가 있으면 해당 경로를 우선하며 repository-wide `find`를 먼저 수행하지 않는다.
-2. 메서드/심볼이 명시되어 있으면 `grep(symbol)` → 필요한 line range `read` 순서로 확인한다.
-3. 큰 source의 `L1-2000` 전체 읽기는 기본 금지한다. 한 번의 read는 필요한 symbol 주변 약 100~250 lines를 우선한다.
-4. 새로운 evidence가 없는 한 같은 파일을 반복해서 read하지 않는다.
-5. Task에 이미 기록된 분석/Pattern Reference를 검증하는 데 필요한 source만 추가 조사한다.
-6. exact path가 없거나 source evidence가 task body와 충돌할 때만 탐색 범위를 단계적으로 넓힌다.
-7. frontend/backend contract 변경처럼 양쪽 구현을 함께 수정해야 하는 경우에도 먼저 정확한 payload builder/parser symbol을 찾고, repository-wide 동일 문자열 grep은 한 번만 허용한다.
+예:
+
+```text
+Target
+- ConfigMetadataUtils.java
+  - applicationPropertyValue
+  - fallbackKeys
+Direct Consumers
+- ConfigService
+- NodeSpecificConfigService
+Implementation Dependency
+- PropertiesWriter
+Tests
+- ConfigMetadataUtilsTest
+- NodeSpecificConfigServiceTest
+```
+
+규칙:
+- 한 번 확인한 파일/심볼은 새로운 correctness 질문이 생기지 않는 한 다시 grep/read하지 않는다.
+- 문서 작성과 Risk 판정은 이미 확보한 Evidence Map, Pattern References, 최종 diff를 우선 재사용한다.
+- Evidence Map에 없는 추가 탐색은 무엇을 확인하려는지 명확한 질문이 있을 때만 수행한다.
+
+## Source Exploration Budget
+토큰과 반복 탐색을 줄이되 correctness evidence는 유지한다. 분석형 Fast Worker는 **약 50~60 tool calls를 soft target**으로 삼되, correctness evidence가 필요하면 초과할 수 있다. 초과 이유는 새로운 evidence여야 한다.
+
+### Pass 1 — Target
+1. Task body에 정확한 파일/심볼이 있으면 해당 경로부터 확인한다. repository-wide `find`를 먼저 수행하지 않는다.
+2. 같은 목적의 관련 symbol은 결과가 과도해지지 않는 범위에서 한 grep에 묶는다.
+3. 큰 source의 `L1-2000` 전체 읽기는 기본 금지한다. 필요한 symbol 주변 약 100~250 lines를 우선한다.
+
+### Pass 2 — Direct Impact
+4. Target의 direct caller/callee, 실제 persistence/external boundary, 관련 test까지만 확인한다.
+5. 동일 파일을 전체 read한 뒤 다시 큰 overlapping range로 읽지 않는다.
+6. 동일/유사 symbol grep은 원칙적으로 1회다. 이미 얻은 검색 결과를 다음 read 위치 결정에 재사용한다.
+7. Task의 Pattern References/기존 분석과 source가 일치하면 프로젝트 전체 재분석을 하지 않는다.
+
+### Pass 3 — Exception
+8. Pass 1~2 evidence만으로 구현/compatibility/risk 판단이 불가능할 때만 범위를 넓힌다.
+9. 추가 탐색 전 내부적으로 `Need additional evidence: <판단 질문> → <필요 symbol/path>`를 명확히 하고 그 질문에 직접 답하는 최소 grep/read만 수행한다.
+10. frontend/backend contract 변경처럼 양쪽 구현을 함께 수정해야 하는 경우에도 정확한 payload builder/parser symbol을 먼저 찾고 repository-wide 동일 문자열 grep은 한 번만 허용한다.
+11. Pass 2 종료 시점에 구현 가능 여부를 먼저 판단한다. 단순 확신 확보를 위해 Pass 3로 넘어가지 않는다.
 
 ## Documentation Reuse Rule
 분석 Markdown이 구현 Task에 포함되어도 문서 전용 repository 재탐색을 만들지 않는다.
 
-- 구현을 위해 이미 읽은 source, Pattern References, 최종 diff를 문서 근거로 재사용한다.
+- 구현을 위해 이미 읽은 source, **Source Evidence Map**, Pattern References, 최종 diff를 문서 근거로 재사용한다.
 - 문서 작성 전에 별도의 전체 비교 pass를 수행하지 않는다.
 - 근거가 부족한 항목만 정확한 symbol 주변을 추가 확인한다.
 - 사용자가 기존 문서와의 비교를 명시하지 않았다면 기존 Markdown 전체를 추가로 읽지 않는다.
@@ -116,7 +150,47 @@ hermes-java ./mvnw test
 Project build file을 Java version/toolchain 자동 변경 목적으로 수정하지 않는다.
 
 ## Fast Flow Review Risk
-`LOW`는 기존 패턴의 작은 국소 변경이고 public API/DB schema/Entity relation/dependency/transaction/security/concurrency/복잡 QueryDSL/Native Query/공통 architecture 영향이 없으며 targeted/declared verification과 Structural Quality Check가 PASS일 때만 허용한다. task-coupled refactor가 여러 production type으로 확장되거나 구조 판단이 불확실하면 `REVIEW_REQUIRED`다.
+Risk 판정은 파일 수보다 **behavior 영향 범위와 compatibility 의미**를 우선한다.
+
+### REVIEW_REQUIRED trigger
+다음 중 하나라도 있으면 Fast Flow self-complete하지 않고 review로 보낸다.
+
+- public API / request / response contract 의미 변경
+- DB schema / Entity relation 변경
+- dependency 변경
+- transaction / security / concurrency 정책 영향
+- complex QueryDSL / Native Query
+- package/module/common architecture 의미 변경
+- shared/common Utility의 **behavioral change**
+- 여러 실행 흐름이 함께 사용하는 공통 코드의 의미 변경
+- legacy/fallback/backward compatibility 동작 변경
+- `application.properties` 등 운영 설정의 조회/저장 의미 변경
+- file persistence / property key resolution / serialization 의미 변경
+- task-coupled refactor가 여러 production type으로 확장되거나 영향 범위가 불명확함
+
+### LOW positive eligibility
+`LOW`는 위험 trigger가 없다는 것만으로는 부족하고 다음을 모두 evidence로 확인해야 한다.
+
+1. 변경이 기존 패턴의 작은 local behavior다.
+2. consumer/영향 범위가 단일 또는 명확히 제한되어 있다.
+3. compatibility semantics가 바뀌지 않는다.
+4. operational config/persistence semantics가 바뀌지 않는다.
+5. targeted/declared verification이 PASS다.
+6. Structural Quality Check가 PASS다.
+7. residual risk가 명확히 낮다.
+
+하나라도 증명되지 않거나 불확실하면 `REVIEW_REQUIRED`다.
+
+Risk Reasons는 Reviewer가 시작점으로 재사용할 수 있게 짧고 구조화한다.
+
+```text
+Review Risk: REVIEW_REQUIRED
+Risk Reasons:
+- Impact Scope: SHARED | LOCAL | API | DATA | ...
+- Compatibility: LEGACY_FALLBACK | UNCHANGED | ...
+- Operational Config: APPLICATION_PROPERTIES | NONE | ...
+- Reason: <구체적인 behavior 영향>
+```
 
 ## 공통 Coding Rules 핵심
 - 기존 abstraction/library/pattern을 재사용하고 unrelated refactor를 섞지 않는다.
@@ -155,6 +229,7 @@ Residual Risk
 - Fast Flow에서는 raw `git status`의 EOL-only noise를 사용자 변경으로 승격하지 않는다.
 - EOL noise 해결을 위해 사용자 source 전체를 line-ending rewrite하지 않는다.
 - behavior/API/schema 의미 변경을 refactor라는 이름으로 섞지 않는다.
+- Fast Flow `LOW`는 absence-of-risk 추론이 아니라 positive evidence로만 허용한다.
 - `CHANGES_REQUESTED`는 terminal 상태가 아니며 original coder가 동일 Workspace에서 blocking finding만 수정 후 반드시 재-review한다.
 - Standard Flow에서 Coder self-complete 금지.
 

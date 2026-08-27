@@ -1,7 +1,7 @@
 ---
 name: dev-code-review
 description: 동일 Workspace의 미커밋 구현을 requirement/AC와 project pattern/capability/구조 품질 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
-version: 0.10.0
+version: 0.10.1
 author: local
 platforms: [linux]
 metadata:
@@ -23,7 +23,8 @@ Reviewer의 **compact 실행 계약**이다. 상세 severity/checklist/escalatio
 5. capability 문서는 실제 finding 판단에 필요한 것만 확인한다. 단순히 Coder가 여러 skill을 로드했다는 이유만으로 Reviewer가 모두 다시 읽지 않는다.
 6. Spring source 변경에서는 Coder의 Structural Quality/Javadoc evidence를 실제 diff와 대조한다. 단순 파일 길이/클래스 수/개인적 선호만으로 finding을 만들지 않는다.
 7. Coder의 `Verification Final: true`와 구체적인 PASS command/result가 있고 그 이후 관련 executable source/test 변경 증거가 없으면 이를 검증 evidence로 재사용한다. 독립 검토상 재실행이 필요한 경우에만 최소 명령을 실행한다.
-8. P0/P1이 있으면 `kanban_request_changes`; 없고 evidence가 충분하면 `kanban_complete`; 안전한 판단 불가·외부 결정 필요·반복 blocker면 `kanban_block` 중 정확히 하나만 실행한다.
+8. Coder의 `Review Risk`와 구조화된 `Risk Reasons`를 **탐색 시작점**으로 재사용한다. 이를 그대로 신뢰하지는 않지만, 동일 영향 범위를 다시 찾기 위한 repository-wide 탐색은 하지 않는다. 실제 diff/context와 모순될 때만 추가 source를 본다.
+9. P0/P1이 있으면 `kanban_request_changes`; 없고 evidence가 충분하면 `kanban_complete`; 안전한 판단 불가·외부 결정 필요·반복 blocker면 `kanban_block` 중 정확히 하나만 실행한다.
 
 ## Canonical Review Context
 필수 인수를 생략한 probe나 별도 `git status` safe.directory probe를 먼저 수행하지 않는다.
@@ -46,10 +47,11 @@ python3 /opt/custom-skills/reviewer/dev-code-review/scripts/review_context.py \
 
 ## Diff-first Review Budget
 1. 먼저 Base SHA 기준 changed hunk/diff를 확인한다.
-2. diff만으로 이해되지 않는 symbol만 주변 source를 bounded read한다.
-3. 변경되지 않은 DTO/entity/repository/service를 전부 읽지 않는다. 실제 contract 근거가 필요할 때만 해당 symbol을 읽는다.
-4. 동일 파일을 전체 read한 뒤 다시 큰 line range로 읽지 않는다.
-5. 분석 Markdown은 구현 correctness의 근거가 아니라 설명 산출물이다. 문서와 source가 충돌할 때 source/diff를 우선하며, 문서를 검토하기 위해 repository-wide 비교 분석을 새로 수행하지 않는다.
+2. Coder의 `Risk Reasons`에 기록된 impact/compatibility/config 영역을 diff에 대조한다. 같은 영향을 다시 찾기 위한 broad grep을 하지 않는다.
+3. diff만으로 이해되지 않는 symbol만 주변 source를 bounded read한다.
+4. 변경되지 않은 DTO/entity/repository/service를 전부 읽지 않는다. 실제 contract 근거가 필요할 때만 해당 symbol을 읽는다.
+5. 동일 파일을 전체 read한 뒤 다시 큰 line range로 읽지 않는다.
+6. 분석 Markdown은 구현 correctness의 근거가 아니라 설명 산출물이다. 문서와 source가 충돌할 때 source/diff를 우선하며, 문서를 검토하기 위해 repository-wide 비교 분석을 새로 수행하지 않는다.
 
 ## Verification Evidence Reuse
 Reviewer의 독립성은 **모든 테스트를 다시 실행하는 것**이 아니라 evidence와 diff를 독립적으로 판단하는 것으로 유지한다.
@@ -105,5 +107,6 @@ P0/P1 없음 + evidence 충분 → kanban_complete
 - EOL-only noise를 이유로 source line ending을 변경하지 않는다.
 - finding은 file/symbol, evidence, required change, expected verification을 포함한다.
 - Fast Flow `Review Risk: LOW` Task는 Coder가 완료하므로 Reviewer가 호출되지 않는다. Reviewer가 받은 Task는 독립 review가 필요한 것으로 간주한다.
+- Coder의 Risk Reasons는 starting point이지 verdict가 아니다. 독립성 확보를 이유로 동일 영향 범위를 repository-wide 재탐색하지 않는다.
 
 Severity, 상세 checklist, retry/escalation이 필요하면 `references/review-details.md`를 읽는다.
