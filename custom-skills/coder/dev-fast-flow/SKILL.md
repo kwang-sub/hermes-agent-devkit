@@ -1,7 +1,7 @@
 ---
 name: dev-fast-flow
 description: 명확하고 작은 단일 Repository 작업을 Coder 대화에서 Kanban에 self-dispatch하고 worker가 risk에 따라 완료 또는 reviewer 인계한다.
-version: 0.3.1
+version: 0.3.2
 author: local
 platforms: [linux]
 metadata:
@@ -20,6 +20,16 @@ User → Coder intake → Kanban → Coder worker
                             ├─ Review Risk LOW → done
                             └─ REVIEW_REQUIRED → Reviewer
 ```
+
+## Kanban 실행 확인 Gate
+일반 개발 요청에서는 사용자의 실행 의도를 먼저 확인한다.
+
+- 사용자가 구현/수정/리팩터링/테스트 실행을 요청했지만 현재 요청에서 Kanban/Flow 실행을 명시하지 않았다면, **source 탐색·수정 전에** `Kanban 기반으로 진행할까요?`를 묻고 권장 Flow(`FAST` 또는 `STANDARD`)를 함께 제시한 뒤 멈춘다.
+- `/dev-fast-flow`를 직접 호출하거나 `Fast Flow로 진행`, `칸반으로 진행`처럼 현재 요청에서 실행 방식을 명시했다면 이미 승인된 것으로 보고 재확인하지 않는다.
+- 승인 전에는 source write/patch, build/test, 구현용 capability Skill 로드, Kanban Task 생성, 구현 수준의 repository-wide 탐색을 하지 않는다. eligibility 판단에 필요한 최소 metadata/path 확인만 허용한다.
+- 분석/설명/코드 리뷰처럼 read-only 요청에는 이 Gate를 적용하지 않는다.
+- 사용자가 보류/거절하면 구현을 시작하지 않는다. 이후 명시적인 실행 승인 없이 자동 재개하지 않는다.
+- Kanban Worker는 Task ID가 있는 실행 세션이므로 이 Gate 대상이 아니다.
 
 ## 적용 조건
 다음을 모두 만족해야 한다.
@@ -100,6 +110,7 @@ Task 생성은 `scripts/create_fast_task.py`를 사용한다. 스크립트는 wo
 - `CHANGES_REQUESTED` 재작업은 항상 다시 Reviewer에게 보낸다.
 
 ## 불변식
+- 일반 개발 요청은 Kanban 실행 승인을 받기 전 구현을 시작하지 않는다.
 - intake 세션은 source를 직접 수정하지 않는다.
 - intake에서 worker 수준의 상세 source 분석을 선행하지 않는다.
 - 명시적인 API/payload/schema contract 변경 요청을 Fast Flow로 강행하지 않는다.

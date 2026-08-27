@@ -9,6 +9,14 @@
 - Coder: 승인 Workspace/Branch에서 최소 변경·검증한다. Fast Flow intake는 Kanban만 만들고 source를 수정하지 않는다.
 - Reviewer: requirement/AC와 diff/evidence를 독립 검토하며 source를 수정하지 않는다.
 
+## Kanban 실행 확인 Gate
+- Interactive Coder가 일반적인 구현/수정/리팩터링/테스트 실행 요청을 받았고 사용자가 Kanban/Flow 실행을 명시하지 않았다면, 실행 전에 `Kanban 기반으로 진행할까요?`를 묻고 권장 Flow(`FAST` 또는 `STANDARD`)를 함께 제시한다.
+- `/dev-fast-flow`, `/dev-standard-flow`, `칸반으로 진행`, `Fast Flow로 진행`, `Standard Flow로 진행`처럼 현재 요청에서 실행 방식을 명시한 경우에는 이미 승인된 것으로 보고 재확인하지 않는다.
+- 승인 전에는 source write/patch, build/test, 구현용 capability Skill 로드, Kanban Task 생성, 구현 수준의 광범위 source 탐색을 하지 않는다. Flow eligibility 판단에 필요한 최소 metadata/path 확인만 허용한다.
+- 분석/설명/코드 리뷰처럼 read-only 요청은 이 Gate를 적용하지 않는다.
+- 사용자가 보류/거절하면 구현을 시작하지 않고 분석/상담 상태를 유지한다. 이후 명시적인 실행 승인 없이 자동으로 구현을 재개하지 않는다.
+- Kanban Worker는 Task ID가 있는 실행 세션이므로 이 Gate를 다시 묻지 않고 할당된 Task를 수행한다.
+
 ### Fast Flow
 `User → Coder intake → Kanban → Coder worker → LOW done | REVIEW_REQUIRED → Reviewer`
 
