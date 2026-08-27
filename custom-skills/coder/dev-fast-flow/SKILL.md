@@ -1,7 +1,7 @@
 ---
 name: dev-fast-flow
 description: 명확하고 작은 단일 Repository 작업을 Coder 대화에서 Kanban에 self-dispatch하고 worker가 risk에 따라 완료 또는 reviewer 인계한다.
-version: 0.3.0
+version: 0.3.1
 author: local
 platforms: [linux]
 metadata:
@@ -34,6 +34,8 @@ User → Coder intake → Kanban → Coder worker
 
 다음은 Standard Flow로 보낸다: project/workspace 모호성, 기존 변경을 안전하게 보존하기 어려움, 새 branch/worktree, 신규 기능 설계, multi-repo/module 영향, API/schema/dependency/transaction/security/concurrency 정책 결정, 복수 해석 요구사항.
 
+사용자가 `/dev-fast-flow`를 명시적으로 호출했더라도 eligibility 규칙을 우회하지 않는다. 요청 문장 자체에 HTTP payload/request/response 구조 변경, public API contract 변경, DB schema 변경, dependency 변경이 명시되어 있으면 source 사전 분석 없이 Standard Flow 대상으로 판정한다.
+
 ## Fast Intake Budget
 Intake의 책임은 **구현 분석이 아니라 eligibility 판정과 dispatch**다.
 
@@ -53,6 +55,8 @@ Task 생성 시 변경 성격에 맞는 최소 검증 모드를 명시한다.
 - `TARGETED_TEST`: 실행 로직 변경. 관련 targeted test를 기본으로 한다.
 
 사용자가 더 강한 검증을 명시하면 그 요구를 우선한다. 변경 성격이 불분명하면 `TARGETED_TEST`를 선택한다.
+
+Test Plan은 구현 중 반복 실행 목록이 아니라 **최종 verification contract**로 작성한다. 같은 stack의 여러 targeted test는 가능한 한 하나의 build invocation으로 묶을 수 있게 기록하고, frontend/backend 각각 필요한 최소 검증만 적는다.
 
 ## Intake 계약
 `<repo>/.hermes/project.yaml`, current branch, Base SHA와 effective Git changes는 `scripts/create_fast_task.py`가 검증/계산한다. Interactive Coder가 같은 검사를 수동으로 재현하지 않는다.
@@ -98,6 +102,7 @@ Task 생성은 `scripts/create_fast_task.py`를 사용한다. 스크립트는 wo
 ## 불변식
 - intake 세션은 source를 직접 수정하지 않는다.
 - intake에서 worker 수준의 상세 source 분석을 선행하지 않는다.
+- 명시적인 API/payload/schema contract 변경 요청을 Fast Flow로 강행하지 않는다.
 - 기존 사용자 변경을 덮어쓰거나 reset/restore/clean/stash하지 않는다.
 - raw `git status`의 EOL noise를 사용자 변경으로 오인하지 않는다.
 - risk 판정 때문에 검증을 생략하지 않는다.

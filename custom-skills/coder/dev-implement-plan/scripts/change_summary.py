@@ -54,6 +54,13 @@ def git_paths(root: Path, base: list[str], includes: list[str]) -> list[str]:
     return [line.strip() for line in run(cmd).stdout.splitlines() if line.strip()]
 
 
+def tracked_changes(root: Path, includes: list[str]) -> tuple[list[str], list[str]]:
+    raw = git_paths(root, ["diff", "--name-only", "HEAD"], includes)
+    effective = git_paths(root, ["diff", "--name-only", "--ignore-cr-at-eol", "HEAD"], includes)
+    eol_only = sorted(set(raw) - set(effective))
+    return effective, eol_only
+
+
 def untracked_paths(root: Path, includes: list[str]) -> list[str]:
     all_untracked = git_paths(root, ["ls-files", "--others", "--exclude-standard"], [])
     if not includes:
@@ -66,7 +73,7 @@ def untracked_paths(root: Path, includes: list[str]) -> list[str]:
 
 
 def check_tracked_whitespace(root: Path, includes: list[str]) -> list[str]:
-    cmd = ["git", "-C", str(root), "diff", "--check", "HEAD"]
+    cmd = ["git", "-C", str(root), "diff", "--check", "--ignore-cr-at-eol", "HEAD"]
     if includes:
         cmd.extend(["--", *includes])
     result = run(cmd, check=False)
@@ -92,7 +99,7 @@ def main() -> int:
     args = parse_args()
     root = repo_root(Path(args.workspace))
     includes = normalize_includes(root, args.include)
-    tracked = git_paths(root, ["diff", "--name-only", "HEAD"], includes)
+    tracked, eol_only = tracked_changes(root, includes)
     untracked = untracked_paths(root, includes)
     whitespace_errors = check_tracked_whitespace(root, includes) + check_untracked_whitespace(root, untracked)
 
@@ -101,6 +108,9 @@ def main() -> int:
     print(f"TRACKED_CHANGED_COUNT={len(tracked)}")
     for index, path in enumerate(tracked, start=1):
         print(f"TRACKED_{index}={path}")
+    print(f"EOL_ONLY_COUNT={len(eol_only)}")
+    for index, path in enumerate(eol_only, start=1):
+        print(f"EOL_ONLY_{index}={path}")
     print(f"UNTRACKED_COUNT={len(untracked)}")
     for index, path in enumerate(untracked, start=1):
         print(f"UNTRACKED_{index}={path}")

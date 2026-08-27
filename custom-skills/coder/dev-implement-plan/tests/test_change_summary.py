@@ -21,6 +21,7 @@ class ChangeSummaryTests(unittest.TestCase):
         subprocess.run(["git", "init", "-b", "main", str(self.repo)], capture_output=True, check=True)
         git(self.repo, "config", "user.name", "Hermes Test")
         git(self.repo, "config", "user.email", "hermes-test@example.invalid")
+        git(self.repo, "config", "core.autocrlf", "false")
         (self.repo / "tracked.txt").write_text("base\n", encoding="utf-8")
         (self.repo / "unrelated.txt").write_text("base\n", encoding="utf-8")
         git(self.repo, "add", ".")
@@ -44,9 +45,25 @@ class ChangeSummaryTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("TRACKED_CHANGED_COUNT=1", proc.stdout)
         self.assertIn("TRACKED_1=tracked.txt", proc.stdout)
+        self.assertIn("EOL_ONLY_COUNT=0", proc.stdout)
         self.assertIn("UNTRACKED_COUNT=1", proc.stdout)
         self.assertIn("UNTRACKED_1=new.md", proc.stdout)
         self.assertNotIn("unrelated.txt", proc.stdout)
+        self.assertIn("STATUS=valid", proc.stdout)
+
+    def test_crlf_only_tracked_change_is_reported_as_noise(self) -> None:
+        (self.repo / "tracked.txt").write_bytes(b"base\r\n")
+        normal = git(self.repo, "diff", "--name-only")
+        ignored = git(self.repo, "diff", "--name-only", "--ignore-cr-at-eol")
+        self.assertIn("tracked.txt", normal)
+        self.assertEqual(ignored, "")
+
+        proc = self.run_helper("tracked.txt")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("TRACKED_CHANGED_COUNT=0", proc.stdout)
+        self.assertIn("EOL_ONLY_COUNT=1", proc.stdout)
+        self.assertIn("EOL_ONLY_1=tracked.txt", proc.stdout)
+        self.assertIn("WHITESPACE_ERROR_COUNT=0", proc.stdout)
         self.assertIn("STATUS=valid", proc.stdout)
 
     def test_untracked_difference_exit_one_is_not_an_error(self) -> None:
