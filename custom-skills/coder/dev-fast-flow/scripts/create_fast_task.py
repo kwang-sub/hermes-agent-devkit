@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 import re
 import subprocess
@@ -121,9 +122,30 @@ def workspace_status(repo: Path) -> tuple[list[str], list[str]]:
     return changes, eol_only
 
 
-def logical_task_key(title: str, base_sha: str) -> str:
+def _normalize_task_spec_value(value: str) -> str:
+    return " ".join(value.split())
+
+
+def request_fingerprint(*, title: str, goal: str, acceptance: list[str], implementation: list[str], tests: list[str], risks: list[str]) -> str:
+    """Return a stable fingerprint for the requested Fast Flow work.
+
+    Exact retries keep the same fingerprint, while follow-up work on the same
+    Base SHA gets a different fingerprint when its requested spec changes.
+    """
+    parts = [
+        f"title={_normalize_task_spec_value(title)}",
+        f"goal={_normalize_task_spec_value(goal)}",
+        *(f"acceptance={_normalize_task_spec_value(value)}" for value in acceptance),
+        *(f"implementation={_normalize_task_spec_value(value)}" for value in implementation),
+        *(f"test={_normalize_task_spec_value(value)}" for value in tests),
+        *(f"risk={_normalize_task_spec_value(value)}" for value in risks),
+    ]
+    return sha256("\n".join(parts).encode("utf-8")).hexdigest()[:8].upper()
+
+
+def logical_task_key(title: str, base_sha: str, fingerprint: str) -> str:
     slug = re.sub(r"[^A-Za-z0-9]+", "-", title).strip("-").upper() or "TASK"
-    return f"FAST-{base_sha[:8].upper()}-{slug[:32].rstrip('-')}"
+    return f"FAST-{base_sha[:8].upper()}-{slug[:32].rstrip('-')}-{fingerprint}"
 
 
 def bullet_lines(values: list[str]) -> str:
@@ -216,14 +238,23 @@ def main() -> int:
     pre_existing, eol_only = workspace_status(repo)
     branch = current_branch(repo)
     base_sha = current_head(repo)
-    task_key = logical_task_key(args.title, base_sha)
     risks = args.risk or ["Fast Flow remains valid only while the task is local, unambiguous, and small."]
+    fingerprint = request_fingerprint(
+        title=args.title,
+        goal=args.goal,
+        acceptance=args.acceptance,
+        implementation=args.implementation,
+        tests=args.test,
+        risks=risks,
+    )
+    task_key = logical_task_key(args.title, base_sha, fingerprint)
     body = build_body(task_key=task_key, goal=args.goal, acceptance=args.acceptance, implementation=args.implementation, tests=args.test, risks=risks, reviewer=meta.reviewer, workspace=repo, branch=branch, base_sha=base_sha, pre_existing=pre_existing, eol_only_count=len(eol_only))
 
     print("=== Fast Flow Dispatch ===")
     print(f"PROJECT={meta.project_id}")
     print(f"BOARD={meta.board}")
     print(f"TASK_KEY={task_key}")
+    print(f"REQUEST_FINGERPRINT={fingerprint}")
     print(f"WORKSPACE={repo}")
     print(f"BRANCH={branch}")
     print(f"BASE_SHA={base_sha}")

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
@@ -53,12 +54,30 @@ def make_repo(root: Path) -> Path:
     return repo
 
 
-def invoke(repo: Path, title: str = "small fix") -> subprocess.CompletedProcess[str]:
+def invoke(
+    repo: Path,
+    title: str = "small fix",
+    goal: str = "Small fix.",
+) -> subprocess.CompletedProcess[str]:
     return run([
         "python3", str(SCRIPT), "--workspace", str(repo), "--title", title,
-        "--goal", "Small fix.", "--acceptance", "Requested behavior works.",
+        "--goal", goal, "--acceptance", "Requested behavior works.",
         "--implementation", "Apply minimum fix.", "--test", "Run focused test.", "--dry-run",
     ])
+
+
+def task_key(stdout: str) -> str:
+    match = re.search(r"^TASK_KEY=(.+)$", stdout, flags=re.MULTILINE)
+    if not match:
+        raise AssertionError(f"TASK_KEY missing:\n{stdout}")
+    return match.group(1).strip()
+
+
+def fingerprint(stdout: str) -> str:
+    match = re.search(r"^REQUEST_FINGERPRINT=([0-9A-F]{8})$", stdout, flags=re.MULTILINE)
+    if not match:
+        raise AssertionError(f"REQUEST_FINGERPRINT missing:\n{stdout}")
+    return match.group(1)
 
 
 def test_clean_repo_dry_run() -> None:
@@ -69,7 +88,7 @@ def test_clean_repo_dry_run() -> None:
             raise AssertionError(result.stderr or result.stdout)
         required = (
             "PROJECT=demo", "BOARD=demo", "BRANCH=dev", "WORKSPACE_DIRTY=false",
-            "EFFECTIVE_CHANGE_COUNT=0", "EOL_ONLY_CHANGE_COUNT=0",
+            "EFFECTIVE_CHANGE_COUNT=0", "EOL_ONLY_CHANGE_COUNT=0", "REQUEST_FINGERPRINT=",
             "CODER=coder", "REVIEWER=reviewer", "Flow: FAST", "Review Policy: RISK_BASED",
             "Workspace dirty at dispatch: false", "Pre-existing effective changes at dispatch:", "- none",
             "LOW -> coder", "REVIEW_REQUIRED -> coder", "FAST_FLOW_ESCALATION_REQUIRED", "STATUS=dry-run",
@@ -125,10 +144,32 @@ def test_crlf_only_tracked_change_is_not_dirty() -> None:
                 raise AssertionError(f"missing EOL-noise contract term: {term}\n{result.stdout}")
 
 
+def test_same_request_is_stable_and_follow_up_is_distinct() -> None:
+    with tempfile.TemporaryDirectory(prefix="fast-flow-key-test-") as temp_dir:
+        repo = make_repo(Path(temp_dir))
+        first = invoke(repo, "NodeSpecificConfigService 문서 및 주석 보강", "Analyze and comment helpers.")
+        retry = invoke(repo, "NodeSpecificConfigService 문서 및 주석 보강", "Analyze and comment helpers.")
+        follow_up = invoke(repo, "NodeSpecificConfigService 문서 및 주석 보강", "Add a separate single-node behavior analysis.")
+        for result in (first, retry, follow_up):
+            if result.returncode != 0:
+                raise AssertionError(result.stderr or result.stdout)
+
+        first_key = task_key(first.stdout)
+        retry_key = task_key(retry.stdout)
+        follow_up_key = task_key(follow_up.stdout)
+        if first_key != retry_key:
+            raise AssertionError(f"exact retry changed task key: {first_key} != {retry_key}")
+        if first_key == follow_up_key:
+            raise AssertionError("follow-up request reused the same task key")
+        if not first_key.endswith(fingerprint(first.stdout)):
+            raise AssertionError(f"task key does not contain request fingerprint: {first_key}")
+
+
 def main() -> int:
     test_clean_repo_dry_run()
     test_dirty_repo_is_accepted_and_recorded()
     test_crlf_only_tracked_change_is_not_dirty()
+    test_same_request_is_stable_and_follow_up_is_distinct()
     print("[PASS] dev-fast-flow task creation tests")
     return 0
 
