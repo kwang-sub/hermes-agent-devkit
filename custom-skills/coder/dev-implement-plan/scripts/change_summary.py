@@ -1,32 +1,151 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
+import argparse
+from hashlib import sha256
 from pathlib import Path
 import subprocess
 import sys
 
-def run(cmd, check=True):
-    p = subprocess.run(cmd, text=True, capture_output=True)
-    if check and p.returncode != 0:
-        print((p.stderr or p.stdout).strip(), file=sys.stderr)
-        raise SystemExit(p.returncode)
-    return p
 
-root = Path(run(["git", "rev-parse", "--show-toplevel"]).stdout.strip()).resolve()
-branch = run(["git", "-C", str(root), "branch", "--show-current"]).stdout.strip()
-status = run(["git", "-C", str(root), "status", "--short", "--untracked-files=all"]).stdout.rstrip()
-tracked = run(["git", "-C", str(root), "diff", "--name-only", "HEAD", "--"]).stdout.splitlines()
-untracked = run(["git", "-C", str(root), "ls-files", "--others", "--exclude-standard"]).stdout.splitlines()
-diff_check = run(["git", "-C", str(root), "diff", "--check"], check=False)
+class SummaryError(RuntimeError):
+    pass
 
-print(f"WORKSPACE={root}")
-print(f"BRANCH={branch}")
-print(f"TRACKED_CHANGED_COUNT={len(tracked)}")
-for i, path in enumerate(tracked, 1):
-    print(f"TRACKED_{i}={path}")
-print(f"UNTRACKED_COUNT={len(untracked)}")
-for i, path in enumerate(untracked, 1):
-    print(f"UNTRACKED_{i}={path}")
-print(f"DIFF_CHECK={'PASS' if diff_check.returncode == 0 else 'FAIL'}")
-print("STATUS_BEGIN")
-print(status)
-print("STATUS_END")
+
+def run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(cmd, text=True, capture_output=True)
+    if check and result.returncode != 0:
+        raise SummaryError((result.stderr or result.stdout).strip() or "command failed")
+    return result
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Summarize scoped Git changes for implementation verification.")
+    parser.add_argument("--workspace", default=".")
+    parser.add_argument("--include", action="append", default=[])
+    return parser.parse_args()
+
+
+def repo_root(workspace: Path) -> Path:
+    top = run(["git", "-C", str(workspace), "rev-parse", "--show-toplevel"]).stdout.strip()
+    root = Path(top).resolve()
+    if root != workspace.resolve():
+        raise SummaryError(f"workspace must be repository root: workspace={workspace.resolve()}, root={root}")
+    return root
+
+
+def normalize_includes(root: Path, values: list[str]) -> list[str]:
+    if not values:
+        return []
+    normalized: list[str] = []
+    for raw in values:
+        candidate = (root / raw).resolve() if not Path(raw).is_absolute() else Path(raw).resolve()
+        try:
+            relative = candidate.relative_to(root)
+        except ValueError as exc:
+            raise SummaryError(f"included path is outside workspace: {raw}") from exc
+        normalized.append(relative.as_posix())
+    return sorted(dict.fromkeys(normalized))
+
+
+def git_paths(root: Path, base: list[str], includes: list[str]) -> list[str]:
+    cmd = ["git", "-C", str(root), *base]
+    if includes:
+        cmd.extend(["--", *includes])
+    return [line.strip() for line in run(cmd).stdout.splitlines() if line.strip()]
+
+
+def tracked_changes(root: Path, includes: list[str]) -> tuple[list[str], list[str]]:
+    raw = git_paths(root, ["diff", "--name-only", "HEAD"], includes)
+    effective = git_paths(root, ["diff", "--name-only", "--ignore-cr-at-eol", "HEAD"], includes)
+    eol_only = sorted(set(raw) - set(effective))
+    return effective, eol_only
+
+
+def untracked_paths(root: Path, includes: list[str]) -> list[str]:
+    all_untracked = git_paths(root, ["ls-files", "--others", "--exclude-standard"], [])
+    if not includes:
+        return all_untracked
+    return [
+        path for path in all_untracked
+        if any(path == inc or path.startswith(f"{inc.rstrip('/')}/") for inc in includes)
+    ]
+
+
+def check_tracked_whitespace(root: Path, includes: list[str]) -> list[str]:
+    cmd = ["git", "-C", str(root), "diff", "--check", "--ignore-cr-at-eol", "HEAD"]
+    if includes:
+        cmd.extend(["--", *includes])
+    result = run(cmd, check=False)
+    output = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
+    if result.returncode not in (0, 1) or output:
+        return [output or f"git diff --check failed with rc={result.returncode}"]
+    return []
+
+
+def check_untracked_whitespace(root: Path, paths: list[str]) -> list[str]:
+    errors: list[str] = []
+    for path in paths:
+        result = run(["git", "-C", str(root), "diff", "--no-index", "--check", "--", "/dev/null", path], check=False)
+        output = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
+        if result.returncode not in (0, 1):
+            errors.append(output or f"untracked diff check failed for {path}: rc={result.returncode}")
+        elif output:
+            errors.append(output)
+    return errors
+
+
+def effective_scope_sha256(root: Path, paths: list[str]) -> str:
+    digest = sha256()
+    for path in sorted(dict.fromkeys(paths)):
+        file_path = root / path
+        digest.update(path.encode("utf-8"))
+        digest.update(b"\0")
+        if file_path.is_file():
+            content = file_path.read_bytes().replace(b"\r\n", b"\n")
+            digest.update(b"F\0")
+            digest.update(content)
+        else:
+            digest.update(b"MISSING\0")
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def main() -> int:
+    args = parse_args()
+    root = repo_root(Path(args.workspace))
+    includes = normalize_includes(root, args.include)
+    tracked, eol_only = tracked_changes(root, includes)
+    untracked = untracked_paths(root, includes)
+    whitespace_errors = check_tracked_whitespace(root, includes) + check_untracked_whitespace(root, untracked)
+    effective_paths = sorted(set(tracked) | set(untracked))
+    fingerprint = effective_scope_sha256(root, effective_paths)
+
+    print(f"WORKSPACE={root}")
+    print(f"SCOPE={'ALL' if not includes else ','.join(includes)}")
+    print(f"TRACKED_CHANGED_COUNT={len(tracked)}")
+    for index, path in enumerate(tracked, start=1):
+        print(f"TRACKED_{index}={path}")
+    print(f"EOL_ONLY_COUNT={len(eol_only)}")
+    for index, path in enumerate(eol_only, start=1):
+        print(f"EOL_ONLY_{index}={path}")
+    print(f"UNTRACKED_COUNT={len(untracked)}")
+    for index, path in enumerate(untracked, start=1):
+        print(f"UNTRACKED_{index}={path}")
+    print(f"EFFECTIVE_SCOPE_SHA256={fingerprint}")
+    print(f"WHITESPACE_ERROR_COUNT={len(whitespace_errors)}")
+    if whitespace_errors:
+        for index, error in enumerate(whitespace_errors, start=1):
+            print(f"WHITESPACE_ERROR_{index}={error.replace(chr(10), ' | ')}")
+        print("STATUS=invalid")
+        return 1
+    print("STATUS=valid")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except SummaryError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(1)

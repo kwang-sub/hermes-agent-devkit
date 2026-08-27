@@ -28,7 +28,46 @@ if [ -z "${JAVA_HOME:-}" ] || [ ! -x "$JAVA_HOME/bin/java" ]; then
   exit 2
 fi
 
-
 export JAVA_HOME
 export PATH="$JAVA_HOME/bin:$PATH"
+
+command_path="$1"
+command_name="$(basename "$command_path")"
+
+# Windows and Docker share /workspace through a bind mount. Gradle's default
+# project-local .gradle directory stores absolute execution/output paths, so
+# reusing it from both environments can leak /workspace paths into Windows
+# builds. Keep only dispatcher-side Gradle project state under /opt/data while
+# leaving the project's build/ outputs and GRADLE_USER_HOME unchanged.
+if [ "$command_name" = "gradlew" ]; then
+  has_project_cache_dir=false
+  for arg in "$@"; do
+    case "$arg" in
+      --project-cache-dir|--project-cache-dir=*)
+        has_project_cache_dir=true
+        break
+        ;;
+    esac
+  done
+
+  if [ "$has_project_cache_dir" = false ]; then
+    cache_root="${HERMES_GRADLE_PROJECT_CACHE_ROOT:-/opt/data/gradle-project-cache}"
+    repo_name="$(printf '%s' "$(basename "$repo_root")" | tr -c '[:alnum:]._-' '_')"
+    repo_hash="$(printf '%s' "$repo_root" | git hash-object --stdin | cut -c1-12)"
+    project_cache_dir="$cache_root/${repo_name}-${repo_hash}"
+
+    if ! mkdir -p "$project_cache_dir"; then
+      echo "hermes-java: cannot create Gradle project cache: $project_cache_dir" >&2
+      exit 2
+    fi
+    if [ ! -w "$project_cache_dir" ]; then
+      echo "hermes-java: Gradle project cache is not writable: $project_cache_dir" >&2
+      exit 2
+    fi
+
+    shift
+    exec "$command_path" --project-cache-dir "$project_cache_dir" "$@"
+  fi
+fi
+
 exec "$@"
