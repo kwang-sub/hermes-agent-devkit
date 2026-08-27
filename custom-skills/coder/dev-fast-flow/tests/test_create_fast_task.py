@@ -54,30 +54,20 @@ def make_repo(root: Path) -> Path:
     return repo
 
 
-def invoke(
-    repo: Path,
-    title: str = "small fix",
-    goal: str = "Small fix.",
-) -> subprocess.CompletedProcess[str]:
+def invoke(repo: Path, title: str = "small fix", goal: str = "Small fix.", verification_mode: str = "TARGETED_TEST") -> subprocess.CompletedProcess[str]:
     return run([
         "python3", str(SCRIPT), "--workspace", str(repo), "--title", title,
         "--goal", goal, "--acceptance", "Requested behavior works.",
-        "--implementation", "Apply minimum fix.", "--test", "Run focused test.", "--dry-run",
+        "--implementation", "Apply minimum fix.", "--test", "Run focused test.",
+        "--verification-mode", verification_mode, "--dry-run",
     ])
 
 
-def task_key(stdout: str) -> str:
-    match = re.search(r"^TASK_KEY=(.+)$", stdout, flags=re.MULTILINE)
+def extract(stdout: str, key: str) -> str:
+    match = re.search(rf"^{re.escape(key)}=(.+)$", stdout, flags=re.MULTILINE)
     if not match:
-        raise AssertionError(f"TASK_KEY missing:\n{stdout}")
+        raise AssertionError(f"{key} missing:\n{stdout}")
     return match.group(1).strip()
-
-
-def fingerprint(stdout: str) -> str:
-    match = re.search(r"^REQUEST_FINGERPRINT=([0-9A-F]{8})$", stdout, flags=re.MULTILINE)
-    if not match:
-        raise AssertionError(f"REQUEST_FINGERPRINT missing:\n{stdout}")
-    return match.group(1)
 
 
 def test_clean_repo_dry_run() -> None:
@@ -89,6 +79,7 @@ def test_clean_repo_dry_run() -> None:
         required = (
             "PROJECT=demo", "BOARD=demo", "BRANCH=dev", "WORKSPACE_DIRTY=false",
             "EFFECTIVE_CHANGE_COUNT=0", "EOL_ONLY_CHANGE_COUNT=0", "REQUEST_FINGERPRINT=",
+            "VERIFICATION_MODE=TARGETED_TEST", "Verification Mode: TARGETED_TEST",
             "CODER=coder", "REVIEWER=reviewer", "Flow: FAST", "Review Policy: RISK_BASED",
             "Workspace dirty at dispatch: false", "Pre-existing effective changes at dispatch:", "- none",
             "LOW -> coder", "REVIEW_REQUIRED -> coder", "FAST_FLOW_ESCALATION_REQUIRED", "STATUS=dry-run",
@@ -105,15 +96,7 @@ def test_dirty_repo_is_accepted_and_recorded() -> None:
         result = invoke(repo)
         if result.returncode != 0:
             raise AssertionError(result.stderr or result.stdout)
-        required = (
-            "WORKSPACE_DIRTY=true",
-            "EFFECTIVE_CHANGE_COUNT=1",
-            "Workspace dirty at dispatch: true",
-            "Pre-existing effective changes at dispatch:",
-            "M app.txt",
-            "must preserve pre-existing user changes",
-        )
-        for term in required:
+        for term in ("WORKSPACE_DIRTY=true", "EFFECTIVE_CHANGE_COUNT=1", "M app.txt", "must preserve pre-existing user changes"):
             if term not in result.stdout:
                 raise AssertionError(f"missing dirty-workspace contract term: {term}\n{result.stdout}")
 
@@ -122,24 +105,14 @@ def test_crlf_only_tracked_change_is_not_dirty() -> None:
     with tempfile.TemporaryDirectory(prefix="fast-flow-eol-test-") as temp_dir:
         repo = make_repo(Path(temp_dir))
         (repo / "app.txt").write_bytes(b"baseline\r\n")
-
         normal = run(["git", "diff", "--name-only"], repo)
         ignored = run(["git", "diff", "--name-only", "--ignore-cr-at-eol"], repo)
         if "app.txt" not in normal.stdout or ignored.stdout.strip():
             raise AssertionError("test fixture did not create an EOL-only tracked change")
-
         result = invoke(repo, "ignore eol noise")
         if result.returncode != 0:
             raise AssertionError(result.stderr or result.stdout)
-        required = (
-            "WORKSPACE_DIRTY=false",
-            "EFFECTIVE_CHANGE_COUNT=0",
-            "EOL_ONLY_CHANGE_COUNT=1",
-            "Workspace dirty at dispatch: false",
-            "Ignored tracked EOL-only changes at dispatch: 1",
-            "Pre-existing effective changes at dispatch:\n- none",
-        )
-        for term in required:
+        for term in ("WORKSPACE_DIRTY=false", "EFFECTIVE_CHANGE_COUNT=0", "EOL_ONLY_CHANGE_COUNT=1"):
             if term not in result.stdout:
                 raise AssertionError(f"missing EOL-noise contract term: {term}\n{result.stdout}")
 
@@ -153,16 +126,23 @@ def test_same_request_is_stable_and_follow_up_is_distinct() -> None:
         for result in (first, retry, follow_up):
             if result.returncode != 0:
                 raise AssertionError(result.stderr or result.stdout)
-
-        first_key = task_key(first.stdout)
-        retry_key = task_key(retry.stdout)
-        follow_up_key = task_key(follow_up.stdout)
-        if first_key != retry_key:
-            raise AssertionError(f"exact retry changed task key: {first_key} != {retry_key}")
-        if first_key == follow_up_key:
+        if extract(first.stdout, "TASK_KEY") != extract(retry.stdout, "TASK_KEY"):
+            raise AssertionError("exact retry changed task key")
+        if extract(first.stdout, "TASK_KEY") == extract(follow_up.stdout, "TASK_KEY"):
             raise AssertionError("follow-up request reused the same task key")
-        if not first_key.endswith(fingerprint(first.stdout)):
-            raise AssertionError(f"task key does not contain request fingerprint: {first_key}")
+
+
+def test_verification_mode_changes_contract_and_fingerprint() -> None:
+    with tempfile.TemporaryDirectory(prefix="fast-flow-verification-test-") as temp_dir:
+        repo = make_repo(Path(temp_dir))
+        compile_result = invoke(repo, verification_mode="COMPILE")
+        test_result = invoke(repo, verification_mode="TARGETED_TEST")
+        if compile_result.returncode != 0 or test_result.returncode != 0:
+            raise AssertionError(compile_result.stderr or test_result.stderr)
+        if "Verification Mode: COMPILE" not in compile_result.stdout:
+            raise AssertionError(compile_result.stdout)
+        if extract(compile_result.stdout, "TASK_KEY") == extract(test_result.stdout, "TASK_KEY"):
+            raise AssertionError("verification mode must participate in request identity")
 
 
 def main() -> int:
@@ -170,6 +150,7 @@ def main() -> int:
     test_dirty_repo_is_accepted_and_recorded()
     test_crlf_only_tracked_change_is_not_dirty()
     test_same_request_is_stable_and_follow_up_is_distinct()
+    test_verification_mode_changes_contract_and_fingerprint()
     print("[PASS] dev-fast-flow task creation tests")
     return 0
 

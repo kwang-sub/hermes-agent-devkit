@@ -1,7 +1,7 @@
 ---
 name: dev-fast-flow
 description: 명확하고 작은 단일 Repository 작업을 Coder 대화에서 Kanban에 self-dispatch하고 worker가 risk에 따라 완료 또는 reviewer 인계한다.
-version: 0.2.2
+version: 0.3.0
 author: local
 platforms: [linux]
 metadata:
@@ -34,8 +34,28 @@ User → Coder intake → Kanban → Coder worker
 
 다음은 Standard Flow로 보낸다: project/workspace 모호성, 기존 변경을 안전하게 보존하기 어려움, 새 branch/worktree, 신규 기능 설계, multi-repo/module 영향, API/schema/dependency/transaction/security/concurrency 정책 결정, 복수 해석 요구사항.
 
+## Fast Intake Budget
+Intake의 책임은 **구현 분석이 아니라 eligibility 판정과 dispatch**다.
+
+- 사용자가 대상 파일/클래스를 명시했고 작은 로컬 변경이면 repository-wide `find`/`grep`부터 수행하지 않는다.
+- docs/comment/log/message/null/validation처럼 Fast 적합성이 명확한 작업은 대상 존재 여부와 요구사항 명확성만 확인한다.
+- 구현 세부사항, dependency 흐름, 테스트 내부 구현 분석은 `dev-implement-plan` worker의 책임이다.
+- `create_fast_task.py`가 수행하는 `project.yaml`, branch, Base SHA, effective dirty baseline 검사를 사전에 중복 실행하지 않는다.
+- 정상 경로에서는 `create_fast_task.py` 자체를 읽거나 분석하지 않는다. 스크립트가 실패했을 때만 오류 원인에 필요한 최소 범위를 확인한다.
+- 직전 대화에서 동일 요청의 source 분석과 Fast Flow 적합성 판정이 완료됐다면 그 결과를 Goal/Acceptance/Implementation/Test Plan으로 재사용하고 source를 다시 조사하지 않는다.
+- dispatch 성공 후 Interactive Coder는 추가 source 조사 없이 종료한다.
+
+## Verification Mode
+Task 생성 시 변경 성격에 맞는 최소 검증 모드를 명시한다.
+
+- `DOCS`: Markdown/문서 등 실행 코드 미변경. scoped change verification만 수행한다.
+- `COMPILE`: JavaDoc/주석 등 실행 의미를 바꾸지 않는 source 변경. 프로젝트 compile 검증을 기본으로 한다.
+- `TARGETED_TEST`: 실행 로직 변경. 관련 targeted test를 기본으로 한다.
+
+사용자가 더 강한 검증을 명시하면 그 요구를 우선한다. 변경 성격이 불분명하면 `TARGETED_TEST`를 선택한다.
+
 ## Intake 계약
-`<repo>/.hermes/project.yaml`, current branch, Base SHA를 확인하고 `scripts/create_fast_task.py`가 계산한 **effective Git changes**를 dirty baseline으로 사용한다.
+`<repo>/.hermes/project.yaml`, current branch, Base SHA와 effective Git changes는 `scripts/create_fast_task.py`가 검증/계산한다. Interactive Coder가 같은 검사를 수동으로 재현하지 않는다.
 
 Windows Host bind mount에서는 Host checkout의 CRLF와 Linux Git의 LF index 비교 때문에 raw `git status`가 대량 `M`을 표시할 수 있다. 따라서 raw status의 modified-file 개수만으로 dirty 여부를 판정하거나 사용자에게 중단 확인을 요청하지 않는다.
 
@@ -50,6 +70,7 @@ Kanban에는 최소한 다음을 남긴다.
 ```text
 Flow: FAST
 Task Key
+Verification Mode
 Goal
 Acceptance Criteria
 Implementation Tasks
@@ -65,6 +86,8 @@ Review Policy: RISK_BASED
 
 Task 생성은 `scripts/create_fast_task.py`를 사용한다. 스크립트는 workspace를 Git `safe.directory`로 idempotent하게 등록한다. 기존 effective 변경은 baseline으로 기록할 뿐 stash/reset/clean/restore하지 않는다. 성공 후 Interactive Coder는 멈추고 Gateway가 `dev-implement-plan` worker를 실행한다.
 
+동일 Base SHA에서도 요청 spec(title/goal/acceptance/implementation/test/risk/verification mode)이 다르면 별도 request fingerprint를 사용해 후속 작업을 새 Task로 생성한다. 정확히 같은 요청의 재시도는 같은 idempotency key를 유지한다.
+
 ## Worker 결과
 - 실제 source에서 Fast Flow 범위를 벗어나면 `FAST_FLOW_ESCALATION_REQUIRED`로 Block.
 - 구현/검증 후 `dev-implement-plan`의 Review Risk 기준을 적용.
@@ -74,6 +97,7 @@ Task 생성은 `scripts/create_fast_task.py`를 사용한다. 스크립트는 wo
 
 ## 불변식
 - intake 세션은 source를 직접 수정하지 않는다.
+- intake에서 worker 수준의 상세 source 분석을 선행하지 않는다.
 - 기존 사용자 변경을 덮어쓰거나 reset/restore/clean/stash하지 않는다.
 - raw `git status`의 EOL noise를 사용자 변경으로 오인하지 않는다.
 - risk 판정 때문에 검증을 생략하지 않는다.

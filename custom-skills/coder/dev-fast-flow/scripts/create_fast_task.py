@@ -11,6 +11,7 @@ import sys
 
 MANAGED_MARKER = "# managed-by: dev-project-bootstrap"
 HERMES_CLI = "/opt/hermes/.venv/bin/hermes"
+VERIFICATION_MODES = ("DOCS", "COMPILE", "TARGETED_TEST")
 
 
 class FastFlowError(RuntimeError):
@@ -95,25 +96,11 @@ def _lines(text: str) -> list[str]:
 
 
 def workspace_status(repo: Path) -> tuple[list[str], list[str]]:
-    """Return effective pre-existing changes and tracked EOL-only noise.
-
-    Raw `git status` is unreliable for Windows bind mounts when the host checkout
-    uses CRLF and Linux Git sees the LF-normalized index. Unstaged tracked files
-    only count as real changes when their diff survives --ignore-cr-at-eol.
-    Staged and untracked paths always count as real changes.
-    """
-    normal_unstaged = set(_lines(run([
-        "git", "-C", str(repo), "diff", "--name-only",
-    ]).stdout))
-    effective_unstaged = set(_lines(run([
-        "git", "-C", str(repo), "diff", "--name-only", "--ignore-cr-at-eol",
-    ]).stdout))
-    staged = set(_lines(run([
-        "git", "-C", str(repo), "diff", "--cached", "--name-only",
-    ]).stdout))
-    untracked = set(_lines(run([
-        "git", "-C", str(repo), "ls-files", "--others", "--exclude-standard",
-    ]).stdout))
+    """Return effective pre-existing changes and tracked EOL-only noise."""
+    normal_unstaged = set(_lines(run(["git", "-C", str(repo), "diff", "--name-only"]).stdout))
+    effective_unstaged = set(_lines(run(["git", "-C", str(repo), "diff", "--name-only", "--ignore-cr-at-eol"]).stdout))
+    staged = set(_lines(run(["git", "-C", str(repo), "diff", "--cached", "--name-only"]).stdout))
+    untracked = set(_lines(run(["git", "-C", str(repo), "ls-files", "--others", "--exclude-standard"]).stdout))
 
     changes = [f"M {path}" for path in sorted(effective_unstaged - staged)]
     changes.extend(f"STAGED {path}" for path in sorted(staged))
@@ -126,12 +113,7 @@ def _normalize_task_spec_value(value: str) -> str:
     return " ".join(value.split())
 
 
-def request_fingerprint(*, title: str, goal: str, acceptance: list[str], implementation: list[str], tests: list[str], risks: list[str]) -> str:
-    """Return a stable fingerprint for the requested Fast Flow work.
-
-    Exact retries keep the same fingerprint, while follow-up work on the same
-    Base SHA gets a different fingerprint when its requested spec changes.
-    """
+def request_fingerprint(*, title: str, goal: str, acceptance: list[str], implementation: list[str], tests: list[str], risks: list[str], verification_mode: str) -> str:
     parts = [
         f"title={_normalize_task_spec_value(title)}",
         f"goal={_normalize_task_spec_value(goal)}",
@@ -139,6 +121,7 @@ def request_fingerprint(*, title: str, goal: str, acceptance: list[str], impleme
         *(f"implementation={_normalize_task_spec_value(value)}" for value in implementation),
         *(f"test={_normalize_task_spec_value(value)}" for value in tests),
         *(f"risk={_normalize_task_spec_value(value)}" for value in risks),
+        f"verification_mode={verification_mode}",
     ]
     return sha256("\n".join(parts).encode("utf-8")).hexdigest()[:8].upper()
 
@@ -152,12 +135,13 @@ def bullet_lines(values: list[str]) -> str:
     return "\n".join(f"- {value}" for value in values)
 
 
-def build_body(*, task_key: str, goal: str, acceptance: list[str], implementation: list[str], tests: list[str], risks: list[str], reviewer: str, workspace: Path, branch: str, base_sha: str, pre_existing: list[str], eol_only_count: int) -> str:
+def build_body(*, task_key: str, goal: str, acceptance: list[str], implementation: list[str], tests: list[str], risks: list[str], reviewer: str, workspace: Path, branch: str, base_sha: str, pre_existing: list[str], eol_only_count: int, verification_mode: str) -> str:
     dirty = bool(pre_existing)
     baseline = bullet_lines(pre_existing) if pre_existing else "- none"
     return f"""Flow: FAST
 Task Key: {task_key}
 Review Policy: RISK_BASED
+Verification Mode: {verification_mode}
 
 Goal:
 {goal}
@@ -219,6 +203,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--implementation", action="append", required=True)
     parser.add_argument("--test", action="append", required=True)
     parser.add_argument("--risk", action="append", default=[])
+    parser.add_argument("--verification-mode", choices=VERIFICATION_MODES, default="TARGETED_TEST")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -246,15 +231,17 @@ def main() -> int:
         implementation=args.implementation,
         tests=args.test,
         risks=risks,
+        verification_mode=args.verification_mode,
     )
     task_key = logical_task_key(args.title, base_sha, fingerprint)
-    body = build_body(task_key=task_key, goal=args.goal, acceptance=args.acceptance, implementation=args.implementation, tests=args.test, risks=risks, reviewer=meta.reviewer, workspace=repo, branch=branch, base_sha=base_sha, pre_existing=pre_existing, eol_only_count=len(eol_only))
+    body = build_body(task_key=task_key, goal=args.goal, acceptance=args.acceptance, implementation=args.implementation, tests=args.test, risks=risks, reviewer=meta.reviewer, workspace=repo, branch=branch, base_sha=base_sha, pre_existing=pre_existing, eol_only_count=len(eol_only), verification_mode=args.verification_mode)
 
     print("=== Fast Flow Dispatch ===")
     print(f"PROJECT={meta.project_id}")
     print(f"BOARD={meta.board}")
     print(f"TASK_KEY={task_key}")
     print(f"REQUEST_FINGERPRINT={fingerprint}")
+    print(f"VERIFICATION_MODE={args.verification_mode}")
     print(f"WORKSPACE={repo}")
     print(f"BRANCH={branch}")
     print(f"BASE_SHA={base_sha}")
