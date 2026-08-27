@@ -197,6 +197,8 @@ run_check "Hermes CLI SyntaxWarning patch and strict compile" \
     python3 scripts/patch_hermes_syntax_warning.py --self-test
 run_check "dev-fast-flow task creation regression tests" \
     python3 custom-skills/coder/dev-fast-flow/tests/test_create_fast_task.py
+run_check "dev-fast-flow active task follow-up regression tests" \
+    python3 custom-skills/coder/dev-fast-flow/tests/test_update_fast_task.py
 run_check "dev-workspace-dispatch regression tests" \
     python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
 run_check "dev-implement-plan workspace verification tests" \
