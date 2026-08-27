@@ -35,18 +35,18 @@ REQUIRED = {
         "Plan Approval", "Workspace / Branch", "READY", "BLOCKED", "coder", "한국어", "commit", "push",
     ],
     "custom-skills/coder/dev-fast-flow/SKILL.md": [
-        "Fast Flow", "Kanban", "coder", "reviewer", "current branch", "기존 변경",
+        "ACTIVE_TASK_FOLLOWUP", "Kanban", "coder", "reviewer", "current branch", "기존 변경",
         "FAST_FLOW_ESCALATION_REQUIRED", "Standard Flow", "commit", "push",
         "Review Policy: RISK_BASED", "LOW", "REVIEW_REQUIRED",
     ],
     "custom-skills/coder/dev-implement-plan/SKILL.md": [
-        "Workspace", "Reviewer Profile", "Flow: FAST", "FAST_FLOW_ESCALATION_REQUIRED",
-        "공통 Coding Rules 핵심", "2-depth", "Stack / Capability Skill", "coding-rules.md",
+        "Workspace", "Pattern References", "Flow: FAST", "FAST_FLOW_ESCALATION_REQUIRED",
+        "공통 Coding Rules 핵심", "2-depth", "skill_view", "coding-rules.md",
         "secret", "commit", "push", "BLOCKED", "Review Risk", "LOW", "REVIEW_REQUIRED",
     ],
     "custom-skills/reviewer/dev-code-review/SKILL.md": [
         "Reviewer", "source를 수정하지", "Common Coding Review Gate", "2-depth",
-        "Stack / Capability Review Gate", "coding-rules.md", "secret", "commit", "push", "BLOCKED",
+        "Stack / Capability Review Gate", "coding-rules.md", "secret", "commit", "push", "kanban_block",
     ],
 }
 
