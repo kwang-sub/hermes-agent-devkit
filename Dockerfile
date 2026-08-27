@@ -21,6 +21,15 @@ COPY scripts/patch_hermes_syntax_warning.py /tmp/patch_hermes_syntax_warning.py
 RUN python3 /tmp/patch_hermes_syntax_warning.py /opt/hermes/hermes_cli/update_cmd.py \
     && rm /tmp/patch_hermes_syntax_warning.py
 
+# Hermes v2026.8.16.x stops Kanban workers unless they called complete/block,
+# even though request_review/request_changes are first-class lifecycle handoffs.
+# Patch only the known legacy terminal set, accept upstream-fixed/refactored
+# implementations, and fail closed if upstream policy changes unexpectedly.
+COPY scripts/patch_hermes_kanban_terminal.py /tmp/patch_hermes_kanban_terminal.py
+RUN python3 /tmp/patch_hermes_kanban_terminal.py --self-test \
+    && python3 /tmp/patch_hermes_kanban_terminal.py /opt/hermes/agent/kanban_stop.py \
+    && rm /tmp/patch_hermes_kanban_terminal.py
+
 # DevKit baseline tools. Gradle/Maven are intentionally not installed globally:
 # repositories use gradlew/mvnw so the build-tool version remains project-owned.
 RUN apt-get update && \
