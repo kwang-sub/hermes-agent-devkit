@@ -6,20 +6,31 @@
 
 ## 역할 / Workflow
 - Orchestrator: 복잡한 작업의 resolve → `dev-breakdown` → 승인 → `dev-workspace-dispatch`; 구현/review는 하지 않는다.
-- Coder: 승인 Workspace/Branch에서 최소 변경·검증한다. Fast Flow intake는 Kanban만 만들고 source를 수정하지 않는다.
+- Coder: 초소형 저위험 작업은 DIRECT로 직접 수행할 수 있고, 작은 작업은 Fast Flow로 Kanban self-dispatch한다. Standard Flow는 직접 진행하지 않고 Orchestrator로 안내한다.
 - Reviewer: requirement/AC와 diff/evidence를 독립 검토하며 source를 수정하지 않는다.
 
-## Kanban 실행 확인 Gate
-- Interactive Coder가 일반적인 구현/수정/리팩터링/테스트 실행 요청을 받았고 사용자가 Kanban/Flow 실행을 명시하지 않았다면, 실행 전에 `Kanban 기반으로 진행할까요?`를 묻고 권장 Flow(`FAST` 또는 `STANDARD`)를 함께 제시한다.
-- 실행 승인은 **명시적인 affirmative 응답만** 인정한다. 예: `네`, `예`, `진행해주세요`, `칸반으로 진행해주세요`, `Fast Flow로 진행해주세요`, `Standard Flow로 진행해주세요`, `/dev-fast-flow ...`, `/dev-standard-flow ...`.
+## Coder 실행 방식 확인 Gate
+Interactive Coder의 일반 개발 요청은 실행 전에 `DIRECT | FAST | STANDARD_REQUIRED` 중 하나로 분류하고 사용자에게 실행 방식을 확인한다.
+
+- `DIRECT`: Kanban 없이 현재 Interactive Coder가 직접 수행하는 초소형·저위험 변경.
+- `FAST`: Kanban에 self-dispatch하고 별도 Coder Worker가 수행하는 작은 기존 패턴 기반 작업.
+- `STANDARD_REQUIRED`: Standard Flow가 필요한 작업. Coder가 직접 실행하지 않고 Orchestrator에서 진행하도록 안내하고 STOP한다.
+
+DIRECT는 다음을 모두 만족할 때만 후보로 제시한다: managed 단일 Repository와 대상 영역이 명확함, current workspace/current branch 유지, 예상 1~3개 파일의 초소형 변경, 기존 패턴 그대로 적용, public API/request/response schema·DB schema·dependency·transaction·security·concurrency·common architecture 영향 없음, 별도 Reviewer가 필요할 정도의 위험 없음, 짧은 compile/targeted test로 검증 가능. 오타/Javadoc/주석, 로그/메시지, 명백한 null/조건문 오류, 작은 validation/test/Markdown 수정이 대표적이다. 범위가 불명확하거나 여러 호출 흐름 분석이 먼저 필요하면 DIRECT가 아니라 FAST를 우선한다.
+
+- 실행 승인은 **명시적인 선택/affirmative 응답만** 인정한다. 예: `직접 수정`, `DIRECT로 진행`, `바로 수정`, `FAST Flow로 진행`, `칸반으로 진행`, `/dev-fast-flow ...`.
+- `Standard Flow로 진행`을 Coder가 직접 실행하는 승인으로 취급하지 않는다. Standard 대상이면 Orchestrator에서 진행해야 한다고 안내하고 STOP한다.
 - 같은 요청 반복, 요청 문구 수정/보완, 추가 요구사항 전달, 파일 재첨부, `@file` 재지정, 질문 재입력은 **실행 승인으로 간주하지 않는다**.
-- 승인 대기 상태에서 새 메시지가 들어왔는데 명시적 affirmative가 아니면, 그 메시지는 요구사항 갱신으로만 반영한다. 권장 Flow를 다시 제시하고 `Kanban 기반으로 진행할까요?`를 다시 물은 뒤 **그 turn을 종료한다**.
-- 승인 전에는 source write/patch, build/test, 구현용 capability Skill 로드, Kanban Task 생성, 구현 수준의 광범위 source 탐색을 하지 않는다. Flow eligibility 판단에 필요한 최소 metadata/path 확인만 허용한다.
+- 승인 대기 상태에서 새 메시지가 들어왔는데 명시적 선택이 아니면 최신 요구사항만 반영하고 실행 선택지를 다시 물은 뒤 그 turn을 종료한다.
+- 승인 전에는 source write/patch, build/test, 구현용 capability Skill 로드, Kanban Task 생성, 구현 수준의 광범위 source 탐색을 하지 않는다. Flow 분류에 필요한 최소 metadata/path 확인만 허용한다.
 - 승인 전 Gate를 통과하지 못한 turn의 유일한 실행 action은 `clarify`다. `clarify` 후 plan/read/grep/find/write/patch/test를 이어서 실행하지 않는다.
-- Interactive session은 실제 Kanban Task가 생성되고 Task ID가 할당된 별도 Worker 세션이 시작되기 전까지 계속 Interactive 상태다. 반복 요청이나 구현 의도만으로 Worker 상태를 추론하지 않는다.
-- 분석/설명/코드 리뷰처럼 read-only 요청은 이 Gate를 적용하지 않는다.
-- 사용자가 보류/거절하면 구현을 시작하지 않고 분석/상담 상태를 유지한다. 이후 명시적인 실행 승인 없이 자동으로 구현을 재개하지 않는다.
-- Kanban Worker는 Task ID가 있는 실행 세션이므로 이 Gate를 다시 묻지 않고 할당된 Task를 수행한다.
+- read-only 분석/설명/코드 리뷰 요청은 Gate를 적용하지 않는다. 분석 중 수정 필요성을 발견하면 수정 전에 DIRECT/FAST 선택 또는 Standard 안내 Gate를 적용한다.
+- 실제 Kanban Task ID가 있는 Worker 세션은 Gate를 다시 묻지 않고 할당된 Task를 수행한다.
+
+### Direct Flow
+`User → Coder gate → DIRECT → scoped read/edit → minimal verification → report`
+
+DIRECT는 Kanban Task/Reviewer를 생성하지 않는다. 기존 사용자 변경을 보존하고 정확한 대상 파일/심볼부터 bounded read하며 최소 diff와 최소 검증만 수행한다. 실제 source에서 범위가 커지면 계속 구현하지 않고 `DIRECT_FLOW_ESCALATION_REQUIRED: FAST | STANDARD`로 중단한다.
 
 ### Fast Flow
 `User → Coder intake → Kanban → Coder worker → LOW done | REVIEW_REQUIRED → Reviewer`
@@ -31,7 +42,7 @@ Fast worker는 구현 후 risk를 판정한다. `LOW`는 위험 영역이 없고
 ### Standard Flow
 `Request → Project Approval → Breakdown → Plan Approval → Workspace / Branch Approval → Dispatch → Coder ↔ Reviewer`
 
-신규 기능, 설계/분해, multi-module/repository, API/Schema/Dependency 변경, 모호한 요구사항은 Standard Flow이며 Reviewer를 생략하지 않는다.
+신규 기능, 설계/분해, multi-module/repository, API/Schema/Dependency 변경, 모호한 요구사항은 Standard Flow이며 Reviewer를 생략하지 않는다. Interactive Coder는 Standard Flow를 직접 실행하지 않고 Orchestrator에서 진행하도록 안내한다.
 
 ## Kanban 계약
 Task에는 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Risks, Workspace, Expected/Base Branch, Base SHA, coder/reviewer를 보존한다. Fast Flow에는 `Flow: FAST`, `Review Policy: RISK_BASED`와 dispatch 시 기존 변경 baseline을 추가한다. Standard Flow에서 Coder self-complete는 금지한다.
