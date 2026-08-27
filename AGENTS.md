@@ -10,27 +10,30 @@
 - Reviewer: requirement/AC와 diff/evidence를 독립 검토하며 source를 수정하지 않는다.
 
 ## Coder 실행 방식 확인 Gate
-Interactive Coder의 일반 개발 요청은 실행 전에 `DIRECT | FAST | STANDARD_REQUIRED` 중 하나로 분류하고 사용자에게 실행 방식을 확인한다.
+Interactive Coder의 모든 mutation request는 어떤 implementation/capability Skill보다 먼저 `DIRECT | FAST | STANDARD_REQUIRED`로 분류하고 사용자에게 실행 방식을 확인한다.
 
 - `DIRECT`: Kanban 없이 현재 Interactive Coder가 직접 수행하는 초소형·저위험 변경.
 - `FAST`: Kanban에 self-dispatch하고 별도 Coder Worker가 수행하는 작은 기존 패턴 기반 작업.
 - `STANDARD_REQUIRED`: Standard Flow가 필요한 작업. Coder가 직접 실행하지 않고 Orchestrator에서 진행하도록 안내하고 STOP한다.
 
-DIRECT는 다음을 모두 만족할 때만 후보로 제시한다: managed 단일 Repository와 대상 영역이 명확함, current workspace/current branch 유지, 예상 1~3개 파일의 초소형 변경, 기존 패턴 그대로 적용, public API/request/response schema·DB schema·dependency·transaction·security·concurrency·common architecture 영향 없음, 별도 Reviewer가 필요할 정도의 위험 없음, 짧은 compile/targeted test로 검증 가능. 오타/Javadoc/주석, 로그/메시지, 명백한 null/조건문 오류, 작은 validation/test/Markdown 수정이 대표적이다. 범위가 불명확하거나 여러 호출 흐름 분석이 먼저 필요하면 DIRECT가 아니라 FAST를 우선한다.
+DIRECT는 다음을 모두 만족할 때만 후보로 제시한다: managed 단일 Repository와 대상 영역이 명확함, current workspace/current branch 유지, 예상 1~3개 파일의 초소형 변경, 기존 패턴 그대로 적용, public API/request/response schema·DB schema·dependency·transaction·security·concurrency·common architecture 영향 없음, 별도 Reviewer가 필요할 정도의 위험 없음, 짧은 compile/targeted test로 검증 가능. 범위가 불명확하거나 여러 호출 흐름 분석, 공통 Utility 재사용/추출 필요성 판단이 먼저 필요하면 DIRECT가 아니라 FAST를 우선한다.
 
-- 실행 승인은 **명시적인 선택/affirmative 응답만** 인정한다. 예: `직접 수정`, `DIRECT로 진행`, `바로 수정`, `FAST Flow로 진행`, `칸반으로 진행`, `/dev-fast-flow ...`.
+- **Execution Router Priority:** semantic skill auto-selection으로 `dev-direct-flow`, `dev-spring-*`, `gradle-spring-verification` 또는 다른 구현 Skill이 먼저 선택되어도 Gate를 우회하지 않는다. Interactive mutation request에서는 execution router가 먼저다.
+- DIRECT 승인은 execution mode 자체를 명시적으로 선택한 경우만 인정한다. 예: `DIRECT로 진행해주세요`, `직접 수정 모드로 진행해주세요`, 또는 바로 앞 `clarify`에서 `직접 수정` 선택.
+- `수정해주세요`, `바로 수정해주세요`, `적용해주세요`, `고쳐주세요`, `재검토 후 수정해주세요`, `오류가 있으면 수정해주세요` 같은 일반 mutation 표현은 **DIRECT 승인으로 간주하지 않는다**.
+- FAST 승인은 `FAST Flow로 진행`, `칸반으로 진행`, `/dev-fast-flow ...`처럼 실행 방식을 명시한 경우 인정한다.
 - `Standard Flow로 진행`을 Coder가 직접 실행하는 승인으로 취급하지 않는다. Standard 대상이면 Orchestrator에서 진행해야 한다고 안내하고 STOP한다.
-- 같은 요청 반복, 요청 문구 수정/보완, 추가 요구사항 전달, 파일 재첨부, `@file` 재지정, 질문 재입력은 **실행 승인으로 간주하지 않는다**.
+- 같은 요청 반복, 요청 문구 수정/보완, 추가 요구사항 전달, 파일 재첨부, `@file` 재지정, 질문 재입력은 실행 승인으로 간주하지 않는다.
 - 승인 대기 상태에서 새 메시지가 들어왔는데 명시적 선택이 아니면 최신 요구사항만 반영하고 실행 선택지를 다시 물은 뒤 그 turn을 종료한다.
-- 승인 전에는 source write/patch, build/test, 구현용 capability Skill 로드, Kanban Task 생성, 구현 수준의 광범위 source 탐색을 하지 않는다. Flow 분류에 필요한 최소 metadata/path 확인만 허용한다.
-- 승인 전 Gate를 통과하지 못한 turn의 유일한 실행 action은 `clarify`다. `clarify` 후 plan/read/grep/find/write/patch/test를 이어서 실행하지 않는다.
-- read-only 분석/설명/코드 리뷰 요청은 Gate를 적용하지 않는다. 분석 중 수정 필요성을 발견하면 수정 전에 DIRECT/FAST 선택 또는 Standard 안내 Gate를 적용한다.
+- 승인 전에는 source write/patch, build/test, 구현용 capability Skill 로드, Kanban Task 생성, plan/read/grep/find를 하지 않는다. Flow 분류에 필요한 최소 metadata/path 확인만 허용한다.
+- 승인 전 Gate를 통과하지 못한 turn의 유일한 실행 action은 `clarify`다.
+- read-only 분석/설명/코드 리뷰 요청은 Gate를 적용하지 않는다. 분석 중 수정 필요성을 발견하면 수정 전에 execution Gate를 적용한다.
 - 실제 Kanban Task ID가 있는 Worker 세션은 Gate를 다시 묻지 않고 할당된 Task를 수행한다.
 
 ### Direct Flow
-`User → Coder gate → DIRECT → scoped read/edit → minimal verification → report`
+`User → Coder gate → explicit DIRECT selection → scoped read/edit → minimal verification → report`
 
-DIRECT는 Kanban Task/Reviewer를 생성하지 않는다. 기존 사용자 변경을 보존하고 정확한 대상 파일/심볼부터 bounded read하며 최소 diff와 최소 검증만 수행한다. 실제 source에서 범위가 커지면 계속 구현하지 않고 `DIRECT_FLOW_ESCALATION_REQUIRED: FAST | STANDARD`로 중단한다.
+DIRECT는 Kanban Task/Reviewer를 생성하지 않는다. `dev-direct-flow`가 semantic auto-selection으로 먼저 로드되어도 명시적 DIRECT 선택 전에는 source/plan/read/grep/write/patch/test를 시작하지 않는다. 실제 source에서 범위가 커지면 계속 구현하지 않고 `DIRECT_FLOW_ESCALATION_REQUIRED: FAST | STANDARD`로 중단한다.
 
 ### Fast Flow
 `User → Coder intake → Kanban → Coder worker → LOW done | REVIEW_REQUIRED → Reviewer`
