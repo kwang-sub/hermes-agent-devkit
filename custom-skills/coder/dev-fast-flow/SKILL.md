@@ -1,7 +1,7 @@
 ---
 name: dev-fast-flow
 description: 명확하고 작은 단일 Repository 작업을 Coder 대화에서 Kanban에 self-dispatch하고 worker가 risk에 따라 완료 또는 reviewer 인계한다.
-version: 0.3.2
+version: 0.3.3
 author: local
 platforms: [linux]
 metadata:
@@ -21,15 +21,32 @@ User → Coder intake → Kanban → Coder worker
                             └─ REVIEW_REQUIRED → Reviewer
 ```
 
+## EXECUTION SAFETY GATE — MUST RUN FIRST
+이 Gate는 다른 Skill 로드, plan 생성, source read/grep/find, build/test보다 먼저 판정한다.
+
+1. 현재 세션에 실제 Kanban Task ID가 있고 worker로 실행된 세션인가?
+   - YES: 할당된 Task를 수행한다. 아래 Interactive 승인 Gate를 다시 묻지 않는다.
+   - NO: Interactive Coder로 간주하고 2번으로 진행한다.
+2. 현재 사용자 메시지에 명시적인 실행 승인이 있는가?
+   - 승인 예: `네`, `예`, `진행해주세요`, `칸반으로 진행해주세요`, `Fast Flow로 진행해주세요`, `Standard Flow로 진행해주세요`, `/dev-fast-flow ...`, `/dev-standard-flow ...`.
+   - YES: Flow eligibility를 판정하고 승인된 Flow의 **dispatch만** 수행한다. Interactive 세션에서 구현하지 않는다.
+   - NO: `Kanban 기반으로 진행할까요?`와 권장 Flow(`FAST` 또는 `STANDARD`)를 `clarify`로 묻고 즉시 STOP한다.
+3. 다음은 실행 승인으로 절대 간주하지 않는다.
+   - 동일 요청의 반복
+   - 요청 문구 수정/보완
+   - 추가 요구사항 전달
+   - 파일 재첨부 또는 `@file` 재지정
+   - 질문/요청의 재입력
+4. 승인 대기 중 3번 유형의 메시지가 오면 최신 요구사항으로만 갱신하고 다시 `clarify`한 뒤 STOP한다. 암묵적 동의, 반복 의도, 사용자의 급한 의도를 추론해 실행으로 전환하지 않는다.
+5. 승인 전 Interactive turn에서 허용되는 실행 action은 `clarify` 하나뿐이다. `clarify` 전후로 Spring/Gradle/구현 capability Skill 로드, plan/read/grep/find/write/patch/build/test/Kanban create를 실행하지 않는다.
+6. `/dev-fast-flow` 명시 호출은 실행 승인이지만 **직접 구현 승인**이 아니다. Interactive Coder는 eligibility + `create_fast_task.py` dispatch 후 반드시 STOP한다.
+
 ## Kanban 실행 확인 Gate
 일반 개발 요청에서는 사용자의 실행 의도를 먼저 확인한다.
 
-- 사용자가 구현/수정/리팩터링/테스트 실행을 요청했지만 현재 요청에서 Kanban/Flow 실행을 명시하지 않았다면, **source 탐색·수정 전에** `Kanban 기반으로 진행할까요?`를 묻고 권장 Flow(`FAST` 또는 `STANDARD`)를 함께 제시한 뒤 멈춘다.
-- `/dev-fast-flow`를 직접 호출하거나 `Fast Flow로 진행`, `칸반으로 진행`처럼 현재 요청에서 실행 방식을 명시했다면 이미 승인된 것으로 보고 재확인하지 않는다.
-- 승인 전에는 source write/patch, build/test, 구현용 capability Skill 로드, Kanban Task 생성, 구현 수준의 repository-wide 탐색을 하지 않는다. eligibility 판단에 필요한 최소 metadata/path 확인만 허용한다.
-- 분석/설명/코드 리뷰처럼 read-only 요청에는 이 Gate를 적용하지 않는다.
+- 구현/수정/리팩터링/테스트 실행 요청이지만 현재 메시지에 명시적인 Kanban/Flow 실행 승인이 없으면 위 Safety Gate에 따라 `clarify` 후 종료한다.
+- 분석/설명/코드 리뷰처럼 read-only 요청에는 실행 확인 Gate를 적용하지 않는다. 단, 분석 중 버그를 발견해 수정으로 전환하려면 그 시점에 실행 승인을 받아야 한다.
 - 사용자가 보류/거절하면 구현을 시작하지 않는다. 이후 명시적인 실행 승인 없이 자동 재개하지 않는다.
-- Kanban Worker는 Task ID가 있는 실행 세션이므로 이 Gate 대상이 아니다.
 
 ## 적용 조건
 다음을 모두 만족해야 한다.
@@ -110,7 +127,10 @@ Task 생성은 `scripts/create_fast_task.py`를 사용한다. 스크립트는 wo
 - `CHANGES_REQUESTED` 재작업은 항상 다시 Reviewer에게 보낸다.
 
 ## 불변식
-- 일반 개발 요청은 Kanban 실행 승인을 받기 전 구현을 시작하지 않는다.
+- 일반 개발 요청은 명시적 Kanban 실행 승인을 받기 전 구현을 시작하지 않는다.
+- 동일 요청 반복은 승인으로 해석하지 않는다.
+- 승인 대기 turn은 `clarify` 후 반드시 STOP한다.
+- Interactive Fast Flow는 dispatch-only이며 source 수정/테스트를 하지 않는다.
 - intake 세션은 source를 직접 수정하지 않는다.
 - intake에서 worker 수준의 상세 source 분석을 선행하지 않는다.
 - 명시적인 API/payload/schema contract 변경 요청을 Fast Flow로 강행하지 않는다.
