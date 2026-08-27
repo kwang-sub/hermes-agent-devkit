@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -10,6 +11,13 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "review_context.py"
 
 def git(repo: Path, *args: str) -> str:
     return subprocess.run(["git", "-C", str(repo), *args], text=True, capture_output=True, check=True).stdout.strip()
+
+
+def fingerprint(output: str) -> str:
+    match = re.search(r"^EFFECTIVE_SCOPE_SHA256=([0-9a-f]{64})$", output, flags=re.MULTILINE)
+    if not match:
+        raise AssertionError(f"fingerprint missing from output:\n{output}")
+    return match.group(1)
 
 
 class ReviewContextTests(unittest.TestCase):
@@ -53,6 +61,18 @@ class ReviewContextTests(unittest.TestCase):
         self.assertIn("BASE_BRANCH_DRIFTED=false", proc.stdout)
         self.assertIn("TRACKED_CHANGED_COUNT=1", proc.stdout)
         self.assertIn("GIT_SAFE_DIRECTORY=true", proc.stdout)
+        self.assertRegex(proc.stdout, r"EFFECTIVE_SCOPE_SHA256=[0-9a-f]{64}")
+
+    def test_fingerprint_changes_when_scoped_content_changes(self):
+        (self.repo / "wanted.txt").write_text("first\n")
+        first = self.run_helper(self.base, "dispatch-base", "wanted.txt")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        first_hash = fingerprint(first.stdout)
+
+        (self.repo / "wanted.txt").write_text("second\n")
+        second = self.run_helper(self.base, "dispatch-base", "wanted.txt")
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertNotEqual(first_hash, fingerprint(second.stdout))
 
     def test_reports_branch_drift_but_keeps_dispatch_sha_diff(self):
         git(self.repo, "branch", "-f", "dispatch-base", "HEAD")

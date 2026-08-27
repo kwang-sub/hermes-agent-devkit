@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from hashlib import sha256
 from pathlib import Path
 import subprocess
 import sys
@@ -65,11 +66,10 @@ def untracked_paths(root: Path, includes: list[str]) -> list[str]:
     all_untracked = git_paths(root, ["ls-files", "--others", "--exclude-standard"], [])
     if not includes:
         return all_untracked
-    selected: list[str] = []
-    for path in all_untracked:
-        if any(path == inc or path.startswith(f"{inc.rstrip('/')}/") for inc in includes):
-            selected.append(path)
-    return selected
+    return [
+        path for path in all_untracked
+        if any(path == inc or path.startswith(f"{inc.rstrip('/')}/") for inc in includes)
+    ]
 
 
 def check_tracked_whitespace(root: Path, includes: list[str]) -> list[str]:
@@ -95,6 +95,22 @@ def check_untracked_whitespace(root: Path, paths: list[str]) -> list[str]:
     return errors
 
 
+def effective_scope_sha256(root: Path, paths: list[str]) -> str:
+    digest = sha256()
+    for path in sorted(dict.fromkeys(paths)):
+        file_path = root / path
+        digest.update(path.encode("utf-8"))
+        digest.update(b"\0")
+        if file_path.is_file():
+            content = file_path.read_bytes().replace(b"\r\n", b"\n")
+            digest.update(b"F\0")
+            digest.update(content)
+        else:
+            digest.update(b"MISSING\0")
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def main() -> int:
     args = parse_args()
     root = repo_root(Path(args.workspace))
@@ -102,6 +118,8 @@ def main() -> int:
     tracked, eol_only = tracked_changes(root, includes)
     untracked = untracked_paths(root, includes)
     whitespace_errors = check_tracked_whitespace(root, includes) + check_untracked_whitespace(root, untracked)
+    effective_paths = sorted(set(tracked) | set(untracked))
+    fingerprint = effective_scope_sha256(root, effective_paths)
 
     print(f"WORKSPACE={root}")
     print(f"SCOPE={'ALL' if not includes else ','.join(includes)}")
@@ -114,6 +132,7 @@ def main() -> int:
     print(f"UNTRACKED_COUNT={len(untracked)}")
     for index, path in enumerate(untracked, start=1):
         print(f"UNTRACKED_{index}={path}")
+    print(f"EFFECTIVE_SCOPE_SHA256={fingerprint}")
     print(f"WHITESPACE_ERROR_COUNT={len(whitespace_errors)}")
     if whitespace_errors:
         for index, error in enumerate(whitespace_errors, start=1):

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -12,6 +13,13 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "change_summary.py"
 
 def git(repo: Path, *args: str) -> str:
     return subprocess.run(["git", "-C", str(repo), *args], text=True, capture_output=True, check=True).stdout.strip()
+
+
+def fingerprint(output: str) -> str:
+    match = re.search(r"^EFFECTIVE_SCOPE_SHA256=([0-9a-f]{64})$", output, flags=re.MULTILINE)
+    if not match:
+        raise AssertionError(f"fingerprint missing from output:\n{output}")
+    return match.group(1)
 
 
 class ChangeSummaryTests(unittest.TestCase):
@@ -49,7 +57,19 @@ class ChangeSummaryTests(unittest.TestCase):
         self.assertIn("UNTRACKED_COUNT=1", proc.stdout)
         self.assertIn("UNTRACKED_1=new.md", proc.stdout)
         self.assertNotIn("unrelated.txt", proc.stdout)
+        self.assertRegex(proc.stdout, r"EFFECTIVE_SCOPE_SHA256=[0-9a-f]{64}")
         self.assertIn("STATUS=valid", proc.stdout)
+
+    def test_fingerprint_changes_with_effective_content(self) -> None:
+        (self.repo / "tracked.txt").write_text("first\n", encoding="utf-8")
+        first = self.run_helper("tracked.txt")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        first_hash = fingerprint(first.stdout)
+
+        (self.repo / "tracked.txt").write_text("second\n", encoding="utf-8")
+        second = self.run_helper("tracked.txt")
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertNotEqual(first_hash, fingerprint(second.stdout))
 
     def test_crlf_only_tracked_change_is_reported_as_noise(self) -> None:
         (self.repo / "tracked.txt").write_bytes(b"base\r\n")

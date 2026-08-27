@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from hashlib import sha256
 from pathlib import Path
 import re
 import subprocess
@@ -67,6 +68,22 @@ def untracked_paths(root: Path, includes: list[str]) -> list[str]:
     ]
 
 
+def effective_scope_sha256(root: Path, paths: list[str]) -> str:
+    digest = sha256()
+    for path in sorted(dict.fromkeys(paths)):
+        file_path = root / path
+        digest.update(path.encode("utf-8"))
+        digest.update(b"\0")
+        if file_path.is_file():
+            content = file_path.read_bytes().replace(b"\r\n", b"\n")
+            digest.update(b"F\0")
+            digest.update(content)
+        else:
+            digest.update(b"MISSING\0")
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base-branch", required=True)
@@ -104,6 +121,8 @@ def main() -> int:
     effective_tracked = git_paths(root, ["diff", "--name-only", "--ignore-cr-at-eol", base_sha], includes)
     eol_only = sorted(set(raw_tracked) - set(effective_tracked))
     untracked = untracked_paths(root, includes)
+    effective_paths = sorted(set(effective_tracked) | set(untracked))
+    fingerprint = effective_scope_sha256(root, effective_paths)
 
     diff_cmd = ["git", "-C", str(root), "diff", "--check", "--ignore-cr-at-eol", base_sha]
     if includes:
@@ -129,6 +148,7 @@ def main() -> int:
     print(f"UNTRACKED_COUNT={len(untracked)}")
     for index, path in enumerate(untracked, 1):
         print(f"UNTRACKED_{index}={path}")
+    print(f"EFFECTIVE_SCOPE_SHA256={fingerprint}")
     print("DIFF_CHECK=PASS")
     print("GIT_SAFE_DIRECTORY=true")
     print("STATUS=valid")
