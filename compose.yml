@@ -24,11 +24,14 @@ services:
         source: ${HERMES_HOST_WORKSPACE_PATH:-D:/workspace}
         target: ${HERMES_CONTAINER_WORKSPACE_PATH:-/workspace}
 
-      # Windows clipboard paste files are created under %LOCALAPPDATA%\Temp.
-      # Expose the host temp directory read-only so agents can resolve pasted paths.
+      # Hermes running in Docker Desktop on WSL may normalize Windows paths to
+      # /mnt/<drive>/... before file/vision tools run. update-devkit.ps1 derives
+      # the exact target from LOCALAPPDATA and passes it through the process env.
+      # USERNAME is only a first-update compatibility fallback while the updater
+      # script itself is being fast-forwarded to a version that sets the target.
       - type: bind
         source: ${LOCALAPPDATA}/Temp
-        target: /host-temp
+        target: ${HERMES_WINDOWS_TEMP_CONTAINER_PATH:-/mnt/c/Users/${USERNAME}/AppData/Local/Temp}
         read_only: true
 
       - type: volume
