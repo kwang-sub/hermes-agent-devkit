@@ -24,6 +24,13 @@ services:
         source: ${HERMES_HOST_WORKSPACE_PATH:-D:/workspace}
         target: ${HERMES_CONTAINER_WORKSPACE_PATH:-/workspace}
 
+      # Windows clipboard paste files are created under %LOCALAPPDATA%\Temp.
+      # Expose the host temp directory read-only so agents can resolve pasted paths.
+      - type: bind
+        source: ${LOCALAPPDATA}/Temp
+        target: /host-temp
+        read_only: true
+
       - type: volume
         source: hermes-data
         target: /opt/data
