@@ -14,16 +14,16 @@ Default behavior:
 1. Refuse to run on a dirty DevKit checkout.
 2. Fetch the remote and fast-forward the current branch.
 3. Classify changed files for warnings and runtime context.
-4. Temporarily override HERMES_BASE_IMAGE with nousresearch/hermes-agent:latest.
-5. Build with `docker compose build --pull` so the latest Hermes base image is checked.
-6. Force-recreate the container only after the build succeeds.
-7. Keep the existing hermes-data volume and profile/OAuth/session state intact.
-8. Verify the running container contract.
-9. If verification fails, perform one normal cached rebuild + recreate repair and
-   verify once more unless -NoRepair is specified.
+4. Derive the Hermes-visible Windows Temp path from LOCALAPPDATA.
+5. Temporarily override HERMES_BASE_IMAGE with nousresearch/hermes-agent:latest.
+6. Build with `docker compose build --pull` so the latest Hermes base image is checked.
+7. Force-recreate the container only after the build succeeds.
+8. Keep the existing hermes-data volume and profile/OAuth/session state intact.
+9. Verify the running container contract.
+10. If verification fails, perform one normal cached rebuild + recreate repair and
+    verify once more unless -NoRepair is specified.
 
-The HERMES_BASE_IMAGE override is process-local and restored before the script exits,
-so normal `docker compose up` continues to use the version configured in .env.
+The process-local overrides are restored before the script exits.
 #>
 
 param(
@@ -98,6 +98,22 @@ function Test-AnyPathMatch {
     return $false
 }
 
+function Get-HermesWindowsTempContainerPath {
+    $LocalAppData = [Environment]::GetEnvironmentVariable("LOCALAPPDATA", "Process")
+    if ([string]::IsNullOrWhiteSpace($LocalAppData)) {
+        throw "LOCALAPPDATA is not defined. Cannot derive the Windows Temp mount path."
+    }
+
+    $Normalized = $LocalAppData.TrimEnd('\', '/')
+    if ($Normalized -notmatch '^([A-Za-z]):[\\/](.+)$') {
+        throw "Unsupported LOCALAPPDATA path: $LocalAppData"
+    }
+
+    $Drive = $Matches[1].ToLowerInvariant()
+    $Tail = ($Matches[2] -replace '\\', '/').Trim('/')
+    return "/mnt/$Drive/$Tail/Temp"
+}
+
 function Test-ContainerRunning {
     param(
         [Parameter(Mandatory = $true)]
@@ -146,6 +162,8 @@ $ContainerRecreated = $false
 $AutomaticRepairUsed = $false
 $PreviousHermesBaseImageExists = Test-Path Env:HERMES_BASE_IMAGE
 $PreviousHermesBaseImage = if ($PreviousHermesBaseImageExists) { $env:HERMES_BASE_IMAGE } else { $null }
+$PreviousWindowsTempPathExists = Test-Path Env:HERMES_WINDOWS_TEMP_CONTAINER_PATH
+$PreviousWindowsTempPath = if ($PreviousWindowsTempPathExists) { $env:HERMES_WINDOWS_TEMP_CONTAINER_PATH } else { $null }
 
 try {
     Set-Location $RepoRoot
@@ -221,11 +239,14 @@ try {
         )
     }
 
+    $WindowsTempContainerPath = Get-HermesWindowsTempContainerPath
+
     Write-Host ""
     Write-Host "== DevKit update plan =="
     Write-Host "Before            : $BeforeSha"
     Write-Host "After             : $AfterSha"
     Write-Host "Hermes base image : $HermesBaseImage"
+    Write-Host "Windows temp      : $WindowsTempContainerPath"
     if ($ChangedFiles.Count -eq 0) {
         Write-Host "Changes           : none"
     }
@@ -243,9 +264,6 @@ try {
         "scripts/patch_hermes_syntax_warning.py"
     )
 
-    # update-devkit.ps1 is the explicit Hermes upgrade boundary. Even when the
-    # DevKit Git checkout did not change, running this script must check and use
-    # the newest Hermes base image before recreating the runtime.
     $BuildRequired = $true
     $RecreateRequired = $true
 
@@ -256,10 +274,8 @@ try {
         Write-Warning "init-profiles.ps1 changed. Profile initialization is intentionally not run automatically; execute .\init-profiles.ps1 after this update if the profile contract changed."
     }
 
-    # Process environment overrides values loaded from .env by Docker Compose.
-    # This makes the updater follow latest while normal compose commands remain
-    # pinned to the version configured by the user.
     $env:HERMES_BASE_IMAGE = $HermesBaseImage
+    $env:HERMES_WINDOWS_TEMP_CONTAINER_PATH = $WindowsTempContainerPath
 
     Write-Host "Action            : pull latest Hermes base + build + force-recreate"
     Invoke-Native -FilePath "docker" -Arguments @("compose", "config", "--quiet")
@@ -307,6 +323,7 @@ try {
     Write-Host "UPDATED_FROM=$BeforeSha"
     Write-Host "UPDATED_TO=$AfterSha"
     Write-Host "HERMES_BASE_IMAGE=$HermesBaseImage"
+    Write-Host "HERMES_WINDOWS_TEMP_CONTAINER_PATH=$WindowsTempContainerPath"
     Write-Host "IMAGE_REBUILT=$($ImageRebuilt.ToString().ToLowerInvariant())"
     Write-Host "CONTAINER_RECREATED=$($ContainerRecreated.ToString().ToLowerInvariant())"
     Write-Host "AUTOMATIC_REPAIR_USED=$($AutomaticRepairUsed.ToString().ToLowerInvariant())"
@@ -318,5 +335,13 @@ finally {
     else {
         Remove-Item Env:HERMES_BASE_IMAGE -ErrorAction SilentlyContinue
     }
+
+    if ($PreviousWindowsTempPathExists) {
+        $env:HERMES_WINDOWS_TEMP_CONTAINER_PATH = $PreviousWindowsTempPath
+    }
+    else {
+        Remove-Item Env:HERMES_WINDOWS_TEMP_CONTAINER_PATH -ErrorAction SilentlyContinue
+    }
+
     Set-Location $OriginalLocation
 }
