@@ -58,11 +58,11 @@ Task에는 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Risks, Wo
 - Task의 Pattern References/Applicable Skills를 재사용해 같은 프로젝트를 역할마다 전체 재분석하지 않는다.
 
 ## Host temporary path resolution
-- Agent는 Linux 컨테이너에서 실행되며 Windows host의 `%LOCALAPPDATA%\Temp`는 `/host-temp`에 read-only로 mount된다.
-- 사용자 입력에 `C:\Users\<username>\AppData\Local\Temp\<filename>` 형태의 경로가 있으면 Windows 경로를 직접 접근하지 말고 `/host-temp/<filename>`으로 변환한다.
-- 경로 변환 시 사용자명은 하드코딩하지 않고 `AppData\Local\Temp` 뒤의 상대 경로를 보존한다. 예: `C:\Users\wowsoft\AppData\Local\Temp\pasted-image-9.png` → `/host-temp/pasted-image-9.png`.
+- Agent는 Linux 컨테이너에서 실행된다. Hermes file/vision tool이 Windows 경로를 `/mnt/<drive>/...` 형태로 정규화할 수 있으므로 그 정규화 경로를 그대로 사용한다.
+- Windows host의 `%LOCALAPPDATA%\Temp`는 `update-devkit.ps1`가 `LOCALAPPDATA`를 기준으로 계산한 동일한 `/mnt/<drive>/Users/<profile>/AppData/Local/Temp` 경로에 read-only로 mount한다.
+- 사용자명이나 프로필 디렉터리명을 하드코딩하지 않는다. `LOCALAPPDATA`의 실제 drive/profile 경로가 canonical 값이다.
 - 변환한 파일을 읽기 전에 존재 여부를 확인한다. 존재하지 않으면 임의 경로를 추측하지 말고 사용자에게 파일 접근 실패를 명확히 알린다.
-- `/host-temp`는 입력 파일 확인용 read-only 영역이다. 파일 생성·수정·삭제 대상이나 작업 산출물 저장 위치로 사용하지 않는다.
+- host Temp mount는 입력 파일 확인용 read-only 영역이다. 파일 생성·수정·삭제 대상이나 작업 산출물 저장 위치로 사용하지 않는다.
 
 ## Scope / safety / verification
 - 요구사항에 직접 필요한 최소 diff만 만들고 unrelated refactor/format/upgrade를 섞지 않는다.
