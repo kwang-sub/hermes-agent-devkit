@@ -30,6 +30,10 @@ jobs:
         shell: bash
         run: bash scripts/verify.sh
 
+      - name: Verify hermes-java Gradle cache fallback
+        shell: bash
+        run: python3 scripts/test_hermes_java.py
+
       - name: Verify DevKit updater contract
         shell: bash
         run: python3 scripts/check_update_devkit_contract.py
