@@ -1,14 +1,14 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 구현 계획과 project pattern/capability 계약을 Git workspace와 Kanban으로 인계한다.
-version: 0.3.0
+version: 0.4.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, capability]
-    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-workflow-orchestrate]
-    requires_tools: [terminal, kanban_create, kanban_show, clarify]
+    tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, capability, preflight]
+    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-skill-preflight, dev-workflow-orchestrate]
+    requires_tools: [terminal, skill_view, kanban_create, kanban_show, clarify]
 ---
 
 # dev-workspace-dispatch
@@ -121,7 +121,35 @@ STATUS=prepared
 
 Helper가 non-zero로 종료되면 Kanban Task를 만들지 않는다.
 
-## 4. Kanban Body 계약
+## 4. Skill Preflight Gate
+
+Workspace helper가 성공한 뒤 Kanban Task를 만들기 전에 반드시 `skill_view("dev-skill-preflight")`로 전체 계약을 로드한다.
+
+`Applicable Skills`는 계획상의 capability 후보이고 `task.skills`는 Hermes worker가 시작 시 강제로 로드할 runtime pinned skill이다. 둘을 직접 복사하지 않는다.
+
+Standard Flow에서는 `ASSIGNEE`와 `REVIEWER` 두 profile을 대상으로 계획의 Applicable Skills를 검증한다.
+
+```bash
+python3 /opt/custom-skills/orchestrator/dev-skill-preflight/scripts/validate_skills.py \
+  --profile "<ASSIGNEE>" \
+  --profile "<REVIEWER>" \
+  --skill "<APPLICABLE_SKILL_1>" \
+  --skill "<APPLICABLE_SKILL_2>"
+```
+
+규칙:
+
+1. helper가 exit code 2 등 non-zero로 실패하면 preflight 결과를 신뢰할 수 없으므로 Kanban Task를 만들지 않는다.
+2. `VALIDATED_SKILLS`만 `kanban_create.skills`에 전달한다.
+3. `REJECTED_SKILLS`는 `Rejected Pinned Skills`에 기록하고 runtime pin에서는 제외한다.
+4. rejected 이름을 비슷한 이름으로 자동 교체하지 않는다.
+5. validated skill이 없으면 `skills=[]`를 허용한다.
+6. 배열의 첫 번째 skill만 선택하지 말고 `VALIDATED_SKILLS` 전체를 전달한다.
+7. Task 생성 직후 `kanban_show`로 실제 `task.skills`를 확인하고 `VALIDATED_SKILLS`와 정확히 일치하지 않으면 dispatch하지 않는다.
+
+이 Gate는 `java-project-conventions`처럼 실제 profile에 없는 이름이 task metadata에 들어가 worker가 `Unknown skill(s)`로 crash한 뒤 circuit breaker에 막히는 문제를 생성 전에 차단한다.
+
+## 5. Kanban Body 계약
 
 Body에는 `dev-breakdown`의 승인된 기술 판단을 축약하지 말고 다음을 보존한다.
 
@@ -148,6 +176,12 @@ Pattern References:
 Applicable Skills:
 - <skill-name>: <reason>
 
+Validated Pinned Skills:
+- None | <skill-name>
+
+Rejected Pinned Skills:
+- None | <skill-name>: missing from <profile>
+
 Pattern Conflicts:
 - None | <conflict and approved handling>
 
@@ -170,9 +204,9 @@ Workspace Contract:
 - Coder는 다른 Git Worktree를 만들지 않는다.
 ```
 
-`Applicable Skills`는 Coder가 `skill_view()`로 실제 본문을 로드하는 canonical handoff다. Dispatch가 임의로 Skill을 추가/삭제하지 않는다. 단, Coder는 실제 source evidence에서 명백한 누락을 발견하면 `dev-implement-plan` 계약에 따라 보완할 수 있다.
+`Applicable Skills`는 Coder가 작업 맥락에서 어떤 capability를 적용해야 하는지 알려주는 canonical handoff다. `Validated Pinned Skills`만 Kanban metadata의 `skills`가 될 수 있다. Coder는 실제 source evidence에서 명백한 누락을 발견하면 `dev-implement-plan` 계약에 따라 추가 capability를 직접 확인할 수 있다.
 
-## 5. 성공 기준
+## 6. 성공 기준
 
 - Plan Readiness = READY
 - Plan 승인 확인됨
@@ -181,16 +215,18 @@ Workspace Contract:
 - Approved workspace가 managed repository와 같은 Git common dir에 속함
 - Expected Branch가 실제 현재 branch와 일치함
 - Base SHA가 기록됨
+- Skill Preflight가 성공함
+- `task.skills`가 `VALIDATED_SKILLS`와 정확히 일치함
 - Kanban Workspace가 dir:<approved-workspace>임
 - Goal/AC/Implementation Plan/Test/Risks가 보존됨
 - Project Pattern Summary/Pattern References/Applicable Skills/Pattern Conflicts가 보존됨
+- Validated/Rejected pinned skill 결과가 보존됨
 - Reviewer 정보와 Workspace Contract가 보존됨
 
-## 6. 회귀 검증
-
-Helper의 current/create branch mode, dirty workspace gate, unsafe task key 검증은 다음 명령으로 실행한다.
+## 7. 회귀 검증
 
 ```bash
+python3 custom-skills/orchestrator/dev-skill-preflight/tests/test_validate_skills.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
 ```
 
@@ -199,6 +235,7 @@ python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dis
 ```bash
 python3 -m compileall -q custom-skills
 python3 scripts/check_skill_contract.py
+python3 custom-skills/orchestrator/dev-skill-preflight/tests/test_validate_skills.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
 python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_metadata_preservation.py
 python3 custom-skills/orchestrator/dev-project-resolve/tests/test_project_resolve.py

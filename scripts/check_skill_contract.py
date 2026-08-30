@@ -12,6 +12,7 @@ SKILLS_ROOT = REPO_ROOT / "custom-skills"
 
 REQUIRED_SKILLS = {
     "dev-project-pattern",
+    "dev-skill-preflight",
     "dev-spring-guidelines",
     "dev-spring-feature",
     "dev-spring-data",
@@ -38,7 +39,6 @@ def parse_inline_list(value: str) -> list[str]:
     try:
         parsed = ast.literal_eval(value)
     except (ValueError, SyntaxError):
-        # YAML bare-word lists such as [dev, coder] are valid but not Python.
         inner = value[1:-1].strip()
         if not inner:
             return []
@@ -147,8 +147,6 @@ def main() -> int:
     for item in unresolved:
         print(f"[WARN] related skill is not installed in custom-skills: {item}")
 
-    # Profile isolation is intentional. Same skill name may exist in different
-    # external_dirs, such as coder/dev-review-cycle and reviewer/dev-review-cycle.
     cross_profile_duplicates = {
         name: paths for name, paths in paths_by_name.items() if len(paths) > 1
     }
@@ -156,16 +154,26 @@ def main() -> int:
         profiles = ", ".join(sorted(path.parent.parent.name for path in paths))
         print(f"[INFO] profile-scoped duplicate skill name allowed: {name} ({profiles})")
 
-    # Hardening invariants for progressive disclosure.
     implement_file = discovered.get(("coder", "dev-implement-plan"))
     breakdown_file = discovered.get(("orchestrator", "dev-breakdown"))
-    if implement_file is None or breakdown_file is None:
+    dispatch_file = discovered.get(("orchestrator", "dev-workspace-dispatch"))
+    preflight_file = discovered.get(("orchestrator", "dev-skill-preflight"))
+    if implement_file is None or breakdown_file is None or dispatch_file is None or preflight_file is None:
         fail("workflow entrypoint skills are missing")
 
     implement_text = implement_file.read_text(encoding="utf-8")
     breakdown_text = breakdown_file.read_text(encoding="utf-8")
+    dispatch_text = dispatch_file.read_text(encoding="utf-8")
+    preflight_text = preflight_file.read_text(encoding="utf-8")
+
     if 'skill_view("dev-project-pattern")' not in breakdown_text:
         fail("dev-breakdown must explicitly load dev-project-pattern via skill_view")
+    if 'skill_view("dev-skill-preflight")' not in dispatch_text:
+        fail("dev-workspace-dispatch must explicitly load dev-skill-preflight via skill_view")
+    for term in ("VALIDATED_SKILLS", "REJECTED_SKILLS", "kanban_create.skills"):
+        if term not in preflight_text or term not in dispatch_text:
+            fail(f"skill preflight dispatch contract missing term: {term}")
+
     for capability in (
         "dev-spring-guidelines",
         "dev-spring-feature",
