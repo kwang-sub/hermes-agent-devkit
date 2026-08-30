@@ -31,6 +31,62 @@ fi
 export JAVA_HOME
 export PATH="$JAVA_HOME/bin:$PATH"
 
+resolve_cached_gradle() {
+  local wrapper_properties="$1"
+  local distribution_url
+  local distribution_file
+  local distribution_name
+  local gradle_home_name
+  local gradle_user_home
+  local cache_base
+  local candidate
+
+  if [ ! -f "$wrapper_properties" ]; then
+    echo "hermes-java: Gradle wrapper JAR is missing and wrapper properties were not found: $wrapper_properties" >&2
+    return 2
+  fi
+
+  distribution_url="$(
+    sed -n 's/^[[:space:]]*distributionUrl[[:space:]]*=[[:space:]]*//p' "$wrapper_properties" \
+      | tail -n 1
+  )"
+  if [ -z "$distribution_url" ]; then
+    echo "hermes-java: distributionUrl is missing from $wrapper_properties" >&2
+    return 2
+  fi
+
+  distribution_file="${distribution_url##*/}"
+  distribution_file="${distribution_file%%\?*}"
+  distribution_name="${distribution_file%.zip}"
+
+  case "$distribution_name" in
+    gradle-*-bin)
+      gradle_home_name="${distribution_name%-bin}"
+      ;;
+    gradle-*-all)
+      gradle_home_name="${distribution_name%-all}"
+      ;;
+    *)
+      echo "hermes-java: unsupported Gradle distributionUrl in $wrapper_properties: $distribution_url" >&2
+      return 2
+      ;;
+  esac
+
+  gradle_user_home="${GRADLE_USER_HOME:-${HOME:-/opt/data}/.gradle}"
+  cache_base="$gradle_user_home/wrapper/dists/$distribution_name"
+
+  for candidate in "$cache_base"/*/"$gradle_home_name/bin/gradle"; do
+    if [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  echo "hermes-java: Gradle wrapper JAR is missing and cached distribution was not found: $cache_base" >&2
+  echo "hermes-java: restore gradle/wrapper/gradle-wrapper.jar or warm the exact Gradle distribution cache first" >&2
+  return 2
+}
+
 command_path="$1"
 command_name="$(basename "$command_path")"
 
@@ -50,6 +106,7 @@ if [ "$command_name" = "gradlew" ]; then
     esac
   done
 
+  gradle_extra_args=()
   if [ "$has_project_cache_dir" = false ]; then
     cache_root="${HERMES_GRADLE_PROJECT_CACHE_ROOT:-/opt/data/gradle-project-cache}"
     repo_name="$(printf '%s' "$(basename "$repo_root")" | tr -c '[:alnum:]._-' '_')"
@@ -65,9 +122,25 @@ if [ "$command_name" = "gradlew" ]; then
       exit 2
     fi
 
-    shift
-    exec "$command_path" --project-cache-dir "$project_cache_dir" "$@"
+    gradle_extra_args=(--project-cache-dir "$project_cache_dir")
   fi
+
+  wrapper_root="$(cd "$(dirname "$command_path")" && pwd -P)"
+  wrapper_jar="$wrapper_root/gradle/wrapper/gradle-wrapper.jar"
+  wrapper_properties="$wrapper_root/gradle/wrapper/gradle-wrapper.properties"
+
+  shift
+
+  if [ -f "$wrapper_jar" ]; then
+    exec "$command_path" "${gradle_extra_args[@]}" "$@"
+  fi
+
+  if ! cached_gradle="$(resolve_cached_gradle "$wrapper_properties")"; then
+    exit 2
+  fi
+
+  echo "hermes-java: Gradle wrapper JAR missing; using cached distribution: $cached_gradle" >&2
+  exec "$cached_gradle" "${gradle_extra_args[@]}" "$@"
 fi
 
 exec "$@"
