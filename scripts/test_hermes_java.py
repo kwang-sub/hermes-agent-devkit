@@ -15,7 +15,12 @@ def make_executable(path: Path, content: str) -> None:
     path.chmod(0o755)
 
 
-def make_repo(base: Path, *, wrapper_jar: bool) -> tuple[Path, dict[str, str], Path]:
+def make_repo(
+    base: Path,
+    *,
+    wrapper_jar: bool,
+    properties_newline: str = "\n",
+) -> tuple[Path, dict[str, str], Path]:
     repo = base / "project"
     repo.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
@@ -39,7 +44,8 @@ def make_repo(base: Path, *, wrapper_jar: bool) -> tuple[Path, dict[str, str], P
     wrapper_dir = repo / "gradle/wrapper"
     wrapper_dir.mkdir(parents=True)
     (wrapper_dir / "gradle-wrapper.properties").write_text(
-        "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-bin.zip\n",
+        "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-bin.zip"
+        f"{properties_newline}",
         encoding="utf-8",
     )
     if wrapper_jar:
@@ -127,6 +133,25 @@ def test_missing_wrapper_uses_exact_cached_distribution() -> None:
         assert_common_arguments(text)
 
 
+def test_missing_wrapper_uses_crlf_cached_distribution() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        repo, env, log = make_repo(
+            base,
+            wrapper_jar=False,
+            properties_newline=chr(13) + "\n",
+        )
+        cached_gradle = install_cached_gradle(base)
+
+        result = run_gradle(repo, env)
+
+        assert result.returncode == 0, result.stderr
+        text = log.read_text(encoding="utf-8")
+        assert text.startswith("CACHED\n"), text
+        assert str(cached_gradle) in result.stderr, result.stderr
+        assert_common_arguments(text)
+
+
 def test_wrong_cached_version_is_not_used() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
@@ -144,6 +169,7 @@ def main() -> int:
     tests = (
         test_wrapper_is_preferred,
         test_missing_wrapper_uses_exact_cached_distribution,
+        test_missing_wrapper_uses_crlf_cached_distribution,
         test_wrong_cached_version_is_not_used,
     )
     for test in tests:

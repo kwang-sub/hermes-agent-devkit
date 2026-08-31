@@ -50,6 +50,7 @@ resolve_cached_gradle() {
     sed -n 's/^[[:space:]]*distributionUrl[[:space:]]*=[[:space:]]*//p' "$wrapper_properties" \
       | tail -n 1
   )"
+  distribution_url="${distribution_url%$'\r'}"
   if [ -z "$distribution_url" ]; then
     echo "hermes-java: distributionUrl is missing from $wrapper_properties" >&2
     return 2
