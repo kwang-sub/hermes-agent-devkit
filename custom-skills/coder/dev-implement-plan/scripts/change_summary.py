@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from hashlib import sha256
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -23,6 +24,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Summarize scoped Git changes for implementation verification.")
     parser.add_argument("--workspace", default=".")
     parser.add_argument("--include", action="append", default=[])
+    parser.add_argument(
+        "--compact",
+        action="store_true",
+        help="Print only handoff-critical summary fields without changing the process exit code.",
+    )
     return parser.parse_args()
 
 
@@ -43,7 +49,9 @@ def normalize_includes(root: Path, values: list[str]) -> list[str]:
         try:
             relative = candidate.relative_to(root)
         except ValueError as exc:
-            raise SummaryError(f"included path is outside workspace: {raw}") from exc
+            raise SummaryError(
+                f"included path is outside workspace: {raw}; summarize each Git workspace separately"
+            ) from exc
         normalized.append(relative.as_posix())
     return sorted(dict.fromkeys(normalized))
 
@@ -57,8 +65,22 @@ def git_paths(root: Path, base: list[str], includes: list[str]) -> list[str]:
 
 def tracked_changes(root: Path, includes: list[str]) -> tuple[list[str], list[str]]:
     raw = git_paths(root, ["diff", "--name-only", "HEAD"], includes)
-    effective = git_paths(root, ["diff", "--name-only", "--ignore-cr-at-eol", "HEAD"], includes)
-    eol_only = sorted(set(raw) - set(effective))
+    effective: list[str] = []
+    eol_only: list[str] = []
+    for path in raw:
+        result = run(
+            ["git", "-C", str(root), "diff", "--quiet", "--ignore-cr-at-eol", "HEAD", "--", path],
+            check=False,
+        )
+        if result.returncode == 0:
+            eol_only.append(path)
+        elif result.returncode == 1:
+            effective.append(path)
+        else:
+            raise SummaryError(
+                (result.stderr or result.stdout).strip()
+                or f"cannot classify tracked change for {path}: rc={result.returncode}"
+            )
     return effective, eol_only
 
 
@@ -72,10 +94,10 @@ def untracked_paths(root: Path, includes: list[str]) -> list[str]:
     ]
 
 
-def check_tracked_whitespace(root: Path, includes: list[str]) -> list[str]:
-    cmd = ["git", "-C", str(root), "diff", "--check", "--ignore-cr-at-eol", "HEAD"]
-    if includes:
-        cmd.extend(["--", *includes])
+def check_tracked_whitespace(root: Path, paths: list[str]) -> list[str]:
+    if not paths:
+        return []
+    cmd = ["git", "-C", str(root), "diff", "--check", "--ignore-cr-at-eol", "HEAD", "--", *paths]
     result = run(cmd, check=False)
     output = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
     if result.returncode not in (0, 1) or output:
@@ -86,7 +108,10 @@ def check_tracked_whitespace(root: Path, includes: list[str]) -> list[str]:
 def check_untracked_whitespace(root: Path, paths: list[str]) -> list[str]:
     errors: list[str] = []
     for path in paths:
-        result = run(["git", "-C", str(root), "diff", "--no-index", "--check", "--", "/dev/null", path], check=False)
+        result = run(
+            ["git", "-C", str(root), "diff", "--no-index", "--check", "--", "/dev/null", path],
+            check=False,
+        )
         output = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
         if result.returncode not in (0, 1):
             errors.append(output or f"untracked diff check failed for {path}: rc={result.returncode}")
@@ -111,35 +136,105 @@ def effective_scope_sha256(root: Path, paths: list[str]) -> str:
     return digest.hexdigest()
 
 
-def main() -> int:
-    args = parse_args()
-    root = repo_root(Path(args.workspace))
-    includes = normalize_includes(root, args.include)
-    tracked, eol_only = tracked_changes(root, includes)
-    untracked = untracked_paths(root, includes)
-    whitespace_errors = check_tracked_whitespace(root, includes) + check_untracked_whitespace(root, untracked)
-    effective_paths = sorted(set(tracked) | set(untracked))
-    fingerprint = effective_scope_sha256(root, effective_paths)
+def handoff_state_path(root: Path) -> Path:
+    raw = run(["git", "-C", str(root), "rev-parse", "--git-path", "hermes/review-handoff.json"]).stdout.strip()
+    path = Path(raw)
+    return path if path.is_absolute() else (root / path).resolve()
 
+
+def clear_handoff_state(root: Path) -> None:
+    path = handoff_state_path(root)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def write_handoff_state(
+    root: Path,
+    includes: list[str],
+    effective_paths: list[str],
+    fingerprint: str,
+) -> None:
+    path = handoff_state_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "workspace": str(root),
+        "scope": includes,
+        "effective_paths": effective_paths,
+        "effective_scope_sha256": fingerprint,
+        "status": "valid",
+    }
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def print_summary(
+    *,
+    root: Path,
+    includes: list[str],
+    tracked: list[str],
+    eol_only: list[str],
+    untracked: list[str],
+    fingerprint: str,
+    whitespace_errors: list[str],
+    compact: bool,
+) -> None:
     print(f"WORKSPACE={root}")
     print(f"SCOPE={'ALL' if not includes else ','.join(includes)}")
     print(f"TRACKED_CHANGED_COUNT={len(tracked)}")
-    for index, path in enumerate(tracked, start=1):
-        print(f"TRACKED_{index}={path}")
+    if not compact:
+        for index, path in enumerate(tracked, start=1):
+            print(f"TRACKED_{index}={path}")
     print(f"EOL_ONLY_COUNT={len(eol_only)}")
-    for index, path in enumerate(eol_only, start=1):
-        print(f"EOL_ONLY_{index}={path}")
+    if not compact:
+        for index, path in enumerate(eol_only, start=1):
+            print(f"EOL_ONLY_{index}={path}")
     print(f"UNTRACKED_COUNT={len(untracked)}")
-    for index, path in enumerate(untracked, start=1):
-        print(f"UNTRACKED_{index}={path}")
+    if not compact:
+        for index, path in enumerate(untracked, start=1):
+            print(f"UNTRACKED_{index}={path}")
     print(f"EFFECTIVE_SCOPE_SHA256={fingerprint}")
     print(f"WHITESPACE_ERROR_COUNT={len(whitespace_errors)}")
     if whitespace_errors:
-        for index, error in enumerate(whitespace_errors, start=1):
-            print(f"WHITESPACE_ERROR_{index}={error.replace(chr(10), ' | ')}")
+        if not compact:
+            for index, error in enumerate(whitespace_errors, start=1):
+                print(f"WHITESPACE_ERROR_{index}={error.replace(chr(10), ' | ')}")
+        print("HANDOFF_GATE=FAIL")
         print("STATUS=invalid")
+    else:
+        print("HANDOFF_GATE=PASS")
+        print("STATUS=valid")
+
+
+def main() -> int:
+    args = parse_args()
+    root = repo_root(Path(args.workspace))
+    clear_handoff_state(root)
+
+    includes = normalize_includes(root, args.include)
+    tracked, eol_only = tracked_changes(root, includes)
+    untracked = untracked_paths(root, includes)
+    whitespace_errors = check_tracked_whitespace(root, tracked) + check_untracked_whitespace(root, untracked)
+    effective_paths = sorted(set(tracked) | set(untracked))
+    fingerprint = effective_scope_sha256(root, effective_paths)
+
+    print_summary(
+        root=root,
+        includes=includes,
+        tracked=tracked,
+        eol_only=eol_only,
+        untracked=untracked,
+        fingerprint=fingerprint,
+        whitespace_errors=whitespace_errors,
+        compact=args.compact,
+    )
+
+    if whitespace_errors:
         return 1
-    print("STATUS=valid")
+
+    write_handoff_state(root, includes, effective_paths, fingerprint)
     return 0
 
 
