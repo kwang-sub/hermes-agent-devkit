@@ -65,6 +65,8 @@ check_reviewer_capability_mounts() {
 from pathlib import Path
 
 compose = Path("compose.yml").read_text(encoding="utf-8")
+init = Path("init-profiles.ps1").read_text(encoding="utf-8-sig")
+review = Path("custom-skills/reviewer/dev-code-review/SKILL.md").read_text(encoding="utf-8")
 capabilities = (
     "dev-spring-guidelines",
     "dev-spring-feature",
@@ -84,6 +86,8 @@ for skill in capabilities:
     target = f"${{HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}}/{skill}"
     if source not in compose or target not in compose:
         raise SystemExit(f"compose.yml missing separate reviewer capability mount: {skill}")
+    if skill not in review:
+        raise SystemExit(f"reviewer contract missing capability name: {skill}")
 
 for skill in ("dev-code-review", "dev-review-cycle"):
     target = f"${{HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}}/{skill}"
@@ -93,10 +97,19 @@ for skill in ("dev-code-review", "dev-review-cycle"):
 if "/opt/custom-skills}/reviewer/" in compose:
     raise SystemExit("compose.yml still nests reviewer mounts under the read-only custom-skills bind")
 
-review = Path("custom-skills/reviewer/dev-code-review/SKILL.md").read_text(encoding="utf-8")
-for skill in capabilities:
-    if f"/opt/reviewer-skills/{skill}/SKILL.md" not in review:
-        raise SystemExit(f"reviewer contract missing canonical capability path: {skill}")
+required_init = (
+    '$ContainerReviewerSkillsPath = Get-EnvOrDefault -Name "HERMES_CONTAINER_REVIEWER_SKILLS_PATH" -Default "/opt/reviewer-skills"',
+    '$ExternalSkillDirs = @{',
+    'reviewer = @(',
+    '(Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "reviewer"),',
+    '$ContainerReviewerSkillsPath',
+)
+missing_init = [term for term in required_init if term not in init]
+if missing_init:
+    raise SystemExit("init-profiles.ps1 missing reviewer external_dirs contract: " + ", ".join(missing_init))
+
+if "skill_view" not in review:
+    raise SystemExit("reviewer contract must keep skill_view capability available")
 if "hermes-java" not in review:
     raise SystemExit("reviewer contract missing project Java launcher")
 PYTHON
