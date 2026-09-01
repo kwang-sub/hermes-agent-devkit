@@ -9,6 +9,7 @@ import sys
 
 
 MANAGED_MARKER = "# managed-by: dev-project-bootstrap"
+HERMES_MANAGED_PREFIX = ".hermes/"
 
 
 class DispatchError(RuntimeError):
@@ -35,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--branch-mode", choices=("current", "create"), required=True, help="User-approved branch strategy.")
     p.add_argument("--branch", help="Branch to verify in current mode or create in create mode. Default in create mode: feature/<TASK-KEY>.")
     p.add_argument("--start-point", help="Start point for --branch-mode create. Default: current HEAD.")
-    p.add_argument("--confirmed-dirty", action="store_true", help="Required when the approved workspace has existing changes.")
+    p.add_argument("--confirmed-dirty", action="store_true", help="Required when the approved workspace has existing effective project changes.")
     return p.parse_args()
 
 
@@ -90,8 +91,71 @@ def current_branch(repo: Path) -> str:
     return branch
 
 
-def status_porcelain(repo: Path) -> str:
-    return run(["git", "-C", str(repo), "status", "--porcelain=v1", "--untracked-files=all"]).stdout.rstrip()
+def git_paths(repo: Path, args: list[str]) -> list[str]:
+    return sorted({
+        line.strip()
+        for line in run(["git", "-C", str(repo), *args]).stdout.splitlines()
+        if line.strip()
+    })
+
+
+def is_hermes_managed(path: str) -> bool:
+    return path == ".hermes" or path.startswith(HERMES_MANAGED_PREFIX)
+
+
+def classify_workspace_changes(repo: Path) -> dict[str, list[str]]:
+    tracked = git_paths(repo, ["diff", "--name-only", "HEAD"])
+    untracked = git_paths(repo, ["ls-files", "--others", "--exclude-standard"])
+
+    effective: list[str] = []
+    eol_only: list[str] = []
+    hermes_managed: list[str] = []
+
+    for path in tracked:
+        if is_hermes_managed(path):
+            hermes_managed.append(path)
+            continue
+        result = run(
+            ["git", "-C", str(repo), "diff", "--quiet", "--ignore-cr-at-eol", "HEAD", "--", path],
+            check=False,
+        )
+        if result.returncode == 0:
+            eol_only.append(path)
+        elif result.returncode == 1:
+            effective.append(path)
+        else:
+            raise DispatchError(
+                (result.stderr or result.stdout).strip()
+                or f"cannot classify tracked change for {path}: rc={result.returncode}"
+            )
+
+    for path in untracked:
+        if is_hermes_managed(path):
+            hermes_managed.append(path)
+        else:
+            effective.append(path)
+
+    return {
+        "effective": sorted(set(effective)),
+        "eol_only": sorted(set(eol_only)),
+        "hermes_managed": sorted(set(hermes_managed)),
+    }
+
+
+def change_summary_lines(changes: dict[str, list[str]]) -> list[str]:
+    lines = [
+        f"EFFECTIVE_CHANGED_COUNT={len(changes['effective'])}",
+        f"EOL_ONLY_COUNT={len(changes['eol_only'])}",
+        f"HERMES_MANAGED_COUNT={len(changes['hermes_managed'])}",
+    ]
+    for key, label in (
+        ("effective", "EFFECTIVE_CHANGED"),
+        ("eol_only", "EOL_ONLY"),
+        ("hermes_managed", "HERMES_MANAGED"),
+    ):
+        for index, path in enumerate(changes[key], start=1):
+            lines.append(f"{label}_{index}={path}")
+    return lines
 
 
 def check_branch_name(branch: str) -> None:
@@ -135,9 +199,14 @@ def main() -> int:
     base = meta["base"]
     base_sha = rev_parse(repo, base)
     before_branch = current_branch(workspace)
-    dirty = status_porcelain(workspace)
-    if dirty and not args.confirmed_dirty:
-        raise DispatchError("approved workspace has existing changes; show git status to the user and rerun with --confirmed-dirty if they approve\n" + dirty)
+    changes = classify_workspace_changes(workspace)
+    if changes["effective"] and not args.confirmed_dirty:
+        summary = "\n".join(change_summary_lines(changes))
+        raise DispatchError(
+            "approved workspace has existing effective project changes; "
+            "show the exact change counts/paths to the user and rerun with --confirmed-dirty if they approve.\n"
+            + summary
+        )
 
     created_branch = False
     if args.branch_mode == "current":
@@ -158,6 +227,7 @@ def main() -> int:
     if final_branch != branch:
         raise DispatchError(f"branch verification failed: expected={branch}, actual={final_branch}")
 
+    raw_dirty = any(changes.values())
     print(f"PROJECT_ID={meta['project_id']}")
     print(f"REPO_ROOT={repo}")
     print(f"BOARD={meta['board']}")
@@ -172,7 +242,10 @@ def main() -> int:
     print(f"BRANCH={branch}")
     print(f"PREVIOUS_BRANCH={before_branch}")
     print(f"CREATED_BRANCH={'true' if created_branch else 'false'}")
-    print(f"WORKSPACE_DIRTY={'true' if bool(dirty) else 'false'}")
+    print(f"WORKSPACE_DIRTY={'true' if raw_dirty else 'false'}")
+    print(f"WORKSPACE_EFFECTIVE_DIRTY={'true' if bool(changes['effective']) else 'false'}")
+    for line in change_summary_lines(changes):
+        print(line)
     print("STATUS=prepared")
     return 0
 

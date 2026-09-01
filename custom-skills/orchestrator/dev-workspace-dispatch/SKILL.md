@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 구현 계획과 project pattern/capability 계약을 Git workspace와 Kanban으로 인계한다.
-version: 0.4.0
+version: 0.5.0
 author: local
 platforms: [linux]
 metadata:
@@ -36,7 +36,7 @@ metadata:
 - project pattern/capability handoff 필드가 누락되어 Coder가 승인된 판단을 재현할 수 없다.
 - workspace가 Git repository root가 아니다.
 - workspace가 project metadata의 repository와 같은 Git common dir에 속하지 않는다.
-- workspace에 기존 변경이 있는데 사용자가 그 상태를 승인하지 않았다.
+- workspace에 기존 **effective project change**가 있는데 사용자가 그 상태를 승인하지 않았다.
 
 ## 2. 승인 Gate
 
@@ -49,10 +49,29 @@ Project:
 Repository:
 Approved workspace:
 Current branch:
-Git status: clean / dirty
 Base branch:
+Effective project changes: <count>
+EOL-only changes: <count>
+Hermes managed files: <count>
 Suggested new branch: feature/<TASK-KEY>
 ```
+
+변경 상태는 반드시 다음 세 범주로 분리한다.
+
+1. **Effective project changes**: 실제 프로젝트 content 변경 및 `.hermes/` 밖의 untracked 파일. 사용자 승인 대상이다.
+2. **EOL-only changes**: CRLF/LF 차이만 있는 tracked 파일. 사용자 변경으로 승격하지 않는다.
+3. **Hermes managed files**: `.hermes/` 아래의 tracked/untracked 관리 파일. 프로젝트 사용자 변경 개수에 포함하지 않는다.
+
+`dirty`, `많음`, `매우 많음`, `대량`처럼 개수를 추측하는 표현을 사용하지 않는다. 항상 helper가 반환한 정확한 count와 필요 시 path를 그대로 제시한다.
+
+예:
+
+```text
+현재 workspace에는 프로젝트 변경 3개, EOL-only 변경 0개, Hermes 관리 파일 4개가 있습니다.
+프로젝트 변경 3개를 유지한 상태로 작업할지 확인합니다.
+```
+
+Effective project changes가 0이고 EOL-only/Hermes managed file만 존재하면 `--confirmed-dirty` 승인을 요구하지 않는다. 파일을 reset/restore/stash/line-ending rewrite하지 않는다.
 
 사용자 선택지는 다음이다.
 
@@ -63,7 +82,7 @@ Suggested new branch: feature/<TASK-KEY>
 4. 사용자가 지정한 별도 workspace + 새 branch 생성
 ```
 
-기존 변경이 있으면 git status --short --untracked-files=all 결과를 요약하고, 사용자가 해당 dirty 상태를 작업에 포함해도 된다고 승인해야 한다.
+Effective project changes가 있으면 helper가 반환한 `EFFECTIVE_CHANGED_COUNT`와 path를 사용자에게 보여주고, 사용자가 해당 변경을 유지한 채 작업해도 된다고 승인해야 한다.
 
 ## 3. Helper 실행
 
@@ -86,17 +105,18 @@ python3 "${HERMES_SKILL_DIR}/scripts/prepare_dispatch.py" \
   --branch "feature/<TASK-KEY>"
 ```
 
-workspace에 기존 변경이 있고 사용자가 이를 승인한 경우에만 --confirmed-dirty를 추가한다.
+Effective project changes가 있고 사용자가 이를 승인한 경우에만 `--confirmed-dirty`를 추가한다.
 
 Helper 검증 항목:
 
 1. Task Key가 안전한지 확인한다.
 2. Workspace가 Git repository root인지 확인한다.
-3. .hermes/project.yaml이 managed metadata인지 확인한다.
+3. `.hermes/project.yaml`이 managed metadata인지 확인한다.
 4. Metadata repository와 실제 repository가 일치하는지 확인한다.
 5. Approved workspace가 managed repository와 같은 Git common dir인지 확인한다.
 6. Base branch/ref와 base SHA를 확정한다.
-7. 현재 branch 또는 새 branch 생성 결과를 검증한다.
+7. tracked/untracked 상태를 effective/EOL-only/Hermes managed로 분류한다.
+8. 현재 branch 또는 새 branch 생성 결과를 검증한다.
 
 예상 출력:
 
@@ -111,13 +131,24 @@ WORKSPACE=dir:/workspace/dashboard
 ASSIGNEE=coder
 REVIEWER=reviewer
 TASK_KEY=CALC-001
-BRANCH_MODE=create
-BRANCH=feature/CALC-001
+BRANCH_MODE=current
+BRANCH=dev
 PREVIOUS_BRANCH=dev
-CREATED_BRANCH=true
-WORKSPACE_DIRTY=false
+CREATED_BRANCH=false
+WORKSPACE_DIRTY=true
+WORKSPACE_EFFECTIVE_DIRTY=true
+EFFECTIVE_CHANGED_COUNT=3
+EFFECTIVE_CHANGED_1=.gitattributes
+EFFECTIVE_CHANGED_2=CLAUDE.md
+EFFECTIVE_CHANGED_3=src/main/resources/properties/config.properties
+EOL_ONLY_COUNT=0
+HERMES_MANAGED_COUNT=4
+HERMES_MANAGED_1=.hermes/LOCAL-...-body.txt
+...
 STATUS=prepared
 ```
+
+`WORKSPACE_DIRTY`는 raw 작업트리에 어떤 변경이든 존재하는지 나타내는 정보용 필드다. 승인/위험 판단에는 `WORKSPACE_EFFECTIVE_DIRTY`와 `EFFECTIVE_CHANGED_COUNT`를 사용한다.
 
 Helper가 non-zero로 종료되면 Kanban Task를 만들지 않는다.
 
@@ -146,8 +177,6 @@ python3 /opt/custom-skills/orchestrator/dev-skill-preflight/scripts/validate_ski
 5. validated skill이 없으면 `skills=[]`를 허용한다.
 6. 배열의 첫 번째 skill만 선택하지 말고 `VALIDATED_SKILLS` 전체를 전달한다.
 7. Task 생성 직후 `kanban_show`로 실제 `task.skills`를 확인하고 `VALIDATED_SKILLS`와 정확히 일치하지 않으면 dispatch하지 않는다.
-
-이 Gate는 `java-project-conventions`처럼 실제 profile에 없는 이름이 task metadata에 들어가 worker가 `Unknown skill(s)`로 crash한 뒤 circuit breaker에 막히는 문제를 생성 전에 차단한다.
 
 ## 5. Kanban Body 계약
 
@@ -197,14 +226,17 @@ Workspace Contract:
 - Expected branch: <BRANCH>
 - Base branch: <BASE_BRANCH>
 - Base SHA: <BASE_SHA>
-- Workspace dirty at dispatch: true | false
-- 기존 변경이 있었다면 사용자가 해당 상태를 승인했다.
+- Effective project changes at dispatch: <EFFECTIVE_CHANGED_COUNT>
+- EOL-only changes at dispatch: <EOL_ONLY_COUNT>
+- Hermes managed files at dispatch: <HERMES_MANAGED_COUNT>
+- Effective project changes가 있었다면 사용자가 해당 상태를 승인했다.
+- Coder는 기존 변경을 reset/restore/stash하지 않는다.
 - Coder는 할당된 Workspace 밖을 수정하지 않는다.
 - Coder는 Branch를 전환하지 않는다.
 - Coder는 다른 Git Worktree를 만들지 않는다.
 ```
 
-`Applicable Skills`는 Coder가 작업 맥락에서 어떤 capability를 적용해야 하는지 알려주는 canonical handoff다. `Validated Pinned Skills`만 Kanban metadata의 `skills`가 될 수 있다. Coder는 실제 source evidence에서 명백한 누락을 발견하면 `dev-implement-plan` 계약에 따라 추가 capability를 직접 확인할 수 있다.
+Task body의 기존 변경 설명에도 `많음/매우 많음/대량`을 사용하지 않는다. helper의 숫자를 그대로 기록한다. EOL-only/Hermes managed 파일을 `사용자 변경`이라고 표현하지 않는다.
 
 ## 6. 성공 기준
 
@@ -215,6 +247,8 @@ Workspace Contract:
 - Approved workspace가 managed repository와 같은 Git common dir에 속함
 - Expected Branch가 실제 현재 branch와 일치함
 - Base SHA가 기록됨
+- Effective/EOL-only/Hermes managed 변경 개수가 분리되어 기록됨
+- Existing effective project changes가 있었다면 사용자 승인 확인됨
 - Skill Preflight가 성공함
 - `task.skills`가 `VALIDATED_SKILLS`와 정확히 일치함
 - Kanban Workspace가 dir:<approved-workspace>임
