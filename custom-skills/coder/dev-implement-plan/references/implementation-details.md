@@ -21,6 +21,8 @@ Fast Review: Coder intake → Kanban → Coder worker → Reviewer
 3. Goal, AC, Implementation Tasks, Test Plan, Risks를 확인한다.
 4. Task의 Project Pattern Summary / Pattern References / Applicable Skills를 재사용한다.
 
+Workspace 검증은 canonical `verify_workspace.py`를 **단독 terminal command로 정확히 1회** 실행한다. 같은 terminal invocation에 `git status`, `git branch`, `git rev-parse`, toolchain/wrapper probe 등을 batch하지 않는다. `STATUS=valid`이면 branch/base/workspace를 다시 확인하기 위한 중복 Git probe를 실행하지 않는다. helper 자체가 실패했을 때만 실패 원인을 직접 확인하는 최소 probe를 허용한다.
+
 계약 누락 또는 Workspace 불일치로 correctness가 흔들리면 수정 전에 Block한다.
 
 ## 3. Fast Flow 재검증
@@ -57,8 +59,63 @@ Fast Review: Coder intake → Kanban → Coder worker → Reviewer
 검증은 좁은 범위부터 넓힌다.
 
 ```text
-targeted test → 필요한 integration/module test → git diff --check → change_summary
+targeted test → 필요한 integration/module test → scoped change_summary
 ```
+
+Java/Gradle 검증은 Coder가 `hermes-java ./gradlew ...`를 여러 형태로 직접 반복하지 않고 아래 helper를 canonical 경로로 사용한다.
+
+TARGETED_TEST:
+
+```bash
+python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification.py \
+  --workspace "<Workspace>" \
+  --mode TARGETED_TEST \
+  --test "<fully-qualified-test-selector>"
+```
+
+여러 selector는 `--test`를 반복한다.
+
+COMPILE:
+
+```bash
+python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification.py \
+  --workspace "<Workspace>" \
+  --mode COMPILE
+```
+
+Helper contract:
+
+```text
+capability: hermes-java ./gradlew --version
+primary: requested compile/targeted test exactly once
+common args: --no-daemon --console=plain
+primary timeout: default 240s
+on primary timeout:
+  - timed-out primary command 재실행 금지
+  - online `help --info` 1회
+  - offline `help --offline --info` 1회
+  - blocker 분류 후 종료
+```
+
+대표 결과:
+
+```text
+GRADLE_STATUS=PASS
+GRADLE_BLOCKER=NONE
+```
+
+```text
+GRADLE_STATUS=FAIL
+GRADLE_BLOCKER=BUILD_FAILURE
+```
+
+```text
+GRADLE_STATUS=BLOCKED
+GRADLE_BLOCKER=DEPENDENCY_RESOLUTION | PROJECT_CONFIGURATION | BUILD_TASK_TIMEOUT | CAPABILITY
+PRIMARY_RETRY_ALLOWED=false
+```
+
+`GRADLE_STATUS=BLOCKED` 이후 Coder가 `compileJava`, 동일 targeted test, `--info` 변형, background Gradle process wait를 임의로 추가 실행하지 않는다. helper evidence를 Kanban blocker에 그대로 기록한다. 실제 source 수정으로 실패 원인이 바뀐 경우에만 새 최종 verification cycle을 시작할 수 있다.
 
 실행하지 않은 검증을 PASS라고 쓰지 않는다. 필수 검증이 불가능하면 LOW 판정을 금지한다.
 
@@ -140,6 +197,8 @@ Coder는 commit, push, merge, rebase, cherry-pick, reset, clean, stash, workspac
 ## 9. BLOCKED
 
 Task 계약 부족, Workspace mismatch, 요구사항/코드 충돌, 필수 input/dependency 누락, 필수 검증 불가, Fast Flow scope escalation은 `kanban_block`한다.
+
+Gradle helper가 `GRADLE_STATUS=BLOCKED`를 반환하면 blocker type, primary command/result, diagnostic 결과를 evidence로 사용한다. 같은 Gradle primary command를 재시도해서 worker 시간을 소모하지 않는다.
 
 일반 형식:
 

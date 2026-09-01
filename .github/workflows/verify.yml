@@ -30,6 +30,10 @@ jobs:
         shell: bash
         run: bash scripts/verify.sh
 
+      - name: Verify Gradle bounded verification helper
+        shell: bash
+        run: python3 custom-skills/coder/dev-implement-plan/tests/test_gradle_verification.py
+
       - name: Verify hermes-java Gradle cache fallback
         shell: bash
         run: python3 scripts/test_hermes_java.py
