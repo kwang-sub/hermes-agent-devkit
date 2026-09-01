@@ -1,4 +1,4 @@
-﻿#requires -Version 5.1
+#requires -Version 5.1
 
 param(
     [switch]$EnvSelfTest
@@ -111,6 +111,7 @@ $Container = Get-EnvOrDefault -Name "HERMES_CONTAINER_NAME" -Default "hermes-dev
 $ContainerWorkspacePath = Get-EnvOrDefault -Name "HERMES_CONTAINER_WORKSPACE_PATH" -Default "/workspace"
 $ContainerDataPath = "/opt/data"
 $ContainerCustomSkillsPath = Get-EnvOrDefault -Name "HERMES_CONTAINER_CUSTOM_SKILLS_PATH" -Default "/opt/custom-skills"
+$ContainerReviewerSkillsPath = Get-EnvOrDefault -Name "HERMES_CONTAINER_REVIEWER_SKILLS_PATH" -Default "/opt/reviewer-skills"
 $ContainerSharedPath = Get-EnvOrDefault -Name "HERMES_CONTAINER_SHARED_PATH" -Default "/opt/data/shared"
 
 # The official Hermes image keeps the immutable application and venv under /opt/hermes.
@@ -119,10 +120,36 @@ $HermesCliPath = "/opt/hermes/.venv/bin/hermes"
 $PythonPath = "/opt/hermes/.venv/bin/python"
 
 $ExternalSkillDirs = @{
-    orchestrator = Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "orchestrator"
-    coder = Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "coder"
-    reviewer = Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "reviewer"
+    orchestrator = @(
+        (Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "orchestrator")
+    )
+    coder = @(
+        (Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "coder")
+    )
+    reviewer = @(
+        (Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "reviewer"),
+        $ContainerReviewerSkillsPath
+    )
 }
+
+# These official optional skills were present in the legacy DevKit profile baseline.
+# Remove them only once per profile so later user-installed Hub skills are preserved.
+$LegacyOfficialHubSkills = @(
+    "ascii-art",
+    "comfyui",
+    "excalidraw",
+    "pretext",
+    "sketch",
+    "touchdesigner-mcp",
+    "evaluating-llms-harness",
+    "huggingface-hub",
+    "llama-cpp",
+    "serving-llms-vllm",
+    "weights-and-biases",
+    "research-paper-writing",
+    "openhue"
+)
+$SkillPolicyMigrationMarker = ".devkit-skill-policy-v1"
 
 function Run-Docker {
     param(
@@ -218,12 +245,14 @@ function Assert-Prerequisites {
     )
     Write-Host "[OK] Python/PyYAML: $PythonPath"
 
-    foreach ($Path in @(
-        $ExternalSkillDirs["orchestrator"],
-        $ExternalSkillDirs["coder"],
-        $ExternalSkillDirs["reviewer"],
-        (Join-ContainerPath -Root $ContainerSharedPath -Child "AGENTS.common.md")
-    )) {
+    $RequiredPaths = @(
+        $ExternalSkillDirs["orchestrator"] +
+        $ExternalSkillDirs["coder"] +
+        $ExternalSkillDirs["reviewer"] +
+        @((Join-ContainerPath -Root $ContainerSharedPath -Child "AGENTS.common.md"))
+    )
+
+    foreach ($Path in $RequiredPaths) {
         Run-Docker -Args @(
             "exec",
             "--user", "hermes",
@@ -258,7 +287,7 @@ function Ensure-Profile {
         return
     }
 
-    Write-Host "[CREATE] Profile: $Name"
+    Write-Host "[CREATE] Profile without bundled skills: $Name"
 
     Run-Docker -Args @(
         "exec",
@@ -266,17 +295,126 @@ function Ensure-Profile {
         $Container,
         $HermesCliPath,
         "profile", "create", $Name,
-        "--description", $Description
+        "--description", $Description,
+        "--no-skills"
     )
 }
 
-function Ensure-ExternalDir {
+function Ensure-BundledSkillOptOut {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Profile
+    )
+
+    Write-Host "[SKILLS] Disable bundled skill seeding: $Profile"
+    Run-Docker -Args @(
+        "exec",
+        "--user", "hermes",
+        $Container,
+        $HermesCliPath,
+        "-p", $Profile,
+        "skills", "opt-out", "--remove", "--yes"
+    )
+
+    $Marker = Join-ContainerPath -Root $ContainerDataPath -Child "profiles/$Profile/.no-bundled-skills"
+    Run-Docker -Args @(
+        "exec",
+        "--user", "hermes",
+        $Container,
+        "test", "-f", $Marker
+    )
+    Write-Host "[OK] Bundled skill opt-out marker: $Profile"
+}
+
+function Remove-LegacyOfficialHubSkillsOnce {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Profile
+    )
+
+    $ProfileHome = Join-ContainerPath -Root $ContainerDataPath -Child "profiles/$Profile"
+    $MigrationMarker = Join-ContainerPath -Root $ProfileHome -Child $SkillPolicyMigrationMarker
+
+    & docker exec --user hermes $Container test -f $MigrationMarker 1>$null 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "[OK] Legacy Hub skill migration already applied: $Profile"
+        return
+    }
+
+    $LockFile = Join-ContainerPath -Root $ProfileHome -Child "skills/.hub/lock.json"
+    $Py = @'
+from pathlib import Path
+import json
+import sys
+
+lock_path = Path(sys.argv[1])
+wanted = sys.argv[2:]
+if not lock_path.is_file():
+    raise SystemExit(0)
+
+try:
+    data = json.loads(lock_path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"Invalid Hub lock file {lock_path}: {exc}")
+
+installed = data.get("installed", {})
+if not isinstance(installed, dict):
+    raise SystemExit(f"Invalid Hub lock installed mapping: {lock_path}")
+
+for name in wanted:
+    if name in installed:
+        print(name)
+'@
+
+    $DockerArgs = @(
+        "exec", "-i",
+        "--user", "hermes",
+        $Container,
+        $PythonPath,
+        "-",
+        $LockFile
+    ) + $LegacyOfficialHubSkills
+
+    $InstalledLegacy = @($Py | & docker @DockerArgs)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to inspect Hub lock for '$Profile'."
+    }
+
+    foreach ($Skill in $InstalledLegacy) {
+        $Name = ([string]$Skill).Trim()
+        if ([string]::IsNullOrWhiteSpace($Name)) {
+            continue
+        }
+        Write-Host "[REMOVE] Legacy Hub skill: $Profile -> $Name"
+        Run-Docker -Args @(
+            "exec",
+            "--user", "hermes",
+            $Container,
+            $HermesCliPath,
+            "-p", $Profile,
+            "skills", "uninstall", $Name, "--yes"
+        )
+    }
+
+    Run-Docker -Args @(
+        "exec",
+        "--user", "hermes",
+        $Container,
+        $PythonPath,
+        "-c",
+        "from pathlib import Path; import sys; Path(sys.argv[1]).touch()",
+        $MigrationMarker
+    )
+    Write-Host "[OK] Legacy Hub skill migration complete: $Profile"
+}
+
+function Ensure-ExternalDirs {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Profile,
 
         [Parameter(Mandatory = $true)]
-        [string]$ExternalDir
+        [string[]]$ExternalDirs
     )
 
     $Config = Join-ContainerPath -Root $ContainerDataPath -Child "profiles/$Profile/config.yaml"
@@ -297,7 +435,10 @@ import tempfile
 import yaml
 
 p = Path(sys.argv[1])
-external_dir = sys.argv[2]
+external_dirs = sys.argv[2:]
+if not external_dirs:
+    raise SystemExit("At least one external skill directory is required")
+
 p.parent.mkdir(parents=True, exist_ok=True)
 original = p.read_text(encoding="utf-8") if p.exists() else ""
 
@@ -317,7 +458,7 @@ if skills is None:
 if not isinstance(skills, dict):
     raise SystemExit(f"The skills section must be a YAML mapping: {p}")
 
-if skills.get("external_dirs") == [external_dir]:
+if skills.get("external_dirs") == external_dirs:
     print(f"[OK] External skills already configured: {p}")
     raise SystemExit(0)
 
@@ -330,7 +471,8 @@ start = next(
 if start is None:
     if original and not original.endswith("\n"):
         original += "\n"
-    updated = original + "skills:\n  external_dirs:\n    - " + external_dir + "\n"
+    rendered = "".join(f"    - {item}\n" for item in external_dirs)
+    updated = original + "skills:\n  external_dirs:\n" + rendered
 else:
     end = len(lines)
     for i in range(start + 1, len(lines)):
@@ -358,9 +500,8 @@ else:
             ),
             None,
         )
-        replacement = [
-            f"{prefix}external_dirs:",
-            f"{prefix}  - {external_dir}",
+        replacement = [f"{prefix}external_dirs:"] + [
+            f"{prefix}  - {item}" for item in external_dirs
         ]
 
         if key_index is None:
@@ -378,7 +519,7 @@ else:
                 value_end += 1
             section = section[:key_index] + replacement + section[value_end:]
     else:
-        skills["external_dirs"] = [external_dir]
+        skills["external_dirs"] = external_dirs
         section = yaml.safe_dump(
             {"skills": skills},
             allow_unicode=True,
@@ -393,8 +534,8 @@ try:
 except yaml.YAMLError as exc:
     raise SystemExit(f"Refusing to write invalid YAML: {exc.problem or 'parse error'}")
 
-if verified.get("skills", {}).get("external_dirs") != [external_dir]:
-    raise SystemExit("Refusing to write config: skills.external_dirs is not a YAML list")
+if verified.get("skills", {}).get("external_dirs") != external_dirs:
+    raise SystemExit("Refusing to write config: skills.external_dirs is not the expected YAML list")
 
 if p.exists():
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
@@ -416,8 +557,17 @@ finally:
 print(f"[UPDATE] External skills configured: {p}")
 '@
 
-    Write-Host "[CONFIG] $Profile -> $ExternalDir"
-    $Py | & docker exec -i --user hermes $Container $PythonPath - $Config $ExternalDir
+    Write-Host "[CONFIG] $Profile -> $($ExternalDirs -join ', ')"
+    $DockerArgs = @(
+        "exec", "-i",
+        "--user", "hermes",
+        $Container,
+        $PythonPath,
+        "-",
+        $Config
+    ) + $ExternalDirs
+
+    $Py | & docker @DockerArgs
     $ExitCode = $LASTEXITCODE
 
     if ($ExitCode -ne 0) {
@@ -425,13 +575,13 @@ print(f"[UPDATE] External skills configured: {p}")
     }
 }
 
-function Verify-ExternalDir {
+function Verify-ExternalDirs {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Profile,
 
         [Parameter(Mandatory = $true)]
-        [string]$Expected
+        [string[]]$Expected
     )
 
     $Config = Join-ContainerPath -Root $ContainerDataPath -Child "profiles/$Profile/config.yaml"
@@ -442,7 +592,7 @@ import sys
 import yaml
 
 p = Path(sys.argv[1])
-expected = sys.argv[2]
+expected = sys.argv[2:]
 
 if not p.is_file():
     raise SystemExit(f"Missing config: {p}")
@@ -463,13 +613,22 @@ external_dirs = skills.get("external_dirs")
 if not isinstance(external_dirs, list):
     raise SystemExit("skills.external_dirs must be a YAML list")
 
-if external_dirs != [expected]:
-    raise SystemExit(f"Unexpected skills.external_dirs value for {p}")
+if external_dirs != expected:
+    raise SystemExit(f"Unexpected skills.external_dirs value for {p}: {external_dirs!r}")
 
 print(f"[PASS] YAML list verified: {p}")
 '@
 
-    $Py | & docker exec -i --user hermes $Container $PythonPath - $Config $Expected
+    $DockerArgs = @(
+        "exec", "-i",
+        "--user", "hermes",
+        $Container,
+        $PythonPath,
+        "-",
+        $Config
+    ) + $Expected
+
+    $Py | & docker @DockerArgs
     $ExitCode = $LASTEXITCODE
 
     if ($ExitCode -ne 0) {
@@ -494,32 +653,40 @@ Ensure-Profile `
     -Description "Reviews implementation changes and requests corrections or approves the task."
 
 Write-Host ""
+Write-Host "=== Apply Profile Skill Policy ==="
+
+foreach ($Profile in @("orchestrator", "coder", "reviewer")) {
+    Ensure-BundledSkillOptOut -Profile $Profile
+    Remove-LegacyOfficialHubSkillsOnce -Profile $Profile
+}
+
+Write-Host ""
 Write-Host "=== Configure External Skills ==="
 
-Ensure-ExternalDir `
+Ensure-ExternalDirs `
     -Profile "orchestrator" `
-    -ExternalDir $ExternalSkillDirs["orchestrator"]
+    -ExternalDirs $ExternalSkillDirs["orchestrator"]
 
-Ensure-ExternalDir `
+Ensure-ExternalDirs `
     -Profile "coder" `
-    -ExternalDir $ExternalSkillDirs["coder"]
+    -ExternalDirs $ExternalSkillDirs["coder"]
 
-Ensure-ExternalDir `
+Ensure-ExternalDirs `
     -Profile "reviewer" `
-    -ExternalDir $ExternalSkillDirs["reviewer"]
+    -ExternalDirs $ExternalSkillDirs["reviewer"]
 
 Write-Host ""
 Write-Host "=== Verify YAML List Format ==="
 
-Verify-ExternalDir `
+Verify-ExternalDirs `
     -Profile "orchestrator" `
     -Expected $ExternalSkillDirs["orchestrator"]
 
-Verify-ExternalDir `
+Verify-ExternalDirs `
     -Profile "coder" `
     -Expected $ExternalSkillDirs["coder"]
 
-Verify-ExternalDir `
+Verify-ExternalDirs `
     -Profile "reviewer" `
     -Expected $ExternalSkillDirs["reviewer"]
 
@@ -541,4 +708,4 @@ Write-Host "1. Configure model/OAuth for orchestrator"
 Write-Host "2. Configure model/OAuth for coder"
 Write-Host "3. Configure model/OAuth for reviewer"
 Write-Host "4. Re-check config.yaml after model setup"
-Write-Host "5. Start fresh Hermes sessions and verify external dev-* skills"
+Write-Host "5. Start fresh Hermes sessions and verify role-specific dev-* skills"

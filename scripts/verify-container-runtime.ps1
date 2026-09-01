@@ -16,7 +16,7 @@ function Invoke-DockerCheck {
 
     & docker @DockerArgs
     if ($LASTEXITCODE -ne 0) {
-        throw "[FAIL] $Label. The running container does not match the current DevKit image. Rebuild with: docker compose build --no-cache; docker compose up -d --force-recreate"
+        throw "[FAIL] $Label. The running container does not match the current DevKit image/profile contract. Re-run .\update-devkit.ps1 or rebuild/recreate the container."
     }
     Write-Host "[OK] $Label"
 }
@@ -102,5 +102,43 @@ Invoke-DockerCheck -Label "Reviewer capability root" -DockerArgs @(
 Invoke-DockerCheck -Label "Reviewer guidelines capability" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "test", "-f", "/opt/reviewer-skills/dev-spring-guidelines/SKILL.md"
 )
+Invoke-DockerCheck -Label "Deprecated worktree skills removed" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "sh", "-lc",
+    "test ! -e /opt/custom-skills/orchestrator/dev-worktree-dispatch && test ! -e /opt/custom-skills/orchestrator/dev-worktree-cleanup"
+)
+
+foreach ($Profile in @("orchestrator", "coder", "reviewer")) {
+    Invoke-DockerCheck -Label "Bundled skill opt-out: $Profile" -DockerArgs @(
+        "exec", "--user", "hermes", $Container,
+        "test", "-f", "/opt/data/profiles/$Profile/.no-bundled-skills"
+    )
+}
+
+$ProfileConfigCheck = @'
+from pathlib import Path
+import sys
+import yaml
+
+profile = sys.argv[1]
+config = Path(f"/opt/data/profiles/{profile}/config.yaml")
+expected = {
+    "orchestrator": ["/opt/custom-skills/orchestrator"],
+    "coder": ["/opt/custom-skills/coder"],
+    "reviewer": ["/opt/custom-skills/reviewer", "/opt/reviewer-skills"],
+}[profile]
+
+data = yaml.safe_load(config.read_text(encoding="utf-8")) or {}
+actual = data.get("skills", {}).get("external_dirs")
+if actual != expected:
+    raise SystemExit(f"{profile}: expected external_dirs={expected!r}, got {actual!r}")
+'@
+
+foreach ($Profile in @("orchestrator", "coder", "reviewer")) {
+    $ProfileConfigCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python - $Profile
+    if ($LASTEXITCODE -ne 0) {
+        throw "[FAIL] Profile external skill contract: $Profile"
+    }
+    Write-Host "[OK] Profile external skill contract: $Profile"
+}
 
 Write-Host "[PASS] Hermes container runtime matches the current DevKit contract."

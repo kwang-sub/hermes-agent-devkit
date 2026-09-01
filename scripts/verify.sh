@@ -21,13 +21,17 @@ source = Path("init-profiles.ps1").read_text(encoding="utf-8-sig")
 required = (
     "$InspectOutput = & docker inspect $Container",
     "ConvertFrom-Json -InputObject $InspectJson",
-    "$ContainerInspect.Mounts | ForEach-Object",
     '$HermesCliPath = "/opt/hermes/.venv/bin/hermes"',
     '$PythonPath = "/opt/hermes/.venv/bin/python"',
+    '"--no-skills"',
+    '"skills", "opt-out", "--remove", "--yes"',
+    '$SkillPolicyMigrationMarker = ".devkit-skill-policy-v1"',
+    'Ensure-ExternalDirs',
+    '$ContainerReviewerSkillsPath',
 )
 missing = [term for term in required if term not in source]
 if missing:
-    raise SystemExit("init-profiles.ps1 missing current inspect/runtime contract: " + ", ".join(missing))
+    raise SystemExit("init-profiles.ps1 missing current profile/skill contract: " + ", ".join(missing))
 
 legacy = "{{range .Mounts}}{{printf"
 if legacy in source:
@@ -82,10 +86,9 @@ for skill in capabilities:
         raise SystemExit(f"compose.yml missing separate reviewer capability mount: {skill}")
 
 for skill in ("dev-code-review", "dev-review-cycle"):
-    source = f"/reviewer/{skill}"
     target = f"${{HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}}/{skill}"
-    if source not in compose or target not in compose:
-        raise SystemExit(f"compose.yml missing separate reviewer role mount: {skill}")
+    if target in compose:
+        raise SystemExit(f"compose.yml must not duplicate reviewer role skill under reviewer capability root: {skill}")
 
 if "/opt/custom-skills}/reviewer/" in compose:
     raise SystemExit("compose.yml still nests reviewer mounts under the read-only custom-skills bind")
@@ -96,6 +99,21 @@ for skill in capabilities:
         raise SystemExit(f"reviewer contract missing canonical capability path: {skill}")
 if "hermes-java" not in review:
     raise SystemExit("reviewer contract missing project Java launcher")
+PYTHON
+}
+
+check_removed_worktree_skills() {
+    python3 - <<'PYTHON'
+from pathlib import Path
+
+for name in ("dev-worktree-dispatch", "dev-worktree-cleanup"):
+    path = Path("custom-skills/orchestrator") / name
+    if path.exists():
+        raise SystemExit(f"deprecated orchestrator skill still exists: {path}")
+
+workspace = Path("custom-skills/orchestrator/dev-workspace-dispatch/SKILL.md").read_text(encoding="utf-8")
+if "신규 Dispatch의 표준" not in workspace:
+    raise SystemExit("dev-workspace-dispatch must remain the standard dispatch contract")
 PYTHON
 }
 
@@ -144,16 +162,19 @@ check_powershell_syntax() {
 
     printf '[RUN ] PowerShell syntax\n'
     "$powershell" -NoLogo -NoProfile -NonInteractive -Command '
-        $tokens = $null
-        $errors = $null
-        [void][System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path "init-profiles.ps1"),
-            [ref]$tokens,
-            [ref]$errors
-        )
-        if ($errors.Count -ne 0) {
-            $errors | ForEach-Object { [Console]::Error.WriteLine($_.Message) }
-            exit 1
+        $files = @("init-profiles.ps1", "update-devkit.ps1", "scripts/verify-container-runtime.ps1")
+        foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+                (Resolve-Path $file),
+                [ref]$tokens,
+                [ref]$errors
+            )
+            if ($errors.Count -ne 0) {
+                $errors | ForEach-Object { [Console]::Error.WriteLine("$file : $($_.Message)") }
+                exit 1
+            }
         }
     '
     "$powershell" -NoLogo -NoProfile -NonInteractive -File init-profiles.ps1 -EnvSelfTest
@@ -187,41 +208,27 @@ check_docker_compose() {
     printf '[PASS] Docker Compose configuration\n'
 }
 
-run_check "Context budget and compact policy invariants" \
-    python3 scripts/context_budget.py
-run_check "Custom skill Python compilation" \
-    python3 -m compileall -q custom-skills
-run_check "Custom skill metadata and progressive-disclosure contract" \
-    python3 scripts/check_skill_contract.py
-run_check "Hermes CLI SyntaxWarning patch and strict compile" \
-    python3 scripts/patch_hermes_syntax_warning.py --self-test
-run_check "dev-fast-flow task creation regression tests" \
-    python3 custom-skills/coder/dev-fast-flow/tests/test_create_fast_task.py
-run_check "dev-fast-flow active task follow-up regression tests" \
-    python3 custom-skills/coder/dev-fast-flow/tests/test_update_fast_task.py
-run_check "dev-workspace-dispatch regression tests" \
-    python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
-run_check "dev-implement-plan workspace verification tests" \
-    python3 custom-skills/coder/dev-implement-plan/tests/test_verify_workspace.py
-run_check "dev-code-review context tests" \
-    python3 custom-skills/reviewer/dev-code-review/tests/test_review_context.py
-run_check "dev-review-cycle contract" \
-    python3 scripts/check_review_cycle_contract.py
-run_check "dev-project-bootstrap metadata preservation tests" \
-    python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_metadata_preservation.py
-run_check "dev-project-bootstrap development preflight tests" \
-    python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_dev_environment_preflight.py
-run_check "dev-project-resolve tests" \
-    python3 custom-skills/orchestrator/dev-project-resolve/tests/test_project_resolve.py
-run_check "dev-breakdown shell syntax" \
-    bash -n custom-skills/orchestrator/dev-breakdown/scripts/collect_project_context.sh
-run_check "hermes-java shell syntax" \
-    bash -n scripts/hermes-java
+run_check "Context budget and compact policy invariants" python3 scripts/context_budget.py
+run_check "Custom skill Python compilation" python3 -m compileall -q custom-skills
+run_check "Custom skill metadata and progressive-disclosure contract" python3 scripts/check_skill_contract.py
+run_check "DevKit updater contract" python3 scripts/check_update_devkit_contract.py
+run_check "Hermes CLI SyntaxWarning patch and strict compile" python3 scripts/patch_hermes_syntax_warning.py --self-test
+run_check "dev-fast-flow task creation regression tests" python3 custom-skills/coder/dev-fast-flow/tests/test_create_fast_task.py
+run_check "dev-fast-flow active task follow-up regression tests" python3 custom-skills/coder/dev-fast-flow/tests/test_update_fast_task.py
+run_check "dev-workspace-dispatch regression tests" python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
+run_check "dev-implement-plan workspace verification tests" python3 custom-skills/coder/dev-implement-plan/tests/test_verify_workspace.py
+run_check "dev-code-review context tests" python3 custom-skills/reviewer/dev-code-review/tests/test_review_context.py
+run_check "dev-review-cycle contract" python3 scripts/check_review_cycle_contract.py
+run_check "dev-project-bootstrap metadata preservation tests" python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_metadata_preservation.py
+run_check "dev-project-bootstrap development preflight tests" python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_dev_environment_preflight.py
+run_check "dev-project-resolve tests" python3 custom-skills/orchestrator/dev-project-resolve/tests/test_project_resolve.py
+run_check "dev-breakdown shell syntax" bash -n custom-skills/orchestrator/dev-breakdown/scripts/collect_project_context.sh
+run_check "hermes-java shell syntax" bash -n scripts/hermes-java
 run_check "Multi-JDK image contract" check_multi_jdk_contract
 run_check "Reviewer capability mount contract" check_reviewer_capability_mounts
+run_check "Deprecated worktree skills removed" check_removed_worktree_skills
 run_check "Post-implementation refactor gate contract" check_refactor_gate_contract
-run_check "Environment contract" \
-    python3 scripts/check_env_contract.py
+run_check "Environment contract" python3 scripts/check_env_contract.py
 run_check "init-profiles inspect/runtime contract" check_init_mount_contract
 check_powershell_syntax
 check_docker_compose
