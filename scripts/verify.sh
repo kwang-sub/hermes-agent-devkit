@@ -150,14 +150,24 @@ if missing:
     raise SystemExit("dev-spring-refactor missing contract terms: " + ", ".join(missing))
 
 implement = Path("custom-skills/coder/dev-implement-plan/SKILL.md").read_text(encoding="utf-8")
-for term in ("dev-spring-refactor", "Post-Implementation Structural Quality Gate", "Javadoc/Comment Review"):
-    if term not in implement:
-        raise SystemExit(f"dev-implement-plan missing refactor gate term: {term}")
+implement_required = (
+    'skill_view("dev-spring-refactor")',
+    "구조 trigger",
+    "Structural quality check: PASS | REFACTORED | ESCALATED",
+)
+missing = [term for term in implement_required if term not in implement]
+if missing:
+    raise SystemExit("dev-implement-plan missing compact refactor integration terms: " + ", ".join(missing))
 
 review = Path("custom-skills/reviewer/dev-code-review/SKILL.md").read_text(encoding="utf-8")
-for term in ("dev-spring-refactor", "Structural Quality Review Gate", "Javadoc/Comment"):
-    if term not in review:
-        raise SystemExit(f"dev-code-review missing structural review term: {term}")
+review_required = (
+    "dev-spring-refactor",
+    "Structural Quality Review Gate",
+    "Structural Quality/Javadoc evidence",
+)
+missing = [term for term in review_required if term not in review]
+if missing:
+    raise SystemExit("dev-code-review missing compact structural review terms: " + ", ".join(missing))
 PYTHON
 }
 
