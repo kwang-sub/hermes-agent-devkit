@@ -29,7 +29,7 @@ metadata:
 ## 불변식
 - `.hermes/project.yaml`의 managed metadata만 사용하며 repo/Board/profile을 추측하지 않는다.
 - Task Key와 branch는 helper 계약을 따르고 mismatch를 rename으로 우회하지 않는다.
-- task에는 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Dependencies, Risks와 workspace contract가 있어야 한다.
+- task에는 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Dependencies, Risks, workspace contract와 Base SHA가 있어야 한다.
 - `Applicable Skills`는 계획 후보이고 `task.skills`는 runtime pinned skill이다. 둘을 직접 동일시하지 않는다.
 - 존재하지 않거나 일부 target profile에만 존재하는 skill은 `task.skills`에 넣지 않는다.
 - skill 이름을 비슷한 이름으로 자동 보정하지 않는다.
