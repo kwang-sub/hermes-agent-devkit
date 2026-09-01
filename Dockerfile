@@ -1,37 +1,27 @@
 ARG HERMES_BASE_IMAGE=nousresearch/hermes-agent:v2026.8.16.2
 
-# Keep project JDKs independent from the Hermes base image. Temurin images expose
-# their JDK under /opt/java/openjdk; copying the trees avoids apt repository
-# differences and keeps Java 8/17/21 available on both amd64 and arm64 builds.
 FROM eclipse-temurin:8-jdk-jammy AS jdk8
 FROM eclipse-temurin:17-jdk-jammy AS jdk17
 FROM eclipse-temurin:21-jdk-jammy AS jdk21
 
 FROM ${HERMES_BASE_IMAGE}
 
-# Hermes 공식 이미지의 s6-overlay 초기화는 root로 시작해야 한다.
 USER root
 
 ARG GIT_VERSION=2.55.0
 
-# Upstream Hermes releases have historically contained a normal-docstring
-# venv\Scripts SyntaxWarning. The helper patches the known old form, accepts an
-# already-fixed upstream form, and always performs a strict compile check.
 COPY scripts/patch_hermes_syntax_warning.py /tmp/patch_hermes_syntax_warning.py
 RUN python3 /tmp/patch_hermes_syntax_warning.py /opt/hermes/hermes_cli/update_cmd.py \
     && rm /tmp/patch_hermes_syntax_warning.py
 
-# Hermes v2026.8.16.x stops Kanban workers unless they called complete/block,
-# even though request_review/request_changes are first-class lifecycle handoffs.
-# Patch only the known legacy terminal set, accept upstream-fixed/refactored
-# implementations, and fail closed if upstream policy changes unexpectedly.
 COPY scripts/patch_hermes_kanban_terminal.py /tmp/patch_hermes_kanban_terminal.py
 RUN python3 /tmp/patch_hermes_kanban_terminal.py --self-test \
     && python3 /tmp/patch_hermes_kanban_terminal.py /opt/hermes/agent/kanban_stop.py \
     && rm /tmp/patch_hermes_kanban_terminal.py
 
-# DevKit baseline tools. Gradle/Maven are intentionally not installed globally:
-# repositories use gradlew/mvnw so the build-tool version remains project-owned.
+# DevKit baseline tools. Gradle itself is not installed globally; hermes-java
+# prepares the exact project-owned distribution under the persistent /opt/data
+# Gradle root on first use.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
@@ -47,6 +37,7 @@ RUN apt-get update && \
         unzip \
         zip \
         less \
+        util-linux \
     && curl -fsSL \
         "https://www.kernel.org/pub/software/scm/git/git-${GIT_VERSION}.tar.xz" \
         -o /tmp/git.tar.xz \
@@ -64,18 +55,22 @@ COPY --from=jdk8 /opt/java/openjdk /opt/jdks/temurin-8
 COPY --from=jdk17 /opt/java/openjdk /opt/jdks/temurin-17
 COPY --from=jdk21 /opt/java/openjdk /opt/jdks/temurin-21
 
-# Java 17 is the DevKit default. Project bootstrap detects the repository target
-# and writes .hermes/toolchain.env; `hermes-java <command...>` then executes with
-# the selected project JDK without modifying the repository build files.
 ENV JAVA_HOME_8=/opt/jdks/temurin-8
 ENV JAVA_HOME_17=/opt/jdks/temurin-17
 ENV JAVA_HOME_21=/opt/jdks/temurin-21
 ENV JAVA_HOME=/opt/jdks/temurin-17
 ENV PATH="/opt/jdks/temurin-17/bin:${PATH}"
 
-# Login shells in the upstream image may rebuild PATH and drop JAVA_HOME/bin.
-# Stable /usr/local/bin links keep the DevKit default JDK available regardless of
-# shell startup behavior. Project-specific builds still use hermes-java.
+# All Hermes Gradle state is persistent and outside bind-mounted source trees.
+# Project Gradle versions still come from gradle-wrapper.properties.
+ENV HERMES_GRADLE_ROOT=/opt/data/gradle
+ENV HERMES_GRADLE_USER_HOME=/opt/data/gradle/user-home
+ENV HERMES_GRADLE_DIST_ROOT=/opt/data/gradle/distributions
+ENV HERMES_GRADLE_DOWNLOAD_ROOT=/opt/data/gradle/downloads
+ENV HERMES_GRADLE_LOCK_ROOT=/opt/data/gradle/locks
+ENV HERMES_GRADLE_PROJECT_CACHE_ROOT=/opt/data/gradle/project-cache
+ENV GRADLE_USER_HOME=/opt/data/gradle/user-home
+
 RUN ln -sf /opt/jdks/temurin-17/bin/java /usr/local/bin/java \
     && ln -sf /opt/jdks/temurin-17/bin/javac /usr/local/bin/javac \
     && /opt/jdks/temurin-8/bin/java -version \
@@ -88,10 +83,8 @@ RUN ln -sf /opt/jdks/temurin-17/bin/java /usr/local/bin/java \
     && /usr/local/bin/javac -version
 
 COPY --chmod=0755 scripts/hermes-java /usr/local/bin/hermes-java
+COPY --chmod=0755 scripts/hermes-diff-check.py /usr/local/bin/hermes-diff-check
 
-# Always publish Hermes through /usr/local/bin as a stable DevKit contract.
-# Worker/profile shells can have a narrower PATH than direct docker exec sessions,
-# so relying only on `command -v hermes` during image build is not sufficient.
 RUN set -eu; \
     hermes_target=""; \
     for candidate in \
@@ -115,8 +108,4 @@ RUN set -eu; \
 
 WORKDIR /workspace
 
-# 중요:
-# USER hermes 로 변경하지 않는다.
-# 컨테이너 시작 시 s6-overlay/root bootstrap이 /opt/data 및 프로필을 초기화한 뒤
-# Hermes 서비스 자체가 필요한 사용자 권한으로 실행된다.
 USER root

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -90,6 +91,38 @@ def untracked_paths(root: Path, includes: list[str], scope_requested: bool) -> l
     if not includes:
         return all_paths
     return [path for path in all_paths if any(path == inc or path.startswith(f"{inc.rstrip('/')}/") for inc in includes)]
+
+
+def diff_checker_command() -> list[str]:
+    override = os.getenv("HERMES_DIFF_CHECK")
+    if override:
+        return [override]
+    installed = Path("/usr/local/bin/hermes-diff-check")
+    if installed.is_file():
+        return [str(installed)]
+    repo_candidate = Path(__file__).resolve().parents[4] / "scripts" / "hermes-diff-check.py"
+    if repo_candidate.is_file():
+        return [sys.executable, str(repo_candidate)]
+    raise ReviewError("CRLF-aware diff checker is unavailable; rebuild/update the DevKit runtime")
+
+
+def check_whitespace(root: Path, base_sha: str, tracked: list[str], untracked: list[str]) -> None:
+    cmd = [*diff_checker_command(), "--repo", str(root), "--base", base_sha]
+    for path in tracked:
+        cmd.extend(["--tracked", path])
+    for path in untracked:
+        cmd.extend(["--untracked", path])
+    result = run(cmd, check=False)
+    if result.returncode == 0:
+        return
+    if result.returncode == 1:
+        details = [
+            line.split("=", 1)[1]
+            for line in result.stdout.splitlines()
+            if re.match(r"^WHITESPACE_ERROR_\d+=", line)
+        ]
+        raise ReviewError(" | ".join(details) or "CRLF-aware whitespace validation failed")
+    raise ReviewError((result.stderr or result.stdout).strip() or "CRLF-aware diff checker failed")
 
 
 def scope_sha256(root: Path, paths: list[str]) -> str:
@@ -203,14 +236,7 @@ def main() -> int:
     current_hash = scope_sha256(root, effective_paths)
     gate_ok, gate_reason = handoff_gate(root, effective_paths, current_hash)
 
-    if effective_tracked:
-        diff_check = run(
-            ["git", "-C", str(root), "diff", "--check", "--ignore-cr-at-eol", base_sha, "--", *effective_tracked],
-            check=False,
-        )
-        diff_output = "\n".join(part.strip() for part in (diff_check.stdout, diff_check.stderr) if part.strip())
-        if diff_check.returncode not in (0, 1) or diff_output:
-            raise ReviewError(diff_output or f"git diff --check failed with rc={diff_check.returncode}")
+    check_whitespace(root, base_sha, effective_tracked, untracked)
 
     print(f"WORKSPACE={root}")
     print(f"BRANCH={branch}")

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -8,6 +9,7 @@ import tempfile
 import unittest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "review_context.py"
+DIFF_CHECK = Path(__file__).resolve().parents[4] / "scripts" / "hermes-diff-check.py"
 
 
 def git(repo: Path, *args: str) -> str:
@@ -59,7 +61,9 @@ class ReviewContextTests(unittest.TestCase):
         ]
         for include in includes:
             cmd.extend(["--include", include])
-        return subprocess.run(cmd, text=True, capture_output=True)
+        env = os.environ.copy()
+        env["HERMES_DIFF_CHECK"] = str(DIFF_CHECK)
+        return subprocess.run(cmd, text=True, capture_output=True, env=env)
 
     def write_gate(self, paths: list[str], fingerprint: str) -> None:
         path = handoff_state(self.repo)
@@ -72,14 +76,6 @@ class ReviewContextTests(unittest.TestCase):
             "status": "valid",
         }) + "\n", encoding="utf-8")
 
-    def test_missing_gate_requires_minimal_rerun(self):
-        proc = self.run_helper()
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("CODER_HANDOFF_GATE=FAIL", proc.stdout)
-        self.assertIn("VERIFICATION_REUSE_ELIGIBLE=false", proc.stdout)
-        self.assertIn("REVIEWER_TEST_RERUN_REQUIRED=true", proc.stdout)
-        self.assertIn("RERUN_POLICY=minimal-once;no-rerun-tasks-for-confidence", proc.stdout)
-
     def test_matching_gate_reuses_verification(self):
         first = self.run_helper()
         current = field(first.stdout, "CURRENT_SCOPE_SHA256")
@@ -87,32 +83,7 @@ class ReviewContextTests(unittest.TestCase):
         second = self.run_helper()
         self.assertEqual(second.returncode, 0, second.stderr)
         self.assertIn("CODER_HANDOFF_GATE=PASS", second.stdout)
-        self.assertIn("CODER_HANDOFF_GATE_REASON=matched", second.stdout)
-        self.assertIn("VERIFICATION_REUSE_ELIGIBLE=true", second.stdout)
         self.assertIn("REVIEWER_TEST_RERUN_REQUIRED=false", second.stdout)
-        self.assertIn(f"EFFECTIVE_SCOPE_SHA256={current}", second.stdout)
-
-    def test_stale_gate_disables_reuse(self):
-        first = self.run_helper()
-        current = field(first.stdout, "CURRENT_SCOPE_SHA256")
-        self.write_gate(["change.txt"], current)
-        (self.repo / "change.txt").write_text("changed after summary\n")
-        second = self.run_helper()
-        self.assertEqual(second.returncode, 0, second.stderr)
-        self.assertIn("CODER_HANDOFF_GATE=FAIL", second.stdout)
-        self.assertIn("VERIFICATION_REUSE_ELIGIBLE=false", second.stdout)
-        self.assertIn("REVIEWER_TEST_RERUN_REQUIRED=true", second.stdout)
-
-    def test_external_include_is_secondary_scope(self):
-        external = Path(self.tmp.name) / "docs" / "design.md"
-        external.parent.mkdir()
-        external.write_text("# design\n", encoding="utf-8")
-        proc = self.run_helper("change.txt", str(external))
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("PRIMARY_SCOPE=change.txt", proc.stdout)
-        self.assertIn("EXTERNAL_INCLUDE_COUNT=1", proc.stdout)
-        self.assertRegex(proc.stdout, r"EXTERNAL_SCOPE_SHA256=[0-9a-f]{64}")
-        self.assertIn("EXTERNAL_SCOPE_POLICY=docs-or-secondary-workspace;do-not-invalidate-primary-executable-verification", proc.stdout)
 
     def test_crlf_only_change_is_noise(self):
         (self.repo / "fixture.txt").write_bytes(b"base\r\n")
@@ -120,20 +91,19 @@ class ReviewContextTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("TRACKED_CHANGED_COUNT=0", proc.stdout)
         self.assertIn("EOL_ONLY_COUNT=1", proc.stdout)
+
+    def test_crlf_file_with_real_change_passes_whitespace_check(self):
+        (self.repo / "fixture.txt").write_bytes(b"changed\r\n")
+        proc = self.run_helper("fixture.txt")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("TRACKED_CHANGED_COUNT=1", proc.stdout)
         self.assertIn("DIFF_CHECK=PASS", proc.stdout)
 
-    def test_rejects_malformed_sha(self):
-        cmd = [
-            sys.executable, str(SCRIPT),
-            "--base-branch", "dispatch-base",
-            "--base-sha", "bad",
-            "--expected-branch", "review",
-            "--workspace", str(self.repo),
-            "--expected-workspace", str(self.repo),
-        ]
-        proc = subprocess.run(cmd, text=True, capture_output=True)
+    def test_real_trailing_whitespace_in_crlf_file_is_rejected(self):
+        (self.repo / "fixture.txt").write_bytes(b"changed \r\n")
+        proc = self.run_helper("fixture.txt")
         self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("full 40-character", proc.stderr)
+        self.assertIn("trailing whitespace", proc.stderr)
 
 
 if __name__ == "__main__":

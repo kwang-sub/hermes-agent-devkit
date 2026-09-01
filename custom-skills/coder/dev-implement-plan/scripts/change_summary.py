@@ -4,7 +4,9 @@ from __future__ import annotations
 import argparse
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -94,29 +96,34 @@ def untracked_paths(root: Path, includes: list[str]) -> list[str]:
     ]
 
 
-def check_tracked_whitespace(root: Path, paths: list[str]) -> list[str]:
-    if not paths:
-        return []
-    cmd = ["git", "-C", str(root), "diff", "--check", "--ignore-cr-at-eol", "HEAD", "--", *paths]
+def diff_checker_command() -> list[str]:
+    override = os.getenv("HERMES_DIFF_CHECK")
+    if override:
+        return [override]
+    installed = Path("/usr/local/bin/hermes-diff-check")
+    if installed.is_file():
+        return [str(installed)]
+    repo_candidate = Path(__file__).resolve().parents[4] / "scripts" / "hermes-diff-check.py"
+    if repo_candidate.is_file():
+        return [sys.executable, str(repo_candidate)]
+    raise SummaryError("CRLF-aware diff checker is unavailable; rebuild/update the DevKit runtime")
+
+
+def check_whitespace(root: Path, tracked: list[str], untracked: list[str]) -> list[str]:
+    cmd = [*diff_checker_command(), "--repo", str(root), "--base", "HEAD"]
+    for path in tracked:
+        cmd.extend(["--tracked", path])
+    for path in untracked:
+        cmd.extend(["--untracked", path])
+
     result = run(cmd, check=False)
-    output = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
-    if result.returncode not in (0, 1) or output:
-        return [output or f"git diff --check failed with rc={result.returncode}"]
-    return []
+    if result.returncode not in (0, 1):
+        raise SummaryError((result.stderr or result.stdout).strip() or "CRLF-aware diff checker failed")
 
-
-def check_untracked_whitespace(root: Path, paths: list[str]) -> list[str]:
     errors: list[str] = []
-    for path in paths:
-        result = run(
-            ["git", "-C", str(root), "diff", "--no-index", "--check", "--", "/dev/null", path],
-            check=False,
-        )
-        output = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
-        if result.returncode not in (0, 1):
-            errors.append(output or f"untracked diff check failed for {path}: rc={result.returncode}")
-        elif output:
-            errors.append(output)
+    for line in result.stdout.splitlines():
+        if re.match(r"^WHITESPACE_ERROR_\d+=", line):
+            errors.append(line.split("=", 1)[1])
     return errors
 
 
@@ -216,7 +223,7 @@ def main() -> int:
     includes = normalize_includes(root, args.include)
     tracked, eol_only = tracked_changes(root, includes)
     untracked = untracked_paths(root, includes)
-    whitespace_errors = check_tracked_whitespace(root, tracked) + check_untracked_whitespace(root, untracked)
+    whitespace_errors = check_whitespace(root, tracked, untracked)
     effective_paths = sorted(set(tracked) | set(untracked))
     fingerprint = effective_scope_sha256(root, effective_paths)
 

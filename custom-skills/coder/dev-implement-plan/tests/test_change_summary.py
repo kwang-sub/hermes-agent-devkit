@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -10,6 +11,7 @@ import tempfile
 import unittest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "change_summary.py"
+DIFF_CHECK = Path(__file__).resolve().parents[4] / "scripts" / "hermes-diff-check.py"
 
 
 def git(repo: Path, *args: str) -> str:
@@ -51,7 +53,9 @@ class ChangeSummaryTests(unittest.TestCase):
             cmd.append("--compact")
         for include in includes:
             cmd.extend(["--include", include])
-        return subprocess.run(cmd, text=True, capture_output=True)
+        env = os.environ.copy()
+        env["HERMES_DIFF_CHECK"] = str(DIFF_CHECK)
+        return subprocess.run(cmd, text=True, capture_output=True, env=env)
 
     def test_scopes_tracked_and_untracked_changes(self) -> None:
         (self.repo / "tracked.txt").write_text("changed\n", encoding="utf-8")
@@ -79,16 +83,28 @@ class ChangeSummaryTests(unittest.TestCase):
 
     def test_crlf_only_tracked_change_is_reported_as_noise(self) -> None:
         (self.repo / "tracked.txt").write_bytes(b"base\r\n")
-        quiet = subprocess.run([
-            "git", "-C", str(self.repo), "diff", "--quiet", "--ignore-cr-at-eol", "HEAD", "--", "tracked.txt"
-        ], capture_output=True)
-        self.assertEqual(quiet.returncode, 0)
         proc = self.run_helper("tracked.txt")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("TRACKED_CHANGED_COUNT=0", proc.stdout)
         self.assertIn("EOL_ONLY_COUNT=1", proc.stdout)
         self.assertIn("WHITESPACE_ERROR_COUNT=0", proc.stdout)
         self.assertIn("HANDOFF_GATE=PASS", proc.stdout)
+
+    def test_crlf_file_with_real_change_passes_without_false_trailing_whitespace(self) -> None:
+        (self.repo / "tracked.txt").write_bytes(b"changed\r\n")
+        proc = self.run_helper("tracked.txt")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("TRACKED_CHANGED_COUNT=1", proc.stdout)
+        self.assertIn("EOL_ONLY_COUNT=0", proc.stdout)
+        self.assertIn("WHITESPACE_ERROR_COUNT=0", proc.stdout)
+        self.assertIn("HANDOFF_GATE=PASS", proc.stdout)
+
+    def test_real_trailing_whitespace_in_crlf_file_fails(self) -> None:
+        (self.repo / "tracked.txt").write_bytes(b"changed \r\n")
+        proc = self.run_helper("tracked.txt")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("WHITESPACE_ERROR_COUNT=1", proc.stdout)
+        self.assertIn("HANDOFF_GATE=FAIL", proc.stdout)
 
     def test_untracked_difference_exit_one_is_not_an_error(self) -> None:
         (self.repo / "new.md").write_text("# valid\n", encoding="utf-8")
