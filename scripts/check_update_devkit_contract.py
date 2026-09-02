@@ -43,6 +43,7 @@ def main() -> int:
             '#requires -Version 5.1',
             '[string]$Branch = "dev"',
             '[string]$HermesBaseImage = "nousresearch/hermes-agent:latest"',
+            '[switch]$SkipProfileInit',
             'git" -Arguments @("status", "--porcelain=v1"',
             'git" -Arguments @("fetch", "--prune", $Remote)',
             'git" -Arguments @("merge", "--ff-only", $RemoteRef)',
@@ -52,10 +53,13 @@ def main() -> int:
             '$env:HERMES_BASE_IMAGE = $HermesBaseImage',
             'docker" -Arguments @("compose", "build", "--pull")',
             'docker" -Arguments @("compose", "up", "-d", "--force-recreate")',
+            'function Invoke-ProfileInitialization',
+            'init-profiles.ps1',
+            'Profile/skill reconciliation',
+            'PROFILES_RECONCILED=',
             'scripts\\verify-container-runtime.ps1',
             'Runtime verification failed. Performing one cached rebuild + force-recreate repair.',
             'sample.env changed. Existing .env is intentionally not overwritten',
-            'init-profiles.ps1 changed. Profile initialization is intentionally not run automatically',
             'HERMES_BASE_IMAGE=$HermesBaseImage',
             'IMAGE_REBUILT=',
             'CONTAINER_RECREATED=',
@@ -63,6 +67,9 @@ def main() -> int:
         ),
         "update-devkit.ps1",
     )
+
+    if "Profile initialization is intentionally not run automatically" in text:
+        raise SystemExit("update-devkit.ps1 still documents manual-only profile initialization")
 
     require(
         text,

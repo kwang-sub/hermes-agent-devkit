@@ -3,7 +3,7 @@
 <#
 .SYNOPSIS
 Updates the local Hermes Agent DevKit checkout, refreshes the DevKit image from
-the latest Hermes Agent base image, and recreates the runtime safely.
+the latest Hermes Agent base image, recreates the runtime, and reconciles profiles.
 
 .DESCRIPTION
 The script keeps the persistent hermes-data volume intact. It never runs
@@ -19,9 +19,10 @@ Default behavior:
 6. Build with `docker compose build --pull` so the latest Hermes base image is checked.
 7. Force-recreate the container only after the build succeeds.
 8. Keep the existing hermes-data volume and profile/OAuth/session state intact.
-9. Verify the running container contract.
-10. If verification fails, perform one normal cached rebuild + recreate repair and
-    verify once more unless -NoRepair is specified.
+9. Run init-profiles.ps1 to reconcile the role profile and skill contract.
+10. Verify the running container contract.
+11. If verification fails, perform one normal cached rebuild + recreate repair,
+    reconcile profiles again, and verify once more unless -NoRepair is specified.
 
 The process-local overrides are restored before the script exits.
 #>
@@ -34,7 +35,8 @@ param(
     [switch]$NoPull,
     [switch]$ForceRebuild,
     [switch]$NoRepair,
-    [switch]$SkipVerify
+    [switch]$SkipVerify,
+    [switch]$SkipProfileInit
 )
 
 Set-StrictMode -Version 2.0
@@ -155,10 +157,38 @@ function Invoke-RuntimeVerification {
     }
 }
 
+function Invoke-ProfileInitialization {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Initializer,
+        [Parameter(Mandatory = $true)]
+        [string]$ContainerName
+    )
+
+    $PreviousContainerExists = Test-Path Env:HERMES_CONTAINER_NAME
+    $PreviousContainer = if ($PreviousContainerExists) { $env:HERMES_CONTAINER_NAME } else { $null }
+    try {
+        $env:HERMES_CONTAINER_NAME = $ContainerName
+        & $Initializer
+        if ($LASTEXITCODE -ne 0) {
+            throw "Profile initialization failed. ExitCode=$LASTEXITCODE"
+        }
+    }
+    finally {
+        if ($PreviousContainerExists) {
+            $env:HERMES_CONTAINER_NAME = $PreviousContainer
+        }
+        else {
+            Remove-Item Env:HERMES_CONTAINER_NAME -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $OriginalLocation = Get-Location
 $ImageRebuilt = $false
 $ContainerRecreated = $false
+$ProfilesReconciled = $false
 $AutomaticRepairUsed = $false
 $PreviousHermesBaseImageExists = Test-Path Env:HERMES_BASE_IMAGE
 $PreviousHermesBaseImage = if ($PreviousHermesBaseImageExists) { $env:HERMES_BASE_IMAGE } else { $null }
@@ -270,14 +300,11 @@ try {
     if ($ChangedFiles -contains "sample.env") {
         Write-Warning "sample.env changed. Existing .env is intentionally not overwritten; review the new sample manually."
     }
-    if ($ChangedFiles -contains "init-profiles.ps1") {
-        Write-Warning "init-profiles.ps1 changed. Profile initialization is intentionally not run automatically; execute .\init-profiles.ps1 after this update if the profile contract changed."
-    }
 
     $env:HERMES_BASE_IMAGE = $HermesBaseImage
     $env:HERMES_WINDOWS_TEMP_CONTAINER_PATH = $WindowsTempContainerPath
 
-    Write-Host "Action            : pull latest Hermes base + build + force-recreate"
+    Write-Host "Action            : pull latest Hermes base + build + force-recreate + profile reconcile"
     Invoke-Native -FilePath "docker" -Arguments @("compose", "config", "--quiet")
 
     Write-Host "[RUN ] docker compose build --pull"
@@ -287,6 +314,19 @@ try {
     Write-Host "[RUN ] docker compose up -d --force-recreate"
     Invoke-Native -FilePath "docker" -Arguments @("compose", "up", "-d", "--force-recreate")
     $ContainerRecreated = $true
+
+    $ProfileInitializer = Join-Path $RepoRoot "init-profiles.ps1"
+    if (-not $SkipProfileInit) {
+        if (-not (Test-Path -LiteralPath $ProfileInitializer -PathType Leaf)) {
+            throw "Profile initializer is missing: $ProfileInitializer"
+        }
+        Write-Host "[RUN ] Profile/skill reconciliation"
+        Invoke-ProfileInitialization -Initializer $ProfileInitializer -ContainerName $Container
+        $ProfilesReconciled = $true
+    }
+    else {
+        Write-Host "[SKIP] Profile initialization disabled by -SkipProfileInit."
+    }
 
     if ($SkipVerify) {
         Write-Host "[SKIP] Runtime verification disabled by -SkipVerify."
@@ -311,6 +351,12 @@ try {
             Invoke-Native -FilePath "docker" -Arguments @("compose", "up", "-d", "--force-recreate")
             $ContainerRecreated = $true
 
+            if (-not $SkipProfileInit) {
+                Write-Host "[RUN ] Profile/skill reconciliation after repair"
+                Invoke-ProfileInitialization -Initializer $ProfileInitializer -ContainerName $Container
+                $ProfilesReconciled = $true
+            }
+
             Write-Host "[RUN ] Runtime verification after repair"
             if (-not (Invoke-RuntimeVerification -Verifier $Verifier -ContainerName $Container)) {
                 throw "Runtime verification still fails after one automatic repair. Inspect the verifier output before using the DevKit."
@@ -326,6 +372,7 @@ try {
     Write-Host "HERMES_WINDOWS_TEMP_CONTAINER_PATH=$WindowsTempContainerPath"
     Write-Host "IMAGE_REBUILT=$($ImageRebuilt.ToString().ToLowerInvariant())"
     Write-Host "CONTAINER_RECREATED=$($ContainerRecreated.ToString().ToLowerInvariant())"
+    Write-Host "PROFILES_RECONCILED=$($ProfilesReconciled.ToString().ToLowerInvariant())"
     Write-Host "AUTOMATIC_REPAIR_USED=$($AutomaticRepairUsed.ToString().ToLowerInvariant())"
 }
 finally {

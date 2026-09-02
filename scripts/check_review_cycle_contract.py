@@ -51,16 +51,20 @@ def main() -> int:
         "kanban_complete", "kanban_request_review",
     ), failures)
 
+    # Compact implementer contract only carries the worker-facing transition rules.
+    # Detailed original-coder/same-workspace semantics are canonical in dev-review-cycle.
     require(IMPLEMENT, (
         "Flow: FAST", "Review Risk", "LOW", "REVIEW_REQUIRED", "kanban_complete",
         "kanban_request_review", "Standard Flow", "CHANGES_REQUESTED", "original coder",
-        "동일 Workspace", "review 대용", "BLOCKED",
+        "동일 Workspace", "Standard Flow 또는 CHANGES_REQUESTED 재작업은 항상 review", "BLOCKED",
     ), failures)
 
+    # Reviewer compact contract validates its own verdict surface. The detailed
+    # CHANGES_REQUESTED -> original coder -> same Workspace loop is validated above
+    # in both dev-review-cycle copies and both canonical protocol references.
     require(REVIEW, (
         "source를 수정하지 않는다", "kanban_request_changes", "kanban_complete",
-        "kanban_block` 중 정확히 하나", "CHANGES_REQUESTED는 terminal 상태가 아니며",
-        "original coder", "같은 Workspace", "needs_input", "Review Risk: LOW",
+        "kanban_block` 중 정확히 하나", "같은 Workspace", "needs_input", "Review Risk: LOW",
     ), failures)
 
     if failures:
