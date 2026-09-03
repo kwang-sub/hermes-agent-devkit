@@ -100,6 +100,7 @@ class PrepareDispatchTests(unittest.TestCase):
     def test_current_branch_mode(self) -> None:
         proc = self.run_helper("CALC-001", "current")
         self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("BOARD=test-project", proc.stdout)
         self.assertIn("BRANCH_MODE=current", proc.stdout)
         self.assertIn("BRANCH=main", proc.stdout)
         self.assertIn("CREATED_BRANCH=false", proc.stdout)
@@ -107,6 +108,11 @@ class PrepareDispatchTests(unittest.TestCase):
         self.assert_timing_output(proc.stdout)
         self.assertIn("STATUS=prepared", proc.stdout)
         self.assertEqual(git(self.repo, "branch", "--show-current").stdout.strip(), "main")
+
+    def test_board_comes_from_managed_metadata(self) -> None:
+        proc = self.run_helper("CALC-BOARD", "current")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("BOARD=test-project", proc.stdout)
 
     def test_create_branch_mode(self) -> None:
         proc = self.run_helper("CALC-002", "create")
