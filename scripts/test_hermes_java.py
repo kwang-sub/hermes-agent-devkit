@@ -178,6 +178,40 @@ def test_missing_checksum_warns_but_runs() -> None:
         assert_common_arguments(log.read_text(encoding="utf-8"), Path(env["HERMES_GRADLE_ROOT"]))
 
 
+def test_blocked_session_rejects_direct_gradle_before_execution() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        repo, env, log, _archive = make_repo(base)
+        env.update({
+            "HERMES_KANBAN_TASK": "t_guard",
+            "HERMES_SESSION_ID": "session_guard",
+        })
+        guard_root = Path(env["HERMES_GRADLE_ROOT"]) / "session-blocks"
+        guard_root.mkdir(parents=True)
+        (guard_root / "t_guard--session_guard.blocked").write_text("GRADLE_STATUS=BLOCKED\n", encoding="utf-8")
+        result = run_gradle(repo, env)
+        assert result.returncode == 2, result.stderr
+        assert "direct Gradle execution is blocked" in result.stderr, result.stderr
+        assert not log.exists(), "managed Gradle must not start when the session guard is active"
+
+
+def test_bounded_helper_bypasses_session_guard() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        repo, env, log, _archive = make_repo(base)
+        env.update({
+            "HERMES_KANBAN_TASK": "t_guard",
+            "HERMES_SESSION_ID": "session_guard",
+            "HERMES_GRADLE_BOUNDED_HELPER": "1",
+        })
+        guard_root = Path(env["HERMES_GRADLE_ROOT"]) / "session-blocks"
+        guard_root.mkdir(parents=True)
+        (guard_root / "t_guard--session_guard.blocked").write_text("GRADLE_STATUS=BLOCKED\n", encoding="utf-8")
+        result = run_gradle(repo, env)
+        assert result.returncode == 0, result.stderr
+        assert_common_arguments(log.read_text(encoding="utf-8"), Path(env["HERMES_GRADLE_ROOT"]))
+
+
 def main() -> int:
     tests = (
         test_cache_miss_downloads_and_runs_exact_distribution,
@@ -185,6 +219,8 @@ def main() -> int:
         test_crlf_wrapper_properties_are_supported,
         test_checksum_mismatch_fails_closed,
         test_missing_checksum_warns_but_runs,
+        test_blocked_session_rejects_direct_gradle_before_execution,
+        test_bounded_helper_bypasses_session_guard,
     )
     for test in tests:
         test()
