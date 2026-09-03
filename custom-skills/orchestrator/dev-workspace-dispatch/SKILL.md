@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 구현 계획과 project pattern/capability 계약을 Git workspace와 Kanban으로 인계한다.
-version: 0.9.0
+version: 0.9.1
 author: local
 platforms: [linux]
 metadata:
@@ -30,7 +30,7 @@ Bootstrap과 동일하게 **필요하지 않은 repository-wide Git scan은 생�
 ```text
 prepare_dispatch.py --confirmed-dirty
 → repository/workspace/branch/Base SHA/Board만 검증
-→ working-tree 전체 dirty/EOL/untracked 분류 생략
+→ repository-wide dirty/EOL/untracked 분류를 **생략**
 → WORKSPACE_CHANGE_SCAN_MODE=skipped-approved-preservation
 → *_COUNT=-1, WORKSPACE_*_DIRTY=unknown
 ```
