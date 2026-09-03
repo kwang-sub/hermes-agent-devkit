@@ -38,38 +38,11 @@ services:
         source: hermes-data
         target: /opt/data
 
+      # 역할별 Skill과 공통 Skill은 하나의 read-only custom-skills root에서 관리한다.
+      # 각 Profile의 skills.external_dirs가 자신의 역할 디렉터리와 shared를 함께 참조한다.
       - type: bind
         source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}
         target: ${HERMES_CONTAINER_CUSTOM_SKILLS_PATH:-/opt/custom-skills}
-        read_only: true
-
-      # Reviewer는 role skill을 /opt/custom-skills/reviewer에서 직접 읽고,
-      # Coder와 공유하는 Spring/API capability만 별도 read-only root로 받는다.
-      # Docker Desktop에서는 read-only /opt/custom-skills 아래에 nested bind를
-      # 추가할 수 없으므로 capability mount만 /opt/reviewer-skills로 분리한다.
-      - type: bind
-        source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}/coder/dev-spring-guidelines
-        target: ${HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}/dev-spring-guidelines
-        read_only: true
-      - type: bind
-        source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}/coder/dev-spring-feature
-        target: ${HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}/dev-spring-feature
-        read_only: true
-      - type: bind
-        source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}/coder/dev-spring-data
-        target: ${HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}/dev-spring-data
-        read_only: true
-      - type: bind
-        source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}/coder/dev-spring-test
-        target: ${HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}/dev-spring-test
-        read_only: true
-      - type: bind
-        source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}/coder/dev-spring-refactor
-        target: ${HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}/dev-spring-refactor
-        read_only: true
-      - type: bind
-        source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}/coder/dev-api-docs
-        target: ${HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}/dev-api-docs
         read_only: true
 
       - type: bind
