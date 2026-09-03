@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+from contextlib import contextmanager
+import fcntl
+import hashlib
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+from typing import Iterator
 
 
 HERMES_CLI_CANDIDATES = (
@@ -17,6 +21,7 @@ HERMES_CLI_CANDIDATES = (
     Path("/root/.local/bin/hermes"),
     Path("/home/hermes/.local/bin/hermes"),
 )
+FULL_PREFLIGHT_FLAG = "--full-preflight"
 
 
 class BootstrapLauncherError(RuntimeError):
@@ -33,6 +38,10 @@ def repo_arg(argv: list[str]) -> str:
         if value.startswith("--repo="):
             return value.split("=", 1)[1]
     raise BootstrapLauncherError("--repo is required")
+
+
+def project_args(argv: list[str]) -> list[str]:
+    return [value for value in argv if value != FULL_PREFLIGHT_FLAG]
 
 
 def resolve_hermes_cli() -> Path:
@@ -77,31 +86,70 @@ def run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
         )
 
 
+def lock_path(repo: str) -> Path:
+    resolved = str(Path(repo).resolve())
+    digest = hashlib.sha256(resolved.encode("utf-8")).hexdigest()[:16]
+    return Path("/tmp") / f"hermes-bootstrap-{digest}.lock"
+
+
+@contextmanager
+def bootstrap_lock(repo: str) -> Iterator[None]:
+    path = lock_path(repo)
+    handle = path.open("a+", encoding="utf-8")
+    try:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise BootstrapLauncherError(
+                "bootstrap is already running for this repository; "
+                "poll the existing process instead of starting another one: "
+                f"{Path(repo).resolve()}"
+            ) from exc
+        handle.seek(0)
+        handle.truncate()
+        handle.write(f"pid={os.getpid()}\nrepo={Path(repo).resolve()}\n")
+        handle.flush()
+        yield
+    finally:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+
+
 def main() -> int:
     scripts = Path(__file__).resolve().parent
-    repo = repo_arg(sys.argv[1:])
+    launcher_args = sys.argv[1:]
+    repo = repo_arg(launcher_args)
+    full_preflight = FULL_PREFLIGHT_FLAG in launcher_args
+    forwarded_args = project_args(launcher_args)
     hermes_cli = resolve_hermes_cli()
     env = child_env(hermes_cli)
 
     print(f"[OK] Hermes CLI: {hermes_cli}")
+    print(f"[INFO] Bootstrap preflight: {'full' if full_preflight else 'fast'}")
 
-    run([
-        sys.executable,
-        str(scripts / "dev_environment_preflight.py"),
-        "--repo",
-        repo,
-    ], env=env)
-    run([
-        sys.executable,
-        str(scripts / "ensure_gitignore.py"),
-        "--repo",
-        repo,
-    ], env=env)
-    run([
-        sys.executable,
-        str(scripts / "bootstrap_project.py"),
-        *sys.argv[1:],
-    ], env=env)
+    with bootstrap_lock(repo):
+        preflight_cmd = [
+            sys.executable,
+            str(scripts / "bootstrap_preflight.py"),
+            "--repo",
+            repo,
+        ]
+        if full_preflight:
+            preflight_cmd.append("--full")
+        run(preflight_cmd, env=env)
+        run([
+            sys.executable,
+            str(scripts / "ensure_gitignore.py"),
+            "--repo",
+            repo,
+        ], env=env)
+        run([
+            sys.executable,
+            str(scripts / "bootstrap_project.py"),
+            *forwarded_args,
+        ], env=env)
     return 0
 
 

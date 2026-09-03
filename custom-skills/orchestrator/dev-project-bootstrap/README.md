@@ -1,45 +1,104 @@
-# dev-project-bootstrap v0.4.2
+# dev-project-bootstrap v0.4.3
 
-기존 Git Repository를 Hermes Managed Project로 idempotent하게 등록하고, 실제 개발 작업이 가능한 환경인지 먼저 검증하는 Skill입니다.
+기존 Git Repository를 Hermes Managed Project로 idempotent하게 등록하는 Skill입니다.
 
-## 핵심 정책
+## 변경된 기본 정책
 
+대용량 Repository와 Windows/Docker bind mount에서 Bootstrap 초기화가 오래 걸리는 문제를 줄이기 위해 일반 실행은 **Fast Preflight**를 사용합니다.
+
+기존처럼 preflight 전후에 전체 Git 변경/EOL 분류를 반복하지 않습니다. 기본 경로는 tracked unstaged 의미 변경 1회와 staged index 변경 1회만 확인합니다.
+
+```text
+bootstrap.py
+  ├─ repository process lock
+  ├─ bootstrap_preflight.py (fast)
+  ├─ ensure_gitignore.py
+  └─ bootstrap_project.py
+```
+
+Fast Preflight에서는 다음을 생략합니다.
+
+```text
+- untracked 전체 enumeration
+- EOL-only 개수 산출용 normal git diff
+- preflight 변경 후 두 번째 repository-wide Git scan
+```
+
+CRLF/LF-only tracked 변경은 `git diff --numstat -z --ignore-cr-at-eol` 방식으로 effective change에서 제외합니다.
+
+Fast 출력 예:
+
+```text
+GIT_SCAN_MODE=fast
+EFFECTIVE_SCOPE=tracked-only
+EFFECTIVE_DIRTY=false
+EFFECTIVE_CHANGE_COUNT=0
+EOL_ONLY_CHANGE_COUNT=-1
+UNTRACKED_CHANGE_COUNT=-1
+```
+
+`-1`은 0건이 아니라 Fast Path에서 전체 개수 계산을 생략했다는 의미입니다.
+
+## 일반 실행
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
+  --repo /workspace/dashboard
+```
+
+## Full Preflight
+
+정확한 untracked 및 EOL-only 개수가 필요한 진단 상황에서만 사용합니다.
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
+  --repo /workspace/dashboard \
+  --full-preflight
+```
+
+Full 모드에서는 normal tracked diff와 `git ls-files --others --exclude-standard`를 추가 실행합니다.
+
+```text
+GIT_SCAN_MODE=full
+EFFECTIVE_SCOPE=all
+EOL_ONLY_CHANGE_COUNT=<number>
+UNTRACKED_CHANGE_COUNT=<number>
+```
+
+## 중복 Bootstrap 방지
+
+동일 Repository에서 Bootstrap이 이미 실행 중이면 두 번째 실행은 즉시 차단됩니다.
+
+Repository 절대경로를 기준으로 다음 lock을 사용합니다.
+
+```text
+/tmp/hermes-bootstrap-<hash>.lock
+```
+
+따라서 Agent는 오래 걸리는 Bootstrap을 다시 실행하지 않고 최초 process handle을 poll해야 합니다.
+
+## 기존 보장 사항
+
+- Git `safe.directory` 등록
+- Repository write probe
+- Java target 감지 및 JDK 8/17/21 runtime 선택
+- `.hermes/toolchain.env` 관리
+- `.gitattributes` EOL 정책
+- `.gitignore`의 `/.hermes/`, `/.worktrees/` 관리
 - Project / Board / Profile Binding ensure
 - `AGENTS.common.md` Managed Block 병합
 - `.hermes/project.yaml` Core Metadata 관리
-- Resolver는 Skeleton만 생성하고 값은 **사용자 직접 관리**
-- 기존 Resolver / Jira / Custom Metadata 보존
-- Bootstrap 시작 전에 workspace write / Java toolchain / build wrapper / EOL 정책 검사
-- Gradle/Maven의 Java target을 감지해 JDK 8/17/21 중 project runtime 선택
-- 선택 결과를 `.hermes/toolchain.env`에 저장
-- `.gitattributes`가 없으면 생성하고, 필요한 규칙이 없으면 기존 내용을 보존한 채 추가
-- `.gitignore`에 `/.hermes/`, `/.worktrees/` Hermes 로컬 경로를 관리 블록으로 강제 보장
-- 기존 `.gitignore` 사용자 규칙은 보존하고, `AGENTS.md`/`.gitattributes`는 Hermes 규칙으로 ignore하지 않음
-- 충돌하는 EOL 규칙은 자동 수정하지 않고 Block
-- `git add --renormalize .`, `git rm --cached` 같은 대량/인덱스 변경은 자동 수행하지 않음
+- Resolver / Custom Metadata 보존
 
-## DevKit Java 환경
-
-```text
-/opt/jdks/temurin-8
-/opt/jdks/temurin-17
-/opt/jdks/temurin-21
-```
-
-기본 `JAVA_HOME`은 Java 17입니다. 프로젝트 작업에서는 기본값에 의존하지 않고 Bootstrap 결과를 사용합니다.
-
-예:
+## Java 실행
 
 ```bash
 hermes-java ./gradlew test
+hermes-java ./gradlew compileJava
 hermes-java ./mvnw test
 ```
 
-`hermes-java`는 현재 Git Repository의 `.hermes/toolchain.env`를 읽어 선택된 JDK로 명령을 실행합니다.
-
-Gradle/Maven은 전역 설치하지 않고 Repository Wrapper를 사용합니다.
-
-## Bootstrap이 보장하는 EOL 규칙
+## EOL 정책
 
 ```gitattributes
 gradlew text eol=lf
@@ -49,9 +108,9 @@ mvnw text eol=lf
 *.cmd text eol=crlf
 ```
 
-이미 checkout된 wrapper가 CRLF이면 경고만 출력하고 자동 renormalize하지 않습니다.
+충돌 규칙은 자동 덮어쓰지 않으며 전체 renormalize도 수행하지 않습니다.
 
-## Bootstrap이 보장하는 Git ignore 규칙
+## Git ignore 정책
 
 ```gitignore
 # >>> Hermes Agent managed >>>
@@ -61,44 +120,4 @@ mvnw text eol=lf
 # <<< Hermes Agent managed <<<
 ```
 
-기존 `.gitignore` 내용은 보존하며 Hermes 관리 블록만 생성/복구합니다. 관리 marker가 중복되거나 손상된 경우 사용자 규칙을 임의로 수정하지 않고 Bootstrap을 중단합니다.
-
-## 실행
-
-```bash
-python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
-  --repo /workspace/dashboard
-```
-
-실행 순서:
-
-```text
-dev_environment_preflight.py
-        ↓
-ensure_gitignore.py
-        ↓
-bootstrap_project.py
-```
-
-개발환경만 별도로 검사할 수도 있습니다.
-
-```bash
-python3 "${HERMES_SKILL_DIR}/scripts/dev_environment_preflight.py" \
-  --repo /workspace/dashboard
-```
-
-## Java target 감지
-
-Gradle의 `JavaLanguageVersion`, `jvmToolchain`, `sourceCompatibility`, `targetCompatibility`와 Maven의 `java.version`, `maven.compiler.*`를 확인합니다.
-
-지원 target은 Java 8 / 17 / 21입니다. target이 명확하지 않으면 Java 17을 기본값으로 사용하고 경고하며, 서로 충돌하는 target이 감지되면 자동 추측하지 않고 중단합니다.
-
-## 신규 프로젝트 기본 Resolver
-
-```yaml
-resolver:
-  aliases: []
-  modules: []
-  files: []
-  paths: []
-```
+`AGENTS.md`, `.gitattributes` 등 프로젝트 공용 파일은 Git 추적 대상으로 유지합니다.
