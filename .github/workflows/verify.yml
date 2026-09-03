@@ -30,6 +30,10 @@ jobs:
         shell: bash
         run: bash scripts/verify.sh
 
+      - name: Verify Kanban notification helper
+        shell: bash
+        run: python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py
+
       - name: Verify runtime validation contracts
         shell: bash
         run: python3 scripts/test_verification_runtime_contract.py
