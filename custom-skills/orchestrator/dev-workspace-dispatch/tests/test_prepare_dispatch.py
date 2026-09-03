@@ -90,6 +90,13 @@ class PrepareDispatchTests(unittest.TestCase):
             stderr=subprocess.PIPE,
         )
 
+    def assert_timing_output(self, text: str) -> None:
+        self.assertIn("GIT_TRACKED_SCAN_SECONDS=", text)
+        self.assertIn("GIT_EFFECTIVE_SCAN_SECONDS=", text)
+        self.assertIn("GIT_UNTRACKED_SCAN_SECONDS=", text)
+        self.assertIn("CLASSIFICATION_SECONDS=", text)
+        self.assertIn("WORKSPACE_CLASSIFICATION_TOTAL_SECONDS=", text)
+
     def test_current_branch_mode(self) -> None:
         proc = self.run_helper("CALC-001", "current")
         self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -97,6 +104,7 @@ class PrepareDispatchTests(unittest.TestCase):
         self.assertIn("BRANCH=main", proc.stdout)
         self.assertIn("CREATED_BRANCH=false", proc.stdout)
         self.assertIn("WORKSPACE_EFFECTIVE_DIRTY=false", proc.stdout)
+        self.assert_timing_output(proc.stdout)
         self.assertIn("STATUS=prepared", proc.stdout)
         self.assertEqual(git(self.repo, "branch", "--show-current").stdout.strip(), "main")
 
@@ -118,6 +126,7 @@ class PrepareDispatchTests(unittest.TestCase):
         self.assertIn("--confirmed-dirty", refused.stderr)
         self.assertIn("EFFECTIVE_CHANGED_COUNT=1", refused.stderr)
         self.assertIn("EFFECTIVE_CHANGED_1=README.md", refused.stderr)
+        self.assert_timing_output(refused.stderr)
 
         confirmed = self.run_helper("CALC-003", "current", "--confirmed-dirty")
         self.assertEqual(confirmed.returncode, 0, confirmed.stderr)
@@ -159,6 +168,13 @@ class PrepareDispatchTests(unittest.TestCase):
         self.assertIn("EFFECTIVE_CHANGED_1=CLAUDE.md", proc.stdout)
         self.assertIn("EFFECTIVE_CHANGED_2=README.md", proc.stdout)
         self.assertIn("HERMES_MANAGED_1=.hermes/toolchain.env", proc.stdout)
+
+    def test_batch_scan_contract_avoids_per_file_diff_quiet(self) -> None:
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('["diff", "--name-only", "-z", "HEAD"]', source)
+        self.assertIn('["diff", "--name-only", "-z", "--ignore-cr-at-eol", "HEAD"]', source)
+        self.assertIn('["ls-files", "-z", "--others", "--exclude-standard"]', source)
+        self.assertNotIn('"diff", "--quiet", "--ignore-cr-at-eol"', source)
 
     def test_unsafe_task_key_is_rejected(self) -> None:
         proc = self.run_helper("unsafe/key", "current")
