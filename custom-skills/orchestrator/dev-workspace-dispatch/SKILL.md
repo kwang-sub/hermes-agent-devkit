@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 구현 계획과 project pattern/capability 계약을 Git workspace와 Kanban으로 인계한다.
-version: 0.7.0
+version: 0.8.1
 author: local
 platforms: [linux]
 metadata:
@@ -84,6 +84,7 @@ Helper는 다음을 한 번에 수행한다.
 - Task Key 안전성
 - repository root/common Git dir/managed metadata 검증
 - Base branch와 Base SHA 확정
+- managed `kanban.board` 확정
 - current/create branch 계약 검증
 - tracked/untracked를 effective/EOL-only/Hermes managed로 분류
 
@@ -100,6 +101,7 @@ git ls-files -z --others --exclude-standard
 Helper의 결과가 dispatch working-tree evidence의 단일 기준이다.
 
 ```text
+BOARD
 EFFECTIVE_CHANGED_COUNT
 EOL_ONLY_COUNT
 HERMES_MANAGED_COUNT
@@ -109,6 +111,8 @@ GIT_UNTRACKED_SCAN_SECONDS
 CLASSIFICATION_SECONDS
 WORKSPACE_CLASSIFICATION_TOTAL_SECONDS
 ```
+
+`BOARD`는 `<repo>/.hermes/project.yaml`의 `kanban.board`에서 나온 값이며 Standard Flow의 유일한 Kanban board source다. `HERMES_KANBAN_BOARD`, 현재 세션의 이전 보드, CLI default board를 fallback으로 사용하지 않는다.
 
 Helper 실행 후 동일 상태를 다시 확인하려고 `git status`, `git diff`, inline Python 분류를 추가하지 않는다.
 
@@ -135,17 +139,23 @@ python3 /opt/custom-skills/orchestrator/dev-skill-preflight/scripts/validate_ski
 Preflight 성공 후 다음 순서만 허용한다.
 
 ```text
-kanban_create tool 정확히 1회
-→ kanban_show tool 정확히 1회
+kanban_create(board=BOARD, ...) tool 정확히 1회
+→ kanban_show(board=BOARD, task_id=<CREATED_TASK_ID>) tool 정확히 1회
 → subscribe_notification.py 정확히 1회
 → worker dispatch
 ```
+
+호출 횟수 계약은 `kanban_create tool 정확히 1회`, `kanban_show tool 정확히 1회`이며 두 호출 모두 반드시 `board=BOARD`를 명시한다.
+
+`BOARD`는 반드시 같은 dispatch에서 `prepare_dispatch.py`가 반환한 값을 그대로 사용한다. `kanban_create` 또는 `kanban_show`에서 board 인자를 생략하지 않는다.
 
 Task body는 `kanban_create` tool의 body 인자로 직접 전달한다.
 
 다음 capability probing/fallback은 금지한다.
 
 ```text
+board 인자를 생략한 kanban_create / kanban_show
+HERMES_KANBAN_BOARD 환경변수를 project board 대신 사용
 hermes kanban --board <board> create --help
 hermes project list
 hermes project --help
@@ -157,9 +167,10 @@ kanban_create tool 사용 가능 여부를 확인하기 위한 CLI probe
 
 `kanban_create` tool이 실패하면 CLI fallback을 탐색하지 않고 BLOCK한다.
 
-`kanban_show`는 생성된 Task의 다음 항목만 검증한다.
+`kanban_show`는 **동일한 `BOARD`를 명시해** 생성된 Task의 다음 항목을 검증한다.
 
 ```text
+board == BOARD
 status
 workspace == dir:<APPROVED_WORKSPACE>
 assignee == metadata profiles.coder
@@ -167,7 +178,7 @@ reviewer == metadata profiles.reviewer
 task.skills == VALIDATED_SKILLS
 ```
 
-검증 실패 시 Task를 다시 만들거나 CLI 경로를 탐색하지 않고 BLOCK한다.
+생성 직후 Task가 `BOARD`에서 조회되지 않거나 다른 board로 해석되는 경우 잘못된 보드에 새 Task를 재생성하지 않고 BLOCK한다. worker dispatch는 board 검증 성공 후에만 수행한다.
 
 ## 6. Kanban Body 계약
 
@@ -176,6 +187,7 @@ Body에는 승인된 Goal, Acceptance Criteria, Implementation Tasks, Test Plan,
 Workspace Contract 최소 항목:
 
 ```text
+- Kanban board: <BOARD>
 - Workspace: <WORKSPACE_PATH>
 - Branch mode: current | create
 - Expected branch: <BRANCH>
@@ -194,7 +206,7 @@ EOL-only/Hermes managed 파일을 사용자 변경으로 표현하지 않는다.
 
 ## 7. Kanban 알림
 
-Task 생성 및 `kanban_show` 검증 성공 후:
+Task 생성 및 `kanban_show` board 검증 성공 후:
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/subscribe_notification.py" --task-id "<KANBAN_TASK_ID>"
@@ -206,10 +218,10 @@ python3 "${HERMES_SKILL_DIR}/scripts/subscribe_notification.py" --task-id "<KANB
 
 - Plan/Workspace/Branch 승인 완료
 - `prepare_dispatch.py` 정확히 1회
-- helper가 effective/EOL/Hermes managed 수와 Base SHA를 확정
+- helper가 `BOARD`, effective/EOL/Hermes managed 수와 Base SHA를 확정
 - Skill Preflight PASS
-- `kanban_create` 1회
-- `kanban_show` 1회 및 validated skill/workspace/profile 일치
+- `kanban_create(board=BOARD, ...)` 1회
+- `kanban_show(board=BOARD, ...)` 1회 및 board/validated skill/workspace/profile 일치
 - notification helper 1회
 - worker dispatch
 
@@ -220,5 +232,7 @@ python3 scripts/check_skill_contract.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py
 ```
+
+회귀 기준: 실행 환경의 `HERMES_KANBAN_BOARD`가 managed project의 `kanban.board`와 달라도 Task 생성/조회에는 반드시 `BOARD`가 명시되어 project board를 사용해야 한다.
 
 상위 workflow의 중복 scan/CLI probing 금지 계약은 `dev-workflow-orchestrate/references/dispatch-efficiency.md`를 따른다.
