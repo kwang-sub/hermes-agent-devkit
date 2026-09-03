@@ -83,7 +83,13 @@ RUN ln -sf /opt/jdks/temurin-17/bin/java /usr/local/bin/java \
     && /usr/local/bin/javac -version
 
 COPY --chmod=0755 scripts/hermes-java /usr/local/bin/hermes-java
-COPY --chmod=0755 scripts/hermes-diff-check.py /usr/local/bin/hermes-diff-check
+# Keep the Python source separate from its Linux entrypoint. The source may come
+# from a Windows checkout with CRLF; invoking it explicitly with python3 avoids
+# relying on a shebang whose interpreter token could otherwise contain \r.
+COPY scripts/hermes-diff-check.py /usr/local/lib/hermes-diff-check.py
+RUN printf '%s\n' '#!/bin/sh' 'exec python3 /usr/local/lib/hermes-diff-check.py "$@"' > /usr/local/bin/hermes-diff-check \
+    && chmod 0755 /usr/local/bin/hermes-diff-check \
+    && /usr/local/bin/hermes-diff-check --help >/dev/null
 
 RUN set -eu; \
     hermes_target=""; \
