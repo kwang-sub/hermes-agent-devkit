@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: 승인된 Kanban 작업을 할당 Workspace에서 최소 구현·구조 품질 점검·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.15.1
+version: 0.15.2
 author: local
 platforms: [linux]
 metadata:
@@ -16,7 +16,7 @@ metadata:
 Coder worker의 **compact 실행 계약**이다. 상세 구현/검증/risk 기준은 필요할 때만 `references/implementation-details.md`를 읽는다.
 
 ## 실행 계약
-1. `kanban_show()`로 Task body, attempts, comments, feedback을 읽고 Workspace/Expected Branch/Base SHA를 `scripts/verify_workspace.py`로 검증한다. 검증기는 workspace를 Git `safe.directory`로 idempotent하게 등록한다. mismatch면 수정 전에 `BLOCKED`.
+1. `kanban_show()`로 Task body, attempts, comments, feedback을 읽고 Workspace/Expected Branch/Base SHA를 `scripts/verify_workspace.py`로 검증한다. **Workspace 검증 명령은 terminal invocation 하나에 단독으로 정확히 1회 실행하며 `git status`, `git branch`, `git rev-parse` 또는 다른 probe를 같은 invocation에 batch하지 않는다.** 검증기는 workspace를 Git `safe.directory`로 idempotent하게 등록한다. mismatch면 수정 전에 `BLOCKED`.
 2. `Flow: FAST`는 Task의 `Pre-existing effective changes at dispatch`를 사용자 변경 baseline으로 사용한다. raw `git status`에 Windows bind-mount CRLF/LF noise가 대량 표시되어도 raw modified-file 개수만으로 작업을 중단하거나 baseline을 다시 정의하지 않는다. 실제 source를 읽은 뒤 Fast Flow 범위를 재확인한다. API/schema/dependency/architecture/transaction/security/concurrency/cross-repo/모호한 요구사항 등 설계 판단이 필요하면 `FAST_FLOW_ESCALATION_REQUIRED`로 `kanban_block`한다.
 3. 모든 작업은 `/opt/data/shared/references/coding-rules.md`와 `/opt/data/shared/references/project-pattern-rules.md`를 적용하고 가장 가까운 기존 구현을 기준으로 최소 diff를 만든다.
 4. Task의 `Project Pattern Summary`, `Pattern References`, `Applicable Skills`, `Goal`, `Acceptance Criteria`, `Implementation Tasks`를 재사용한다. 실제 source와 충돌하지 않는 한 프로젝트 전체를 다시 분석하지 않는다.
@@ -27,15 +27,15 @@ Coder worker의 **compact 실행 계약**이다. 상세 구현/검증/risk 기�
    - **테스트 작성/수정** → `skill_view("dev-spring-test")` (단순 테스트 실행만으로는 로드하지 않음)
    - **Spring source 구현 완료 후 구조 trigger가 실제로 있을 때만** → `skill_view("dev-spring-refactor")`
    - OpenAPI/Swagger/Postman 작업 → `skill_view("dev-api-docs")`
-6. Java/Gradle/Maven 프로젝트는 Bootstrap이 생성한 `.hermes/toolchain.env`를 사용한다. build/test/compile 명령은 `hermes-java` launcher를 우선한다. `.hermes/toolchain.env`가 없거나 선택 JDK가 유효하지 않으면 개발환경 bootstrap 문제로 `BLOCKED`한다.
+6. Java/Gradle/Maven 프로젝트는 Bootstrap이 생성한 `.hermes/toolchain.env`를 사용한다. `.hermes/toolchain.env`가 없거나 선택 JDK가 유효하지 않으면 개발환경 bootstrap 문제로 `BLOCKED`한다. **Gradle compile/targeted test의 canonical 실행은 `scripts/gradle_verification.py`이며 Coder가 `hermes-java ./gradlew ...`를 직접 여러 형태로 반복하지 않는다.**
 7. 구현 전 반드시 `SOURCE_EVIDENCE_READY`와 `IMPLEMENTATION_SCOPE_READY`를 만족한다. 범위가 불안정한 상태에서 production patch를 시작하지 않는다.
 8. 구현 후 `IMPLEMENTATION_STABLE`을 만족한 뒤 Verification Mode와 Task Test Plan에 따라 최소 검증을 수행한다. 동일한 PASS 검증을 관련 executable source/test 변경 없이 반복하지 않는다.
-9. 최종 변경 범위가 확정된 뒤 scoped `scripts/change_summary.py`를 **최종 검증으로 1회** 실행한다. 실패하면 실제 reported error만 수정하고, 중간 상태 확인 용도로 반복 호출하지 않는다. 성공 시 출력되는 `EFFECTIVE_SCOPE_SHA256`를 final verification fingerprint로 보존한다.
+9. 최종 변경 범위가 확정된 뒤 scoped `scripts/change_summary.py`를 **최종 검증으로 1회** 실행한다. 실패하면 실제 reported error만 처리한다. **DevKit runtime/capability 오류이면 workspace에 임시 wrapper를 쓰거나, `.hermes`에 helper를 만들거나, monkey-patch/inline Python으로 canonical helper를 우회하거나, approval을 기다리는 복구를 시도하지 않고 `CAPABILITY` blocker로 종료한다.** 성공 시 출력되는 `EFFECTIVE_SCOPE_SHA256`를 final verification fingerprint로 보존한다.
 10. 구현 후 `Review Risk`를 **positive eligibility** 방식으로 판정한다. `LOW`임을 근거로 증명하지 못하면 `REVIEW_REQUIRED`다. Standard Flow 또는 CHANGES_REQUESTED 재작업은 항상 review, Fast Flow + LOW는 complete, Fast Flow + REVIEW_REQUIRED는 review로 보낸다.
 11. terminal transition은 `kanban_complete`, `kanban_block`, `kanban_request_review` 중 정확히 하나다. 성공한 `kanban_request_review` 이후 Coder는 추가 `kanban_complete`, review skill load, status probe를 하지 않고 즉시 종료한다.
 
 ## Canonical Workspace Verification
-Workspace 검증은 아래 형식을 그대로 사용한다. 필수 인수를 일부 생략한 probe 호출을 하지 않는다.
+Workspace 검증은 아래 형식을 **독립 terminal command로 정확히 1회** 사용한다. 동일 terminal invocation에 다른 명령을 `+`, `&&`, `;`, background process 또는 batch 형태로 붙이지 않는다.
 
 ```bash
 python3 /opt/custom-skills/coder/dev-implement-plan/scripts/verify_workspace.py \
@@ -45,6 +45,8 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/verify_workspace.py 
   --expected-branch "<Expected Branch>" \
   --base-sha "<Base SHA>"
 ```
+
+`STATUS=valid`이면 helper가 확인한 workspace/branch/base를 신뢰하고 이를 재확인하기 위한 `git status`, `git branch`, `git rev-parse` probe를 실행하지 않는다. helper 자체가 실패했을 때만 reported error를 해석하기 위한 최소 probe를 별도 invocation으로 허용한다.
 
 ## Source Evidence Map / Exploration Exit Gate
 탐색 중 확인한 source/symbol을 짧은 Evidence Map으로 유지한다. 별도 파일을 만들 필요는 없다.
@@ -169,15 +171,20 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/change_summary.py \
 - 실제 `WHITESPACE_ERROR`가 보고된 경우에만 해당 changed line을 수정한다.
 - untracked 파일의 `git diff --no-index --check` return code `1`은 정상 diff 상태로 처리한다.
 - change_summary는 Final Scope 이후 한 번 실행하는 것이 기본이며 중간 상태 확인용으로 사용하지 않는다.
+- `change_summary.py`가 DevKit runtime/capability 문제로 실패하면 임시 wrapper/script 생성, executable bit 변경, inline Python monkey-patch, protected `.hermes` write 또는 approval 대기를 금지하고 blocker evidence를 기록한다.
 - `EFFECTIVE_SCOPE_SHA256`는 effective tracked/untracked 파일의 path와 CRLF 정규화된 현재 content로 계산된다. final summary 이후 executable source/test가 바뀌면 기존 fingerprint와 `Verification Final: true`는 무효다.
 
 ## Java Toolchain Contract
+Gradle 검증은 `gradle_verification.py`를 사용한다.
+
 ```bash
-hermes-java ./gradlew test
-hermes-java ./gradlew compileJava
-hermes-java ./mvnw test
+python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification.py \
+  --workspace "<Workspace>" \
+  --mode TARGETED_TEST \
+  --test "<fully-qualified-test-selector>"
 ```
-Project build file을 Java version/toolchain 자동 변경 목적으로 수정하지 않는다.
+
+Maven 등 launcher가 필요한 비-Gradle 경로는 `hermes-java`를 사용한다. Project build file을 Java version/toolchain 자동 변경 목적으로 수정하지 않는다.
 
 ## Fast Flow Review Risk
 Risk 판정은 파일 수보다 **behavior 영향 범위와 compatibility 의미**를 우선한다.
