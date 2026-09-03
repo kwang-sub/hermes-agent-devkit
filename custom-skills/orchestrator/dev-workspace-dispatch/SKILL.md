@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 구현 계획과 project pattern/capability 계약을 Git workspace와 Kanban으로 인계한다.
-version: 0.6.0
+version: 0.6.1
 author: local
 platforms: [linux]
 metadata:
@@ -110,6 +110,28 @@ Helper 검증 항목:
 6. Base branch/ref와 base SHA를 확정한다.
 7. tracked/untracked 상태를 effective/EOL-only/Hermes managed로 분류한다.
 8. 현재 branch 또는 새 branch 생성 결과를 검증한다.
+
+변경 상태 분류는 파일별 `git diff` 반복 호출을 금지하고 다음 batch scan으로 수행한다.
+
+```text
+git diff --name-only -z HEAD
+git diff --name-only -z --ignore-cr-at-eol HEAD
+git ls-files -z --others --exclude-standard
+```
+
+세 결과는 Python set 연산으로 `effective`, `EOL-only`, `Hermes managed`로 분리한다. 대량 EOL-only 변경이 있는 Windows bind mount에서도 파일 수만큼 Git subprocess를 반복하지 않는다.
+
+성능 관찰을 위해 helper는 다음 timing을 함께 출력한다.
+
+```text
+GIT_TRACKED_SCAN_SECONDS=<seconds>
+GIT_EFFECTIVE_SCAN_SECONDS=<seconds>
+GIT_UNTRACKED_SCAN_SECONDS=<seconds>
+CLASSIFICATION_SECONDS=<seconds>
+WORKSPACE_CLASSIFICATION_TOTAL_SECONDS=<seconds>
+```
+
+이 값은 진단 정보이며 승인 판단에는 사용하지 않는다. 지연이 남으면 어떤 Git scan이 병목인지 판단하는 데 사용한다.
 
 `WORKSPACE_DIRTY`는 raw 작업트리에 어떤 변경이든 존재하는지 나타내는 정보용 필드다. 승인/위험 판단에는 `WORKSPACE_EFFECTIVE_DIRTY`와 `EFFECTIVE_CHANGED_COUNT`를 사용한다.
 
