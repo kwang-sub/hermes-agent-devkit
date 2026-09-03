@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 구현 계획과 project pattern/capability 계약을 Git workspace와 Kanban으로 인계한다.
-version: 0.9.1
+version: 0.9.2
 author: local
 platforms: [linux]
 metadata:
@@ -14,6 +14,8 @@ metadata:
 # dev-workspace-dispatch
 
 사용자 승인까지 완료된 READY 구현 계획을 승인된 Git workspace와 branch 전략에 맞춰 Kanban 작업으로 인계한다.
+
+이 Skill이 신규 Dispatch의 표준이다. deprecated worktree dispatch 경로를 사용하지 않는다.
 
 ## 1. 진입 조건
 - Plan 승인 완료
