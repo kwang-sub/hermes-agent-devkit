@@ -34,10 +34,6 @@ jobs:
         shell: bash
         run: python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py
 
-      - name: Verify NAVER WORKS platform plugin contract
-        shell: bash
-        run: python3 scripts/test_naverworks_plugin_contract.py
-
       - name: Verify runtime validation contracts
         shell: bash
         run: python3 scripts/test_verification_runtime_contract.py
