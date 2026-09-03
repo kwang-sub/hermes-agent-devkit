@@ -59,8 +59,17 @@ Workspace 검증은 canonical `verify_workspace.py`를 **단독 terminal command
 검증은 좁은 범위부터 넓힌다.
 
 ```text
-targeted test → 필요한 integration/module test → scoped change_summary
+targeted test
+→ 필요한 integration/module test
+→ IMPLEMENTATION_STABLE
+→ 필요한 경우 full test 1회
+→ artifact 검증
+→ scoped change_summary
 ```
+
+### 6.1 구현 중 검증
+
+구현 중에는 변경 범위를 빠르게 확인할 수 있는 targeted/integration test를 우선한다. 전체 `test`는 중간 탐색 또는 단순 재확인 용도로 사용하지 않는다.
 
 Java/Gradle 검증은 Coder가 `hermes-java ./gradlew ...`를 여러 형태로 직접 반복하지 않고 아래 helper를 canonical 경로로 사용한다.
 
@@ -83,11 +92,20 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification.
   --mode COMPILE
 ```
 
+Final full test가 필요한 경우에만 다음 형식을 사용한다.
+
+```bash
+python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification.py \
+  --workspace "<Workspace>" \
+  --mode COMPILE \
+  --task test
+```
+
 Helper contract:
 
 ```text
 capability: hermes-java ./gradlew --version
-primary: requested compile/targeted test exactly once
+primary: requested compile/targeted/full test exactly once
 common args: --no-daemon --console=plain
 primary timeout: default 240s
 on primary timeout:
@@ -116,6 +134,68 @@ PRIMARY_RETRY_ALLOWED=false
 ```
 
 `GRADLE_STATUS=BLOCKED` 이후 Coder가 `compileJava`, 동일 targeted test, `--info` 변형, background Gradle process wait를 임의로 추가 실행하지 않는다. helper evidence를 Kanban blocker에 그대로 기록한다. 실제 source 수정으로 실패 원인이 바뀐 경우에만 새 최종 verification cycle을 시작할 수 있다.
+
+### 6.2 Final regression gate
+
+Full test가 Task/AC/Standard Flow에서 요구되면 다음 순서를 지킨다.
+
+```text
+1. targeted/integration 검증 통과
+2. IMPLEMENTATION_STABLE 선언
+3. full test 1회
+4. PASS 또는 failure classification
+5. 필요한 artifact 검증
+6. change_summary
+```
+
+한 stable verification cycle에서 동일 full test를 반복하지 않는다.
+
+Full test 실패는 다음 셋 중 하나로 분류한다.
+
+```text
+IN_SCOPE_OR_IMPACTED
+OUT_OF_SCOPE_UNCHANGED
+UNCERTAIN
+```
+
+#### IN_SCOPE_OR_IMPACTED
+
+변경 production/test와 직접 연관되거나 영향 가능성이 있는 실패다.
+
+- 실패 test를 targeted하게 재현한다.
+- 원인을 수정한다.
+- 필요한 targeted/integration test를 다시 통과시킨다.
+- 다시 `IMPLEMENTATION_STABLE`이 된 뒤에만 full test를 최종 1회 재실행할 수 있다.
+
+#### OUT_OF_SCOPE_UNCHANGED
+
+다음 조건을 **모두** 만족해야 한다.
+
+- 실패 test/source가 Task Changed Files에 없다.
+- `SOURCE_EVIDENCE_READY`의 Direct Impact 기준으로 변경 production symbol과 직접 영향 관계가 없다.
+- 첫 full test 후 이 실패를 위한 production/test 변경을 하지 않았다.
+- 실패 signature가 동일하다. signature는 test class/method를 우선하고, 필요하면 대표 failure message를 추가한다.
+
+이 경우 첫 full test 결과를 회귀 evidence로 재사용한다.
+
+```text
+Full Test: FAIL_REUSED_OUT_OF_SCOPE
+Failure Signature: <class#method | representative message>
+Full Test Retry: SKIPPED_IDENTICAL_OUT_OF_SCOPE_FAILURE
+```
+
+같은 Coder run에서 동일 full test를 다시 실행해 같은 실패를 재확인하지 않는다.
+
+#### UNCERTAIN
+
+직접 영향 여부를 안전하게 판단할 근거가 부족한 경우다. 기존 실패라고 추정해서 재사용하지 않는다. Standard Flow에서는 Reviewer에 residual risk로 전달하고, 필수 AC를 충족할 수 없다면 blocker로 처리한다.
+
+### 6.3 Evidence invalidation
+
+- full test PASS 이후 executable production/test가 변경되면 해당 PASS는 무효다.
+- `IN_SCOPE_OR_IMPACTED` 실패 수정 후에는 이전 full test 실패 evidence를 최종 evidence로 사용하지 않는다.
+- `OUT_OF_SCOPE_UNCHANGED` 실패는 해당 실패를 위해 코드를 수정하지 않는 한 재실행하지 않는다.
+- bootJar/assemble은 full test 실패를 성공으로 바꾸지 않는다. artifact 생성 성공과 test 결과는 별도로 기록한다.
 
 실행하지 않은 검증을 PASS라고 쓰지 않는다. 필수 검증이 불가능하면 LOW 판정을 금지한다.
 
@@ -190,6 +270,16 @@ LOW일 때만 Coder가 `kanban_complete`한다. Standard Flow나 review retry에
 
 REVIEW_REQUIRED면 동일 evidence와 risk reasons를 포함해 `kanban_request_review`하고 멈춘다.
 
+Full test가 실패했다면 handoff에 반드시 다음을 포함한다.
+
+```text
+Full Test: PASS | NOT_REQUIRED | FAIL_REUSED_OUT_OF_SCOPE | FAIL_IN_SCOPE | UNCERTAIN
+Full Test Failure Signature: <signature | NONE>
+Full Test Retry: <NOT_NEEDED | SKIPPED_IDENTICAL_OUT_OF_SCOPE_FAILURE | RERUN_AFTER_IN_SCOPE_FIX>
+```
+
+Reviewer는 `FAIL_REUSED_OUT_OF_SCOPE`를 자동 PASS로 간주하지 않고 변경 영향 관계와 AC 충족 여부를 독립 검토한다. 단, 동일 full test를 단순 재확인하기 위해 다시 실행하지 않는다.
+
 ## 8. Git / Safety
 
 Coder는 commit, push, merge, rebase, cherry-pick, reset, clean, stash, workspace cleanup을 하지 않는다. secret/raw credential도 body/summary/metadata에 기록하지 않는다.
@@ -215,6 +305,8 @@ Resume condition:
 - 승인 Workspace/Branch/Base SHA 유지
 - 최소 scope 구현
 - relevant verification 수행
+- full test는 implementation stable 이후 필요한 경우 1회 실행
+- 동일한 범위 밖 full-test failure는 evidence 재사용으로 중복 실행 방지
 - changed/untracked files와 residual risk 기록
 - Fast LOW는 근거를 남기고 done
 - Fast REVIEW_REQUIRED / Standard / retry는 Reviewer handoff
