@@ -104,6 +104,7 @@ class PrepareDispatchTests(unittest.TestCase):
         self.assertIn("BRANCH_MODE=current", proc.stdout)
         self.assertIn("BRANCH=main", proc.stdout)
         self.assertIn("CREATED_BRANCH=false", proc.stdout)
+        self.assertIn("WORKSPACE_CHANGE_SCAN_MODE=full", proc.stdout)
         self.assertIn("WORKSPACE_EFFECTIVE_DIRTY=false", proc.stdout)
         self.assert_timing_output(proc.stdout)
         self.assertIn("STATUS=prepared", proc.stdout)
@@ -134,11 +135,21 @@ class PrepareDispatchTests(unittest.TestCase):
         self.assertIn("EFFECTIVE_CHANGED_1=README.md", refused.stderr)
         self.assert_timing_output(refused.stderr)
 
+    def test_confirmed_dirty_uses_preservation_fast_path(self) -> None:
+        (self.repo / "README.md").write_text("dirty\n", encoding="utf-8")
+        (self.repo / "new.bin").write_bytes(b"x" * 1024)
+
         confirmed = self.run_helper("CALC-003", "current", "--confirmed-dirty")
         self.assertEqual(confirmed.returncode, 0, confirmed.stderr)
-        self.assertIn("WORKSPACE_DIRTY=true", confirmed.stdout)
-        self.assertIn("WORKSPACE_EFFECTIVE_DIRTY=true", confirmed.stdout)
-        self.assertIn("EFFECTIVE_CHANGED_COUNT=1", confirmed.stdout)
+        self.assertIn("WORKSPACE_CHANGE_SCAN_MODE=skipped-approved-preservation", confirmed.stdout)
+        self.assertIn("EXISTING_CHANGES_PRESERVATION_APPROVED=true", confirmed.stdout)
+        self.assertIn("WORKSPACE_DIRTY=unknown", confirmed.stdout)
+        self.assertIn("WORKSPACE_EFFECTIVE_DIRTY=unknown", confirmed.stdout)
+        self.assertIn("EFFECTIVE_CHANGED_COUNT=-1", confirmed.stdout)
+        self.assertIn("EOL_ONLY_COUNT=-1", confirmed.stdout)
+        self.assertIn("HERMES_MANAGED_COUNT=-1", confirmed.stdout)
+        self.assertIn("WORKSPACE_CLASSIFICATION_TOTAL_SECONDS=-1.000", confirmed.stdout)
+        self.assertNotIn("EFFECTIVE_CHANGED_1=", confirmed.stdout)
 
     def test_hermes_managed_files_do_not_require_dirty_confirmation(self) -> None:
         (self.repo / ".hermes" / "toolchain.env").write_text("JAVA_HOME=/tmp/jdk\n", encoding="utf-8")
@@ -162,18 +173,18 @@ class PrepareDispatchTests(unittest.TestCase):
         self.assertIn("EOL_ONLY_COUNT=1", proc.stdout)
         self.assertIn("EOL_ONLY_1=README.md", proc.stdout)
 
-    def test_effective_and_managed_changes_are_reported_separately(self) -> None:
+    def test_effective_and_managed_changes_can_be_diagnosed_without_fast_path(self) -> None:
         (self.repo / "README.md").write_text("dirty\n", encoding="utf-8")
         (self.repo / "CLAUDE.md").write_text("instructions\n", encoding="utf-8")
         (self.repo / ".hermes" / "toolchain.env").write_text("JAVA_HOME=/tmp/jdk\n", encoding="utf-8")
 
-        proc = self.run_helper("CALC-006", "current", "--confirmed-dirty")
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("EFFECTIVE_CHANGED_COUNT=2", proc.stdout)
-        self.assertIn("HERMES_MANAGED_COUNT=1", proc.stdout)
-        self.assertIn("EFFECTIVE_CHANGED_1=CLAUDE.md", proc.stdout)
-        self.assertIn("EFFECTIVE_CHANGED_2=README.md", proc.stdout)
-        self.assertIn("HERMES_MANAGED_1=.hermes/toolchain.env", proc.stdout)
+        proc = self.run_helper("CALC-006", "current")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("EFFECTIVE_CHANGED_COUNT=2", proc.stderr)
+        self.assertIn("HERMES_MANAGED_COUNT=1", proc.stderr)
+        self.assertIn("EFFECTIVE_CHANGED_1=CLAUDE.md", proc.stderr)
+        self.assertIn("EFFECTIVE_CHANGED_2=README.md", proc.stderr)
+        self.assertIn("HERMES_MANAGED_1=.hermes/toolchain.env", proc.stderr)
 
     def test_batch_scan_contract_avoids_per_file_diff_quiet(self) -> None:
         source = SCRIPT.read_text(encoding="utf-8")
@@ -181,6 +192,8 @@ class PrepareDispatchTests(unittest.TestCase):
         self.assertIn('["diff", "--name-only", "-z", "--ignore-cr-at-eol", "HEAD"]', source)
         self.assertIn('["ls-files", "-z", "--others", "--exclude-standard"]', source)
         self.assertNotIn('"diff", "--quiet", "--ignore-cr-at-eol"', source)
+        self.assertIn('if args.confirmed_dirty:', source)
+        self.assertIn('scan_mode = "skipped-approved-preservation"', source)
 
     def test_unsafe_task_key_is_rejected(self) -> None:
         proc = self.run_helper("unsafe/key", "current")

@@ -47,10 +47,12 @@ class ChangeSummaryTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def run_helper(self, *includes: str, compact: bool = False) -> subprocess.CompletedProcess[str]:
+    def run_helper(self, *includes: str, compact: bool = False, allow_full_scan: bool = False) -> subprocess.CompletedProcess[str]:
         cmd = [sys.executable, str(SCRIPT), "--workspace", str(self.repo)]
         if compact:
             cmd.append("--compact")
+        if allow_full_scan:
+            cmd.append("--allow-full-scan")
         for include in includes:
             cmd.extend(["--include", include])
         env = os.environ.copy()
@@ -63,6 +65,7 @@ class ChangeSummaryTests(unittest.TestCase):
         (self.repo / "unrelated.txt").write_text("unrelated change\n", encoding="utf-8")
         proc = self.run_helper("tracked.txt", "new.md")
         self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("SCAN_MODE=scoped", proc.stdout)
         self.assertIn("TRACKED_CHANGED_COUNT=1", proc.stdout)
         self.assertIn("TRACKED_1=tracked.txt", proc.stdout)
         self.assertIn("UNTRACKED_1=new.md", proc.stdout)
@@ -71,6 +74,23 @@ class ChangeSummaryTests(unittest.TestCase):
         state = json.loads(handoff_state(self.repo).read_text(encoding="utf-8"))
         self.assertEqual(state["effective_scope_sha256"], fingerprint(proc.stdout))
         self.assertEqual(state["effective_paths"], ["new.md", "tracked.txt"])
+
+    def test_standard_flow_requires_scoped_include(self) -> None:
+        proc = self.run_helper()
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("scoped --include paths are required", proc.stderr)
+        self.assertIn("--allow-full-scan", proc.stderr)
+
+    def test_explicit_full_diagnostic_remains_available(self) -> None:
+        (self.repo / "tracked.txt").write_text("changed\n", encoding="utf-8")
+        proc = self.run_helper(allow_full_scan=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("TRACKED_CHANGED_COUNT=1", proc.stdout)
+
+    def test_untracked_discovery_uses_pathspec_when_scoped(self) -> None:
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('return git_paths(root, ["ls-files", "--others", "--exclude-standard"], includes)', source)
+        self.assertNotIn("all_untracked = git_paths", source)
 
     def test_fingerprint_changes_with_effective_content(self) -> None:
         (self.repo / "tracked.txt").write_text("first\n", encoding="utf-8")

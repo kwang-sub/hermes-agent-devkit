@@ -1,12 +1,12 @@
 ---
 name: dev-code-review
 description: 동일 Workspace의 미커밋 구현을 requirement/AC와 project pattern/capability/구조 품질 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
-version: 0.12.0
+version: 0.13.1
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, review, reviewer, kanban, quality, verification, capability, java, refactor, structural-quality]
+    tags: [dev, review, reviewer, kanban, quality, verification, capability, java, refactor, structural-quality, performance]
     related_skills: [dev-implement-plan, dev-review-cycle, dev-workspace-dispatch, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-docs]
     requires_tools: [terminal, kanban_show, kanban_request_changes, kanban_complete, kanban_block, kanban_heartbeat, skill_view]
 ---
@@ -40,11 +40,27 @@ python3 /opt/custom-skills/reviewer/dev-code-review/scripts/review_context.py \
   --include "<changed-path-2>"
 ```
 
+Canonical 호출은 `review_context.py --include` scoped review다.
+
 - 스크립트가 Git `safe.directory`를 idempotent하게 등록한다.
-- `--include`가 제공되면 task 변경 후보만 검사한다.
+- Standard Flow에서는 `--include`를 반드시 제공한다. 값은 Coder handoff의 `Changed Files`를 그대로 사용한다.
+- Coder Changed Files가 누락되면 repository-wide scan으로 복구하지 않고 evidence 부족으로 BLOCK한다.
+- `--allow-full-scan`은 명시적 진단 전용이며 정상 review 경로에서 사용하지 않는다.
+- tracked와 untracked 모두 Git pathspec으로 제한한다.
 - `EOL_ONLY_*`는 CRLF/LF-only noise이며 review failure가 아니다.
 - `EFFECTIVE_SCOPE_SHA256`는 Coder `change_summary.py`와 동일한 방식으로 effective tracked/untracked path + CRLF 정규화된 현재 content를 fingerprint한다.
 - 정상 실행 뒤 동일 정보를 얻기 위한 별도 `git status`, `git diff --check`, safe.directory 환경변수 우회를 반복하지 않는다.
+
+## Existing Changes Preservation Fast Path
+
+Dispatch Task가 다음 상태라면 exact 기존 변경 목록이 없는 것이 정상이다.
+
+```text
+Existing changes preservation approved: true
+Workspace change scan mode: skipped-approved-preservation
+```
+
+Reviewer는 기존 baseline을 복원하려고 repository-wide `git status`, `git diff`, 전체 `git ls-files --others`를 실행하지 않는다. 검토 대상은 Coder가 선언한 `Changed Files`와 직접 영향 범위다. 기존 사용자 변경은 reset/restore/clean/stash하지 않는다.
 
 ## Diff-first Review Budget
 1. 먼저 Base SHA 기준 changed hunk/diff를 확인한다.
@@ -130,5 +146,6 @@ P0/P1 없음 + evidence 충분 → kanban_complete
 - finding은 file/symbol, evidence, required change, expected verification을 포함한다.
 - Fast Flow `Review Risk: LOW` Task는 Coder가 완료하므로 Reviewer가 호출되지 않는다. Reviewer가 받은 Task는 독립 review가 필요한 것으로 간주한다.
 - Coder의 Risk Reasons는 starting point이지 verdict가 아니다. 독립성 확보를 이유로 동일 영향 범위를 repository-wide 재탐색하지 않는다.
+- Standard Flow에서는 scope 없는 review_context.py 호출을 하지 않는다.
 
 Severity, 상세 checklist, retry/escalation이 필요하면 `references/review-details.md`를 읽는다.

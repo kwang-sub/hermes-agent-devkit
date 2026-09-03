@@ -50,7 +50,7 @@ class ReviewContextTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_helper(self, *includes: str):
+    def run_helper(self, *includes: str, allow_full_scan: bool = False):
         cmd = [
             sys.executable, str(SCRIPT),
             "--base-branch", "dispatch-base",
@@ -59,6 +59,8 @@ class ReviewContextTests(unittest.TestCase):
             "--workspace", str(self.repo),
             "--expected-workspace", str(self.repo),
         ]
+        if allow_full_scan:
+            cmd.append("--allow-full-scan")
         for include in includes:
             cmd.extend(["--include", include])
         env = os.environ.copy()
@@ -77,13 +79,26 @@ class ReviewContextTests(unittest.TestCase):
         }) + "\n", encoding="utf-8")
 
     def test_matching_gate_reuses_verification(self):
-        first = self.run_helper()
+        first = self.run_helper("change.txt")
+        self.assertEqual(first.returncode, 0, first.stderr)
         current = field(first.stdout, "CURRENT_SCOPE_SHA256")
         self.write_gate(["change.txt"], current)
-        second = self.run_helper()
+        second = self.run_helper("change.txt")
         self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertIn("SCAN_MODE=scoped", second.stdout)
         self.assertIn("CODER_HANDOFF_GATE=PASS", second.stdout)
         self.assertIn("REVIEWER_TEST_RERUN_REQUIRED=false", second.stdout)
+
+    def test_standard_flow_requires_scoped_include(self):
+        proc = self.run_helper()
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("scoped --include paths", proc.stderr)
+        self.assertIn("--allow-full-scan", proc.stderr)
+
+    def test_explicit_full_diagnostic_remains_available(self):
+        proc = self.run_helper(allow_full_scan=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("SCAN_MODE=full-diagnostic", proc.stdout)
 
     def test_crlf_only_change_is_noise(self):
         (self.repo / "fixture.txt").write_bytes(b"base\r\n")
@@ -104,6 +119,11 @@ class ReviewContextTests(unittest.TestCase):
         proc = self.run_helper("fixture.txt")
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("trailing whitespace", proc.stderr)
+
+    def test_untracked_lookup_uses_pathspec_when_scoped(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('return git_paths(root, ["ls-files", "--others", "--exclude-standard"], includes)', source)
+        self.assertNotIn("all_paths = git_paths", source)
 
 
 if __name__ == "__main__":

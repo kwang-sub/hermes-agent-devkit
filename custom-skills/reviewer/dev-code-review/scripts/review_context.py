@@ -55,9 +55,7 @@ def split_includes(root: Path, values: list[str]) -> tuple[list[str], list[str]]
     return sorted(dict.fromkeys(local)), sorted(dict.fromkeys(external))
 
 
-def git_paths(root: Path, args: list[str], includes: list[str], scope_requested: bool = False) -> list[str]:
-    if scope_requested and not includes:
-        return []
+def git_paths(root: Path, args: list[str], includes: list[str]) -> list[str]:
     cmd = ["git", "-C", str(root), *args]
     if includes:
         cmd.extend(["--", *includes])
@@ -84,13 +82,8 @@ def classify_tracked(root: Path, base_sha: str, raw_paths: list[str]) -> tuple[l
     return effective, eol_only
 
 
-def untracked_paths(root: Path, includes: list[str], scope_requested: bool) -> list[str]:
-    if scope_requested and not includes:
-        return []
-    all_paths = git_paths(root, ["ls-files", "--others", "--exclude-standard"], [])
-    if not includes:
-        return all_paths
-    return [path for path in all_paths if any(path == inc or path.startswith(f"{inc.rstrip('/')}/") for inc in includes)]
+def untracked_paths(root: Path, includes: list[str]) -> list[str]:
+    return git_paths(root, ["ls-files", "--others", "--exclude-standard"], includes)
 
 
 def diff_checker_command() -> list[str]:
@@ -203,6 +196,11 @@ def main() -> int:
     ap.add_argument("--workspace")
     ap.add_argument("--expected-workspace")
     ap.add_argument("--include", action="append", default=[])
+    ap.add_argument(
+        "--allow-full-scan",
+        action="store_true",
+        help="Explicit diagnostic mode only. Allows repository-wide review discovery.",
+    )
     args = ap.parse_args()
 
     root = Path(args.workspace or ".").resolve()
@@ -227,11 +225,16 @@ def main() -> int:
     if ancestor.returncode != 0:
         raise ReviewError((ancestor.stderr or ancestor.stdout).strip() or "cannot compare base SHA to HEAD")
 
-    scope_requested = bool(args.include)
     includes, external = split_includes(root, args.include)
-    raw_tracked = git_paths(root, ["diff", "--name-only", base_sha], includes, scope_requested)
+    if not includes and not args.allow_full_scan:
+        raise ReviewError(
+            "scoped --include paths from the coder handoff are required for Standard Flow; "
+            "use --allow-full-scan only for explicit diagnostics"
+        )
+
+    raw_tracked = git_paths(root, ["diff", "--name-only", base_sha], includes)
     effective_tracked, eol_only = classify_tracked(root, base_sha, raw_tracked)
-    untracked = untracked_paths(root, includes, scope_requested)
+    untracked = untracked_paths(root, includes)
     effective_paths = sorted(set(effective_tracked) | set(untracked))
     current_hash = scope_sha256(root, effective_paths)
     gate_ok, gate_reason = handoff_gate(root, effective_paths, current_hash)
@@ -244,8 +247,9 @@ def main() -> int:
     print(f"BASE_BRANCH_SHA={base_branch_sha}")
     print(f"BASE_SHA={base_sha}")
     print(f"BASE_BRANCH_DRIFTED={'true' if base_branch_sha != base_sha else 'false'}")
-    print(f"SCOPE={'ALL' if not args.include else ','.join(args.include)}")
-    print(f"PRIMARY_SCOPE={','.join(includes) if includes else ('ALL' if not scope_requested else 'NONE')}")
+    print(f"SCAN_MODE={'scoped' if includes else 'full-diagnostic'}")
+    print(f"SCOPE={','.join(args.include) if args.include else 'ALL'}")
+    print(f"PRIMARY_SCOPE={','.join(includes) if includes else 'ALL'}")
     print(f"TRACKED_CHANGED_COUNT={len(effective_tracked)}")
     for index, path in enumerate(effective_tracked, 1):
         print(f"TRACKED_{index}={path}")

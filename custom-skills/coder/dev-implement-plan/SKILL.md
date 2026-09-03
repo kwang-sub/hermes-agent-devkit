@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: 승인된 Kanban 작업을 할당 Workspace에서 최소 구현·구조 품질 점검·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.18.0
+version: 0.19.0
 author: local
 platforms: [linux]
 metadata:
@@ -65,6 +65,17 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/verify_workspace.py 
 `STATUS=valid`이면 helper가 확인한 workspace/branch/base를 신뢰한다. 이를 재확인하기 위한 `git status`, `git branch`, `git rev-parse` probe를 실행하지 않는다. helper가 non-zero로 실패했을 때만 reported error를 해석하기 위한 최소 probe를 허용하며, 실패 전에 사전 probe로 우회하지 않는다.
 
 특히 Windows bind mount에서 raw `git status`는 수천 개 EOL-only 파일 때문에 매우 비쌀 수 있다. raw modified-file 개수를 baseline으로 재정의하거나 작업 중단 근거로 사용하지 않는다.
+
+## Existing Changes Preservation Fast Path
+
+Task body에 다음 중 하나가 있으면 Orchestrator가 기존 workspace 전체 변경 보존을 이미 승인한 것이다.
+
+```text
+Existing changes preservation approved: true
+Workspace change scan mode: skipped-approved-preservation
+```
+
+이 경우 Coder는 exact pre-existing file list/count를 복구하려고 repository-wide `git status`, `git diff`, `git ls-files --others`, EOL 분류를 다시 실행하지 않는다. 기존 변경 전체를 baseline으로 보존하고 자신의 실제 변경 path만 별도로 추적한다.
 
 ## Flow: FAST
 
@@ -208,6 +219,8 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/change_summary.py \
   --include "<changed-path-2>"
 ```
 
+Standard Flow에서 `--include` 없이 `change_summary.py`를 호출하지 않는다. `--allow-full-scan`은 명시적 진단 전용이다. tracked와 untracked 모두 Git pathspec으로 제한하며 unrelated repository 전체를 훑지 않는다.
+
 `EOL_ONLY_COUNT > 0` + `WHITESPACE_ERROR_COUNT=0`은 정상이다. EOL 복구를 위해 Python/sed/perl/awk/dos2unix/unix2dos/전체 rewrite를 하지 않는다. final summary 이후 executable source/test가 바뀌면 기존 fingerprint와 `Verification Final: true`는 무효다.
 
 `change_summary.py`가 DevKit runtime/capability 문제로 실패하면 **임시 wrapper/script 생성**, executable bit 변경, inline Python monkey-patch, protected `.hermes` write, approval 대기 등으로 우회하지 않고 `CAPABILITY` blocker로 종료한다.
@@ -273,5 +286,6 @@ Residual Risk:
 - Workspace 밖 수정, branch 전환, 다른 worktree 생성, commit, push, PR, merge, reset, clean, stash 금지.
 - secret/raw credential 기록 금지.
 - behavior/API/schema 의미 변경을 refactor라는 이름으로 섞지 않는다.
+- existing preservation fast path를 이유로 repository-wide dirty/EOL/untracked scan을 재실행하지 않는다.
 
 retry/BLOCKED/검증/risk metadata의 추가 세부 형식이 필요할 때만 `references/implementation-details.md`를 읽는다.
