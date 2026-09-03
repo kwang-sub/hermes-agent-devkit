@@ -1,7 +1,7 @@
 ---
 name: dev-workflow-orchestrate
 description: Jira/text 개발 요청의 project·plan·workspace 승인을 거쳐 coder/reviewer로 dispatch하는 orchestrator 전용 workflow.
-version: 0.5.0
+version: 0.5.1
 author: local
 platforms: [linux]
 metadata:
@@ -12,7 +12,7 @@ metadata:
 
 # dev-workflow-orchestrate
 
-개발 요청의 상태 머신만 조정한다. Orchestrator는 application/test code, refactor, code review를 직접 하지 않는다.
+개발 요청의 상태 머신만 조정한다. Orchestrator는 application/test code, refactor, code review를 직접 하지 않고 commit, push, PR, merge, destructive cleanup도 하지 않는다.
 
 ## 상태 머신
 
@@ -20,10 +20,10 @@ metadata:
 
 1. 요구사항을 Common Work Item으로 정규화한다.
 2. managed project를 확정하고 Project Approval Gate를 통과한다.
-3. `dev-breakdown`으로 READY 계획을 만든다.
+3. `dev-breakdown`으로 READY 계획을 만들고 사용자에게 한국어 Implementation Plan을 제시한다.
 4. Plan Approval Gate를 통과한다.
 5. Workspace / Branch Approval Gate에서 workspace, current/create branch, 기존 변경 전체 보존 여부를 승인받는다.
-6. `dev-workspace-dispatch`를 실행한다.
+6. `dev-workspace-dispatch`를 실행해 승인 workspace/branch와 Base SHA를 확정한다.
 7. Skill preflight 후 `kanban_create` / `kanban_show`로 Task를 생성·검증한다.
 8. 이후 Coder/Reviewer 흐름에 맡긴다.
 
@@ -116,9 +116,11 @@ Reviewer
 ## 불변식
 
 - `.hermes/project.yaml`의 managed metadata만 사용하며 repo/Board/profile을 추측하지 않는다.
-- Task Key와 branch는 helper 계약을 따른다.
+- Task Key, branch, Base SHA는 helper 계약을 따르고 임의 재해석하지 않는다.
 - `Applicable Skills`와 runtime pinned `task.skills`를 동일시하지 않는다.
 - approval 없는 bootstrap/branch/worktree/Kanban 생성 금지.
+- Orchestrator는 commit, push, PR, merge를 수행하지 않는다.
+- 원격 저장소에 직접 기록하는 제목/설명/commit 메시지는 사용자 정책에 따라 한국어를 기본으로 한다.
 - publication과 cleanup은 별도 workflow다.
 
 세부 성능 규칙은 `references/dispatch-efficiency.md`를 따른다.
