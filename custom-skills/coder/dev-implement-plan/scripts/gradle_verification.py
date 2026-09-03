@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import re
@@ -45,14 +46,17 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def safe_id(value: str) -> str:
+    return ''.join(ch if ch.isalnum() or ch in '._-' else '_' for ch in value)
+
+
 def session_guard_path() -> Path | None:
     task_id = (os.getenv('HERMES_KANBAN_TASK') or '').strip()
     session_id = (os.getenv('HERMES_SESSION_ID') or '').strip()
     if not task_id or not session_id:
         return None
-    safe = lambda value: ''.join(ch if ch.isalnum() or ch in '._-' else '_' for ch in value)
     root = Path(os.getenv('HERMES_GRADLE_SESSION_GUARD_ROOT', '/opt/data/gradle/session-blocks'))
-    return root / f'{safe(task_id)}--{safe(session_id)}.blocked'
+    return root / f'{safe_id(task_id)}--{safe_id(session_id)}.blocked'
 
 
 def clear_session_guard() -> None:
@@ -71,6 +75,64 @@ def write_session_guard(blocker: str) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f'GRADLE_STATUS=BLOCKED\nGRADLE_BLOCKER={blocker}\n', encoding='utf-8')
+
+
+def observation_log_path(workspace: Path) -> Path:
+    root = Path(os.getenv('HERMES_GRADLE_DIAGNOSTIC_LOG_ROOT', '/opt/data/gradle/diagnostics'))
+    task_id = safe_id((os.getenv('HERMES_KANBAN_TASK') or 'no-task').strip() or 'no-task')
+    session_id = safe_id((os.getenv('HERMES_SESSION_ID') or 'no-session').strip() or 'no-session')
+    workspace_name = safe_id(workspace.name or 'workspace')
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    return root / workspace_name / f'{stamp}--{task_id}--{session_id}.log'
+
+
+def write_observation_log(
+    *,
+    workspace: Path,
+    mode: str,
+    primary: RunResult,
+    last_task: str,
+    filesystem: str,
+    online: RunResult,
+    offline: RunResult,
+    dry_run: RunResult | None,
+    blocker: str,
+    timeout_detail: str,
+    candidates: str,
+) -> Path | None:
+    path = observation_log_path(workspace)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = [
+            f'OBSERVED_AT_UTC={datetime.now(timezone.utc).isoformat()}',
+            f'WORKSPACE={workspace}',
+            f'MODE={mode}',
+            f'HERMES_KANBAN_TASK={(os.getenv("HERMES_KANBAN_TASK") or "UNKNOWN")}',
+            f'HERMES_SESSION_ID={(os.getenv("HERMES_SESSION_ID") or "UNKNOWN")}',
+            'HOST_ACTIVITY=UNKNOWN',
+            'HOST_ACTIVITY_POLICY=OBSERVE_ONLY',
+            f'WORKSPACE_FILESYSTEM={filesystem}',
+            f'PRIMARY_RESULT={"TIMEOUT" if primary.timed_out else primary.returncode}',
+            f'PRIMARY_DURATION_SECONDS={primary.duration:.1f}',
+            f'PRIMARY_COMMAND={q(primary.args)}',
+            f'PRIMARY_LAST_TASK={last_task}',
+            f'GRADLE_BLOCKER={blocker}',
+            f'GRADLE_TIMEOUT_DETAIL={timeout_detail}',
+            f'GRADLE_ROOT_CAUSE_CANDIDATES={candidates}',
+            f'DIAGNOSTIC_ONLINE_RESULT={"TIMEOUT" if online.timed_out else online.returncode}',
+            f'DIAGNOSTIC_OFFLINE_RESULT={"TIMEOUT" if offline.timed_out else offline.returncode}',
+            f'DIAGNOSTIC_DRY_RUN_RESULT={"SKIPPED" if dry_run is None else ("TIMEOUT" if dry_run.timed_out else dry_run.returncode)}',
+        ]
+        detail = compact_tail(primary)
+        if detail:
+            lines.append(f'PRIMARY_DETAIL={detail}')
+        for index, snapshot in enumerate(primary.timeout_processes, start=1):
+            lines.append(f'PRIMARY_TIMEOUT_PROCESS_{index}={snapshot}')
+        path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+        return path
+    except OSError as exc:
+        print(f'GRADLE_OBSERVATION_LOG_WARNING={type(exc).__name__}', file=sys.stderr)
+        return None
 
 
 def _read_proc_value(pid: int, file_name: str, keys: tuple[str, ...]) -> dict[str, str]:
@@ -330,8 +392,9 @@ def main() -> int:
         return 1
 
     timeout_task = last_gradle_task(primary)
+    filesystem = workspace_filesystem(workspace)
     print(f'PRIMARY_LAST_TASK={timeout_task}')
-    print(f'WORKSPACE_FILESYSTEM={workspace_filesystem(workspace)}')
+    print(f'WORKSPACE_FILESYSTEM={filesystem}')
 
     online = run_bounded(
         gradle_cmd(args.launcher, 'help', '--info'), workspace, args.diagnostic_timeout
@@ -357,14 +420,30 @@ def main() -> int:
         print('DIAGNOSTIC_DRY_RUN_RESULT=SKIPPED')
 
     timeout_detail, candidates = classify_timeout_detail(blocker, timeout_task, dry_run)
+    observation_log = write_observation_log(
+        workspace=workspace,
+        mode=args.mode,
+        primary=primary,
+        last_task=timeout_task,
+        filesystem=filesystem,
+        online=online,
+        offline=offline,
+        dry_run=dry_run,
+        blocker=blocker,
+        timeout_detail=timeout_detail,
+        candidates=candidates,
+    )
     write_session_guard(blocker)
     print('GRADLE_STATUS=BLOCKED')
     print(f'GRADLE_BLOCKER={blocker}')
     print(f'GRADLE_TIMEOUT_DETAIL={timeout_detail}')
     print(f'GRADLE_ROOT_CAUSE_CANDIDATES={candidates}')
+    print(f'GRADLE_OBSERVATION_LOG={observation_log if observation_log is not None else "UNAVAILABLE"}')
+    print('HOST_ACTIVITY=UNKNOWN')
+    print('HOST_ACTIVITY_POLICY=OBSERVE_ONLY')
     print('PRIMARY_RETRY_ALLOWED=false')
     print('SESSION_DIRECT_GRADLE_ALLOWED=false')
-    print('DIAGNOSTIC_POLICY=process-snapshot;single-online-help;single-offline-help;bounded-offline-dry-run;no-primary-retry')
+    print('DIAGNOSTIC_POLICY=process-snapshot;single-online-help;single-offline-help;bounded-offline-dry-run;persist-observation-log;no-primary-retry')
     return 2
 
 
