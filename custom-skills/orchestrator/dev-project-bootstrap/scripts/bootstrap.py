@@ -22,6 +22,8 @@ HERMES_CLI_CANDIDATES = (
     Path("/home/hermes/.local/bin/hermes"),
 )
 FULL_PREFLIGHT_FLAG = "--full-preflight"
+DEFAULT_HOST_WORKSPACE = "D:/workspace"
+DEFAULT_CONTAINER_WORKSPACE = "/workspace"
 
 
 class BootstrapLauncherError(RuntimeError):
@@ -42,6 +44,76 @@ def repo_arg(argv: list[str]) -> str:
 
 def project_args(argv: list[str]) -> list[str]:
     return [value for value in argv if value != FULL_PREFLIGHT_FLAG]
+
+
+def _slash(value: str) -> str:
+    return value.replace("\\", "/").rstrip("/")
+
+
+def _map_prefix(path: str, source_root: str, target_root: str) -> str | None:
+    candidate = _slash(path)
+    source = _slash(source_root)
+    target = _slash(target_root)
+    candidate_fold = candidate.casefold()
+    source_fold = source.casefold()
+
+    if candidate_fold == source_fold:
+        return target
+    prefix = source_fold + "/"
+    if candidate_fold.startswith(prefix):
+        suffix = candidate[len(source) + 1 :]
+        return f"{target}/{suffix}" if suffix else target
+    return None
+
+
+def _wsl_alias_for_windows_root(host_root: str) -> str | None:
+    normalized = _slash(host_root)
+    if len(normalized) < 3 or normalized[1] != ":" or normalized[2] != "/":
+        return None
+    drive = normalized[0].lower()
+    tail = normalized[3:].strip("/")
+    return f"/mnt/{drive}/{tail}" if tail else f"/mnt/{drive}"
+
+
+def canonical_repo_path(value: str) -> str:
+    """Map a host/WSL workspace path to the canonical container bind target.
+
+    Docker Desktop mounts HERMES_HOST_WORKSPACE_PATH at
+    HERMES_CONTAINER_WORKSPACE_PATH. A Windows path under that host root, or a
+    mechanically converted /mnt/<drive>/... alias for the same host root, must
+    resolve to the container bind target rather than be treated as a separate
+    filesystem path.
+    """
+    host_root = os.getenv("HERMES_HOST_WORKSPACE_PATH", DEFAULT_HOST_WORKSPACE)
+    container_root = os.getenv(
+        "HERMES_CONTAINER_WORKSPACE_PATH", DEFAULT_CONTAINER_WORKSPACE
+    )
+
+    mapped = _map_prefix(value, host_root, container_root)
+    if mapped is not None:
+        return mapped
+
+    wsl_alias = _wsl_alias_for_windows_root(host_root)
+    if wsl_alias:
+        mapped = _map_prefix(value, wsl_alias, container_root)
+        if mapped is not None:
+            return mapped
+
+    return value
+
+
+def rewrite_repo_arg(argv: list[str], repo: str) -> list[str]:
+    result = list(argv)
+    for index, value in enumerate(result):
+        if value == "--repo":
+            if index + 1 >= len(result):
+                raise BootstrapLauncherError("--repo requires a value")
+            result[index + 1] = repo
+            return result
+        if value.startswith("--repo="):
+            result[index] = f"--repo={repo}"
+            return result
+    raise BootstrapLauncherError("--repo is required")
 
 
 def resolve_hermes_cli() -> Path:
@@ -125,13 +197,19 @@ def bootstrap_lock(repo: str) -> Iterator[None]:
 def main() -> int:
     scripts = Path(__file__).resolve().parent
     launcher_args = sys.argv[1:]
-    repo = repo_arg(launcher_args)
+    requested_repo = repo_arg(launcher_args)
+    repo = canonical_repo_path(requested_repo)
     full_preflight = FULL_PREFLIGHT_FLAG in launcher_args
-    forwarded_args = project_args(launcher_args)
+    forwarded_args = rewrite_repo_arg(project_args(launcher_args), repo)
     hermes_cli = resolve_hermes_cli()
     env = child_env(hermes_cli)
 
     print(f"[OK] Hermes CLI: {hermes_cli}", flush=True)
+    if repo != requested_repo:
+        print(
+            f"[INFO] Repository path mapped: {requested_repo} -> {repo}",
+            flush=True,
+        )
     print(
         f"[INFO] Bootstrap preflight: {'full' if full_preflight else 'fast'}",
         flush=True,
