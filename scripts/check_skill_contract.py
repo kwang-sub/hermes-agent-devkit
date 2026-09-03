@@ -25,6 +25,9 @@ REQUIRED_REFERENCES = {
         "references/spring-openapi-reference.md",
         "references/postman-reference.md",
     },
+    ("orchestrator", "dev-workflow-orchestrate"): {
+        "references/dispatch-efficiency.md",
+    },
 }
 
 
@@ -81,6 +84,12 @@ def parse_frontmatter(text: str, path: Path) -> tuple[dict[str, str], dict[str, 
                 lists[key] = parse_inline_list(value)
 
     return scalar, lists, body
+
+
+def require_terms(text: str, label: str, terms: tuple[str, ...]) -> None:
+    missing = [term for term in terms if term not in text]
+    if missing:
+        fail(f"{label} missing required contract terms: " + ", ".join(missing))
 
 
 def main() -> int:
@@ -147,10 +156,7 @@ def main() -> int:
     for item in unresolved:
         print(f"[WARN] related skill is not installed in custom-skills: {item}")
 
-    cross_profile_duplicates = {
-        name: paths for name, paths in paths_by_name.items() if len(paths) > 1
-    }
-    for name, paths in sorted(cross_profile_duplicates.items()):
+    for name, paths in sorted({name: paths for name, paths in paths_by_name.items() if len(paths) > 1}.items()):
         profiles = ", ".join(sorted(path.parent.parent.name for path in paths))
         print(f"[INFO] profile-scoped duplicate skill name allowed: {name} ({profiles})")
 
@@ -158,21 +164,67 @@ def main() -> int:
     breakdown_file = discovered.get(("orchestrator", "dev-breakdown"))
     dispatch_file = discovered.get(("orchestrator", "dev-workspace-dispatch"))
     preflight_file = discovered.get(("orchestrator", "dev-skill-preflight"))
-    if implement_file is None or breakdown_file is None or dispatch_file is None or preflight_file is None:
+    workflow_file = discovered.get(("orchestrator", "dev-workflow-orchestrate"))
+    if None in (implement_file, breakdown_file, dispatch_file, preflight_file, workflow_file):
         fail("workflow entrypoint skills are missing")
 
     implement_text = implement_file.read_text(encoding="utf-8")
     breakdown_text = breakdown_file.read_text(encoding="utf-8")
     dispatch_text = dispatch_file.read_text(encoding="utf-8")
     preflight_text = preflight_file.read_text(encoding="utf-8")
+    workflow_text = workflow_file.read_text(encoding="utf-8")
 
     if 'skill_view("dev-project-pattern")' not in breakdown_text:
         fail("dev-breakdown must explicitly load dev-project-pattern via skill_view")
     if 'skill_view("dev-skill-preflight")' not in dispatch_text:
         fail("dev-workspace-dispatch must explicitly load dev-skill-preflight via skill_view")
+
     for term in ("VALIDATED_SKILLS", "REJECTED_SKILLS", "kanban_create.skills"):
         if term not in preflight_text or term not in dispatch_text:
             fail(f"skill preflight dispatch contract missing term: {term}")
+
+    require_terms(
+        workflow_text,
+        "dev-workflow-orchestrate dispatch efficiency",
+        (
+            "prepare_dispatch.py 정확히 한 번",
+            "working-tree 전체 scan을 하지 않는다",
+            "kanban_create tool 1회",
+            "kanban_show tool 1회",
+            "hermes project list",
+            "Kanban body 임시 파일",
+            "dispatch-efficiency.md",
+        ),
+    )
+    require_terms(
+        dispatch_text,
+        "dev-workspace-dispatch single path",
+        (
+            "prepare_dispatch.py`가 정확히 한 번만 수행",
+            "git diff --name-only -z HEAD",
+            "WORKSPACE_CLASSIFICATION_TOTAL_SECONDS",
+            "kanban_create tool 정확히 1회",
+            "kanban_show tool 정확히 1회",
+            "CLI body-file 지원 여부 탐색",
+            "CLI fallback을 탐색하지 않고 BLOCK",
+        ),
+    )
+
+    efficiency = workflow_file.parent / "references" / "dispatch-efficiency.md"
+    efficiency_text = efficiency.read_text(encoding="utf-8")
+    require_terms(
+        efficiency_text,
+        "dispatch-efficiency reference",
+        (
+            "prepare_dispatch.py`가 정확히 한 번",
+            "git status",
+            "inline Python tracked/effective/EOL 분류",
+            "kanban_create",
+            "kanban_show",
+            "hermes project --help",
+            "CLI body-file capability probing",
+        ),
+    )
 
     for capability in (
         "dev-spring-guidelines",
