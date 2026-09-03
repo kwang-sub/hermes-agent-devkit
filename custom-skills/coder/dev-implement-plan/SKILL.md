@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: 승인된 Kanban 작업을 할당 Workspace에서 최소 구현·구조 품질 점검·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.16.0
+version: 0.16.1
 author: local
 platforms: [linux]
 metadata:
@@ -63,6 +63,17 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/verify_workspace.py 
 `STATUS=valid`이면 helper가 확인한 workspace/branch/base를 신뢰한다. 이를 재확인하기 위한 `git status`, `git branch`, `git rev-parse` probe를 실행하지 않는다. helper가 non-zero로 실패했을 때만 reported error를 해석하기 위한 최소 probe를 허용하며, 실패 전에 사전 probe로 우회하지 않는다.
 
 특히 Windows bind mount에서 raw `git status`는 수천 개 EOL-only 파일 때문에 매우 비쌀 수 있다. raw modified-file 개수를 baseline으로 재정의하거나 작업 중단 근거로 사용하지 않는다.
+
+## Flow: FAST
+
+Fast Flow는 Task의 `Pre-existing effective changes at dispatch`를 기존 사용자 변경 baseline으로 사용한다. raw `git status`의 EOL-only noise를 사용자 변경으로 승격하지 않는다.
+
+다음처럼 설계 판단이 필요한 경우 `FAST_FLOW_ESCALATION_REQUIRED`로 `kanban_block`한다.
+
+- API/schema/dependency/architecture 의미 변경
+- transaction/security/concurrency 영향
+- cross-repo 변경
+- 요구사항이 모호해 구현 방향을 임의로 정해야 함
 
 ## Source / Scope 계약
 
@@ -201,13 +212,20 @@ Residual Risk:
 - `CHANGES_REQUESTED`는 terminal 상태가 아니며 같은 Workspace에서 blocking finding만 수정 후 재-review한다.
 - `kanban_request_review` 성공 후 즉시 종료한다. 추가 `kanban_complete`, reviewer skill load, `kanban_show`, status probe를 실행하지 않는다.
 
+## 공통 Coding Rules 핵심
+
+`/opt/data/shared/references/coding-rules.md`를 적용한다.
+
+- 기존 abstraction/library/pattern을 재사용하고 unrelated refactor를 섞지 않는다.
+- 함수/메서드 실행 block은 기본 `2-depth`를 지향한다.
+- 반복 I/O/N+1을 확인한다.
+- API는 기존 common response/error contract를 유지한다.
+- JPA는 단순 Method Query → 복잡/동적 QueryDSL → 근거 있는 Native Query 순서다.
+
 ## 공통 불변식
 
 - Workspace 밖 수정, branch 전환, 다른 worktree 생성, commit, push, PR, merge, reset, clean, stash 금지.
 - secret/raw credential 기록 금지.
-- 기존 abstraction/library/pattern을 재사용하고 unrelated refactor를 섞지 않는다.
-- API는 기존 common response/error contract를 유지한다.
-- JPA는 단순 Method Query → 복잡/동적 QueryDSL → 근거 있는 Native Query 순서다.
 - behavior/API/schema 의미 변경을 refactor라는 이름으로 섞지 않는다.
 
 retry/BLOCKED/검증/risk metadata의 추가 세부 형식이 필요할 때만 `references/implementation-details.md`를 읽는다.
