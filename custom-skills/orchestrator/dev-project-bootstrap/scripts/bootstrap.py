@@ -93,6 +93,12 @@ def main() -> int:
     ], env=env)
     run([
         sys.executable,
+        str(scripts / "ensure_gitignore.py"),
+        "--repo",
+        repo,
+    ], env=env)
+    run([
+        sys.executable,
         str(scripts / "bootstrap_project.py"),
         *sys.argv[1:],
     ], env=env)

@@ -1,4 +1,4 @@
-# dev-project-bootstrap v0.4.0
+# dev-project-bootstrap v0.4.2
 
 기존 Git Repository를 Hermes Managed Project로 idempotent하게 등록하고, 실제 개발 작업이 가능한 환경인지 먼저 검증하는 Skill입니다.
 
@@ -13,8 +13,10 @@
 - Gradle/Maven의 Java target을 감지해 JDK 8/17/21 중 project runtime 선택
 - 선택 결과를 `.hermes/toolchain.env`에 저장
 - `.gitattributes`가 없으면 생성하고, 필요한 규칙이 없으면 기존 내용을 보존한 채 추가
+- `.gitignore`에 `/.hermes/`, `/.worktrees/` Hermes 로컬 경로를 관리 블록으로 강제 보장
+- 기존 `.gitignore` 사용자 규칙은 보존하고, `AGENTS.md`/`.gitattributes`는 Hermes 규칙으로 ignore하지 않음
 - 충돌하는 EOL 규칙은 자동 수정하지 않고 Block
-- `git add --renormalize .` 같은 대량 변경은 자동 수행하지 않음
+- `git add --renormalize .`, `git rm --cached` 같은 대량/인덱스 변경은 자동 수행하지 않음
 
 ## DevKit Java 환경
 
@@ -49,6 +51,18 @@ mvnw text eol=lf
 
 이미 checkout된 wrapper가 CRLF이면 경고만 출력하고 자동 renormalize하지 않습니다.
 
+## Bootstrap이 보장하는 Git ignore 규칙
+
+```gitignore
+# >>> Hermes Agent managed >>>
+# Hermes 로컬 실행/상태 파일 (프로젝트 공용 파일은 Git 추적 유지)
+/.hermes/
+/.worktrees/
+# <<< Hermes Agent managed <<<
+```
+
+기존 `.gitignore` 내용은 보존하며 Hermes 관리 블록만 생성/복구합니다. 관리 marker가 중복되거나 손상된 경우 사용자 규칙을 임의로 수정하지 않고 Bootstrap을 중단합니다.
+
 ## 실행
 
 ```bash
@@ -60,6 +74,8 @@ python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
 
 ```text
 dev_environment_preflight.py
+        ↓
+ensure_gitignore.py
         ↓
 bootstrap_project.py
 ```

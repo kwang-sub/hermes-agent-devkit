@@ -1,7 +1,7 @@
 ---
 name: dev-project-bootstrap
-description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, 개발환경 preflight·프로젝트 Java toolchain·EOL 정책·공유 Kanban Board·Profile Binding·Context·.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
-version: 0.4.1
+description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, 개발환경 preflight·프로젝트 Java toolchain·EOL 정책·Hermes 로컬 파일 Git ignore·공유 Kanban Board·Profile Binding·Context·.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
+version: 0.4.2
 author: local
 platforms: [linux]
 metadata:
@@ -23,6 +23,8 @@ metadata:
 - 프로젝트 build file을 Java toolchain 선택을 위해 임의 수정하지 않는다.
 - 선택 결과는 `.hermes/toolchain.env`에 기록한다.
 - `.gitattributes`의 Hermes 권장 EOL 규칙을 보장하되 기존 충돌 정책은 덮어쓰지 않는다.
+- `.gitignore`에 Hermes 로컬 실행/상태 경로를 강제로 보장하고, 기존 사용자 규칙은 보존한다.
+- `AGENTS.md`, `.gitattributes` 같은 프로젝트 공용 파일은 Hermes 규칙으로 ignore하지 않는다.
 - 이미 유효한 Project/Board/Profile Binding은 재사용한다.
 - Resolver와 Legacy/Source-specific Metadata는 보존한다.
 
@@ -39,6 +41,7 @@ Java target detection
 JDK 8/17/21 runtime selection
 .hermes/toolchain.env ensure
 .gitattributes EOL policy ensure
+.gitignore Hermes local policy ensure
 Hermes Project registration
 Kanban Board ensure
 Profile bindings
@@ -57,6 +60,7 @@ implementation analysis
 Task 중 JDK/Gradle/Maven 설치
 Application build file의 Java version/toolchain 자동 수정
 tracked-file mass renormalization
+기존에 Git tracked 상태인 Hermes 파일의 index 자동 제거
 ```
 
 Gradle/Maven은 전역 설치하지 않고 Repository의 `gradlew`/`mvnw`를 사용한다.
@@ -159,13 +163,42 @@ mvnw text eol=lf
 
 `git add --renormalize .`는 자동 실행하지 않는다. 이미 checkout된 wrapper가 CRLF이면 경고만 출력한다.
 
-## 5. 표준 결과
+## 5. `.gitignore` Hermes 로컬 파일 정책
+
+Bootstrap은 preflight 성공 후 Project/Board 등록 전에 `.gitignore`의 Hermes 관리 블록을 반드시 보장한다.
+
+```gitignore
+# >>> Hermes Agent managed >>>
+# Hermes 로컬 실행/상태 파일 (프로젝트 공용 파일은 Git 추적 유지)
+/.hermes/
+/.worktrees/
+# <<< Hermes Agent managed <<<
+```
+
+처리 규칙:
+
+```text
+.gitignore 없음 -> 생성
+Hermes 관리 블록 없음 -> 기존 내용 보존 후 추가
+Hermes 관리 블록 있음 -> 필수 로컬 경로가 누락되면 관리 블록만 복구
+반복 Bootstrap -> 동일 결과 유지
+관리 marker 중복/손상 -> 사용자 영역 훼손 방지를 위해 Block
+```
+
+Hermes 관리 블록은 `AGENTS.md`, `.gitattributes`, 소스/빌드 설정 등 프로젝트 공용 파일을 ignore하지 않는다. 기존 사용자 `.gitignore` 규칙은 삭제하거나 재정렬하지 않는다.
+
+`/.hermes/`, `/.worktrees/`가 실제로 ignore되는지 `git check-ignore --no-index`로 검증하고, 검증 실패 시 Bootstrap을 중단한다.
+
+이미 Git index에 tracked된 Hermes 파일은 `.gitignore` 추가만으로 untrack되지 않는다. Bootstrap은 `git rm --cached`를 자동 실행하지 않는다.
+
+## 6. 표준 결과
 
 ```text
 <repo>/
-├─ .gitattributes
-├─ <active context file>
-└─ .hermes/
+├─ .gitignore       # Hermes 로컬 실행/상태 경로 ignore
+├─ .gitattributes   # 프로젝트 공용 정책, Git 추적 대상
+├─ <active context file>  # AGENTS.md 포함, Git 추적 가능
+└─ .hermes/         # 로컬 Hermes 상태, Git ignore
    ├─ project.yaml
    └─ toolchain.env   # Java 프로젝트
 ```
@@ -181,7 +214,7 @@ Docker image의 Java layout:
 JAVA_HOME=/opt/jdks/temurin-17   # DevKit 기본
 ```
 
-## 6. 실행
+## 7. 실행
 
 일반 실행은 launcher를 사용한다.
 
@@ -195,10 +228,12 @@ python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
 ```text
 dev_environment_preflight.py
         ↓ success
+ensure_gitignore.py
+        ↓ success
 bootstrap_project.py
 ```
 
-## 7. Repository 검증 / Block 조건
+## 8. Repository 검증 / Block 조건
 
 다음 경우 중단한다.
 
@@ -210,6 +245,8 @@ bootstrap_project.py
 - 선택된 JDK의 java/javac가 없음 또는 self-check 실패
 - 기존 `.hermes/toolchain.env`가 bootstrap managed file이 아님
 - `.gitattributes`에 Hermes EOL 정책과 충돌하는 규칙이 있음
+- `.gitignore`의 Hermes 관리 marker가 중복/손상됨
+- Hermes 로컬 경로 ignore 검증 실패
 - Base ref가 commit으로 resolve되지 않음
 - Common Context Source 없음
 - 기존 Managed Core Metadata identity 충돌
@@ -219,7 +256,7 @@ bootstrap_project.py
 
 JDK가 없거나 맞지 않을 때 Agent가 Task 중 Temurin을 다운로드하거나 host Java를 탐색해서 우회하지 않는다.
 
-## 8. Metadata / Context 보존 계약
+## 9. Metadata / Context 보존 계약
 
 `.hermes/project.yaml`의 bootstrap-managed core는 `version/project/kanban/git/profiles`이며 `resolver` 및 unknown/source-specific top-level section은 보존한다. 기존 unmanaged metadata 파일은 덮어쓰지 않는다.
 
@@ -235,12 +272,15 @@ CLAUDE.md
 
 없으면 `AGENTS.md`를 생성한다. Managed Block 밖의 기존 내용은 보존한다.
 
-## 9. 안전 규칙
+## 10. 안전 규칙
 
 절대 하지 않는다.
 
 - Java version/toolchain을 맞추기 위한 Application build file 임의 수정
 - `.gitattributes` 충돌 정책 자동 덮어쓰기
+- 기존 `.gitignore` 사용자 규칙 삭제/재정렬
+- Hermes 로컬 파일을 untrack하기 위한 `git rm --cached` 자동 실행
+- `AGENTS.md`, `.gitattributes` 등 프로젝트 공용 파일을 Hermes 관리 블록으로 ignore
 - 전체 Repository 자동 renormalize
 - EOL noise 제거 목적으로 reset/restore/checkout 수행
 - Task 중 JDK/Gradle/Maven 임의 설치
@@ -250,7 +290,7 @@ CLAUDE.md
 - Git reset/clean/checkout/rebase/merge/commit
 - Unmanaged Metadata 덮어쓰기
 
-## 10. 예상 출력
+## 11. 예상 출력
 
 Preflight:
 
@@ -263,6 +303,13 @@ EFFECTIVE_CHANGE_COUNT=...
 EOL_ONLY_CHANGE_COUNT=...
 WARNINGS=0
 PREFLIGHT_STATUS=ready
+```
+
+Git ignore ensure:
+
+```text
+GITIGNORE=created|updated|unchanged
+GITIGNORE_HERMES_LOCAL=ignored
 ```
 
 Bootstrap:
@@ -280,7 +327,7 @@ RESOLVER_MODE=user-managed
 STATUS=ready
 ```
 
-## 11. 권장 검증
+## 12. 권장 검증
 
 ```text
 safe.directory registration is idempotent
@@ -293,6 +340,11 @@ selected JDK java/javac self-check succeeds
 hermes-java uses selected JAVA_HOME
 .gitattributes rules are idempotent
 conflicting EOL rule blocks without overwrite
+.gitignore Hermes managed block is idempotent
+existing .gitignore user rules are preserved
+/.hermes/ and /.worktrees/ are ignored
+AGENTS.md and .gitattributes are not added to Hermes ignore rules
+malformed Hermes .gitignore markers block without overwriting user content
 wrapper CRLF is reported without mass renormalization
 existing Project/Board reused
 resolver/custom metadata preserved
