@@ -54,7 +54,6 @@ def parse_inline_list(value: str) -> list[str]:
 def parse_frontmatter(text: str, path: Path) -> tuple[dict[str, str], dict[str, list[str]], str]:
     if not text.startswith("---\n"):
         fail(f"missing YAML frontmatter start: {path}")
-
     end = text.find("\n---\n", 4)
     if end < 0:
         fail(f"missing YAML frontmatter end: {path}")
@@ -66,7 +65,6 @@ def parse_frontmatter(text: str, path: Path) -> tuple[dict[str, str], dict[str, 
 
     scalar: dict[str, str] = {}
     lists: dict[str, list[str]] = {}
-
     for line in frontmatter.splitlines():
         match = re.match(r"^([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$", line)
         if match:
@@ -76,13 +74,11 @@ def parse_frontmatter(text: str, path: Path) -> tuple[dict[str, str], dict[str, 
                 if value.strip().startswith("["):
                     lists[key] = parse_inline_list(value)
             continue
-
         nested = re.match(r"^\s+([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$", line)
         if nested:
             key, value = nested.groups()
             if value.strip().startswith("["):
                 lists[key] = parse_inline_list(value)
-
     return scalar, lists, body
 
 
@@ -107,7 +103,6 @@ def main() -> int:
     for skill_file in skill_files:
         text = skill_file.read_text(encoding="utf-8")
         scalar, lists, _body = parse_frontmatter(text, skill_file)
-
         profile = skill_file.parent.parent.name
         name = scalar.get("name", "").strip()
         description = scalar.get("description", "").strip()
@@ -152,7 +147,6 @@ def main() -> int:
         for related_name in related:
             if related_name.startswith("dev-") and related_name not in paths_by_name:
                 unresolved.append(f"{profile}/{skill_name} -> {related_name}")
-
     for item in unresolved:
         print(f"[WARN] related skill is not installed in custom-skills: {item}")
 
@@ -178,7 +172,6 @@ def main() -> int:
         fail("dev-breakdown must explicitly load dev-project-pattern via skill_view")
     if 'skill_view("dev-skill-preflight")' not in dispatch_text:
         fail("dev-workspace-dispatch must explicitly load dev-skill-preflight via skill_view")
-
     for term in ("VALIDATED_SKILLS", "REJECTED_SKILLS", "kanban_create.skills"):
         if term not in preflight_text or term not in dispatch_text:
             fail(f"skill preflight dispatch contract missing term: {term}")
@@ -187,7 +180,8 @@ def main() -> int:
         workflow_text,
         "dev-workflow-orchestrate dispatch efficiency",
         (
-            "prepare_dispatch.py 정확히 한 번",
+            "prepare_dispatch.py",
+            "정확히 한 번",
             "working-tree 전체 scan을 하지 않는다",
             "kanban_create tool 1회",
             "kanban_show tool 1회",
@@ -200,7 +194,8 @@ def main() -> int:
         dispatch_text,
         "dev-workspace-dispatch single path",
         (
-            "prepare_dispatch.py`가 정확히 한 번만 수행",
+            "prepare_dispatch.py",
+            "정확히 한 번만 수행",
             "git diff --name-only -z HEAD",
             "WORKSPACE_CLASSIFICATION_TOTAL_SECONDS",
             "kanban_create tool 정확히 1회",
@@ -216,7 +211,8 @@ def main() -> int:
         efficiency_text,
         "dispatch-efficiency reference",
         (
-            "prepare_dispatch.py`가 정확히 한 번",
+            "prepare_dispatch.py",
+            "정확히 한 번",
             "git status",
             "inline Python tracked/effective/EOL 분류",
             "kanban_create",
