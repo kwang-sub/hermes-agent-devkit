@@ -1,13 +1,13 @@
 ---
 name: dev-breakdown
 description: managed 프로젝트의 실제 코드 근거와 기존 project pattern으로 한국어 Implementation Plan을 생성하며 구현하지 않는 orchestrator 전용 skill.
-version: 0.6.0
+version: 0.7.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, planning, analysis, breakdown, orchestrator, pattern]
-    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-skill-preflight, dev-workspace-dispatch, dev-workflow-orchestrate]
+    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-skill-preflight, dev-workspace-dispatch, dev-workflow-orchestrate, dev-java-guidelines]
     requires_tools: [terminal, skill_view]
 ---
 
@@ -23,10 +23,11 @@ metadata:
 5. requirement의 유형, goal, constraints, In/Out of Scope, current findings와 최소 affected areas를 정한다. 코드로 답할 수 없는 product intent는 만들지 않는다.
 6. 기존 project pattern을 우선 유지하되 사용자/Task의 명시 정책과 충돌하면 조용히 기존 방식을 복제하지 않는다. 충돌 사실, 최소 적용 방법, 필요한 결정사항을 계획에 기록한다. 요구사항에 필수적이지 않은 architecture/library/common-contract 개선은 자동 적용하지 않고 Improvement Candidate로 분리한다.
 7. 최대 7개의 실행 가능한 Implementation Tasks를 근거·변경·의존성·완료 조건·verification과 함께 순서화한다. 각 task에 필요한 Stack/Capability Skill이 있으면 이름을 명시한다.
-8. Spring/Spring Boot 프로젝트에서는 `dev-spring-guidelines`를 기본 applicable skill로 지정한다. Controller/Service/DTO/Validation/Exception 변경은 `dev-spring-feature`, JPA/Repository/DataJPA/QueryDSL/Converter는 `dev-spring-data`, Spring/JPA 테스트는 `dev-spring-test`, OpenAPI/Swagger/Postman은 `dev-api-docs`를 추가 지정한다. 이 단계에서는 Coder 전용 capability Skill을 실행하지 않고 이름과 적용 이유만 계획에 보존한다.
-9. `Applicable Skills`에 존재 여부를 확인하지 않은 추상적/추정 이름을 새로 만들지 않는다. 특히 프로젝트 관례를 설명하기 위한 `java-project-conventions` 같은 가상 이름을 skill처럼 기록하지 않는다. 위 canonical capability 이름 외의 skill이 필요하면 실제 설치 이름이라는 근거가 있을 때만 후보로 기록한다. 최종 설치 여부와 runtime pin 가능 여부는 dispatch 직전 `dev-skill-preflight`가 다시 검증한다.
-10. 원 요구사항을 testable Acceptance Criteria로 명확히 하고 risk-based Test Plan, Dependencies, Known Risks, Open Questions를 작성한다.
-11. P0 blocker가 없고 project/repo·scope·pattern·AC·tasks·test가 확립될 때만 `READY`; 아니면 정확한 질문과 다음 action을 포함해 `BLOCKED`다.
+8. Java 프로젝트에서는 `dev-java-guidelines`를 기본 applicable skill로 지정한다. 이 Skill은 Java version/build/Lombok/type placement/JavaDoc 등 Java 전용 convention만 담당하며 언어 독립 공통 규칙은 `/opt/data/shared/references/coding-rules.md`를 따른다.
+9. Spring/Spring Boot 프로젝트에서는 `dev-spring-guidelines`를 기본 applicable skill로 추가 지정한다. Controller/Service/DTO/Validation/Exception 변경은 `dev-spring-feature`, JPA/Repository/DataJPA/QueryDSL/Converter는 `dev-spring-data`, Spring/JPA 테스트는 `dev-spring-test`, OpenAPI/Swagger/Postman은 `dev-api-docs`를 추가 지정한다. 이 단계에서는 Coder 전용 capability Skill을 실행하지 않고 이름과 적용 이유만 계획에 보존한다.
+10. `Applicable Skills`에 존재 여부를 확인하지 않은 추상적/추정 이름을 새로 만들지 않는다. legacy 이름인 `java-project-conventions`는 사용하지 않고 Java convention은 canonical `dev-java-guidelines`로 기록한다. 위 canonical capability 이름 외의 skill이 필요하면 실제 설치 이름이라는 근거가 있을 때만 후보로 기록한다. 최종 설치 여부와 runtime pin 가능 여부는 dispatch 직전 `dev-skill-preflight`가 다시 검증한다.
+11. 원 요구사항을 testable Acceptance Criteria로 명확히 하고 risk-based Test Plan, Dependencies, Known Risks, Open Questions를 작성한다.
+12. P0 blocker가 없고 project/repo·scope·pattern·AC·tasks·test가 확립될 때만 `READY`; 아니면 정확한 질문과 다음 action을 포함해 `BLOCKED`다.
 
 `READY`는 기술적 계획 상태일 뿐 **Plan Approval Gate** 또는 **Workspace / Branch Approval Gate** 통과가 아니다. 승인 전 `dev-workspace-dispatch`를 실행하지 않는다.
 
@@ -52,6 +53,7 @@ Improvement Candidates (not auto-applied)
 
 ```text
 Applicable Skills:
+- dev-java-guidelines: Java version/build/Lombok/type placement/JavaDoc convention
 - dev-spring-guidelines: Spring Boot project common convention
 - dev-spring-feature: Controller/Service/DTO API feature change
 - dev-spring-data: JPA repository/query change
