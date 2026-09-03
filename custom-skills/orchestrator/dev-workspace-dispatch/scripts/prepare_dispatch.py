@@ -11,6 +11,8 @@ import time
 
 MANAGED_MARKER = "# managed-by: dev-project-bootstrap"
 HERMES_MANAGED_PREFIX = ".hermes/"
+SKIPPED_COUNT = -1
+SKIPPED_SECONDS = -1.0
 
 
 class DispatchError(RuntimeError):
@@ -37,7 +39,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--branch-mode", choices=("current", "create"), required=True, help="User-approved branch strategy.")
     p.add_argument("--branch", help="Branch to verify in current mode or create in create mode. Default in create mode: feature/<TASK-KEY>.")
     p.add_argument("--start-point", help="Start point for --branch-mode create. Default: current HEAD.")
-    p.add_argument("--confirmed-dirty", action="store_true", help="Required when the approved workspace has existing effective project changes.")
+    p.add_argument(
+        "--confirmed-dirty",
+        action="store_true",
+        help=(
+            "User already approved preserving any existing workspace changes. "
+            "Skips repository-wide dirty/EOL/untracked classification."
+        ),
+    )
     return p.parse_args()
 
 
@@ -173,6 +182,14 @@ def change_summary_lines(changes: dict[str, list[str]]) -> list[str]:
     return lines
 
 
+def skipped_change_summary_lines() -> list[str]:
+    return [
+        f"EFFECTIVE_CHANGED_COUNT={SKIPPED_COUNT}",
+        f"EOL_ONLY_COUNT={SKIPPED_COUNT}",
+        f"HERMES_MANAGED_COUNT={SKIPPED_COUNT}",
+    ]
+
+
 def timing_summary_lines(timings: dict[str, float]) -> list[str]:
     return [
         f"GIT_TRACKED_SCAN_SECONDS={timings['tracked_scan']:.3f}",
@@ -180,6 +197,16 @@ def timing_summary_lines(timings: dict[str, float]) -> list[str]:
         f"GIT_UNTRACKED_SCAN_SECONDS={timings['untracked_scan']:.3f}",
         f"CLASSIFICATION_SECONDS={timings['classification']:.3f}",
         f"WORKSPACE_CLASSIFICATION_TOTAL_SECONDS={timings['total']:.3f}",
+    ]
+
+
+def skipped_timing_summary_lines() -> list[str]:
+    return [
+        f"GIT_TRACKED_SCAN_SECONDS={SKIPPED_SECONDS:.3f}",
+        f"GIT_EFFECTIVE_SCAN_SECONDS={SKIPPED_SECONDS:.3f}",
+        f"GIT_UNTRACKED_SCAN_SECONDS={SKIPPED_SECONDS:.3f}",
+        f"CLASSIFICATION_SECONDS={SKIPPED_SECONDS:.3f}",
+        f"WORKSPACE_CLASSIFICATION_TOTAL_SECONDS={SKIPPED_SECONDS:.3f}",
     ]
 
 
@@ -224,14 +251,26 @@ def main() -> int:
     base = meta["base"]
     base_sha = rev_parse(repo, base)
     before_branch = current_branch(workspace)
-    changes, timings = classify_workspace_changes(workspace)
-    if changes["effective"] and not args.confirmed_dirty:
-        summary = "\n".join(change_summary_lines(changes) + timing_summary_lines(timings))
-        raise DispatchError(
-            "approved workspace has existing effective project changes; "
-            "show the exact change counts/paths to the user and rerun with --confirmed-dirty if they approve.\n"
-            + summary
-        )
+
+    changes: dict[str, list[str]] | None
+    timings: dict[str, float] | None
+    if args.confirmed_dirty:
+        # The user already approved preserving all existing workspace changes.
+        # Repository-wide dirty/EOL/untracked classification is not required for
+        # safe dispatch and can be prohibitively slow on Windows bind mounts.
+        changes = None
+        timings = None
+        scan_mode = "skipped-approved-preservation"
+    else:
+        changes, timings = classify_workspace_changes(workspace)
+        scan_mode = "full"
+        if changes["effective"]:
+            summary = "\n".join(change_summary_lines(changes) + timing_summary_lines(timings))
+            raise DispatchError(
+                "approved workspace has existing effective project changes; "
+                "show the exact change counts/paths to the user and rerun with --confirmed-dirty if they approve.\n"
+                + summary
+            )
 
     created_branch = False
     if args.branch_mode == "current":
@@ -252,7 +291,6 @@ def main() -> int:
     if final_branch != branch:
         raise DispatchError(f"branch verification failed: expected={branch}, actual={final_branch}")
 
-    raw_dirty = any(changes.values())
     print(f"PROJECT_ID={meta['project_id']}")
     print(f"REPO_ROOT={repo}")
     print(f"BOARD={meta['board']}")
@@ -267,12 +305,26 @@ def main() -> int:
     print(f"BRANCH={branch}")
     print(f"PREVIOUS_BRANCH={before_branch}")
     print(f"CREATED_BRANCH={'true' if created_branch else 'false'}")
-    print(f"WORKSPACE_DIRTY={'true' if raw_dirty else 'false'}")
-    print(f"WORKSPACE_EFFECTIVE_DIRTY={'true' if bool(changes['effective']) else 'false'}")
-    for line in change_summary_lines(changes):
-        print(line)
-    for line in timing_summary_lines(timings):
-        print(line)
+    print(f"WORKSPACE_CHANGE_SCAN_MODE={scan_mode}")
+    print(f"EXISTING_CHANGES_PRESERVATION_APPROVED={'true' if args.confirmed_dirty else 'false'}")
+
+    if changes is None:
+        print("WORKSPACE_DIRTY=unknown")
+        print("WORKSPACE_EFFECTIVE_DIRTY=unknown")
+        for line in skipped_change_summary_lines():
+            print(line)
+        for line in skipped_timing_summary_lines():
+            print(line)
+    else:
+        raw_dirty = any(changes.values())
+        print(f"WORKSPACE_DIRTY={'true' if raw_dirty else 'false'}")
+        print(f"WORKSPACE_EFFECTIVE_DIRTY={'true' if bool(changes['effective']) else 'false'}")
+        for line in change_summary_lines(changes):
+            print(line)
+        assert timings is not None
+        for line in timing_summary_lines(timings):
+            print(line)
+
     print("STATUS=prepared")
     return 0
 

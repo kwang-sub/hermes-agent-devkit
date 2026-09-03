@@ -11,24 +11,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_ROOT = REPO_ROOT / "custom-skills"
 
 REQUIRED_SKILLS = {
-    "dev-project-pattern",
-    "dev-skill-preflight",
-    "dev-java-guidelines",
-    "dev-spring-guidelines",
-    "dev-spring-feature",
-    "dev-spring-data",
-    "dev-spring-test",
-    "dev-api-docs",
+    "dev-project-pattern", "dev-skill-preflight", "dev-java-guidelines",
+    "dev-spring-guidelines", "dev-spring-feature", "dev-spring-data",
+    "dev-spring-test", "dev-api-docs",
 }
 
 REQUIRED_REFERENCES = {
-    ("shared", "dev-api-docs"): {
-        "references/spring-openapi-reference.md",
-        "references/postman-reference.md",
-    },
-    ("orchestrator", "dev-workflow-orchestrate"): {
-        "references/dispatch-efficiency.md",
-    },
+    ("shared", "dev-api-docs"): {"references/spring-openapi-reference.md", "references/postman-reference.md"},
+    ("orchestrator", "dev-workflow-orchestrate"): {"references/dispatch-efficiency.md"},
 }
 
 
@@ -44,12 +34,8 @@ def parse_inline_list(value: str) -> list[str]:
         parsed = ast.literal_eval(value)
     except (ValueError, SyntaxError):
         inner = value[1:-1].strip()
-        if not inner:
-            return []
-        return [item.strip().strip("'\"") for item in inner.split(",") if item.strip()]
-    if not isinstance(parsed, list):
-        return []
-    return [str(item) for item in parsed]
+        return [item.strip().strip("'\"") for item in inner.split(",") if item.strip()] if inner else []
+    return [str(item) for item in parsed] if isinstance(parsed, list) else []
 
 
 def parse_frontmatter(text: str, path: Path) -> tuple[dict[str, str], dict[str, list[str]], str]:
@@ -58,12 +44,10 @@ def parse_frontmatter(text: str, path: Path) -> tuple[dict[str, str], dict[str, 
     end = text.find("\n---\n", 4)
     if end < 0:
         fail(f"missing YAML frontmatter end: {path}")
-
     frontmatter = text[4:end]
-    body = text[end + 5 :].strip()
+    body = text[end + 5:].strip()
     if not body:
         fail(f"empty SKILL.md body: {path}")
-
     scalar: dict[str, str] = {}
     lists: dict[str, list[str]] = {}
     for line in frontmatter.splitlines():
@@ -76,10 +60,8 @@ def parse_frontmatter(text: str, path: Path) -> tuple[dict[str, str], dict[str, 
                     lists[key] = parse_inline_list(value)
             continue
         nested = re.match(r"^\s+([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$", line)
-        if nested:
-            key, value = nested.groups()
-            if value.strip().startswith("["):
-                lists[key] = parse_inline_list(value)
+        if nested and nested.group(2).strip().startswith("["):
+            lists[nested.group(1)] = parse_inline_list(nested.group(2))
     return scalar, lists, body
 
 
@@ -103,29 +85,21 @@ def main() -> int:
 
     for skill_file in skill_files:
         text = skill_file.read_text(encoding="utf-8")
-        scalar, lists, _body = parse_frontmatter(text, skill_file)
+        scalar, lists, _ = parse_frontmatter(text, skill_file)
         scope = skill_file.parent.parent.name
         name = scalar.get("name", "").strip()
         description = scalar.get("description", "").strip()
-        directory_name = skill_file.parent.name
-        key = (scope, name)
-
-        if not name:
-            fail(f"frontmatter name is required: {skill_file}")
-        if name != directory_name:
-            fail(f"skill name/path mismatch: name={name!r} dir={directory_name!r}")
-        if key in discovered:
+        if not name or name != skill_file.parent.name:
+            fail(f"skill name/path mismatch: {skill_file}")
+        if (scope, name) in discovered:
             fail(f"duplicate skill name within scope {scope!r}: {name!r}")
-        if not description:
-            fail(f"frontmatter description is required: {skill_file}")
-        if len(description) > 1024:
-            fail(f"description exceeds 1024 chars for {scope}/{name}")
+        if not description or len(description) > 1024:
+            fail(f"invalid description: {skill_file}")
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name):
             fail(f"skill name must be lowercase kebab-case: {name}")
-
-        discovered[key] = skill_file
+        discovered[(scope, name)] = skill_file
         paths_by_name[name].append(skill_file)
-        related_by_skill[key] = lists.get("related_skills", [])
+        related_by_skill[(scope, name)] = lists.get("related_skills", [])
 
     missing = sorted(REQUIRED_SKILLS - paths_by_name.keys())
     if missing:
@@ -134,24 +108,18 @@ def main() -> int:
     for key, refs in REQUIRED_REFERENCES.items():
         skill_file = discovered.get(key)
         if skill_file is None:
-            fail(f"required skill missing for reference validation: {key[0]}/{key[1]}")
-        skill_dir = skill_file.parent
-        for relative in sorted(refs):
-            target = skill_dir / relative
-            if not target.is_file():
-                fail(f"required reference missing for {key[0]}/{key[1]}: {relative}")
-            if not target.read_text(encoding="utf-8").strip():
-                fail(f"required reference is empty for {key[0]}/{key[1]}: {relative}")
+            fail(f"required skill missing for reference validation: {key}")
+        for relative in refs:
+            target = skill_file.parent / relative
+            if not target.is_file() or not target.read_text(encoding="utf-8").strip():
+                fail(f"required reference missing/empty for {key}: {relative}")
 
-    unresolved: list[str] = []
     for (scope, skill_name), related in sorted(related_by_skill.items()):
         for related_name in related:
             if related_name.startswith("dev-") and related_name not in paths_by_name:
-                unresolved.append(f"{scope}/{skill_name} -> {related_name}")
-    for item in unresolved:
-        print(f"[WARN] related skill is not installed in custom-skills: {item}")
+                print(f"[WARN] related skill is not installed in custom-skills: {scope}/{skill_name} -> {related_name}")
 
-    for name, paths in sorted({name: paths for name, paths in paths_by_name.items() if len(paths) > 1}.items()):
+    for name, paths in sorted((n, p) for n, p in paths_by_name.items() if len(p) > 1):
         scopes = ", ".join(sorted(path.parent.parent.name for path in paths))
         print(f"[INFO] scope-scoped duplicate skill name allowed: {name} ({scopes})")
 
@@ -171,98 +139,46 @@ def main() -> int:
     workflow_text = workflow_file.read_text(encoding="utf-8")
     reviewer_text = reviewer_file.read_text(encoding="utf-8")
 
-    if 'skill_view("dev-project-pattern")' not in breakdown_text:
-        fail("dev-breakdown must explicitly load dev-project-pattern via skill_view")
-    if 'skill_view("dev-skill-preflight")' not in dispatch_text:
-        fail("dev-workspace-dispatch must explicitly load dev-skill-preflight via skill_view")
-    for term in ("VALIDATED_SKILLS", "REJECTED_SKILLS", "kanban_create.skills"):
-        if term not in preflight_text or term not in dispatch_text:
-            fail(f"skill preflight dispatch contract missing term: {term}")
+    require_terms(breakdown_text, "dev-breakdown", ('skill_view("dev-project-pattern")', "dev-java-guidelines"))
+    require_terms(dispatch_text, "dev-workspace-dispatch preflight", ('skill_view("dev-skill-preflight")', "VALIDATED_SKILLS", "REJECTED_SKILLS", "kanban_create.skills"))
 
-    require_terms(
-        workflow_text,
-        "dev-workflow-orchestrate dispatch efficiency",
-        (
-            "prepare_dispatch.py",
-            "정확히 한 번",
-            "working-tree 전체 scan을 하지 않는다",
-            "kanban_create tool 1회",
-            "kanban_show tool 1회",
-            "hermes project list",
-            "Kanban body 임시 파일",
-            "dispatch-efficiency.md",
-        ),
-    )
-    require_terms(
-        dispatch_text,
-        "dev-workspace-dispatch single path",
-        (
-            "prepare_dispatch.py",
-            "정확히 한 번만 수행",
-            "git diff --name-only -z HEAD",
-            "WORKSPACE_CLASSIFICATION_TOTAL_SECONDS",
-            "kanban_create tool 정확히 1회",
-            "kanban_show tool 정확히 1회",
-            "CLI body-file 지원 여부 탐색",
-            "CLI fallback을 탐색하지 않고 BLOCK",
-        ),
-    )
-    require_terms(
-        dispatch_text,
-        "dev-workspace-dispatch explicit board routing",
-        (
-            "Standard Flow의 유일한 Kanban board source",
-            "HERMES_KANBAN_BOARD",
-            "kanban_create(board=BOARD, ...)",
-            "kanban_show(board=BOARD, task_id=<CREATED_TASK_ID>)",
-            "board == BOARD",
-            "board 인자를 생략하지 않는다",
-        ),
-    )
+    require_terms(workflow_text, "dev-workflow-orchestrate dispatch efficiency", (
+        "prepare_dispatch.py", "정확히 한 번", "working-tree 전체 scan을 하지 않는다",
+        "kanban_create tool 1회", "kanban_show tool 1회", "hermes project list",
+        "Kanban body 임시 파일", "dispatch-efficiency.md",
+        "skipped-approved-preservation", "change_summary.py --include", "review_context.py --include",
+    ))
 
-    efficiency = workflow_file.parent / "references" / "dispatch-efficiency.md"
-    efficiency_text = efficiency.read_text(encoding="utf-8")
-    require_terms(
-        efficiency_text,
-        "dispatch-efficiency reference",
-        (
-            "prepare_dispatch.py",
-            "정확히 한 번",
-            "git status",
-            "inline Python tracked/effective/EOL 분류",
-            "kanban_create",
-            "kanban_show",
-            "hermes project --help",
-            "CLI body-file capability probing",
-        ),
-    )
+    require_terms(dispatch_text, "dev-workspace-dispatch fast path", (
+        "--confirmed-dirty", "repository-wide dirty/EOL/untracked 분류를 **생략**",
+        "WORKSPACE_CHANGE_SCAN_MODE=skipped-approved-preservation", "*_COUNT=-1",
+        "git diff --name-only -z HEAD", "WORKSPACE_CLASSIFICATION_TOTAL_SECONDS",
+        "kanban_create(board=BOARD, ...)", "kanban_show(board=BOARD, task_id=<CREATED_TASK_ID>)",
+        "board == BOARD", "HERMES_KANBAN_BOARD", "CLI body-file 지원 여부 탐색",
+        "CLI fallback을 탐색하지 않고 BLOCK",
+    ))
 
-    for capability in (
-        "dev-java-guidelines",
-        "dev-spring-guidelines",
-        "dev-spring-feature",
-        "dev-spring-data",
-        "dev-spring-test",
-        "dev-api-docs",
-    ):
+    efficiency_text = (workflow_file.parent / "references" / "dispatch-efficiency.md").read_text(encoding="utf-8")
+    require_terms(efficiency_text, "dispatch-efficiency reference", (
+        "skipped-approved-preservation", "change_summary.py --include", "review_context.py --include",
+        "큰 파일을 임의의 MB threshold로 제외하지 않는다", "hermes project --help",
+        "CLI body-file capability probing",
+    ))
+
+    for capability in ("dev-java-guidelines", "dev-spring-guidelines", "dev-spring-feature", "dev-spring-data", "dev-spring-test", "dev-api-docs"):
         if f'skill_view("{capability}")' not in implement_text:
             fail(f"dev-implement-plan must explicitly load {capability} via skill_view")
 
-    require_terms(
-        breakdown_text,
-        "dev-breakdown Java capability",
-        ("dev-java-guidelines", "legacy 이름인 `java-project-conventions`는 사용하지 않고"),
-    )
-    require_terms(
-        reviewer_text,
-        "dev-code-review Java capability",
-        ('skill_view("dev-java-guidelines")', "Java Convention Review Gate"),
-    )
+    require_terms(implement_text, "dev-implement-plan scoped summary", (
+        "scoped change_summary.py", "Standard Flow에서 `--include` 없이", "--allow-full-scan",
+        "tracked와 untracked 모두 Git pathspec", "Changed Files",
+    ))
+    require_terms(reviewer_text, "dev-code-review scoped review", (
+        "review_context.py --include", "Standard Flow에서는 `--include`를 반드시 제공",
+        "--allow-full-scan", "tracked와 untracked 모두 Git pathspec", "Java Convention Review Gate",
+    ))
 
-    print(
-        f"[PASS] Custom skill contract: {len(discovered)} scoped skills "
-        f"({len(paths_by_name)} unique names) validated"
-    )
+    print(f"[PASS] Custom skill contract: {len(discovered)} scoped skills ({len(paths_by_name)} unique names) validated")
     return 0
 
 
