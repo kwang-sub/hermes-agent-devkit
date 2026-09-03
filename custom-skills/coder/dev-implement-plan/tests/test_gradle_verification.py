@@ -62,6 +62,7 @@ class GradleVerificationTests(unittest.TestCase):
         (self.repo / 'gradlew').write_text('#!/bin/sh\n', encoding='utf-8')
         self.log = self.base / 'calls.log'
         self.guard_root = self.base / 'session-blocks'
+        self.diagnostic_root = self.base / 'diagnostics'
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -78,6 +79,7 @@ class GradleVerificationTests(unittest.TestCase):
             'HERMES_KANBAN_TASK': 't_test',
             'HERMES_SESSION_ID': 'session_test',
             'HERMES_GRADLE_SESSION_GUARD_ROOT': str(self.guard_root),
+            'HERMES_GRADLE_DIAGNOSTIC_LOG_ROOT': str(self.diagnostic_root),
         })
         cmd = [sys.executable, str(SCRIPT), '--workspace', str(self.repo), '--mode', mode,
                '--launcher', str(launcher), '--capability-timeout', '1', '--verification-timeout', '1',
@@ -92,11 +94,15 @@ class GradleVerificationTests(unittest.TestCase):
     def guard(self):
         return self.guard_root / 't_test--session_test.blocked'
 
+    def observation_logs(self):
+        return sorted(self.diagnostic_root.rglob('*.log')) if self.diagnostic_root.exists() else []
+
     def test_pass_runs_capability_and_primary_once(self):
         proc = self.run_helper(primary='pass')
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn('GRADLE_STATUS=PASS', proc.stdout)
         self.assertFalse(self.guard().exists())
+        self.assertEqual(self.observation_logs(), [])
         calls = self.calls()
         self.assertEqual(len(calls), 2)
         self.assertIn('--version', calls[0])
@@ -108,9 +114,10 @@ class GradleVerificationTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn('GRADLE_BLOCKER=BUILD_FAILURE', proc.stdout)
         self.assertFalse(self.guard().exists())
+        self.assertEqual(self.observation_logs(), [])
         self.assertEqual(len(self.calls()), 2)
 
-    def test_timeout_identifies_compile_execution_and_runs_bounded_dry_run(self):
+    def test_timeout_identifies_compile_execution_and_persists_observation_log(self):
         proc = self.run_helper(primary='task-sleep', online='pass', offline='pass', dry_run='pass')
         self.assertEqual(proc.returncode, 2)
         self.assertIn('GRADLE_BLOCKER=BUILD_TASK_TIMEOUT', proc.stdout)
@@ -118,9 +125,26 @@ class GradleVerificationTests(unittest.TestCase):
         self.assertIn('GRADLE_TIMEOUT_DETAIL=JAVA_COMPILE_EXECUTION', proc.stdout)
         self.assertIn('GRADLE_ROOT_CAUSE_CANDIDATES=javac_or_annotation_processor_or_workspace_io', proc.stdout)
         self.assertIn('DIAGNOSTIC_DRY_RUN_RESULT=PASS', proc.stdout)
+        self.assertIn('GRADLE_OBSERVATION_LOG=', proc.stdout)
+        self.assertIn('HOST_ACTIVITY=UNKNOWN', proc.stdout)
+        self.assertIn('HOST_ACTIVITY_POLICY=OBSERVE_ONLY', proc.stdout)
         self.assertIn('PRIMARY_RETRY_ALLOWED=false', proc.stdout)
         self.assertIn('SESSION_DIRECT_GRADLE_ALLOWED=false', proc.stdout)
         self.assertTrue(self.guard().is_file())
+        logs = self.observation_logs()
+        self.assertEqual(len(logs), 1)
+        text = logs[0].read_text(encoding='utf-8')
+        for term in (
+            'WORKSPACE=',
+            'MODE=TARGETED_TEST',
+            'HERMES_KANBAN_TASK=t_test',
+            'HERMES_SESSION_ID=session_test',
+            'HOST_ACTIVITY=UNKNOWN',
+            'HOST_ACTIVITY_POLICY=OBSERVE_ONLY',
+            'PRIMARY_LAST_TASK=:compileJava',
+            'GRADLE_TIMEOUT_DETAIL=JAVA_COMPILE_EXECUTION',
+        ):
+            self.assertIn(term, text)
         calls = self.calls()
         self.assertEqual(len(calls), 5)
         self.assertEqual(len([c for c in calls if 'test --tests' in c]), 1)
@@ -133,6 +157,7 @@ class GradleVerificationTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn('GRADLE_TIMEOUT_DETAIL=TASK_GRAPH_TIMEOUT', proc.stdout)
         self.assertIn('GRADLE_ROOT_CAUSE_CANDIDATES=task_graph_or_compile_classpath_resolution', proc.stdout)
+        self.assertEqual(len(self.observation_logs()), 1)
 
     def test_online_timeout_offline_missing_is_dependency_resolution(self):
         proc = self.run_helper(primary='sleep', online='sleep', offline='missing')
@@ -141,6 +166,7 @@ class GradleVerificationTests(unittest.TestCase):
         self.assertIn('GRADLE_TIMEOUT_DETAIL=DEPENDENCY_RESOLUTION', proc.stdout)
         self.assertIn('DIAGNOSTIC_DRY_RUN_RESULT=SKIPPED', proc.stdout)
         self.assertTrue(self.guard().is_file())
+        self.assertEqual(len(self.observation_logs()), 1)
         self.assertEqual(len(self.calls()), 4)
 
     def test_both_diagnostics_timeout_is_project_configuration(self):
@@ -150,6 +176,7 @@ class GradleVerificationTests(unittest.TestCase):
         self.assertIn('GRADLE_TIMEOUT_DETAIL=PROJECT_CONFIGURATION', proc.stdout)
         self.assertIn('DIAGNOSTIC_DRY_RUN_RESULT=SKIPPED', proc.stdout)
         self.assertTrue(self.guard().is_file())
+        self.assertEqual(len(self.observation_logs()), 1)
 
     def test_compile_mode_uses_compile_java(self):
         proc = self.run_helper(primary='pass', mode='COMPILE')
