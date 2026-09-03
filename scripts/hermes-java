@@ -35,8 +35,31 @@ gradle_distribution_root="${HERMES_GRADLE_DIST_ROOT:-$gradle_root/distributions}
 gradle_download_root="${HERMES_GRADLE_DOWNLOAD_ROOT:-$gradle_root/downloads}"
 gradle_lock_root="${HERMES_GRADLE_LOCK_ROOT:-$gradle_root/locks}"
 gradle_project_cache_root="${HERMES_GRADLE_PROJECT_CACHE_ROOT:-$gradle_root/project-cache}"
+gradle_session_guard_root="${HERMES_GRADLE_SESSION_GUARD_ROOT:-$gradle_root/session-blocks}"
 
-mkdir -p "$GRADLE_USER_HOME" "$gradle_distribution_root" "$gradle_download_root" "$gradle_lock_root" "$gradle_project_cache_root"
+mkdir -p "$GRADLE_USER_HOME" "$gradle_distribution_root" "$gradle_download_root" "$gradle_lock_root" "$gradle_project_cache_root" "$gradle_session_guard_root"
+
+sanitize_guard_value() {
+  printf '%s' "$1" | tr -c '[:alnum:]._- ' '_' | tr -d ' '
+}
+
+check_gradle_session_guard() {
+  if [ "${HERMES_GRADLE_BOUNDED_HELPER:-0}" = "1" ]; then
+    return 0
+  fi
+  if [ -z "${HERMES_KANBAN_TASK:-}" ] || [ -z "${HERMES_SESSION_ID:-}" ]; then
+    return 0
+  fi
+  local task session marker
+  task="$(sanitize_guard_value "$HERMES_KANBAN_TASK")"
+  session="$(sanitize_guard_value "$HERMES_SESSION_ID")"
+  marker="$gradle_session_guard_root/${task}--${session}.blocked"
+  if [ -f "$marker" ]; then
+    echo "hermes-java: direct Gradle execution is blocked for this Kanban session after bounded verification returned BLOCKED" >&2
+    echo "hermes-java: use the existing gradle_verification evidence and kanban_block; start a new worker/session to retry after the blocker is resolved" >&2
+    exit 2
+  fi
+}
 
 read_gradle_property() {
   local properties_file="$1"
@@ -148,6 +171,8 @@ command_path="$1"
 command_name="$(basename "$command_path")"
 
 if [ "$command_name" = "gradlew" ]; then
+  check_gradle_session_guard
+
   has_project_cache_dir=false
   for arg in "$@"; do
     case "$arg" in
