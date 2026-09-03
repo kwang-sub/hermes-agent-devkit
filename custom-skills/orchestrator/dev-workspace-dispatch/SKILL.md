@@ -1,12 +1,12 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 구현 계획과 project pattern/capability 계약을 Git workspace와 Kanban으로 인계한다.
-version: 0.5.0
+version: 0.6.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, capability, preflight]
+    tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, capability, preflight, notification]
     related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-skill-preflight, dev-workflow-orchestrate]
     requires_tools: [terminal, skill_view, kanban_create, kanban_show, clarify]
 ---
@@ -64,13 +64,6 @@ Suggested new branch: feature/<TASK-KEY>
 
 `dirty`, `많음`, `매우 많음`, `대량`처럼 개수를 추측하는 표현을 사용하지 않는다. 항상 helper가 반환한 정확한 count와 필요 시 path를 그대로 제시한다.
 
-예:
-
-```text
-현재 workspace에는 프로젝트 변경 3개, EOL-only 변경 0개, Hermes 관리 파일 4개가 있습니다.
-프로젝트 변경 3개를 유지한 상태로 작업할지 확인합니다.
-```
-
 Effective project changes가 0이고 EOL-only/Hermes managed file만 존재하면 `--confirmed-dirty` 승인을 요구하지 않는다. 파일을 reset/restore/stash/line-ending rewrite하지 않는다.
 
 사용자 선택지는 다음이다.
@@ -118,36 +111,6 @@ Helper 검증 항목:
 7. tracked/untracked 상태를 effective/EOL-only/Hermes managed로 분류한다.
 8. 현재 branch 또는 새 branch 생성 결과를 검증한다.
 
-예상 출력:
-
-```text
-PROJECT_ID=dashboard
-REPO_ROOT=/workspace/dashboard
-BOARD=dashboard
-BASE_BRANCH=dev
-BASE_SHA=<sha>
-WORKSPACE_PATH=/workspace/dashboard
-WORKSPACE=dir:/workspace/dashboard
-ASSIGNEE=coder
-REVIEWER=reviewer
-TASK_KEY=CALC-001
-BRANCH_MODE=current
-BRANCH=dev
-PREVIOUS_BRANCH=dev
-CREATED_BRANCH=false
-WORKSPACE_DIRTY=true
-WORKSPACE_EFFECTIVE_DIRTY=true
-EFFECTIVE_CHANGED_COUNT=3
-EFFECTIVE_CHANGED_1=.gitattributes
-EFFECTIVE_CHANGED_2=CLAUDE.md
-EFFECTIVE_CHANGED_3=src/main/resources/properties/config.properties
-EOL_ONLY_COUNT=0
-HERMES_MANAGED_COUNT=4
-HERMES_MANAGED_1=.hermes/LOCAL-...-body.txt
-...
-STATUS=prepared
-```
-
 `WORKSPACE_DIRTY`는 raw 작업트리에 어떤 변경이든 존재하는지 나타내는 정보용 필드다. 승인/위험 판단에는 `WORKSPACE_EFFECTIVE_DIRTY`와 `EFFECTIVE_CHANGED_COUNT`를 사용한다.
 
 Helper가 non-zero로 종료되면 Kanban Task를 만들지 않는다.
@@ -180,47 +143,11 @@ python3 /opt/custom-skills/orchestrator/dev-skill-preflight/scripts/validate_ski
 
 ## 5. Kanban Body 계약
 
-Body에는 `dev-breakdown`의 승인된 기술 판단을 축약하지 말고 다음을 보존한다.
+Body에는 `dev-breakdown`의 승인된 기술 판단을 축약하지 말고 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Dependencies, Known Risks, Project Pattern Summary, Pattern References, Applicable Skills, Validated/Rejected Pinned Skills, Pattern Conflicts, Improvement Candidates, Reviewer Profile, Implementation/Review Skill, Workspace Contract를 보존한다.
+
+Workspace Contract에는 최소 다음을 기록한다.
 
 ```text
-Task Key:
-Goal:
-Acceptance Criteria:
-Implementation Tasks:
-Test Plan:
-Dependencies:
-Known Risks:
-
-Project Pattern Summary:
-- Language / Framework / Persistence / Build / Test
-- Package / Naming
-- Response Contract
-- Error / Validation Contract
-- Data Access Convention
-- Test Convention
-
-Pattern References:
-- <path/class/symbol>
-
-Applicable Skills:
-- <skill-name>: <reason>
-
-Validated Pinned Skills:
-- None | <skill-name>
-
-Rejected Pinned Skills:
-- None | <skill-name>: missing from <profile>
-
-Pattern Conflicts:
-- None | <conflict and approved handling>
-
-Improvement Candidates:
-- None | <not-auto-applied suggestion>
-
-Reviewer Profile:
-Implementation Skill: dev-implement-plan
-Review Skill: dev-code-review
-Workspace Contract:
 - Workspace: <WORKSPACE_PATH>
 - Branch mode: current | create
 - Expected branch: <BRANCH>
@@ -238,7 +165,36 @@ Workspace Contract:
 
 Task body의 기존 변경 설명에도 `많음/매우 많음/대량`을 사용하지 않는다. helper의 숫자를 그대로 기록한다. EOL-only/Hermes managed 파일을 `사용자 변경`이라고 표현하지 않는다.
 
-## 6. 성공 기준
+## 6. Kanban 알림 구독
+
+`kanban_create` 성공 후 생성된 Task ID를 확보하고, `kanban_show`로 `task.skills` 검증까지 끝난 즉시 아래 helper를 정확히 한 번 실행한다.
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/subscribe_notification.py" --task-id "<KANBAN_TASK_ID>"
+```
+
+환경변수 계약:
+
+```text
+HERMES_KANBAN_NOTIFY_ENABLED=false | true
+HERMES_KANBAN_NOTIFY_PLATFORM=discord | slack | telegram | <Hermes 지원 플랫폼>
+HERMES_KANBAN_NOTIFY_TARGET=<gateway chat/channel id>
+HERMES_KANBAN_NOTIFY_DELIVERY_MODE=notify | wake | notify+wake
+HERMES_KANBAN_NOTIFY_CHAT_TYPE=<optional chat type>
+```
+
+규칙:
+
+1. 기본값은 `HERMES_KANBAN_NOTIFY_ENABLED=false`다.
+2. 활성화 시 Hermes 공식 `kanban notify-subscribe` 명령을 사용한다.
+3. 플랫폼별 명령을 Skill 본문에 하드코딩하지 않는다. `PLATFORM`, `TARGET`, `DELIVERY_MODE`, `CHAT_TYPE`만 공통 helper에 전달한다.
+4. Discord 인증은 `DISCORD_BOT_TOKEN`을 로컬 `.env`에서 Gateway로 전달하며 Task body/comment/log에 token을 기록하지 않는다.
+5. `NOTIFY_STATUS=subscribed`면 정상 등록이다.
+6. `NOTIFY_STATUS=disabled` 또는 `NOTIFY_STATUS=warning`이어도 Kanban 생성/dispatch를 취소하거나 `BLOCKED`로 바꾸지 않는다.
+7. 알림 helper 실패를 이유로 재시도 loop, approval 대기, source 수정, 별도 notification Task 생성을 하지 않는다.
+8. 신규 Task에만 자동 구독하며 기존 Task를 임의로 재구독하지 않는다.
+
+## 7. 성공 기준
 
 - Plan Readiness = READY
 - Plan 승인 확인됨
@@ -256,12 +212,14 @@ Task body의 기존 변경 설명에도 `많음/매우 많음/대량`을 사용�
 - Project Pattern Summary/Pattern References/Applicable Skills/Pattern Conflicts가 보존됨
 - Validated/Rejected pinned skill 결과가 보존됨
 - Reviewer 정보와 Workspace Contract가 보존됨
+- 알림이 활성화된 경우 notification helper를 1회 호출했으며 성공/경고 여부와 무관하게 dispatch lifecycle을 유지함
 
-## 7. 회귀 검증
+## 8. 회귀 검증
 
 ```bash
 python3 custom-skills/orchestrator/dev-skill-preflight/tests/test_validate_skills.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
+python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py
 ```
 
 관련 orchestrator 회귀 검증 전체:
@@ -271,6 +229,7 @@ python3 -m compileall -q custom-skills
 python3 scripts/check_skill_contract.py
 python3 custom-skills/orchestrator/dev-skill-preflight/tests/test_validate_skills.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
+python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py
 python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_metadata_preservation.py
 python3 custom-skills/orchestrator/dev-project-resolve/tests/test_project_resolve.py
 ```
