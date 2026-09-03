@@ -207,6 +207,18 @@ def main() -> int:
             "CLI fallback을 탐색하지 않고 BLOCK",
         ),
     )
+    require_terms(
+        dispatch_text,
+        "dev-workspace-dispatch explicit board routing",
+        (
+            "Standard Flow의 유일한 Kanban board source",
+            "HERMES_KANBAN_BOARD",
+            "kanban_create(board=BOARD, ...)",
+            "kanban_show(board=BOARD, task_id=<CREATED_TASK_ID>)",
+            "board == BOARD",
+            "board 인자를 생략하지 않는다",
+        ),
+    )
 
     efficiency = workflow_file.parent / "references" / "dispatch-efficiency.md"
     efficiency_text = efficiency.read_text(encoding="utf-8")
