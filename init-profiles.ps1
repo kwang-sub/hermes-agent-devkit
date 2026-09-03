@@ -136,6 +136,11 @@ $ExternalSkillDirs = @{
     )
 }
 
+# Hermes의 Interactive Kanban tool gate는 현재 profile config의 최상위
+# `toolsets` 값을 직접 확인한다. platform_toolsets만 설정하면 kanban_* 도구가
+# 등록되지 않는 upstream 불일치가 있으므로 모든 개발 Profile에서 명시적으로 보장한다.
+$RequiredToolsets = @("hermes-cli", "kanban")
+
 # These official optional skills were present in the legacy DevKit profile baseline.
 # Remove them only once per profile so later user-installed Hub skills are preserved.
 $LegacyOfficialHubSkills = @(
@@ -634,6 +639,166 @@ print(f"[PASS] YAML list verified: {p}")
     }
 }
 
+function Ensure-RequiredToolsets {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Profile,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Required
+    )
+
+    $Config = Join-ContainerPath -Root $ContainerDataPath -Child "profiles/$Profile/config.yaml"
+
+    $Py = @'
+from datetime import datetime, timezone
+import os
+from pathlib import Path
+import re
+import shutil
+import stat
+import sys
+import tempfile
+import yaml
+
+p = Path(sys.argv[1])
+required = sys.argv[2:]
+if not required:
+    raise SystemExit("At least one required toolset is required")
+
+original = p.read_text(encoding="utf-8") if p.exists() else ""
+try:
+    document = yaml.safe_load(original) if original.strip() else {}
+except yaml.YAMLError as exc:
+    raise SystemExit(f"Invalid YAML in {p}: {exc.problem or 'parse error'}")
+
+if document is None:
+    document = {}
+if not isinstance(document, dict):
+    raise SystemExit(f"Config root must be a YAML mapping: {p}")
+
+current = document.get("toolsets")
+if current is None:
+    current = []
+if not isinstance(current, list) or not all(isinstance(item, str) for item in current):
+    raise SystemExit(f"toolsets must be a YAML string list: {p}")
+
+merged = list(current)
+for item in required:
+    if item not in merged:
+        merged.append(item)
+
+if merged == current:
+    print(f"[OK] Required toolsets already configured: {p}")
+    raise SystemExit(0)
+
+lines = original.splitlines()
+start = next(
+    (i for i, line in enumerate(lines) if re.match(r"^toolsets\s*:", line)),
+    None,
+)
+replacement = ["toolsets:"] + [f"  - {item}" for item in merged]
+
+if start is None:
+    if original and not original.endswith("\n"):
+        original += "\n"
+    updated = original + "\n".join(replacement) + "\n"
+else:
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        line = lines[i]
+        if line and not line[0].isspace() and not line.lstrip().startswith("#"):
+            end = i
+            break
+    updated = "\n".join(lines[:start] + replacement + lines[end:]) + "\n"
+
+try:
+    verified = yaml.safe_load(updated) or {}
+except yaml.YAMLError as exc:
+    raise SystemExit(f"Refusing to write invalid YAML: {exc.problem or 'parse error'}")
+actual = verified.get("toolsets")
+if not isinstance(actual, list) or any(item not in actual for item in required):
+    raise SystemExit("Refusing to write config: required toolsets are missing after update")
+
+if p.exists():
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    backup = p.with_name(f"{p.name}.bak-{stamp}")
+    shutil.copy2(p, backup)
+    print(f"[BACKUP] {backup}")
+
+fd, temporary_name = tempfile.mkstemp(prefix=f".{p.name}.", dir=p.parent)
+os.close(fd)
+temporary = Path(temporary_name)
+try:
+    temporary.write_text(updated, encoding="utf-8")
+    if p.exists():
+        temporary.chmod(stat.S_IMODE(p.stat().st_mode))
+    os.replace(temporary, p)
+finally:
+    temporary.unlink(missing_ok=True)
+
+print(f"[UPDATE] Required toolsets configured: {p} -> {merged}")
+'@
+
+    Write-Host "[TOOLSETS] $Profile -> require $($Required -join ', ')"
+    $DockerArgs = @(
+        "exec", "-i",
+        "--user", "hermes",
+        $Container,
+        $PythonPath,
+        "-",
+        $Config
+    ) + $Required
+
+    $Py | & docker @DockerArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to configure required toolsets for '$Profile'."
+    }
+}
+
+function Verify-RequiredToolsets {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Profile,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Required
+    )
+
+    $Config = Join-ContainerPath -Root $ContainerDataPath -Child "profiles/$Profile/config.yaml"
+
+    $Py = @'
+from pathlib import Path
+import sys
+import yaml
+
+p = Path(sys.argv[1])
+required = sys.argv[2:]
+document = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+toolsets = document.get("toolsets")
+if not isinstance(toolsets, list):
+    raise SystemExit(f"toolsets must be a YAML list: {p}")
+missing = [item for item in required if item not in toolsets]
+if missing:
+    raise SystemExit(f"Missing required toolsets for {p}: {missing}")
+print(f"[PASS] Required toolsets verified: {p} -> {toolsets}")
+'@
+
+    $DockerArgs = @(
+        "exec", "-i",
+        "--user", "hermes",
+        $Container,
+        $PythonPath,
+        "-",
+        $Config
+    ) + $Required
+
+    $Py | & docker @DockerArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Required toolset verification failed for '$Profile'."
+    }
+}
+
 Write-Host "=== Hermes Profile Initialization ==="
 
 Assert-Prerequisites
@@ -674,6 +839,13 @@ Ensure-ExternalDirs `
     -ExternalDirs $ExternalSkillDirs["reviewer"]
 
 Write-Host ""
+Write-Host "=== Configure Required Toolsets ==="
+
+foreach ($Profile in @("orchestrator", "coder", "reviewer")) {
+    Ensure-RequiredToolsets -Profile $Profile -Required $RequiredToolsets
+}
+
+Write-Host ""
 Write-Host "=== Verify YAML List Format ==="
 
 Verify-ExternalDirs `
@@ -687,6 +859,13 @@ Verify-ExternalDirs `
 Verify-ExternalDirs `
     -Profile "reviewer" `
     -Expected $ExternalSkillDirs["reviewer"]
+
+Write-Host ""
+Write-Host "=== Verify Required Toolsets ==="
+
+foreach ($Profile in @("orchestrator", "coder", "reviewer")) {
+    Verify-RequiredToolsets -Profile $Profile -Required $RequiredToolsets
+}
 
 Write-Host ""
 Write-Host "=== Profile List ==="
@@ -706,4 +885,4 @@ Write-Host "1. Configure model/OAuth for orchestrator"
 Write-Host "2. Configure model/OAuth for coder"
 Write-Host "3. Configure model/OAuth for reviewer"
 Write-Host "4. Re-check config.yaml after model setup"
-Write-Host "5. Start fresh Hermes sessions and verify role-specific/shared dev-* skills"
+Write-Host "5. Start fresh Hermes sessions and verify role-specific/shared dev-* skills and kanban_* tools"
