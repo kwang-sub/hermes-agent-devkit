@@ -75,6 +75,7 @@ def child_env(hermes_cli: Path) -> dict[str, str]:
     if cli_dir not in path_parts:
         env["PATH"] = os.pathsep.join([cli_dir, *path_parts])
     env["HERMES_CLI"] = str(hermes_cli)
+    env["PYTHONUNBUFFERED"] = "1"
     return env
 
 
@@ -84,6 +85,10 @@ def run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
         raise BootstrapLauncherError(
             f"bootstrap stage failed ({result.returncode}): {' '.join(cmd)}"
         )
+
+
+def python_stage(script: Path, *args: str) -> list[str]:
+    return [sys.executable, "-u", str(script), *args]
 
 
 def lock_path(repo: str) -> Path:
@@ -126,30 +131,28 @@ def main() -> int:
     hermes_cli = resolve_hermes_cli()
     env = child_env(hermes_cli)
 
-    print(f"[OK] Hermes CLI: {hermes_cli}")
-    print(f"[INFO] Bootstrap preflight: {'full' if full_preflight else 'fast'}")
+    print(f"[OK] Hermes CLI: {hermes_cli}", flush=True)
+    print(
+        f"[INFO] Bootstrap preflight: {'full' if full_preflight else 'fast'}",
+        flush=True,
+    )
 
     with bootstrap_lock(repo):
-        preflight_cmd = [
-            sys.executable,
-            str(scripts / "bootstrap_preflight.py"),
-            "--repo",
-            repo,
-        ]
+        preflight_args = ["--repo", repo]
         if full_preflight:
-            preflight_cmd.append("--full")
-        run(preflight_cmd, env=env)
-        run([
-            sys.executable,
-            str(scripts / "ensure_gitignore.py"),
-            "--repo",
-            repo,
-        ], env=env)
-        run([
-            sys.executable,
-            str(scripts / "bootstrap_project.py"),
-            *forwarded_args,
-        ], env=env)
+            preflight_args.append("--full")
+        run(
+            python_stage(scripts / "bootstrap_preflight.py", *preflight_args),
+            env=env,
+        )
+        run(
+            python_stage(scripts / "ensure_gitignore.py", "--repo", repo),
+            env=env,
+        )
+        run(
+            python_stage(scripts / "bootstrap_project.py", *forwarded_args),
+            env=env,
+        )
     return 0
 
 
@@ -157,5 +160,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except BootstrapLauncherError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        print(f"ERROR: {exc}", file=sys.stderr, flush=True)
         raise SystemExit(1)
