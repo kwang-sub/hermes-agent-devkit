@@ -129,19 +129,27 @@ expected = {
     "coder": ["/opt/custom-skills/coder", "/opt/custom-skills/shared"],
     "reviewer": ["/opt/custom-skills/reviewer", "/opt/custom-skills/shared"],
 }[profile]
+required_toolsets = ["hermes-cli", "kanban"]
 
 data = yaml.safe_load(config.read_text(encoding="utf-8")) or {}
 actual = data.get("skills", {}).get("external_dirs")
 if actual != expected:
     raise SystemExit(f"{profile}: expected external_dirs={expected!r}, got {actual!r}")
+
+toolsets = data.get("toolsets")
+if not isinstance(toolsets, list):
+    raise SystemExit(f"{profile}: toolsets must be a YAML list, got {toolsets!r}")
+missing = [item for item in required_toolsets if item not in toolsets]
+if missing:
+    raise SystemExit(f"{profile}: missing required toolsets={missing!r}, got {toolsets!r}")
 '@
 
 foreach ($Profile in @("orchestrator", "coder", "reviewer")) {
     $ProfileConfigCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python - $Profile
     if ($LASTEXITCODE -ne 0) {
-        throw "[FAIL] Profile external skill contract: $Profile"
+        throw "[FAIL] Profile skill/toolset contract: $Profile"
     }
-    Write-Host "[OK] Profile external skill contract: $Profile"
+    Write-Host "[OK] Profile skill/toolset contract: $Profile"
 }
 
 Write-Host "[PASS] Hermes container runtime matches the current DevKit contract."
