@@ -40,7 +40,7 @@ gradle_session_guard_root="${HERMES_GRADLE_SESSION_GUARD_ROOT:-$gradle_root/sess
 mkdir -p "$GRADLE_USER_HOME" "$gradle_distribution_root" "$gradle_download_root" "$gradle_lock_root" "$gradle_project_cache_root" "$gradle_session_guard_root"
 
 sanitize_guard_value() {
-  printf '%s' "$1" | tr -c '[:alnum:]._- ' '_' | tr -d ' '
+  printf '%s' "$1" | sed 's/[^[:alnum:]_.-]/_/g'
 }
 
 check_gradle_session_guard() {
