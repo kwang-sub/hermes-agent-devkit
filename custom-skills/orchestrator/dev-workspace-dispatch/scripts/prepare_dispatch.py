@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 
 
 MANAGED_MARKER = "# managed-by: dev-project-bootstrap"
@@ -91,55 +92,69 @@ def current_branch(repo: Path) -> str:
     return branch
 
 
-def git_paths(repo: Path, args: list[str]) -> list[str]:
-    return sorted({
-        line.strip()
-        for line in run(["git", "-C", str(repo), *args]).stdout.splitlines()
-        if line.strip()
-    })
+def git_paths(repo: Path, args: list[str]) -> set[str]:
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        raise DispatchError(
+            f"command failed ({result.returncode}): git -C {repo} {' '.join(args)}\n{detail}"
+        )
+    return {
+        item.decode("utf-8", errors="surrogateescape")
+        for item in result.stdout.split(b"\0")
+        if item
+    }
+
+
+def timed_git_paths(repo: Path, args: list[str]) -> tuple[set[str], float]:
+    started = time.monotonic()
+    paths = git_paths(repo, args)
+    return paths, time.monotonic() - started
 
 
 def is_hermes_managed(path: str) -> bool:
     return path == ".hermes" or path.startswith(HERMES_MANAGED_PREFIX)
 
 
-def classify_workspace_changes(repo: Path) -> dict[str, list[str]]:
-    tracked = git_paths(repo, ["diff", "--name-only", "HEAD"])
-    untracked = git_paths(repo, ["ls-files", "--others", "--exclude-standard"])
+def classify_workspace_changes(repo: Path) -> tuple[dict[str, list[str]], dict[str, float]]:
+    total_started = time.monotonic()
 
-    effective: list[str] = []
-    eol_only: list[str] = []
-    hermes_managed: list[str] = []
+    tracked, tracked_seconds = timed_git_paths(
+        repo, ["diff", "--name-only", "-z", "HEAD"]
+    )
+    effective_tracked, effective_seconds = timed_git_paths(
+        repo, ["diff", "--name-only", "-z", "--ignore-cr-at-eol", "HEAD"]
+    )
+    untracked, untracked_seconds = timed_git_paths(
+        repo, ["ls-files", "-z", "--others", "--exclude-standard"]
+    )
 
-    for path in tracked:
-        if is_hermes_managed(path):
-            hermes_managed.append(path)
-            continue
-        result = run(
-            ["git", "-C", str(repo), "diff", "--quiet", "--ignore-cr-at-eol", "HEAD", "--", path],
-            check=False,
-        )
-        if result.returncode == 0:
-            eol_only.append(path)
-        elif result.returncode == 1:
-            effective.append(path)
-        else:
-            raise DispatchError(
-                (result.stderr or result.stdout).strip()
-                or f"cannot classify tracked change for {path}: rc={result.returncode}"
-            )
-
-    for path in untracked:
-        if is_hermes_managed(path):
-            hermes_managed.append(path)
-        else:
-            effective.append(path)
-
-    return {
-        "effective": sorted(set(effective)),
-        "eol_only": sorted(set(eol_only)),
-        "hermes_managed": sorted(set(hermes_managed)),
+    classify_started = time.monotonic()
+    hermes_managed = {
+        path for path in tracked | untracked if is_hermes_managed(path)
     }
+    effective = (effective_tracked | untracked) - hermes_managed
+    eol_only = (tracked - effective_tracked) - hermes_managed
+    classification_seconds = time.monotonic() - classify_started
+
+    changes = {
+        "effective": sorted(effective),
+        "eol_only": sorted(eol_only),
+        "hermes_managed": sorted(hermes_managed),
+    }
+    timings = {
+        "tracked_scan": tracked_seconds,
+        "effective_scan": effective_seconds,
+        "untracked_scan": untracked_seconds,
+        "classification": classification_seconds,
+        "total": time.monotonic() - total_started,
+    }
+    return changes, timings
 
 
 def change_summary_lines(changes: dict[str, list[str]]) -> list[str]:
@@ -156,6 +171,16 @@ def change_summary_lines(changes: dict[str, list[str]]) -> list[str]:
         for index, path in enumerate(changes[key], start=1):
             lines.append(f"{label}_{index}={path}")
     return lines
+
+
+def timing_summary_lines(timings: dict[str, float]) -> list[str]:
+    return [
+        f"GIT_TRACKED_SCAN_SECONDS={timings['tracked_scan']:.3f}",
+        f"GIT_EFFECTIVE_SCAN_SECONDS={timings['effective_scan']:.3f}",
+        f"GIT_UNTRACKED_SCAN_SECONDS={timings['untracked_scan']:.3f}",
+        f"CLASSIFICATION_SECONDS={timings['classification']:.3f}",
+        f"WORKSPACE_CLASSIFICATION_TOTAL_SECONDS={timings['total']:.3f}",
+    ]
 
 
 def check_branch_name(branch: str) -> None:
@@ -199,9 +224,9 @@ def main() -> int:
     base = meta["base"]
     base_sha = rev_parse(repo, base)
     before_branch = current_branch(workspace)
-    changes = classify_workspace_changes(workspace)
+    changes, timings = classify_workspace_changes(workspace)
     if changes["effective"] and not args.confirmed_dirty:
-        summary = "\n".join(change_summary_lines(changes))
+        summary = "\n".join(change_summary_lines(changes) + timing_summary_lines(timings))
         raise DispatchError(
             "approved workspace has existing effective project changes; "
             "show the exact change counts/paths to the user and rerun with --confirmed-dirty if they approve.\n"
@@ -245,6 +270,8 @@ def main() -> int:
     print(f"WORKSPACE_DIRTY={'true' if raw_dirty else 'false'}")
     print(f"WORKSPACE_EFFECTIVE_DIRTY={'true' if bool(changes['effective']) else 'false'}")
     for line in change_summary_lines(changes):
+        print(line)
+    for line in timing_summary_lines(timings):
         print(line)
     print("STATUS=prepared")
     return 0
