@@ -113,21 +113,28 @@ $ContainerDataPath = "/opt/data"
 $ContainerCustomSkillsPath = Get-EnvOrDefault -Name "HERMES_CONTAINER_CUSTOM_SKILLS_PATH" -Default "/opt/custom-skills"
 $ContainerReviewerSkillsPath = Get-EnvOrDefault -Name "HERMES_CONTAINER_REVIEWER_SKILLS_PATH" -Default "/opt/reviewer-skills"
 $ContainerSharedPath = Get-EnvOrDefault -Name "HERMES_CONTAINER_SHARED_PATH" -Default "/opt/data/shared"
+$ContainerSharedSkillsPath = Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "shared"
 
 # The official Hermes image keeps the immutable application and venv under /opt/hermes.
 # Use absolute paths instead of relying on the runtime user's PATH.
 $HermesCliPath = "/opt/hermes/.venv/bin/hermes"
 $PythonPath = "/opt/hermes/.venv/bin/python"
 
+# Every profile reads its role-specific root plus the same shared root.
+# Reviewer keeps /opt/reviewer-skills temporarily for backward compatibility with
+# the existing Spring/API capability mounts; new common skills belong in shared.
 $ExternalSkillDirs = @{
     orchestrator = @(
-        (Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "orchestrator")
+        (Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "orchestrator"),
+        $ContainerSharedSkillsPath
     )
     coder = @(
-        (Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "coder")
+        (Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "coder"),
+        $ContainerSharedSkillsPath
     )
     reviewer = @(
         (Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "reviewer"),
+        $ContainerSharedSkillsPath,
         $ContainerReviewerSkillsPath
     )
 }
@@ -708,4 +715,4 @@ Write-Host "1. Configure model/OAuth for orchestrator"
 Write-Host "2. Configure model/OAuth for coder"
 Write-Host "3. Configure model/OAuth for reviewer"
 Write-Host "4. Re-check config.yaml after model setup"
-Write-Host "5. Start fresh Hermes sessions and verify role-specific dev-* skills"
+Write-Host "5. Start fresh Hermes sessions and verify role-specific/shared dev-* skills"
