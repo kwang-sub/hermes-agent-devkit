@@ -80,6 +80,11 @@ services:
     environment:
       TZ: ${HERMES_TIMEZONE:-Asia/Seoul}
 
+      # Host/Container workspace bind mapping. Agent/skill path resolution must
+      # use this mapping before applying any /mnt/<drive> Temp-path convention.
+      HERMES_HOST_WORKSPACE_PATH: ${HERMES_HOST_WORKSPACE_PATH:-D:/workspace}
+      HERMES_CONTAINER_WORKSPACE_PATH: ${HERMES_CONTAINER_WORKSPACE_PATH:-/workspace}
+
       # File tools may write only inside explicit development/persistent roots.
       # Multiple roots are separated with ':' on the Linux container.
       HERMES_WRITE_SAFE_ROOT: ${HERMES_WRITE_SAFE_ROOT:-/workspace:/opt/data}
