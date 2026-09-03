@@ -13,6 +13,7 @@ SKILLS_ROOT = REPO_ROOT / "custom-skills"
 REQUIRED_SKILLS = {
     "dev-project-pattern",
     "dev-skill-preflight",
+    "dev-java-guidelines",
     "dev-spring-guidelines",
     "dev-spring-feature",
     "dev-spring-data",
@@ -159,7 +160,8 @@ def main() -> int:
     dispatch_file = discovered.get(("orchestrator", "dev-workspace-dispatch"))
     preflight_file = discovered.get(("orchestrator", "dev-skill-preflight"))
     workflow_file = discovered.get(("orchestrator", "dev-workflow-orchestrate"))
-    if None in (implement_file, breakdown_file, dispatch_file, preflight_file, workflow_file):
+    reviewer_file = discovered.get(("reviewer", "dev-code-review"))
+    if None in (implement_file, breakdown_file, dispatch_file, preflight_file, workflow_file, reviewer_file):
         fail("workflow entrypoint skills are missing")
 
     implement_text = implement_file.read_text(encoding="utf-8")
@@ -167,6 +169,7 @@ def main() -> int:
     dispatch_text = dispatch_file.read_text(encoding="utf-8")
     preflight_text = preflight_file.read_text(encoding="utf-8")
     workflow_text = workflow_file.read_text(encoding="utf-8")
+    reviewer_text = reviewer_file.read_text(encoding="utf-8")
 
     if 'skill_view("dev-project-pattern")' not in breakdown_text:
         fail("dev-breakdown must explicitly load dev-project-pattern via skill_view")
@@ -223,6 +226,7 @@ def main() -> int:
     )
 
     for capability in (
+        "dev-java-guidelines",
         "dev-spring-guidelines",
         "dev-spring-feature",
         "dev-spring-data",
@@ -231,6 +235,17 @@ def main() -> int:
     ):
         if f'skill_view("{capability}")' not in implement_text:
             fail(f"dev-implement-plan must explicitly load {capability} via skill_view")
+
+    require_terms(
+        breakdown_text,
+        "dev-breakdown Java capability",
+        ("dev-java-guidelines", "legacy 이름인 `java-project-conventions`는 사용하지 않고"),
+    )
+    require_terms(
+        reviewer_text,
+        "dev-code-review Java capability",
+        ('skill_view("dev-java-guidelines")', "Java Convention Review Gate"),
+    )
 
     print(
         f"[PASS] Custom skill contract: {len(discovered)} scoped skills "
