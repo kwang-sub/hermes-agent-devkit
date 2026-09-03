@@ -1,7 +1,7 @@
 ---
 name: dev-code-review
 description: 동일 Workspace의 미커밋 구현을 requirement/AC와 project pattern/capability/구조 품질 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
-version: 0.13.0
+version: 0.13.1
 author: local
 platforms: [linux]
 metadata:
@@ -40,8 +40,10 @@ python3 /opt/custom-skills/reviewer/dev-code-review/scripts/review_context.py \
   --include "<changed-path-2>"
 ```
 
+Canonical 호출은 `review_context.py --include` scoped review다.
+
 - 스크립트가 Git `safe.directory`를 idempotent하게 등록한다.
-- Standard Flow에서는 Coder handoff의 `Changed Files`를 `--include`로 반드시 제공한다.
+- Standard Flow에서는 `--include`를 반드시 제공한다. 값은 Coder handoff의 `Changed Files`를 그대로 사용한다.
 - Coder Changed Files가 누락되면 repository-wide scan으로 복구하지 않고 evidence 부족으로 BLOCK한다.
 - `--allow-full-scan`은 명시적 진단 전용이며 정상 review 경로에서 사용하지 않는다.
 - tracked와 untracked 모두 Git pathspec으로 제한한다.
