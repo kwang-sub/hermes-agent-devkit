@@ -21,7 +21,7 @@ REQUIRED_SKILLS = {
 }
 
 REQUIRED_REFERENCES = {
-    ("coder", "dev-api-docs"): {
+    ("shared", "dev-api-docs"): {
         "references/spring-openapi-reference.md",
         "references/postman-reference.md",
     },
@@ -103,22 +103,22 @@ def main() -> int:
     for skill_file in skill_files:
         text = skill_file.read_text(encoding="utf-8")
         scalar, lists, _body = parse_frontmatter(text, skill_file)
-        profile = skill_file.parent.parent.name
+        scope = skill_file.parent.parent.name
         name = scalar.get("name", "").strip()
         description = scalar.get("description", "").strip()
         directory_name = skill_file.parent.name
-        key = (profile, name)
+        key = (scope, name)
 
         if not name:
             fail(f"frontmatter name is required: {skill_file}")
         if name != directory_name:
             fail(f"skill name/path mismatch: name={name!r} dir={directory_name!r}")
         if key in discovered:
-            fail(f"duplicate skill name within profile {profile!r}: {name!r}")
+            fail(f"duplicate skill name within scope {scope!r}: {name!r}")
         if not description:
             fail(f"frontmatter description is required: {skill_file}")
         if len(description) > 1024:
-            fail(f"description exceeds 1024 chars for {profile}/{name}")
+            fail(f"description exceeds 1024 chars for {scope}/{name}")
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name):
             fail(f"skill name must be lowercase kebab-case: {name}")
 
@@ -143,16 +143,16 @@ def main() -> int:
                 fail(f"required reference is empty for {key[0]}/{key[1]}: {relative}")
 
     unresolved: list[str] = []
-    for (profile, skill_name), related in sorted(related_by_skill.items()):
+    for (scope, skill_name), related in sorted(related_by_skill.items()):
         for related_name in related:
             if related_name.startswith("dev-") and related_name not in paths_by_name:
-                unresolved.append(f"{profile}/{skill_name} -> {related_name}")
+                unresolved.append(f"{scope}/{skill_name} -> {related_name}")
     for item in unresolved:
         print(f"[WARN] related skill is not installed in custom-skills: {item}")
 
     for name, paths in sorted({name: paths for name, paths in paths_by_name.items() if len(paths) > 1}.items()):
-        profiles = ", ".join(sorted(path.parent.parent.name for path in paths))
-        print(f"[INFO] profile-scoped duplicate skill name allowed: {name} ({profiles})")
+        scopes = ", ".join(sorted(path.parent.parent.name for path in paths))
+        print(f"[INFO] scope-scoped duplicate skill name allowed: {name} ({scopes})")
 
     implement_file = discovered.get(("coder", "dev-implement-plan"))
     breakdown_file = discovered.get(("orchestrator", "dev-breakdown"))
@@ -233,7 +233,7 @@ def main() -> int:
             fail(f"dev-implement-plan must explicitly load {capability} via skill_view")
 
     print(
-        f"[PASS] Custom skill contract: {len(discovered)} profile-scoped skills "
+        f"[PASS] Custom skill contract: {len(discovered)} scoped skills "
         f"({len(paths_by_name)} unique names) validated"
     )
     return 0
