@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: 승인된 Kanban 작업을 할당 Workspace에서 최소 구현·구조 품질 점검·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.17.0
+version: 0.18.0
 author: local
 platforms: [linux]
 metadata:
@@ -26,7 +26,9 @@ kanban_show
 → STATUS=valid
 → 필요한 target source/test만 탐색
 → 구현
-→ canonical verification
+→ targeted verification
+→ IMPLEMENTATION_STABLE
+→ final regression gate (필요한 경우 full test 1회)
 → change_summary.py 1회
 → terminal transition 1회
 ```
@@ -141,14 +143,40 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification.
 
 규칙:
 - 여러 targeted test는 가능한 한 한 invocation으로 합친다.
+- 구현 중에는 targeted test 또는 필요한 integration/module test만 사용한다.
+- **전체 `test`는 탐색/중간 확인 용도로 실행하지 않는다. `IMPLEMENTATION_STABLE` 이후 final regression gate에서만 실행한다.**
+- 전체 test가 필요한 작업은 canonical helper의 `--mode COMPILE --task test`를 **최종 회귀 게이트 용도로만** 사용한다.
+- 한 stable verification cycle에서 full test는 기본 **1회**다. 동일 실패를 확인하기 위해 같은 전체 test를 반복하지 않는다.
 - 실제 BUILD_FAILURE는 source/test 수정 후 최소 재검증할 수 있다.
 - PASS 이후 해당 executable source/test가 바뀌지 않으면 같은 검증을 반복하지 않는다.
 - `GRADLE_STATUS=BLOCKED`이면 direct Gradle 반복이나 우회 wrapper를 만들지 않는다.
 - Maven 등 비-Gradle launcher 경로만 `hermes-java`를 사용한다.
 
+### Full Test 실패 재사용 정책
+
+Full test가 실패하면 즉시 반복 실행하지 않고 실패를 먼저 분류한다.
+
+```text
+FULL_TEST_FAILURE_CLASSIFICATION
+- IN_SCOPE_OR_IMPACTED
+- OUT_OF_SCOPE_UNCHANGED
+- UNCERTAIN
+```
+
+`OUT_OF_SCOPE_UNCHANGED`는 다음 evidence가 모두 있을 때만 사용할 수 있다.
+
+- 실패한 test/source가 Task의 Changed Files에 포함되지 않는다.
+- `SOURCE_EVIDENCE_READY`의 Direct Impact 기준으로 변경 production symbol이 실패 test의 직접 영향 범위가 아니다.
+- 첫 full test 이후 해당 실패를 고치기 위한 production/test 변경을 하지 않았다.
+- 실패 signature(test class/method 또는 동일한 failure message)가 첫 실행과 동일하다.
+
+이 경우 첫 full test의 failure evidence를 재사용하고 **같은 Coder run에서 전체 test를 다시 실행하지 않는다.** Reviewer handoff에는 `Full Test: FAIL_REUSED_OUT_OF_SCOPE`와 failure signature를 남긴다.
+
+`IN_SCOPE_OR_IMPACTED`이면 해당 실패를 먼저 targeted test로 재현/수정하고, 다시 `IMPLEMENTATION_STABLE`이 된 뒤 full test를 최종 1회 실행할 수 있다. `UNCERTAIN`은 evidence 재사용으로 우회하지 않고 risk/blocker로 남긴다.
+
 ## Implementation Stable / Final Scope
 
-최종 behavior verification 전에 다음을 확정한다.
+전체 회귀 검증 전에 다음을 확정한다.
 
 ```text
 IMPLEMENTATION_STABLE
@@ -157,6 +185,19 @@ IMPLEMENTATION_STABLE
 - Additional production edits planned: false
 - Structural quality check: PASS | REFACTORED | ESCALATED
 ```
+
+검증 순서는 다음을 기본으로 한다.
+
+```text
+targeted/integration verification
+→ IMPLEMENTATION_STABLE
+→ full test 1회 (Task/Standard Flow/AC에서 필요한 경우)
+→ failure classification 또는 PASS 확정
+→ bootJar 등 artifact 검증 (필요한 경우)
+→ scoped change_summary.py 1회
+```
+
+Full test 이후 executable production/test를 수정하면 해당 full-test evidence는 무효다. 단, `OUT_OF_SCOPE_UNCHANGED`로 분류한 실패 때문에 코드를 수정하지는 않는다.
 
 최종 변경 범위가 확정된 뒤 scoped `change_summary.py`를 최종 검증으로 1회 실행한다.
 
@@ -192,6 +233,8 @@ Changed Files:
 Verification Mode: <mode>
 Verification Commands / Results:
 - <command> -> PASS | FAIL
+Full Test: PASS | NOT_REQUIRED | FAIL_REUSED_OUT_OF_SCOPE | FAIL_IN_SCOPE | UNCERTAIN
+Full Test Failure Signature: <test/method/message | NONE>
 Verification Final: true
 Effective Scope SHA256: <EFFECTIVE_SCOPE_SHA256>
 Structural Quality Check: PASS | REFACTORED | ESCALATED
