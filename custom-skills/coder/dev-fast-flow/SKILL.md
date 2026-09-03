@@ -1,12 +1,12 @@
 ---
 name: dev-fast-flow
 description: Interactive Coder의 mutation request를 DIRECT/FAST/STANDARD_REQUIRED로 라우팅하고, 이미 dispatch된 FAST Task의 후속 요구사항은 기존 Kanban Task로 전달하는 execution router.
-version: 0.5.0
+version: 0.6.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, coder, fast-flow, direct, kanban, review, intake, follow-up]
+    tags: [dev, coder, fast-flow, direct, kanban, review, intake, follow-up, notification]
     related_skills: [dev-direct-flow, dev-implement-plan, dev-code-review, dev-review-cycle]
     requires_tools: [terminal, clarify]
 ---
@@ -155,7 +155,19 @@ python3 /opt/custom-skills/coder/dev-fast-flow/scripts/create_fast_task.py \
 ## Fast Intake 계약
 `<repo>/.hermes/project.yaml`, current branch, Base SHA, effective Git changes는 `create_fast_task.py`가 검증/계산한다. Windows bind mount의 CRLF/LF raw status noise는 dirty baseline으로 사용하지 않는다.
 Kanban에는 Goal, AC, Implementation Tasks, Test Plan, Risks, Workspace, Branch/Base SHA, pre-existing effective changes, Reviewer Profile, `Review Policy: RISK_BASED`를 기록한다.
-Task 생성 성공 후 Interactive Coder는 즉시 멈춘다.
+
+Task 생성 성공 후 출력된 Kanban Task ID를 사용해 아래 공통 notification helper를 정확히 한 번 호출한다.
+
+```bash
+python3 /opt/data/shared/scripts/kanban_notify_subscribe.py --task-id "<KANBAN_TASK_ID>"
+```
+
+- `NOTIFY_STATUS=subscribed`: 정상 구독.
+- `NOTIFY_STATUS=disabled` 또는 `warning`: 알림 없이 Fast Flow를 계속하며 Task를 Block하지 않는다.
+- 알림 실패를 이유로 Task 재생성, retry loop, approval 대기, 구현 시작을 하지 않는다.
+- 신규 Task에만 자동 구독하며 Active Task follow-up에서는 재구독하지 않는다.
+
+알림 helper 호출 뒤 Interactive Coder는 즉시 멈춘다.
 
 ## Worker 결과
 - Fast 범위를 벗어나면 `FAST_FLOW_ESCALATION_REQUIRED`로 Block.
