@@ -40,6 +40,34 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def session_guard_path() -> Path | None:
+    task_id = (os.getenv('HERMES_KANBAN_TASK') or '').strip()
+    session_id = (os.getenv('HERMES_SESSION_ID') or '').strip()
+    if not task_id or not session_id:
+        return None
+    safe = lambda value: ''.join(ch if ch.isalnum() or ch in '._-' else '_' for ch in value)
+    root = Path(os.getenv('HERMES_GRADLE_SESSION_GUARD_ROOT', '/opt/data/gradle/session-blocks'))
+    return root / f'{safe(task_id)}--{safe(session_id)}.blocked'
+
+
+def clear_session_guard() -> None:
+    path = session_guard_path()
+    if path is None:
+        return
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def write_session_guard(blocker: str) -> None:
+    path = session_guard_path()
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f'GRADLE_STATUS=BLOCKED\nGRADLE_BLOCKER={blocker}\n', encoding='utf-8')
+
+
 def _terminate_group(proc: subprocess.Popen[str]) -> None:
     try:
         os.killpg(proc.pid, signal.SIGTERM)
@@ -62,6 +90,8 @@ def _terminate_group(proc: subprocess.Popen[str]) -> None:
 
 def run_bounded(cmd: list[str], cwd: Path, timeout: int) -> RunResult:
     started = time.monotonic()
+    env = os.environ.copy()
+    env['HERMES_GRADLE_BOUNDED_HELPER'] = '1'
     proc = subprocess.Popen(
         cmd,
         cwd=cwd,
@@ -69,6 +99,7 @@ def run_bounded(cmd: list[str], cwd: Path, timeout: int) -> RunResult:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         start_new_session=True,
+        env=env,
     )
     try:
         stdout, stderr = proc.communicate(timeout=timeout)
@@ -115,6 +146,15 @@ def emit_result(prefix: str, result: RunResult) -> None:
         print(f'{prefix}_DETAIL={detail}')
 
 
+def blocked(blocker: str) -> int:
+    write_session_guard(blocker)
+    print('GRADLE_STATUS=BLOCKED')
+    print(f'GRADLE_BLOCKER={blocker}')
+    print('PRIMARY_RETRY_ALLOWED=false')
+    print('SESSION_DIRECT_GRADLE_ALLOWED=false')
+    return 2
+
+
 def main() -> int:
     args = parse_args()
     workspace = Path(args.workspace).resolve()
@@ -128,14 +168,13 @@ def main() -> int:
         print('ERROR: TARGETED_TEST requires at least one --test selector', file=sys.stderr)
         return 2
 
+    clear_session_guard()
     capability = run_bounded(
         gradle_cmd(args.launcher, '--version'), workspace, args.capability_timeout
     )
     emit_result('CAPABILITY', capability)
     if capability.timed_out or capability.returncode != 0:
-        print('GRADLE_STATUS=BLOCKED')
-        print('GRADLE_BLOCKER=CAPABILITY')
-        return 2
+        return blocked('CAPABILITY')
 
     task = args.task or ('compileJava' if args.mode == 'COMPILE' else 'test')
     primary_args = [task]
@@ -148,6 +187,7 @@ def main() -> int:
     emit_result('PRIMARY', primary)
 
     if not primary.timed_out:
+        clear_session_guard()
         if primary.returncode == 0:
             print('GRADLE_STATUS=PASS')
             print('GRADLE_BLOCKER=NONE')
@@ -167,9 +207,11 @@ def main() -> int:
     emit_result('DIAGNOSTIC_OFFLINE', offline)
 
     blocker = classify_timeout(online, offline)
+    write_session_guard(blocker)
     print('GRADLE_STATUS=BLOCKED')
     print(f'GRADLE_BLOCKER={blocker}')
     print('PRIMARY_RETRY_ALLOWED=false')
+    print('SESSION_DIRECT_GRADLE_ALLOWED=false')
     print('DIAGNOSTIC_POLICY=single-online-help;single-offline-help;no-primary-retry')
     return 2
 
