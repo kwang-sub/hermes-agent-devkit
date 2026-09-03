@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: 승인된 Kanban 작업을 할당 Workspace에서 최소 구현·구조 품질 점검·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.16.1
+version: 0.16.2
 author: local
 platforms: [linux]
 metadata:
@@ -170,7 +170,7 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/change_summary.py \
 
 ## Review Risk / Handoff
 
-Standard Flow 또는 `CHANGES_REQUESTED` 재작업은 항상 review한다. Fast Flow는 LOW를 positive evidence로 증명한 경우만 self-complete 가능하다.
+**Standard Flow 또는 CHANGES_REQUESTED 재작업은 항상 review**한다. Fast Flow는 LOW를 positive evidence로 증명한 경우만 self-complete 가능하다.
 
 다음은 `REVIEW_REQUIRED`다.
 - API/request/response 의미 변경
@@ -209,7 +209,7 @@ Residual Risk:
 한 Coder run의 terminal transition은 `kanban_complete`, `kanban_block`, `kanban_request_review` 중 정확히 하나다.
 
 - Standard Flow에서 Coder self-complete 금지.
-- `CHANGES_REQUESTED`는 terminal 상태가 아니며 같은 Workspace에서 blocking finding만 수정 후 재-review한다.
+- `CHANGES_REQUESTED`는 terminal 상태가 아니며 **original coder가 동일 Workspace**에서 blocking finding만 수정 후 반드시 재-review한다.
 - `kanban_request_review` 성공 후 즉시 종료한다. 추가 `kanban_complete`, reviewer skill load, `kanban_show`, status probe를 실행하지 않는다.
 
 ## 공통 Coding Rules 핵심
