@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import base64
+import json
 import os
 import time
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
-import jwt
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
 
 TOKEN_URL = "https://auth.worksmobile.com/oauth2/v2.0/token"
 API_BASE_URL = "https://www.worksapis.com/v1.0"
@@ -26,17 +29,30 @@ def normalize_private_key(value: str) -> str:
     return value.replace("\\n", "\n")
 
 
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
 def build_service_account_jwt(
     *, client_id: str, service_account: str, private_key: str, now: int | None = None
 ) -> str:
     issued_at = int(time.time() if now is None else now)
+    header = {"alg": "RS256", "typ": "JWT"}
     payload = {
         "iss": client_id,
         "sub": service_account,
         "iat": issued_at,
         "exp": issued_at + 3600,
     }
-    return jwt.encode(payload, normalize_private_key(private_key), algorithm="RS256")
+    encoded_header = _b64url(json.dumps(header, separators=(",", ":")).encode("utf-8"))
+    encoded_payload = _b64url(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    signing_input = f"{encoded_header}.{encoded_payload}".encode("ascii")
+
+    key = serialization.load_pem_private_key(
+        normalize_private_key(private_key).encode("utf-8"), password=None
+    )
+    signature = key.sign(signing_input, padding.PKCS1v15(), hashes.SHA256())
+    return f"{encoded_header}.{encoded_payload}.{_b64url(signature)}"
 
 
 @dataclass
