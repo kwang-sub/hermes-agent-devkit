@@ -36,6 +36,11 @@ DEFAULTS = {
     "JIRA_ACCEPTANCE_CRITERIA_FIELDS": "Acceptance Criteria",
     "JIRA_INCLUDE_FIELD_NAMES": "",
     "JIRA_VERIFY_SSL": "true",
+    "HERMES_KANBAN_NOTIFY_ENABLED": "false",
+    "HERMES_KANBAN_NOTIFY_PLATFORM": "discord",
+    "HERMES_KANBAN_NOTIFY_TARGET": "",
+    "HERMES_KANBAN_NOTIFY_DELIVERY_MODE": "notify",
+    "HERMES_KANBAN_NOTIFY_CHAT_TYPE": "channel",
     "HERMES_WORK_ITEM_DIR": "/opt/data/work-items",
 }
 
@@ -47,6 +52,7 @@ SENSITIVE_SAMPLE_KEYS = {
     "JIRA_BASE_URL",
     "JIRA_EMAIL",
     "JIRA_API_TOKEN",
+    "DISCORD_BOT_TOKEN",
 }
 REQUIRED_SAMPLE_KEYS = set(DEFAULTS) | SENSITIVE_SAMPLE_KEYS
 
@@ -153,6 +159,17 @@ def main() -> int:
 
     if "API_SERVER_ENABLED: ${HERMES_API_SERVER_ENABLED:-false}" not in compose:
         raise SystemExit("OpenAI-compatible API server must be explicitly disabled by default")
+
+    for required in (
+        "HERMES_KANBAN_NOTIFY_ENABLED: ${HERMES_KANBAN_NOTIFY_ENABLED:-false}",
+        "HERMES_KANBAN_NOTIFY_PLATFORM: ${HERMES_KANBAN_NOTIFY_PLATFORM:-discord}",
+        "HERMES_KANBAN_NOTIFY_TARGET: ${HERMES_KANBAN_NOTIFY_TARGET:-}",
+        "HERMES_KANBAN_NOTIFY_DELIVERY_MODE: ${HERMES_KANBAN_NOTIFY_DELIVERY_MODE:-notify}",
+        "HERMES_KANBAN_NOTIFY_CHAT_TYPE: ${HERMES_KANBAN_NOTIFY_CHAT_TYPE:-channel}",
+        "DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}",
+    ):
+        if required not in compose:
+            raise SystemExit(f"compose.yml missing Kanban notification contract: {required}")
 
     init = INIT.read_text(encoding="utf-8-sig")
     if 'Get-EnvOrDefault -Name "HERMES_CONTAINER_DATA_PATH"' in init:
