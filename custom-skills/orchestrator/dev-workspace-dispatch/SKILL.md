@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 구현 계획과 project pattern/capability 계약을 Git workspace와 Kanban으로 인계한다.
-version: 0.8.0
+version: 0.8.1
 author: local
 platforms: [linux]
 metadata:
@@ -144,6 +144,8 @@ kanban_create(board=BOARD, ...) tool 정확히 1회
 → subscribe_notification.py 정확히 1회
 → worker dispatch
 ```
+
+호출 횟수 계약은 `kanban_create tool 정확히 1회`, `kanban_show tool 정확히 1회`이며 두 호출 모두 반드시 `board=BOARD`를 명시한다.
 
 `BOARD`는 반드시 같은 dispatch에서 `prepare_dispatch.py`가 반환한 값을 그대로 사용한다. `kanban_create` 또는 `kanban_show`에서 board 인자를 생략하지 않는다.
 
