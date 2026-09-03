@@ -108,6 +108,17 @@ services:
       JIRA_INCLUDE_FIELD_NAMES: ${JIRA_INCLUDE_FIELD_NAMES:-}
       JIRA_VERIFY_SSL: ${JIRA_VERIFY_SSL:-true}
 
+      # Optional Kanban terminal-event notifications. Platform switching is env-only.
+      HERMES_KANBAN_NOTIFY_ENABLED: ${HERMES_KANBAN_NOTIFY_ENABLED:-false}
+      HERMES_KANBAN_NOTIFY_PLATFORM: ${HERMES_KANBAN_NOTIFY_PLATFORM:-discord}
+      HERMES_KANBAN_NOTIFY_TARGET: ${HERMES_KANBAN_NOTIFY_TARGET:-}
+      HERMES_KANBAN_NOTIFY_DELIVERY_MODE: ${HERMES_KANBAN_NOTIFY_DELIVERY_MODE:-notify}
+      HERMES_KANBAN_NOTIFY_CHAT_TYPE: ${HERMES_KANBAN_NOTIFY_CHAT_TYPE:-channel}
+
+      # Discord gateway credentials. Keep the token only in local .env.
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      DISCORD_HOME_CHANNEL: ${HERMES_KANBAN_NOTIFY_TARGET:-}
+
       HERMES_WORK_ITEM_DIR: ${HERMES_WORK_ITEM_DIR:-/opt/data/work-items}
 
     ports:
