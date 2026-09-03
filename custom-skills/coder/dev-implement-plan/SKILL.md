@@ -1,13 +1,13 @@
 ---
 name: dev-implement-plan
 description: 승인된 Kanban 작업을 할당 Workspace에서 최소 구현·구조 품질 점검·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.16.2
+version: 0.17.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, implementation, coder, kanban, workspace, review, fast-flow, capability, java, refactor, structural-quality, performance]
-    related_skills: [dev-fast-flow, dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-docs]
+    related_skills: [dev-fast-flow, dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-docs]
     requires_tools: [terminal, kanban_show, kanban_request_review, kanban_complete, kanban_block, kanban_heartbeat, skill_view]
 ---
 
@@ -110,16 +110,19 @@ Excluded:
 - 존재가 확인되지 않은 예상 test 파일을 연속 probe하지 않는다.
 - 기존 사용자 변경을 reset/restore/clean/stash하지 않는다.
 
-## Spring capability lazy-load
+## Java / Spring capability lazy-load
 
 실제 evidence가 필요한 경우에만 로드한다.
 
+- Java 언어/convention → `skill_view("dev-java-guidelines")`
 - 공통 Spring 규칙 → `skill_view("dev-spring-guidelines")`
 - API/Controller/Service/DTO/Validation/Exception → `skill_view("dev-spring-feature")`
 - JPA/Repository/QueryDSL/Converter/Paging → `skill_view("dev-spring-data")`
 - 테스트 작성/수정 → `skill_view("dev-spring-test")`
 - Spring source 구현 완료 후 **구조 trigger**가 실제로 있을 때만 → `skill_view("dev-spring-refactor")`
 - OpenAPI/Swagger/Postman → `skill_view("dev-api-docs")`
+
+Java 프로젝트에서는 `dev-java-guidelines`가 Java version/build/Lombok/type placement/JavaDoc만 담당하고, 공통 품질 규칙은 `coding-rules.md`, Spring 규칙은 Spring capability에 맡긴다.
 
 구조 점검 evidence는 `Structural quality check: PASS | REFACTORED | ESCALATED`로 남긴다.
 
