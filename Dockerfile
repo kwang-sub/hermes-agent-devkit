@@ -112,6 +112,9 @@ RUN set -eu; \
     ln -sf "$hermes_target" /usr/local/bin/hermes; \
     /usr/local/bin/hermes --help >/dev/null
 
+# Third-party platform plugin: outbound-only NAVER WORKS notifications.
+COPY plugins/platforms/naverworks /opt/hermes/plugins/platforms/naverworks
+
 WORKDIR /workspace
 
 USER root

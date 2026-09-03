@@ -1,0 +1,34 @@
+name: naverworks-platform
+label: NAVER WORKS
+kind: platform
+version: 1.0.0
+description: >
+  NAVER WORKS Bot API outbound adapter for Hermes Agent Kanban notifications.
+  Uses Service Account JWT authentication and sends text messages to a channel.
+author: local
+requires_env:
+  - name: NAVER_WORKS_CLIENT_ID
+    description: "NAVER WORKS Developer Console Client ID"
+    prompt: "NAVER WORKS Client ID"
+    password: false
+  - name: NAVER_WORKS_CLIENT_SECRET
+    description: "NAVER WORKS Developer Console Client Secret"
+    prompt: "NAVER WORKS Client Secret"
+    password: true
+  - name: NAVER_WORKS_SERVICE_ACCOUNT
+    description: "NAVER WORKS Service Account"
+    prompt: "NAVER WORKS Service Account"
+    password: false
+  - name: NAVER_WORKS_PRIVATE_KEY
+    description: "PEM private key. Literal \\n sequences are converted to newlines."
+    prompt: "NAVER WORKS Private Key"
+    password: true
+  - name: NAVER_WORKS_BOT_ID
+    description: "NAVER WORKS Bot ID"
+    prompt: "NAVER WORKS Bot ID"
+    password: false
+optional_env:
+  - name: NAVER_WORKS_HOME_CHANNEL
+    description: "Default channel ID for Kanban/cron notifications"
+    prompt: "NAVER WORKS Home Channel ID"
+    password: false

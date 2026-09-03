@@ -16,8 +16,6 @@ HERMES_KANBAN_NOTIFY_CHAT_TYPE=channel
 
 ## Discord 사용
 
-Discord를 사용할 때 로컬 `.env`에 다음 값을 추가한다.
-
 ```dotenv
 HERMES_KANBAN_NOTIFY_ENABLED=true
 HERMES_KANBAN_NOTIFY_PLATFORM=discord
@@ -27,18 +25,71 @@ HERMES_KANBAN_NOTIFY_CHAT_TYPE=channel
 DISCORD_BOT_TOKEN=<Discord Bot Token>
 ```
 
-`DISCORD_BOT_TOKEN`은 저장소에 커밋하거나 Kanban body/comment에 기록하지 않는다.
+## NAVER WORKS 사용
 
-설정 변경 후 Compose environment가 갱신되도록 컨테이너를 재생성한다.
+DevKit은 Hermes third-party platform plugin으로 `naverworks` outbound adapter를 제공한다.
 
-```powershell
-docker compose up -d --force-recreate
+인증 흐름:
+
+```text
+Service Account + Private Key
+→ RS256 JWT
+→ OAuth2 Access Token
+→ Bot Channel Message API
 ```
 
-또는 DevKit 업데이트를 함께 적용하는 경우:
+`.env` 예시:
+
+```dotenv
+HERMES_KANBAN_NOTIFY_ENABLED=true
+HERMES_KANBAN_NOTIFY_PLATFORM=naverworks
+HERMES_KANBAN_NOTIFY_TARGET=<NAVER WORKS Channel ID>
+HERMES_KANBAN_NOTIFY_DELIVERY_MODE=notify
+HERMES_KANBAN_NOTIFY_CHAT_TYPE=channel
+
+NAVER_WORKS_CLIENT_ID=<Client ID>
+NAVER_WORKS_CLIENT_SECRET=<Client Secret>
+NAVER_WORKS_SERVICE_ACCOUNT=<Service Account>
+NAVER_WORKS_BOT_ID=<Bot ID>
+NAVER_WORKS_SCOPE=bot.message
+NAVER_WORKS_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+```
+
+`NAVER_WORKS_PRIVATE_KEY`는 로컬 `.env`에만 저장한다. PEM 줄바꿈은 `\n`으로 기록하면 adapter가 실제 줄바꿈으로 복원한다. Token/Private Key는 Kanban body/comment/log에 기록하지 않는다.
+
+`HERMES_KANBAN_NOTIFY_TARGET`은 Bot이 참여한 NAVER WORKS 메시지방의 `channelId`다. Compose는 이 값을 `NAVER_WORKS_HOME_CHANNEL`에도 전달하므로 별도 channel 환경변수를 중복 입력하지 않는다.
+
+플러그인은 이미지 빌드 시 `/opt/hermes/plugins/platforms/naverworks`에 포함된다. 설정 변경 또는 DevKit 업데이트 후 이미지를 다시 빌드/재생성한다.
 
 ```powershell
 .\update-devkit.ps1
+```
+
+또는 수동으로:
+
+```powershell
+docker compose up -d --build --force-recreate
+```
+
+환경 설정 확인 시 Private Key나 Client Secret 자체는 출력하지 않는다.
+
+```powershell
+docker exec --user hermes hermes-dev sh -lc 'echo PLATFORM=$HERMES_KANBAN_NOTIFY_PLATFORM; echo TARGET=$HERMES_KANBAN_NOTIFY_TARGET; [ -n "$NAVER_WORKS_PRIVATE_KEY" ] && echo PRIVATE_KEY=SET || echo PRIVATE_KEY=MISSING'
+```
+
+기존 Task로 수동 subscription을 확인할 수 있다.
+
+```powershell
+docker exec --user hermes hermes-dev python3 /opt/data/shared/scripts/kanban_notify_subscribe.py --task-id <TASK_ID>
+```
+
+정상 결과:
+
+```text
+NOTIFY_STATUS=subscribed
+NOTIFY_PLATFORM=naverworks
+NOTIFY_TARGET=<channelId>
+NOTIFY_DELIVERY_MODE=notify
 ```
 
 ## 동작 방식
@@ -81,16 +132,12 @@ hermes kanban notify-subscribe <TASK_ID>
 
 ## 플랫폼 변경
 
-Discord에서 다른 Hermes Gateway 플랫폼으로 변경할 때 workflow/skill 코드를 수정하지 않는다.
-
-예:
+workflow/skill 코드는 수정하지 않고 `.env`의 platform/credential만 바꾼다.
 
 ```dotenv
-HERMES_KANBAN_NOTIFY_PLATFORM=slack
-HERMES_KANBAN_NOTIFY_TARGET=<Slack Channel ID>
+HERMES_KANBAN_NOTIFY_PLATFORM=naverworks
+HERMES_KANBAN_NOTIFY_TARGET=<NAVER WORKS Channel ID>
 ```
-
-플랫폼 인증 환경변수만 해당 플랫폼 규격에 맞게 구성한다. 사용하지 않는 플랫폼의 token은 로컬 `.env`에서 제거하거나 비활성화한다.
 
 ## 실패 정책
 

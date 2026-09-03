@@ -24,11 +24,6 @@ services:
         source: ${HERMES_HOST_WORKSPACE_PATH:-D:/workspace}
         target: ${HERMES_CONTAINER_WORKSPACE_PATH:-/workspace}
 
-      # Hermes running in Docker Desktop on WSL may normalize Windows paths to
-      # /mnt/<drive>/... before file/vision tools run. update-devkit.ps1 derives
-      # the exact target from LOCALAPPDATA and passes it through the process env.
-      # USERNAME is only a first-update compatibility fallback while the updater
-      # script itself is being fast-forwarded to a version that sets the target.
       - type: bind
         source: ${LOCALAPPDATA}/Temp
         target: ${HERMES_WINDOWS_TEMP_CONTAINER_PATH:-/mnt/c/Users/${USERNAME}/AppData/Local/Temp}
@@ -43,10 +38,6 @@ services:
         target: ${HERMES_CONTAINER_CUSTOM_SKILLS_PATH:-/opt/custom-skills}
         read_only: true
 
-      # Reviewer는 role skill을 /opt/custom-skills/reviewer에서 직접 읽고,
-      # Coder와 공유하는 Spring/API capability만 별도 read-only root로 받는다.
-      # Docker Desktop에서는 read-only /opt/custom-skills 아래에 nested bind를
-      # 추가할 수 없으므로 capability mount만 /opt/reviewer-skills로 분리한다.
       - type: bind
         source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}/coder/dev-spring-guidelines
         target: ${HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}/dev-spring-guidelines
@@ -79,13 +70,8 @@ services:
 
     environment:
       TZ: ${HERMES_TIMEZONE:-Asia/Seoul}
-
-      # File tools may write only inside explicit development/persistent roots.
-      # Multiple roots are separated with ':' on the Linux container.
       HERMES_WRITE_SAFE_ROOT: ${HERMES_WRITE_SAFE_ROOT:-/workspace:/opt/data}
 
-      # Dashboard is part of the baseline DevKit runtime. Keep it enabled so the
-      # healthcheck has a deterministic listener contract.
       HERMES_DASHBOARD: "1"
       HERMES_DASHBOARD_HOST: ${HERMES_DASHBOARD_HOST:-0.0.0.0}
       HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_USERNAME:?Set HERMES_DASHBOARD_USERNAME in .env}
@@ -93,13 +79,11 @@ services:
       HERMES_DASHBOARD_BASIC_AUTH_SECRET: ${HERMES_DASHBOARD_SECRET:?Set HERMES_DASHBOARD_SECRET in .env}
       HERMES_DASHBOARD_PORT: ${HERMES_DASHBOARD_CONTAINER_PORT:-9119}
 
-      # Optional OpenAI-compatible API server. Disabled by default.
       API_SERVER_ENABLED: ${HERMES_API_SERVER_ENABLED:-false}
       API_SERVER_HOST: ${HERMES_API_SERVER_HOST:-0.0.0.0}
       API_SERVER_PORT: ${HERMES_API_SERVER_CONTAINER_PORT:-8642}
       API_SERVER_KEY: ${HERMES_API_SERVER_KEY:-}
 
-      # Jira Cloud
       JIRA_BASE_URL: ${JIRA_BASE_URL:-}
       JIRA_EMAIL: ${JIRA_EMAIL:-}
       JIRA_API_TOKEN: ${JIRA_API_TOKEN:-}
@@ -108,16 +92,23 @@ services:
       JIRA_INCLUDE_FIELD_NAMES: ${JIRA_INCLUDE_FIELD_NAMES:-}
       JIRA_VERIFY_SSL: ${JIRA_VERIFY_SSL:-true}
 
-      # Optional Kanban terminal-event notifications. Platform switching is env-only.
       HERMES_KANBAN_NOTIFY_ENABLED: ${HERMES_KANBAN_NOTIFY_ENABLED:-false}
       HERMES_KANBAN_NOTIFY_PLATFORM: ${HERMES_KANBAN_NOTIFY_PLATFORM:-discord}
       HERMES_KANBAN_NOTIFY_TARGET: ${HERMES_KANBAN_NOTIFY_TARGET:-}
       HERMES_KANBAN_NOTIFY_DELIVERY_MODE: ${HERMES_KANBAN_NOTIFY_DELIVERY_MODE:-notify}
       HERMES_KANBAN_NOTIFY_CHAT_TYPE: ${HERMES_KANBAN_NOTIFY_CHAT_TYPE:-channel}
 
-      # Discord gateway credentials. Keep the token only in local .env.
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       DISCORD_HOME_CHANNEL: ${HERMES_KANBAN_NOTIFY_TARGET:-}
+
+      # NAVER WORKS outbound-only platform plugin.
+      NAVER_WORKS_CLIENT_ID: ${NAVER_WORKS_CLIENT_ID:-}
+      NAVER_WORKS_CLIENT_SECRET: ${NAVER_WORKS_CLIENT_SECRET:-}
+      NAVER_WORKS_SERVICE_ACCOUNT: ${NAVER_WORKS_SERVICE_ACCOUNT:-}
+      NAVER_WORKS_PRIVATE_KEY: ${NAVER_WORKS_PRIVATE_KEY:-}
+      NAVER_WORKS_BOT_ID: ${NAVER_WORKS_BOT_ID:-}
+      NAVER_WORKS_SCOPE: ${NAVER_WORKS_SCOPE:-bot.message}
+      NAVER_WORKS_HOME_CHANNEL: ${HERMES_KANBAN_NOTIFY_TARGET:-}
 
       HERMES_WORK_ITEM_DIR: ${HERMES_WORK_ITEM_DIR:-/opt/data/work-items}
 
