@@ -96,11 +96,14 @@ Invoke-DockerCheck -Label "hermes-java launcher" -DockerArgs @(
 Invoke-DockerCheck -Label "Hermes CLI stable path" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "/usr/local/bin/hermes", "--help"
 )
-Invoke-DockerCheck -Label "Reviewer capability root" -DockerArgs @(
-    "exec", "--user", "hermes", $Container, "test", "-f", "/opt/reviewer-skills/dev-spring-test/SKILL.md"
+Invoke-DockerCheck -Label "Shared custom skill root" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "test", "-d", "/opt/custom-skills/shared"
 )
-Invoke-DockerCheck -Label "Reviewer guidelines capability" -DockerArgs @(
-    "exec", "--user", "hermes", $Container, "test", "-f", "/opt/reviewer-skills/dev-spring-guidelines/SKILL.md"
+Invoke-DockerCheck -Label "Shared Spring guideline capability" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "test", "-f", "/opt/custom-skills/shared/dev-spring-guidelines/SKILL.md"
+)
+Invoke-DockerCheck -Label "Shared Spring test capability" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "test", "-f", "/opt/custom-skills/shared/dev-spring-test/SKILL.md"
 )
 Invoke-DockerCheck -Label "Deprecated worktree skills removed" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "sh", "-lc",
@@ -122,9 +125,9 @@ import yaml
 profile = sys.argv[1]
 config = Path(f"/opt/data/profiles/{profile}/config.yaml")
 expected = {
-    "orchestrator": ["/opt/custom-skills/orchestrator"],
-    "coder": ["/opt/custom-skills/coder"],
-    "reviewer": ["/opt/custom-skills/reviewer", "/opt/reviewer-skills"],
+    "orchestrator": ["/opt/custom-skills/orchestrator", "/opt/custom-skills/shared"],
+    "coder": ["/opt/custom-skills/coder", "/opt/custom-skills/shared"],
+    "reviewer": ["/opt/custom-skills/reviewer", "/opt/custom-skills/shared"],
 }[profile]
 
 data = yaml.safe_load(config.read_text(encoding="utf-8")) or {}

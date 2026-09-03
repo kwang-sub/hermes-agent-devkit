@@ -111,24 +111,28 @@ $Container = Get-EnvOrDefault -Name "HERMES_CONTAINER_NAME" -Default "hermes-dev
 $ContainerWorkspacePath = Get-EnvOrDefault -Name "HERMES_CONTAINER_WORKSPACE_PATH" -Default "/workspace"
 $ContainerDataPath = "/opt/data"
 $ContainerCustomSkillsPath = Get-EnvOrDefault -Name "HERMES_CONTAINER_CUSTOM_SKILLS_PATH" -Default "/opt/custom-skills"
-$ContainerReviewerSkillsPath = Get-EnvOrDefault -Name "HERMES_CONTAINER_REVIEWER_SKILLS_PATH" -Default "/opt/reviewer-skills"
 $ContainerSharedPath = Get-EnvOrDefault -Name "HERMES_CONTAINER_SHARED_PATH" -Default "/opt/data/shared"
+$ContainerSharedSkillsPath = Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "shared"
 
 # The official Hermes image keeps the immutable application and venv under /opt/hermes.
 # Use absolute paths instead of relying on the runtime user's PATH.
 $HermesCliPath = "/opt/hermes/.venv/bin/hermes"
 $PythonPath = "/opt/hermes/.venv/bin/python"
 
+# 각 Profile은 역할 전용 Skill root와 단일 shared Skill root를 함께 참조한다.
+# 공통 Skill은 역할별 디렉터리에 복제하지 않고 custom-skills/shared 한 곳에서 관리한다.
 $ExternalSkillDirs = @{
     orchestrator = @(
-        (Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "orchestrator")
+        (Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "orchestrator"),
+        $ContainerSharedSkillsPath
     )
     coder = @(
-        (Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "coder")
+        (Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "coder"),
+        $ContainerSharedSkillsPath
     )
     reviewer = @(
         (Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "reviewer"),
-        $ContainerReviewerSkillsPath
+        $ContainerSharedSkillsPath
     )
 }
 
@@ -175,8 +179,6 @@ function Assert-Prerequisites {
         throw "Docker CLI cannot reach the Docker daemon. Start Docker Desktop and retry."
     }
 
-    # Read the complete docker inspect JSON and parse it in PowerShell.
-    # This avoids Docker Go-template quoting/escaping differences on Windows.
     $InspectOutput = & docker inspect $Container 2>$null
     $InspectExitCode = $LASTEXITCODE
 
@@ -419,10 +421,6 @@ function Ensure-ExternalDirs {
 
     $Config = Join-ContainerPath -Root $ContainerDataPath -Child "profiles/$Profile/config.yaml"
 
-    # `hermes config set skills.external_dirs ...` serializes the list as a
-    # scalar string in this environment. The embedded helper validates YAML,
-    # changes only skills.external_dirs, backs up an existing file before a
-    # required change, and writes atomically without printing config content.
     $Py = @'
 from datetime import datetime, timezone
 import os
@@ -708,4 +706,4 @@ Write-Host "1. Configure model/OAuth for orchestrator"
 Write-Host "2. Configure model/OAuth for coder"
 Write-Host "3. Configure model/OAuth for reviewer"
 Write-Host "4. Re-check config.yaml after model setup"
-Write-Host "5. Start fresh Hermes sessions and verify role-specific dev-* skills"
+Write-Host "5. Start fresh Hermes sessions and verify role-specific/shared dev-* skills"

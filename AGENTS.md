@@ -57,11 +57,18 @@ Task에는 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Risks, Wo
 - Stack/Capability Skill은 기존 convention을 확장할 뿐 dependency/architecture/common contract를 임의 변경하지 않는다.
 - Task의 Pattern References/Applicable Skills를 재사용해 같은 프로젝트를 역할마다 전체 재분석하지 않는다.
 
+## Host / container path resolution
+- Agent는 Linux 컨테이너에서 실행된다. Windows host 경로를 사용할 때는 **실제 Docker bind mount mapping을 최우선**으로 적용한다.
+- Workspace 경로는 `HERMES_HOST_WORKSPACE_PATH` → `HERMES_CONTAINER_WORKSPACE_PATH` mapping이 canonical이다. 예: `D:/workspace/product/oc/oc-dml` → `/workspace/product/oc/oc-dml`.
+- `D:\workspace\...`처럼 backslash를 사용한 동일 경로도 위 workspace mapping을 적용한다.
+- `/mnt/<drive>/...`는 모든 Windows 경로의 일반 변환 규칙이 아니다. Workspace host root를 기계적으로 `/mnt/<drive>/...`로 바꾼 값이 들어와도 실제 workspace bind mount와 일치하면 `/workspace/...`로 다시 canonicalize한다.
+- Workspace mapping에 속하지 않는 Windows 경로는 임의로 `/mnt/<drive>/...`로 추측하지 않는다. 실제 mount 또는 tool이 제공한 경로를 확인한다.
+
 ## Host temporary path resolution
-- Agent는 Linux 컨테이너에서 실행된다. Hermes file/vision tool이 Windows 경로를 `/mnt/<drive>/...` 형태로 정규화할 수 있으므로 그 정규화 경로를 그대로 사용한다.
+- `/mnt/<drive>/...` 규칙은 Windows host의 `%LOCALAPPDATA%\Temp` 입력 파일 접근을 위한 **별도 Temp mount 규칙**이다. Workspace repository 경로에 적용하지 않는다.
 - Windows host의 `%LOCALAPPDATA%\Temp`는 `update-devkit.ps1`가 `LOCALAPPDATA`를 기준으로 계산한 동일한 `/mnt/<drive>/Users/<profile>/AppData/Local/Temp` 경로에 read-only로 mount한다.
 - 사용자명이나 프로필 디렉터리명을 하드코딩하지 않는다. `LOCALAPPDATA`의 실제 drive/profile 경로가 canonical 값이다.
-- 변환한 파일을 읽기 전에 존재 여부를 확인한다. 존재하지 않으면 임의 경로를 추측하지 말고 사용자에게 파일 접근 실패를 명확히 알린다.
+- Temp 입력 파일을 읽기 전에 존재 여부를 확인한다. 존재하지 않으면 임의 경로를 추측하지 말고 사용자에게 파일 접근 실패를 명확히 알린다.
 - host Temp mount는 입력 파일 확인용 read-only 영역이다. 파일 생성·수정·삭제 대상이나 작업 산출물 저장 위치로 사용하지 않는다.
 
 ## Scope / safety / verification

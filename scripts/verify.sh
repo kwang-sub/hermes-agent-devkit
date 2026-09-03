@@ -27,7 +27,7 @@ required = (
     '"skills", "opt-out", "--remove", "--yes"',
     '$SkillPolicyMigrationMarker = ".devkit-skill-policy-v1"',
     'Ensure-ExternalDirs',
-    '$ContainerReviewerSkillsPath',
+    '$ContainerSharedSkillsPath',
 )
 missing = [term for term in required if term not in source]
 if missing:
@@ -60,7 +60,7 @@ if missing:
 PYTHON
 }
 
-check_reviewer_capability_mounts() {
+check_shared_capability_skills() {
     python3 - <<'PYTHON'
 from pathlib import Path
 
@@ -80,33 +80,32 @@ if 'target: ${HERMES_CONTAINER_CUSTOM_SKILLS_PATH:-/opt/custom-skills}' not in c
     raise SystemExit("compose.yml missing main read-only custom-skills mount")
 if 'read_only: true' not in compose:
     raise SystemExit("compose.yml must keep skill mounts read-only")
+if "HERMES_CONTAINER_REVIEWER_SKILLS_PATH" in compose:
+    raise SystemExit("compose.yml still contains deprecated reviewer capability mount")
 
+shared_root = Path("custom-skills/shared")
 for skill in capabilities:
-    source = f"/coder/{skill}"
-    target = f"${{HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}}/{skill}"
-    if source not in compose or target not in compose:
-        raise SystemExit(f"compose.yml missing separate reviewer capability mount: {skill}")
+    skill_file = shared_root / skill / "SKILL.md"
+    if not skill_file.is_file():
+        raise SystemExit(f"shared capability is missing: {skill_file}")
     if skill not in review:
         raise SystemExit(f"reviewer contract missing capability name: {skill}")
-
-for skill in ("dev-code-review", "dev-review-cycle"):
-    target = f"${{HERMES_CONTAINER_REVIEWER_SKILLS_PATH:-/opt/reviewer-skills}}/{skill}"
-    if target in compose:
-        raise SystemExit(f"compose.yml must not duplicate reviewer role skill under reviewer capability root: {skill}")
-
-if "/opt/custom-skills}/reviewer/" in compose:
-    raise SystemExit("compose.yml still nests reviewer mounts under the read-only custom-skills bind")
+    if (Path("custom-skills/coder") / skill).exists():
+        raise SystemExit(f"shared capability must not be duplicated under coder: {skill}")
 
 required_init = (
-    '$ContainerReviewerSkillsPath = Get-EnvOrDefault -Name "HERMES_CONTAINER_REVIEWER_SKILLS_PATH" -Default "/opt/reviewer-skills"',
+    '$ContainerSharedSkillsPath = Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "shared"',
     '$ExternalSkillDirs = @{',
+    'orchestrator = @(',
+    'coder = @(',
     'reviewer = @(',
-    '(Join-ContainerPath -Root $ContainerCustomSkillsPath -Child "reviewer"),',
-    '$ContainerReviewerSkillsPath',
+    '$ContainerSharedSkillsPath',
 )
 missing_init = [term for term in required_init if term not in init]
 if missing_init:
-    raise SystemExit("init-profiles.ps1 missing reviewer external_dirs contract: " + ", ".join(missing_init))
+    raise SystemExit("init-profiles.ps1 missing shared external_dirs contract: " + ", ".join(missing_init))
+if "ContainerReviewerSkillsPath" in init:
+    raise SystemExit("init-profiles.ps1 still contains deprecated reviewer skill root")
 
 if "skill_view" not in review:
     raise SystemExit("reviewer contract must keep skill_view capability available")
@@ -134,7 +133,7 @@ check_refactor_gate_contract() {
     python3 - <<'PYTHON'
 from pathlib import Path
 
-skill = Path("custom-skills/coder/dev-spring-refactor/SKILL.md")
+skill = Path("custom-skills/shared/dev-spring-refactor/SKILL.md")
 if not skill.is_file():
     raise SystemExit("dev-spring-refactor skill is missing")
 text = skill.read_text(encoding="utf-8")
@@ -248,7 +247,7 @@ run_check "dev-project-resolve tests" python3 custom-skills/orchestrator/dev-pro
 run_check "dev-breakdown shell syntax" bash -n custom-skills/orchestrator/dev-breakdown/scripts/collect_project_context.sh
 run_check "hermes-java shell syntax" bash -n scripts/hermes-java
 run_check "Multi-JDK image contract" check_multi_jdk_contract
-run_check "Reviewer capability mount contract" check_reviewer_capability_mounts
+run_check "Shared capability skill contract" check_shared_capability_skills
 run_check "Deprecated worktree skills removed" check_removed_worktree_skills
 run_check "Post-implementation refactor gate contract" check_refactor_gate_contract
 run_check "Environment contract" python3 scripts/check_env_contract.py
