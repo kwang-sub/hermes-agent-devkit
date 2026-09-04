@@ -10,7 +10,10 @@ HERMES_KANBAN_NOTIFY_PLATFORM=discord
 HERMES_KANBAN_NOTIFY_TARGET=
 HERMES_KANBAN_NOTIFY_DELIVERY_MODE=notify
 HERMES_KANBAN_NOTIFY_CHAT_TYPE=channel
+HERMES_KANBAN_NOTIFY_PROFILE=default
 ```
+
+`HERMES_KANBAN_NOTIFY_PROFILE`은 실제 알림 adapter를 소유한 Gateway Profile이다. 단일 Gateway로 동작하는 DevKit 기본 구조에서는 `default`를 사용한다. Orchestrator가 구독을 등록하더라도 subscription 소유자는 이 값으로 고정된다.
 
 기본값은 비활성화이며, 알림 등록 실패는 Coder/Reviewer 작업을 차단하지 않는다.
 
@@ -24,6 +27,7 @@ HERMES_KANBAN_NOTIFY_PLATFORM=discord
 HERMES_KANBAN_NOTIFY_TARGET=<Discord Channel ID>
 HERMES_KANBAN_NOTIFY_DELIVERY_MODE=notify
 HERMES_KANBAN_NOTIFY_CHAT_TYPE=channel
+HERMES_KANBAN_NOTIFY_PROFILE=default
 DISCORD_BOT_TOKEN=<Discord Bot Token>
 ```
 
@@ -76,8 +80,42 @@ hermes kanban notify-subscribe <TASK_ID>
   --platform <platform>
   --chat-id <target>
   --delivery-mode <mode>
+  --notifier-profile <profile>
   [--chat-type <type>]
 ```
+
+## Discord 알림 포맷
+
+DevKit은 Discord로 전달되는 주요 Kanban terminal event를 업무용 한국어 포맷으로 변환한다. 다른 Gateway 플랫폼에는 Hermes 기본 포맷을 유지한다.
+
+차단 예시:
+
+```text
+⛔ 작업 차단
+
+프로젝트  oc-wowsoft-server-setup
+작업      Windows OC APP_SFTP 설치 자동화 구현
+Task      t_3a1bde20
+담당      coder
+상태      BLOCKED
+
+사유
+Windows 검증 환경이 없어 수동 확인이 필요합니다.
+```
+
+완료 예시:
+
+```text
+✅ 작업 완료
+
+프로젝트  oc-wowsoft-server-setup
+작업      Windows OC APP_SFTP 설치 자동화 구현
+Task      t_3a1bde20
+담당      coder
+상태      DONE
+```
+
+동일한 형식으로 `gave_up`, `crashed`, `timed_out`, `review_requested`, `changes_requested`, `block_loop_detected`를 구분해 표시한다. 사유/오류/리뷰 내용은 외부 전달용 안전 필터를 거친 뒤 길이를 제한한다.
 
 ## 플랫폼 변경
 
@@ -88,6 +126,7 @@ Discord에서 다른 Hermes Gateway 플랫폼으로 변경할 때 workflow/skill
 ```dotenv
 HERMES_KANBAN_NOTIFY_PLATFORM=slack
 HERMES_KANBAN_NOTIFY_TARGET=<Slack Channel ID>
+HERMES_KANBAN_NOTIFY_PROFILE=<Slack adapter를 소유한 Gateway Profile>
 ```
 
 플랫폼 인증 환경변수만 해당 플랫폼 규격에 맞게 구성한다. 사용하지 않는 플랫폼의 token은 로컬 `.env`에서 제거하거나 비활성화한다.
@@ -105,5 +144,7 @@ NOTIFY_STATUS=warning
 - `subscribed`: 정상 구독.
 - `disabled`: 알림 비활성화. 정상 상태.
 - `warning`: 설정 누락, Gateway/CLI 오류, 20초 timeout 등. 개발 Task는 계속 진행.
+
+구독 성공 시 실제 소유 profile도 `NOTIFY_PROFILE=<profile>`로 출력한다.
 
 알림 실패를 이유로 Task를 `BLOCKED` 처리하거나 별도 notification Task를 만들지 않는다.

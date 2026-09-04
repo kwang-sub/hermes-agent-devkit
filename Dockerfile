@@ -19,6 +19,11 @@ RUN python3 /tmp/patch_hermes_kanban_terminal.py --self-test \
     && python3 /tmp/patch_hermes_kanban_terminal.py /opt/hermes/agent/kanban_stop.py \
     && rm /tmp/patch_hermes_kanban_terminal.py
 
+COPY scripts/patch_hermes_discord_kanban_notify.py /tmp/patch_hermes_discord_kanban_notify.py
+RUN python3 /tmp/patch_hermes_discord_kanban_notify.py --self-test \
+    && python3 /tmp/patch_hermes_discord_kanban_notify.py /opt/hermes/gateway/kanban_watchers.py \
+    && rm /tmp/patch_hermes_discord_kanban_notify.py
+
 # DevKit baseline tools. Gradle itself is not installed globally; hermes-java
 # prepares the exact project-owned distribution under the persistent /opt/data
 # Gradle root on first use.
