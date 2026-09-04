@@ -130,6 +130,7 @@ class GradleVerificationTests(unittest.TestCase):
         self.assertIn('HOST_ACTIVITY_POLICY=OBSERVE_ONLY', proc.stdout)
         self.assertIn('PRIMARY_RETRY_ALLOWED=false', proc.stdout)
         self.assertIn('SESSION_DIRECT_GRADLE_ALLOWED=false', proc.stdout)
+        self.assertIn('java-thread-dump-before-terminate', proc.stdout)
         self.assertTrue(self.guard().is_file())
         logs = self.observation_logs()
         self.assertEqual(len(logs), 1)
@@ -143,6 +144,7 @@ class GradleVerificationTests(unittest.TestCase):
             'HOST_ACTIVITY_POLICY=OBSERVE_ONLY',
             'PRIMARY_LAST_TASK=:compileJava',
             'GRADLE_TIMEOUT_DETAIL=JAVA_COMPILE_EXECUTION',
+            'PRIMARY_TIMEOUT_THREAD_DUMP_COUNT=',
         ):
             self.assertIn(term, text)
         calls = self.calls()
