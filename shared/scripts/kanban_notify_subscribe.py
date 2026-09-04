@@ -37,8 +37,17 @@ def main() -> int:
     target = (os.getenv("HERMES_KANBAN_NOTIFY_TARGET") or "").strip()
     delivery_mode = (os.getenv("HERMES_KANBAN_NOTIFY_DELIVERY_MODE") or "notify").strip()
     chat_type = (os.getenv("HERMES_KANBAN_NOTIFY_CHAT_TYPE") or "").strip()
+    notifier_profile = (os.getenv("HERMES_KANBAN_NOTIFY_PROFILE") or "default").strip()
 
-    missing = [name for name, value in (("HERMES_KANBAN_NOTIFY_PLATFORM", platform), ("HERMES_KANBAN_NOTIFY_TARGET", target)) if not value]
+    missing = [
+        name
+        for name, value in (
+            ("HERMES_KANBAN_NOTIFY_PLATFORM", platform),
+            ("HERMES_KANBAN_NOTIFY_TARGET", target),
+            ("HERMES_KANBAN_NOTIFY_PROFILE", notifier_profile),
+        )
+        if not value
+    ]
     if missing:
         print("NOTIFY_STATUS=warning")
         print(f"NOTIFY_WARNING=missing configuration: {','.join(missing)}")
@@ -53,6 +62,7 @@ def main() -> int:
         "--platform", platform,
         "--chat-id", target,
         "--delivery-mode", delivery_mode,
+        "--notifier-profile", notifier_profile,
     ]
     if chat_type:
         cmd.extend(["--chat-type", chat_type])
@@ -74,6 +84,7 @@ def main() -> int:
     print(f"NOTIFY_PLATFORM={platform}")
     print(f"NOTIFY_TARGET={target}")
     print(f"NOTIFY_DELIVERY_MODE={delivery_mode}")
+    print(f"NOTIFY_PROFILE={notifier_profile}")
     return 0
 
 
