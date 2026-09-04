@@ -1,7 +1,7 @@
 ---
 name: dev-code-review
 description: 동일 Workspace의 미커밋 구현을 requirement/AC와 project pattern/capability/구조 품질 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
-version: 0.13.1
+version: 0.14.0
 author: local
 platforms: [linux]
 metadata:
@@ -22,7 +22,7 @@ Reviewer의 **compact 실행 계약**이다. 상세 severity/checklist/escalatio
 4. requirement/AC/correctness/compatibility/security/tests와 Coder verification claim을 대조한다.
 5. capability 문서는 실제 finding 판단에 필요한 것만 확인한다. 단순히 Coder가 여러 skill을 로드했다는 이유만으로 Reviewer가 모두 다시 읽지 않는다.
 6. Java source 변경에서는 필요할 때 `skill_view("dev-java-guidelines")`로 Java version/Lombok/type placement/JavaDoc convention을 확인한다. Spring source 변경에서는 Coder의 Structural Quality/Javadoc evidence를 실제 diff와 대조한다. 단순 파일 길이/클래스 수/개인적 선호만으로 finding을 만들지 않는다.
-7. Coder의 `Verification Final: true`, 구체적인 PASS command/result, handoff `Effective Scope SHA256`가 있고 reviewer가 계산한 `EFFECTIVE_SCOPE_SHA256`와 일치하면 이를 최종 verification evidence로 재사용한다. 독립 검토상 재실행이 필요한 명확한 사유가 있을 때만 최소 명령을 실행한다.
+7. Coder의 `Verification Final: true`, PASS command/result, `Verification Request SHA256`, `Verification Scope SHA256`, handoff `Effective Scope SHA256`가 있고 reviewer가 계산한 현재 scope와 일치하면 해당 PASS evidence를 재사용한다. 동일 Gradle command를 확신 확보 목적으로 다시 실행하지 않는다.
 8. Coder의 `Review Risk`와 구조화된 `Risk Reasons`를 **탐색 시작점**으로 재사용한다. 이를 그대로 신뢰하지는 않지만, 동일 영향 범위를 다시 찾기 위한 repository-wide 탐색은 하지 않는다. 실제 diff/context와 모순될 때만 추가 source를 본다.
 9. P0/P1이 있으면 `kanban_request_changes`; 없고 evidence가 충분하면 `kanban_complete`; 안전한 판단 불가·외부 결정 필요·반복 blocker면 `kanban_block` 중 정확히 하나만 실행한다.
 
@@ -76,9 +76,10 @@ Reviewer의 독립성은 **모든 테스트를 다시 실행하는 것**이 아�
 Coder evidence를 그대로 재사용할 수 있는 조건:
 - command와 결과가 명시되어 있음
 - `Verification Final: true`
+- `Verification Request SHA256`와 `Verification Scope SHA256`가 있음
 - Coder handoff의 `Effective Scope SHA256`가 있음
 - Reviewer `review_context.py`의 `EFFECTIVE_SCOPE_SHA256`와 정확히 일치함
-- 해당 PASS 이후 executable source/test 변경 증거 없음
+- 해당 PASS 이후 executable production/test/build/toolchain 변경 증거 없음
 - review 중 verification claim과 실제 diff의 모순 없음
 - Coder verification command가 현재 변경 behavior를 충분히 cover함
 
@@ -86,23 +87,38 @@ Coder evidence를 그대로 재사용할 수 있는 조건:
 
 ```text
 Verification Evidence: REUSED
-Fingerprint Match: true
-Reason: coder final verification covers the unchanged effective scope
+Verification Scope Match: true
+Primary Reused: true
+Reason: coder final verification covers the unchanged executable scope
 ```
 
-재실행이 필요한 경우:
-- Coder/Reviewer fingerprint mismatch
-- fingerprint 또는 `Verification Final`/command/result가 누락됨
-- P0/P1 가능성을 검증하려는 경우
-- Coder verification이 누락/실패/모호한 경우
-- public API/schema/security/transaction/concurrency처럼 contract risk가 높고 테스트가 핵심 판단 근거인 경우
-- Coder PASS 이후 관련 executable source/test가 변경된 경우
+Java/Gradle evidence를 기술적으로 확인해야 하는 경우 Reviewer도 **같은 cached helper와 같은 `--scope-path` 목록**을 사용한다.
+
+```bash
+python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification_cached.py \
+  --workspace "<Workspace>" \
+  --mode TARGETED_TEST \
+  --test "<same-selector>" \
+  --scope-path "<same-covered-path>"
+```
+
+현재 scope가 Coder PASS와 동일하면 helper가 `VERIFICATION_EVIDENCE=REUSED`, `PRIMARY_REUSED=true`로 즉시 끝나야 한다. 이 경로에서 Gradle primary를 다시 실행하면 안 된다.
+
+재실행이 **필수**인 경우:
+- Coder PASS 이후 executable production/test/build/toolchain 파일이 수정됨
+- Coder/Reviewer effective scope 또는 verification scope fingerprint mismatch
+- verification fingerprint 또는 `Verification Final`/command/result가 누락됨
+- Reviewer finding 수정으로 Coder가 source/test를 변경한 뒤 다시 review가 들어옴
+- P0/P1 가능성을 검증하려는데 기존 PASS command가 그 behavior를 cover하지 않음
+- Coder verification이 실패/모호함(단, `GRADLE_STATUS=BLOCKED`를 Reviewer가 같은 명령으로 대신 재시도하지 않음)
 
 재실행 규칙:
-- 여러 Java test는 가능한 한 한 Gradle/Maven invocation으로 합친다.
+- 변경 이후의 fresh verification은 선택 사항이 아니라 필수다. 이전 PASS evidence를 재사용하지 않는다.
+- 여러 Java test는 가능한 한 한 canonical cached Gradle invocation으로 합친다.
 - frontend는 affected spec을 한 번만 실행한다.
-- 이미 PASS한 동일 명령을 단순 확신 확보용으로 반복하지 않는다.
+- 이미 PASS한 동일 scope/command를 단순 확신 확보용으로 반복하지 않는다.
 - unrelated lifecycle task 때문에 Coder가 조정된 targeted command로 PASS했다면 reviewer도 원래 실패 command를 다시 실행하지 않는다.
+- `GRADLE_STATUS=BLOCKED`이면 Reviewer가 direct `hermes-java ./gradlew`로 우회하지 않고 blocker evidence를 유지한다.
 
 ## Common Coding Review Gate
 - `/opt/data/shared/references/coding-rules.md`와 project pattern을 기준으로 기존 abstraction 재사용, scope, `2-depth`, 반복 I/O/N+1을 확인한다.
@@ -128,7 +144,7 @@ public API/schema/dependency/transaction/security/concurrency/architecture 의�
 
 ## Java / Build Verification Gate
 - `.hermes/toolchain.env`가 있으면 Java target/runtime과 Coder evidence를 대조한다.
-- Java build/test 재실행은 `hermes-java <wrapper command>`를 우선한다.
+- Java/Gradle 재검증은 `gradle_verification_cached.py`를 canonical 경로로 사용한다. 최대 primary timeout은 600초다.
 - Reviewer가 임의 JDK를 다운로드하거나 host Java를 탐색하지 않는다.
 
 ## Verdict

@@ -38,7 +38,11 @@ def main() -> int:
             "tracked/effective/EOL 변경 분류",
             "임시 wrapper/script 생성",
             "CAPABILITY` blocker",
-            "scripts/gradle_verification.py",
+            "scripts/gradle_verification_cached.py",
+            "기본 verification timeout은 600초",
+            "fresh Gradle verification을 반드시 다시 실행한다",
+            "GRADLE_STATUS=BLOCKED",
+            "kanban_block",
         ),
         "dev-implement-plan runtime policy",
     )
@@ -54,6 +58,36 @@ def main() -> int:
             "write_session_guard",
         ),
         "bounded Gradle session guard",
+    )
+
+    cached_helper = (ROOT / "custom-skills/coder/dev-implement-plan/scripts/gradle_verification_cached.py").read_text(encoding="utf-8")
+    require(
+        cached_helper,
+        (
+            '"600"',
+            "MAX_VERIFY_TIMEOUT = 600",
+            "VERIFICATION_EVIDENCE=REUSED",
+            "PRIMARY_REUSED=true",
+            "VERIFICATION_SCOPE_SHA256",
+            "SOURCE_CHANGED_DURING_VERIFICATION",
+            "FRESH_VERIFICATION_REQUIRED=true",
+            "scope_sha256",
+        ),
+        "Gradle verification evidence reuse",
+    )
+
+    reviewer = (ROOT / "custom-skills/reviewer/dev-code-review/SKILL.md").read_text(encoding="utf-8")
+    require(
+        reviewer,
+        (
+            "Verification Request SHA256",
+            "Verification Scope SHA256",
+            "PRIMARY_REUSED=true",
+            "재실행이 **필수**인 경우",
+            "Gradle primary를 다시 실행하면 안 된다",
+            "GRADLE_STATUS=BLOCKED",
+        ),
+        "reviewer verification reuse policy",
     )
 
     hermes_java = (ROOT / "scripts/hermes-java").read_text(encoding="utf-8")
