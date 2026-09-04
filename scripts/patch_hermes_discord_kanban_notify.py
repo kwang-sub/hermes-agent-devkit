@@ -46,7 +46,12 @@ def _devkit_discord_kanban_message(*, kind, task, sub, board_slug, event, fallba
         detail = str(payload.get("reason") or payload.get("summary") or "")
     elif kind == "completed":
         detail_label = "결과"
-        detail = str(payload.get("result") or payload.get("summary") or "")
+        detail = str(
+            payload.get("result")
+            or payload.get("summary")
+            or getattr(task, "result", "")
+            or ""
+        )
 
     if detail:
         try:
@@ -108,7 +113,14 @@ def self_test() -> None:
         if patch_source(path) != "already-patched":
             raise RuntimeError("self-test: patch is not idempotent")
         text = path.read_text(encoding="utf-8")
-        for term in ("⛔", "프로젝트", "작업      {title}", "상태      {status}", "platform_str == \"discord\""):
+        for term in (
+            "⛔",
+            "프로젝트",
+            "작업      {title}",
+            "상태      {status}",
+            "platform_str == \"discord\"",
+            'getattr(task, "result", "")',
+        ):
             if term not in text:
                 raise RuntimeError(f"self-test: missing {term}")
 
