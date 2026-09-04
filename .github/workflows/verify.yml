@@ -7,6 +7,7 @@ on:
       - "fix/**"
       - "feat/**"
       - "feature/**"
+      - "perf/**"
   pull_request:
 
 permissions:
@@ -45,6 +46,10 @@ jobs:
       - name: Verify Gradle bounded verification helper
         shell: bash
         run: python3 custom-skills/coder/dev-implement-plan/tests/test_gradle_verification.py
+
+      - name: Verify Gradle verification evidence reuse
+        shell: bash
+        run: python3 custom-skills/coder/dev-implement-plan/tests/test_gradle_verification_cached.py
 
       - name: Verify hermes-java Gradle cache fallback
         shell: bash
