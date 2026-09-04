@@ -21,6 +21,7 @@ class SubscribeNotificationTests(unittest.TestCase):
             "HERMES_KANBAN_NOTIFY_TARGET",
             "HERMES_KANBAN_NOTIFY_DELIVERY_MODE",
             "HERMES_KANBAN_NOTIFY_CHAT_TYPE",
+            "HERMES_KANBAN_NOTIFY_PROFILE",
             "HERMES_CLI",
         ):
             env.pop(key, None)
@@ -59,15 +60,40 @@ class SubscribeNotificationTests(unittest.TestCase):
                 "HERMES_KANBAN_NOTIFY_TARGET": "123456789",
                 "HERMES_KANBAN_NOTIFY_DELIVERY_MODE": "notify",
                 "HERMES_KANBAN_NOTIFY_CHAT_TYPE": "channel",
+                "HERMES_KANBAN_NOTIFY_PROFILE": "default",
                 "HERMES_CLI": str(fake),
             })
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertIn("NOTIFY_STATUS=subscribed", proc.stdout)
+            self.assertIn("NOTIFY_PROFILE=default", proc.stdout)
             args = log.read_text(encoding="utf-8").splitlines()
             self.assertEqual(args[:3], ["kanban", "notify-subscribe", "t_test123"])
             self.assertIn("discord", args)
             self.assertIn("123456789", args)
             self.assertIn("channel", args)
+            idx = args.index("--notifier-profile")
+            self.assertEqual(args[idx + 1], "default")
+
+    def test_default_notifier_profile_is_default_gateway(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "args.txt"
+            fake = Path(tmp) / "hermes"
+            fake.write_text(textwrap.dedent(f"""\
+                #!/bin/sh
+                printf '%s\\n' "$@" > '{log}'
+                exit 0
+            """), encoding="utf-8")
+            fake.chmod(0o755)
+            proc = self.run_helper({
+                "HERMES_KANBAN_NOTIFY_ENABLED": "true",
+                "HERMES_KANBAN_NOTIFY_PLATFORM": "discord",
+                "HERMES_KANBAN_NOTIFY_TARGET": "123456789",
+                "HERMES_CLI": str(fake),
+            })
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            args = log.read_text(encoding="utf-8").splitlines()
+            idx = args.index("--notifier-profile")
+            self.assertEqual(args[idx + 1], "default")
 
     def test_command_failure_does_not_block_dispatch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
