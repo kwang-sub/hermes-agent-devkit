@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: 승인된 Kanban 작업을 할당 Workspace에서 최소 구현·구조 품질 점검·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.19.0
+version: 0.20.0
 author: local
 platforms: [linux]
 metadata:
@@ -143,25 +143,44 @@ Java 프로젝트에서는 `dev-java-guidelines`가 Java version/build/Lombok/ty
 
 Java/Gradle/Maven 프로젝트는 Bootstrap의 `.hermes/toolchain.env`를 사용한다. JDK/Gradle/Maven을 task-time에 설치하지 않는다.
 
-Gradle compile/targeted test의 canonical 실행은 `scripts/gradle_verification.py`다.
+Gradle compile/targeted test의 canonical 실행은 **재사용 계층이 포함된** `scripts/gradle_verification_cached.py`다. 기본 verification timeout은 600초이며 600초를 초과할 수 없다.
 
 ```bash
-python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification.py \
+python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification_cached.py \
   --workspace "<Workspace>" \
   --mode TARGETED_TEST \
-  --test "<fully-qualified-test-selector>"
+  --test "<fully-qualified-test-selector>" \
+  --scope-path "<covered-production-or-test-path>" \
+  --scope-path "<covered-production-or-test-path>"
 ```
+
+`--scope-path`에는 이번 Gradle 검증이 실제로 cover하는 executable production/test 파일을 모두 넣는다. helper는 이 파일들과 build/toolchain 핵심 파일의 content fingerprint를 저장한다.
 
 규칙:
 - 여러 targeted test는 가능한 한 한 invocation으로 합친다.
 - 구현 중에는 targeted test 또는 필요한 integration/module test만 사용한다.
 - **전체 `test`는 탐색/중간 확인 용도로 실행하지 않는다. `IMPLEMENTATION_STABLE` 이후 final regression gate에서만 실행한다.**
-- 전체 test가 필요한 작업은 canonical helper의 `--mode COMPILE --task test`를 **최종 회귀 게이트 용도로만** 사용한다.
+- 전체 test가 필요한 작업은 canonical cached helper의 `--mode COMPILE --task test`를 **최종 회귀 게이트 용도로만** 사용한다.
 - 한 stable verification cycle에서 full test는 기본 **1회**다. 동일 실패를 확인하기 위해 같은 전체 test를 반복하지 않는다.
 - 실제 BUILD_FAILURE는 source/test 수정 후 최소 재검증할 수 있다.
-- PASS 이후 해당 executable source/test가 바뀌지 않으면 같은 검증을 반복하지 않는다.
-- `GRADLE_STATUS=BLOCKED`이면 direct Gradle 반복이나 우회 wrapper를 만들지 않는다.
+- PASS evidence의 `VERIFICATION_SCOPE_SHA256`와 request가 동일하면 `VERIFICATION_EVIDENCE=REUSED`, `PRIMARY_REUSED=true`로 재사용하며 같은 Gradle command를 다시 실행하지 않는다.
+- **PASS 이후 `--scope-path`에 포함된 production/test 또는 자동 포함 build/toolchain 파일이 하나라도 바뀌면 기존 evidence는 즉시 무효이며 fresh Gradle verification을 반드시 다시 실행한다.**
+- 검증 실행 도중 scope가 바뀌면 `SOURCE_CHANGED_DURING_VERIFICATION`으로 BLOCK하고 fresh verification을 요구한다.
+- `GRADLE_STATUS=BLOCKED`이면 direct Gradle 반복이나 우회 wrapper를 만들지 않는다. Standard Flow에서도 BLOCKED verification을 Reviewer가 대신 재실행하도록 넘기지 않고 `kanban_block`한다.
 - Maven 등 비-Gradle launcher 경로만 `hermes-java`를 사용한다.
+
+### Gradle PASS Evidence 재사용 계약
+
+재사용 가능한 PASS는 다음 네 값이 모두 일치해야 한다.
+
+```text
+Verification Request SHA256: <VERIFICATION_REQUEST_SHA256>
+Verification Scope SHA256: <VERIFICATION_SCOPE_SHA256>
+Verification Evidence: EXECUTED | REUSED
+Primary Reused: true | false
+```
+
+동일 Task/Workspace에서 Coder 재개 또는 Reviewer가 검증할 때 scope fingerprint가 동일하면 PASS를 재사용한다. source/test/build/toolchain 변경으로 fingerprint가 달라지면 재사용 금지이며 fresh verification이 필수다.
 
 ### Full Test 실패 재사용 정책
 
@@ -246,6 +265,10 @@ Changed Files:
 Verification Mode: <mode>
 Verification Commands / Results:
 - <command> -> PASS | FAIL
+Verification Request SHA256: <VERIFICATION_REQUEST_SHA256 | NONE>
+Verification Scope SHA256: <VERIFICATION_SCOPE_SHA256 | NONE>
+Verification Evidence: EXECUTED | REUSED | NOT_REUSABLE
+Primary Reused: true | false
 Full Test: PASS | NOT_REQUIRED | FAIL_REUSED_OUT_OF_SCOPE | FAIL_IN_SCOPE | UNCERTAIN
 Full Test Failure Signature: <test/method/message | NONE>
 Verification Final: true
@@ -269,6 +292,7 @@ Residual Risk:
 
 - Standard Flow에서 Coder self-complete 금지.
 - `CHANGES_REQUESTED`는 terminal 상태가 아니며 **original coder가 동일 Workspace**에서 blocking finding만 수정 후 반드시 재-review한다.
+- `GRADLE_STATUS=BLOCKED`인 검증은 review residual risk로 넘기지 않고 `kanban_block`한다.
 - `kanban_request_review` 성공 후 즉시 종료한다. 추가 `kanban_complete`, reviewer skill load, `kanban_show`, status probe를 실행하지 않는다.
 
 ## 공통 Coding Rules 핵심
