@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -17,8 +18,19 @@ DEFAULT_CAPABILITY_TIMEOUT = int(os.getenv('HERMES_GRADLE_CAPABILITY_TIMEOUT_SEC
 DEFAULT_VERIFY_TIMEOUT = int(os.getenv('HERMES_GRADLE_VERIFY_TIMEOUT_SECONDS', '240'))
 DEFAULT_DIAGNOSTIC_TIMEOUT = int(os.getenv('HERMES_GRADLE_DIAGNOSTIC_TIMEOUT_SECONDS', '60'))
 DEFAULT_DRY_RUN_TIMEOUT = int(os.getenv('HERMES_GRADLE_DRY_RUN_TIMEOUT_SECONDS', '30'))
+DEFAULT_THREAD_DUMP_TIMEOUT = int(os.getenv('HERMES_GRADLE_THREAD_DUMP_TIMEOUT_SECONDS', '5'))
 TAIL_LINES = 30
 MAX_PROCESS_SNAPSHOTS = 8
+MAX_JAVA_THREAD_DUMPS = 4
+MAX_THREAD_DUMP_CHARS = 120_000
+
+
+@dataclass
+class JavaThreadDump:
+    pid: int
+    tool: str
+    status: str
+    output: str
 
 
 @dataclass
@@ -30,6 +42,7 @@ class RunResult:
     duration: float
     timed_out: bool = False
     timeout_processes: list[str] = field(default_factory=list)
+    timeout_thread_dumps: list[JavaThreadDump] = field(default_factory=list)
 
 
 def parse_args() -> argparse.Namespace:
@@ -128,6 +141,18 @@ def write_observation_log(
             lines.append(f'PRIMARY_DETAIL={detail}')
         for index, snapshot in enumerate(primary.timeout_processes, start=1):
             lines.append(f'PRIMARY_TIMEOUT_PROCESS_{index}={snapshot}')
+        lines.append(f'PRIMARY_TIMEOUT_THREAD_DUMP_COUNT={len(primary.timeout_thread_dumps)}')
+        for index, dump in enumerate(primary.timeout_thread_dumps, start=1):
+            lines.extend(
+                [
+                    f'PRIMARY_TIMEOUT_THREAD_DUMP_{index}_PID={dump.pid}',
+                    f'PRIMARY_TIMEOUT_THREAD_DUMP_{index}_TOOL={dump.tool}',
+                    f'PRIMARY_TIMEOUT_THREAD_DUMP_{index}_STATUS={dump.status}',
+                    f'PRIMARY_TIMEOUT_THREAD_DUMP_{index}_BEGIN',
+                    dump.output,
+                    f'PRIMARY_TIMEOUT_THREAD_DUMP_{index}_END',
+                ]
+            )
         path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
         return path
     except OSError as exc:
@@ -150,7 +175,7 @@ def _read_proc_value(pid: int, file_name: str, keys: tuple[str, ...]) -> dict[st
     return values
 
 
-def capture_process_group(leader_pid: int) -> list[str]:
+def _process_group_rows(leader_pid: int) -> list[tuple[int, int, str, str, str, str, str, str, str]]:
     try:
         pgid = os.getpgid(leader_pid)
     except (ProcessLookupError, PermissionError):
@@ -165,7 +190,7 @@ def capture_process_group(leader_pid: int) -> list[str]:
         )
     except (OSError, subprocess.TimeoutExpired):
         return []
-    snapshots: list[str] = []
+    rows: list[tuple[int, int, str, str, str, str, str, str, str]] = []
     for raw_line in ps.stdout.splitlines():
         parts = raw_line.split(None, 8)
         if len(parts) < 9:
@@ -175,15 +200,23 @@ def capture_process_group(leader_pid: int) -> list[str]:
             if int(pgid_s) != pgid:
                 continue
             pid = int(pid_s)
+            ppid = int(ppid_s)
         except ValueError:
             continue
+        rows.append((pid, ppid, stat, etime, pcpu, pmem, wchan, comm, pgid_s))
+    return rows
+
+
+def capture_process_group(leader_pid: int) -> list[str]:
+    snapshots: list[str] = []
+    for pid, ppid, stat, etime, pcpu, pmem, wchan, comm, _ in _process_group_rows(leader_pid):
         status = _read_proc_value(pid, 'status', ('Threads', 'voluntary_ctxt_switches', 'nonvoluntary_ctxt_switches'))
         io = _read_proc_value(pid, 'io', ('read_bytes', 'write_bytes'))
         snapshots.append(
             ' '.join(
                 [
-                    f'pid={pid_s}',
-                    f'ppid={ppid_s}',
+                    f'pid={pid}',
+                    f'ppid={ppid}',
                     f'stat={stat}',
                     f'etime={etime}',
                     f'cpu={pcpu}',
@@ -199,6 +232,105 @@ def capture_process_group(leader_pid: int) -> list[str]:
         if len(snapshots) >= MAX_PROCESS_SNAPSHOTS:
             break
     return snapshots
+
+
+def _java_diagnostic_tool(pid: int) -> tuple[str, str] | None:
+    candidates: list[tuple[str, str]] = []
+    explicit_jcmd = (os.getenv('HERMES_GRADLE_JCMD') or '').strip()
+    explicit_jstack = (os.getenv('HERMES_GRADLE_JSTACK') or '').strip()
+    if explicit_jcmd:
+        candidates.append(('jcmd', explicit_jcmd))
+    if explicit_jstack:
+        candidates.append(('jstack', explicit_jstack))
+    try:
+        java_exe = Path(os.readlink(Path('/proc') / str(pid) / 'exe'))
+        candidates.extend(
+            [
+                ('jcmd', str(java_exe.with_name('jcmd'))),
+                ('jstack', str(java_exe.with_name('jstack'))),
+            ]
+        )
+    except (FileNotFoundError, PermissionError, OSError):
+        pass
+    for name in ('jcmd', 'jstack'):
+        resolved = shutil.which(name)
+        if resolved:
+            candidates.append((name, resolved))
+    seen: set[str] = set()
+    for name, path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return name, path
+    return None
+
+
+def _truncate_thread_dump(text: str) -> str:
+    if len(text) <= MAX_THREAD_DUMP_CHARS:
+        return text
+    omitted = len(text) - MAX_THREAD_DUMP_CHARS
+    return text[:MAX_THREAD_DUMP_CHARS] + f'\n... [TRUNCATED {omitted} chars]'
+
+
+def capture_java_thread_dumps(leader_pid: int) -> list[JavaThreadDump]:
+    dumps: list[JavaThreadDump] = []
+    java_pids = [
+        pid
+        for pid, _ppid, _stat, _etime, _pcpu, _pmem, _wchan, comm, _pgid in _process_group_rows(leader_pid)
+        if comm == 'java'
+    ][:MAX_JAVA_THREAD_DUMPS]
+    for pid in java_pids:
+        tool = _java_diagnostic_tool(pid)
+        if tool is None:
+            dumps.append(JavaThreadDump(pid=pid, tool='NONE', status='UNAVAILABLE', output='jcmd/jstack not found'))
+            continue
+        tool_name, tool_path = tool
+        cmd = [tool_path, str(pid), 'Thread.print', '-l'] if tool_name == 'jcmd' else [tool_path, '-l', str(pid)]
+        try:
+            result = subprocess.run(
+                cmd,
+                text=True,
+                capture_output=True,
+                timeout=DEFAULT_THREAD_DUMP_TIMEOUT,
+                check=False,
+            )
+            output = '\n'.join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
+            status = 'PASS' if result.returncode == 0 else f'FAIL_{result.returncode}'
+            dumps.append(
+                JavaThreadDump(
+                    pid=pid,
+                    tool=tool_name,
+                    status=status,
+                    output=_truncate_thread_dump(output or 'NO_OUTPUT'),
+                )
+            )
+        except subprocess.TimeoutExpired as exc:
+            stdout = exc.stdout or ''
+            stderr = exc.stderr or ''
+            if isinstance(stdout, bytes):
+                stdout = stdout.decode(errors='replace')
+            if isinstance(stderr, bytes):
+                stderr = stderr.decode(errors='replace')
+            output = '\n'.join(part.strip() for part in (stdout, stderr) if part.strip())
+            dumps.append(
+                JavaThreadDump(
+                    pid=pid,
+                    tool=tool_name,
+                    status='TIMEOUT',
+                    output=_truncate_thread_dump(output or f'{tool_name} timed out after {DEFAULT_THREAD_DUMP_TIMEOUT}s'),
+                )
+            )
+        except OSError as exc:
+            dumps.append(
+                JavaThreadDump(
+                    pid=pid,
+                    tool=tool_name,
+                    status=f'ERROR_{type(exc).__name__}',
+                    output=str(exc),
+                )
+            )
+    return dumps
 
 
 def _terminate_group(proc: subprocess.Popen[str]) -> None:
@@ -221,7 +353,13 @@ def _terminate_group(proc: subprocess.Popen[str]) -> None:
         pass
 
 
-def run_bounded(cmd: list[str], cwd: Path, timeout: int) -> RunResult:
+def run_bounded(
+    cmd: list[str],
+    cwd: Path,
+    timeout: int,
+    *,
+    capture_java_diagnostics: bool = False,
+) -> RunResult:
     started = time.monotonic()
     env = os.environ.copy()
     env['HERMES_GRADLE_BOUNDED_HELPER'] = '1'
@@ -239,6 +377,7 @@ def run_bounded(cmd: list[str], cwd: Path, timeout: int) -> RunResult:
         return RunResult(cmd, proc.returncode, stdout, stderr, time.monotonic() - started)
     except subprocess.TimeoutExpired:
         snapshots = capture_process_group(proc.pid)
+        thread_dumps = capture_java_thread_dumps(proc.pid) if capture_java_diagnostics else []
         _terminate_group(proc)
         stdout, stderr = proc.communicate()
         return RunResult(
@@ -249,6 +388,7 @@ def run_bounded(cmd: list[str], cwd: Path, timeout: int) -> RunResult:
             time.monotonic() - started,
             timed_out=True,
             timeout_processes=snapshots,
+            timeout_thread_dumps=thread_dumps,
         )
 
 
@@ -339,6 +479,12 @@ def emit_result(prefix: str, result: RunResult) -> None:
         print(f'{prefix}_TIMEOUT_PROCESS_COUNT={len(result.timeout_processes)}')
         for index, snapshot in enumerate(result.timeout_processes, start=1):
             print(f'{prefix}_TIMEOUT_PROCESS_{index}={snapshot}')
+    if result.timeout_thread_dumps:
+        print(f'{prefix}_TIMEOUT_THREAD_DUMP_COUNT={len(result.timeout_thread_dumps)}')
+        for index, dump in enumerate(result.timeout_thread_dumps, start=1):
+            print(f'{prefix}_TIMEOUT_THREAD_DUMP_{index}_PID={dump.pid}')
+            print(f'{prefix}_TIMEOUT_THREAD_DUMP_{index}_TOOL={dump.tool}')
+            print(f'{prefix}_TIMEOUT_THREAD_DUMP_{index}_STATUS={dump.status}')
 
 
 def blocked(blocker: str) -> int:
@@ -377,7 +523,10 @@ def main() -> int:
         for selector in args.test:
             primary_args.extend(['--tests', selector])
     primary = run_bounded(
-        gradle_cmd(args.launcher, *primary_args), workspace, args.verification_timeout
+        gradle_cmd(args.launcher, *primary_args),
+        workspace,
+        args.verification_timeout,
+        capture_java_diagnostics=True,
     )
     emit_result('PRIMARY', primary)
 
@@ -443,7 +592,7 @@ def main() -> int:
     print('HOST_ACTIVITY_POLICY=OBSERVE_ONLY')
     print('PRIMARY_RETRY_ALLOWED=false')
     print('SESSION_DIRECT_GRADLE_ALLOWED=false')
-    print('DIAGNOSTIC_POLICY=process-snapshot;single-online-help;single-offline-help;bounded-offline-dry-run;persist-observation-log;no-primary-retry')
+    print('DIAGNOSTIC_POLICY=process-snapshot;java-thread-dump-before-terminate;single-online-help;single-offline-help;bounded-offline-dry-run;persist-observation-log;no-primary-retry')
     return 2
 
 
