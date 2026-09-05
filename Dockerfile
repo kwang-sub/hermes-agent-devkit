@@ -21,7 +21,11 @@ RUN python3 /tmp/patch_hermes_kanban_terminal.py --self-test \
 
 COPY scripts/patch_hermes_discord_kanban_notify.py /tmp/patch_hermes_discord_kanban_notify.py
 RUN python3 /tmp/patch_hermes_discord_kanban_notify.py --self-test \
-    && python3 /tmp/patch_hermes_discord_kanban_notify.py /opt/hermes/gateway/kanban_watchers.py \
+    && if [ -f /opt/hermes/gateway/kanban_watchers_notifier.py ]; then \
+         python3 /tmp/patch_hermes_discord_kanban_notify.py /opt/hermes/gateway/kanban_watchers_notifier.py; \
+       else \
+         python3 /tmp/patch_hermes_discord_kanban_notify.py /opt/hermes/gateway/kanban_watchers.py; \
+       fi \
     && rm /tmp/patch_hermes_discord_kanban_notify.py
 
 # DevKit baseline tools. Gradle itself is not installed globally; hermes-java
