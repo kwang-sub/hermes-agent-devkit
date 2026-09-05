@@ -153,7 +153,10 @@ def main() -> int:
         "--confirmed-dirty", "repository-wide dirty/EOL/untracked 분류를 **생략**",
         "WORKSPACE_CHANGE_SCAN_MODE=skipped-approved-preservation", "*_COUNT=-1",
         "git diff --name-only -z HEAD", "WORKSPACE_CLASSIFICATION_TOTAL_SECONDS",
-        "kanban_create(board=BOARD, ...)", "kanban_show(board=BOARD, task_id=<CREATED_TASK_ID>)",
+        'initial_status="blocked"', "kanban_show(board=BOARD, task_id=<CREATED_TASK_ID>)",
+        "subscribe_notification.py --board BOARD --task-id <CREATED_TASK_ID>",
+        "NOTIFY_STATUS=subscribed + NOTIFY_VERIFIED=true",
+        "kanban_unblock(board=BOARD, task_id=<CREATED_TASK_ID>)",
         "board == BOARD", "HERMES_KANBAN_BOARD", "CLI body-file 지원 여부 탐색",
         "CLI fallback을 탐색하지 않고 BLOCK",
     ))
