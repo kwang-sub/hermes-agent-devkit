@@ -1,14 +1,14 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 구현 계획과 project pattern/capability 계약을 Git workspace와 Kanban으로 인계한다.
-version: 0.9.2
+version: 0.9.3
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, capability, preflight, notification, performance]
     related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-skill-preflight, dev-workflow-orchestrate]
-    requires_tools: [terminal, skill_view, kanban_create, kanban_show, clarify]
+    requires_tools: [terminal, skill_view, kanban_create, kanban_show, kanban_unblock, clarify]
 ---
 
 # dev-workspace-dispatch
@@ -83,24 +83,48 @@ VALIDATED_SKILLS → kanban_create.skills
 REJECTED_SKILLS → body 기록만 하고 pin 금지
 ```
 
-## 5. Kanban 생성 단일 경로
+## 5. Kanban 생성·알림 Gate 단일 경로
+
+Task는 알림 Gate가 완료되기 전 worker가 가져가지 못하도록 **처음부터 `blocked` 상태로 생성**한다.
 
 ```text
 prepare_dispatch.py 정확히 한 번만 수행
 → dev-skill-preflight
-→ kanban_create(board=BOARD, ...) tool 정확히 1회
+→ kanban_create(
+     board=BOARD,
+     initial_status="blocked",
+     ...
+   ) tool 정확히 1회
 → kanban_show(board=BOARD, task_id=<CREATED_TASK_ID>) tool 정확히 1회
-→ subscribe_notification.py 정확히 1회
-→ worker dispatch
+→ 등록 read-back 계약 검증
+→ subscribe_notification.py --board BOARD --task-id <CREATED_TASK_ID> 정확히 1회
+→ NOTIFY_STATUS=subscribed + NOTIFY_VERIFIED=true
+   또는 NOTIFY_STATUS=disabled
+→ kanban_unblock(board=BOARD, task_id=<CREATED_TASK_ID>) tool 정확히 1회
+→ ready 전환 후 worker dispatch
 ```
 
-호출 횟수 계약은 `kanban_create tool 정확히 1회`, `kanban_show tool 정확히 1회`이다.
+`kanban_show` 성공 전에는 알림 helper를 실행하지 않는다. 알림이 활성화된 환경에서 helper exit code가 0이 아니거나 `NOTIFY_STATUS=failed`이면 **절대 unblock하지 않는다**. Task는 `blocked` 상태로 남겨 수동 점검 후 재시도한다.
+
+알림이 명시적으로 비활성화된 경우(`NOTIFY_STATUS=disabled`)만 구독 없이 unblock을 허용한다.
+
+호출 횟수 계약은 다음과 같다.
+
+```text
+kanban_create tool 정확히 1회
+kanban_show tool 정확히 1회
+subscribe_notification.py 정확히 1회
+kanban_unblock tool 정확히 1회 (Gate 성공 또는 알림 disabled일 때만)
+```
 
 금지:
 
 ```text
 board 인자 생략
 HERMES_KANBAN_BOARD fallback
+default/current board fallback
+알림 실패를 warning으로 무시하고 unblock
+알림 검증 전에 ready/running dispatch 허용
 hermes kanban --board <board> create --help
 hermes project list / --help
 Kanban body 임시 파일
@@ -116,7 +140,19 @@ workspace == dir:<APPROVED_WORKSPACE>
 assignee == profiles.coder
 reviewer == profiles.reviewer
 task.skills == VALIDATED_SKILLS
+status == blocked
 ```
+
+알림 helper는 동일한 `BOARD`로 다음 순서를 자체 검증한다.
+
+```text
+hermes kanban --board BOARD show TASK --json
+→ notify-subscribe
+→ notify-list TASK --json
+→ 기대 platform/chat/profile/delivery_mode row 확인
+```
+
+따라서 세션 기본 board에서 Task를 찾는 fallback은 허용하지 않는다.
 
 ## 6. Workspace Contract
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -12,6 +13,7 @@ ALLOWED_DELIVERY_MODES = {"notify", "wake", "notify+wake"}
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Subscribe a Kanban task to optional gateway notifications.")
+    parser.add_argument("--board", required=True, help="Explicit Kanban board slug. Default-board fallback is forbidden.")
     parser.add_argument("--task-id", required=True)
     return parser.parse_args()
 
@@ -27,10 +29,46 @@ def hermes_cli() -> str:
     return shutil.which("hermes") or "/usr/local/bin/hermes"
 
 
+def run_command(cmd: list[str], *, timeout: int = 20) -> subprocess.CompletedProcess[str] | None:
+    try:
+        return subprocess.run(cmd, text=True, capture_output=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def command_detail(result: subprocess.CompletedProcess[str] | None) -> str:
+    if result is None:
+        return "command execution failed"
+    return (result.stderr or result.stdout).strip().replace("\n", " | ")[:300]
+
+
+def fail(reason: str) -> int:
+    print("NOTIFY_STATUS=failed")
+    print(f"NOTIFY_ERROR={reason}")
+    return 1
+
+
+def load_subscriptions(raw: str) -> list[dict]:
+    payload = json.loads(raw or "[]")
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        for key in ("subscriptions", "items", "rows"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+    raise ValueError("unexpected notify-list JSON shape")
+
+
 def main() -> int:
     args = parse_args()
+    board = args.board.strip()
+    if not board:
+        return fail("board must not be empty")
+
     if not enabled(os.getenv("HERMES_KANBAN_NOTIFY_ENABLED")):
         print("NOTIFY_STATUS=disabled")
+        print(f"NOTIFY_BOARD={board}")
         return 0
 
     platform = (os.getenv("HERMES_KANBAN_NOTIFY_PLATFORM") or "").strip()
@@ -49,38 +87,61 @@ def main() -> int:
         if not value
     ]
     if missing:
-        print("NOTIFY_STATUS=warning")
-        print(f"NOTIFY_WARNING=missing configuration: {','.join(missing)}")
-        return 0
+        return fail(f"missing configuration: {','.join(missing)}")
     if delivery_mode not in ALLOWED_DELIVERY_MODES:
-        print("NOTIFY_STATUS=warning")
-        print(f"NOTIFY_WARNING=unsupported delivery mode: {delivery_mode}")
-        return 0
+        return fail(f"unsupported delivery mode: {delivery_mode}")
 
-    cmd = [
-        hermes_cli(), "kanban", "notify-subscribe", args.task_id,
-        "--platform", platform,
-        "--chat-id", target,
-        "--delivery-mode", delivery_mode,
-        "--notifier-profile", notifier_profile,
+    cli = hermes_cli()
+    prefix = [cli, "kanban", "--board", board]
+
+    show = run_command([*prefix, "show", args.task_id, "--json"])
+    if show is None or show.returncode != 0:
+        return fail(f"task read-back failed on board '{board}': {command_detail(show)}")
+    print("TASK_READBACK_VERIFIED=true")
+
+    subscribe_cmd = [
+        *prefix,
+        "notify-subscribe",
+        args.task_id,
+        "--platform",
+        platform,
+        "--chat-id",
+        target,
+        "--delivery-mode",
+        delivery_mode,
+        "--notifier-profile",
+        notifier_profile,
     ]
     if chat_type:
-        cmd.extend(["--chat-type", chat_type])
+        subscribe_cmd.extend(["--chat-type", chat_type])
+
+    subscribed = run_command(subscribe_cmd)
+    if subscribed is None or subscribed.returncode != 0:
+        return fail(f"subscription command failed: {command_detail(subscribed)}")
+
+    verify = run_command([*prefix, "notify-list", args.task_id, "--json"])
+    if verify is None or verify.returncode != 0:
+        return fail(f"subscription verification command failed: {command_detail(verify)}")
 
     try:
-        result = subprocess.run(cmd, text=True, capture_output=True, timeout=20)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        print("NOTIFY_STATUS=warning")
-        print(f"NOTIFY_WARNING=subscription failed: {type(exc).__name__}")
-        return 0
+        subscriptions = load_subscriptions(verify.stdout)
+    except (json.JSONDecodeError, ValueError) as exc:
+        return fail(f"subscription verification JSON invalid: {type(exc).__name__}")
 
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout).strip().replace("\n", " | ")
-        print("NOTIFY_STATUS=warning")
-        print(f"NOTIFY_WARNING=subscription command failed: {detail[:300]}")
-        return 0
+    matched = any(
+        str(sub.get("task_id") or args.task_id) == args.task_id
+        and str(sub.get("platform") or "") == platform
+        and str(sub.get("chat_id") or "") == target
+        and str(sub.get("notifier_profile") or "") == notifier_profile
+        and str(sub.get("delivery_mode") or "notify") == delivery_mode
+        for sub in subscriptions
+    )
+    if not matched:
+        return fail("subscription verification did not find the expected board/task target")
 
     print("NOTIFY_STATUS=subscribed")
+    print("NOTIFY_VERIFIED=true")
+    print(f"NOTIFY_BOARD={board}")
     print(f"NOTIFY_PLATFORM={platform}")
     print(f"NOTIFY_TARGET={target}")
     print(f"NOTIFY_DELIVERY_MODE={delivery_mode}")
