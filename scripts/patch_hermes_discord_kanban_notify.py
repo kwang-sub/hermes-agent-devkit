@@ -3,13 +3,25 @@ from __future__ import annotations
 
 import argparse
 import py_compile
+import re
 import tempfile
 from pathlib import Path
 
 FORMATTER_MARKER = "def _devkit_discord_kanban_message("
-CLASS_MARKER = "\n\nclass GatewayKanbanWatchersMixin:"
-SEND_NEEDLE = '''                            _send_res = await adapter.send(\n                                sub["chat_id"], msg, metadata=metadata,\n                            )'''
-SEND_PATCH = '''                            if platform_str == "discord":\n                                msg = _devkit_discord_kanban_message(\n                                    kind=kind, task=task, sub=sub, board_slug=board_slug,\n                                    event=ev, fallback=msg,\n                                )\n                            _send_res = await adapter.send(\n                                sub["chat_id"], msg, metadata=metadata,\n                            )'''
+LEGACY_CLASS_MARKER = "\n\nclass GatewayKanbanWatchersMixin:"
+NOTIFIER_CLASS_MARKER = "\n\nclass _KanbanNotification:"
+
+LEGACY_SEND_RE = re.compile(
+    r'(?P<indent>^[ \t]*)_send_res\s*=\s*await\s+adapter\.send\(\s*\n'
+    r'(?P=indent)[ \t]+sub\["chat_id"\],\s*msg,\s*metadata=metadata,?\s*\n'
+    r'(?P=indent)\)',
+    re.MULTILINE,
+)
+NOTIFIER_SEND_RE = re.compile(
+    r'(?P<indent>^[ \t]*)_send_res\s*=\s*await\s+adapter\.send\('
+    r'sub\["chat_id"\],\s*msg,\s*metadata=metadata\)',
+    re.MULTILINE,
+)
 
 FORMATTER = r'''
 
@@ -81,48 +93,107 @@ def strict_compile(path: Path) -> None:
         py_compile.compile(str(path), cfile=str(Path(temp_dir) / "notify.pyc"), doraise=True)
 
 
+def _insert_formatter(source: str, class_marker: str, path: Path) -> tuple[str, bool]:
+    if FORMATTER_MARKER in source:
+        return source, False
+    if class_marker not in source:
+        raise RuntimeError(f"{path}: formatter insertion marker not found")
+    return source.replace(class_marker, FORMATTER + class_marker, 1), True
+
+
+def _patch_legacy(source: str, path: Path) -> tuple[str, bool]:
+    source, changed = _insert_formatter(source, LEGACY_CLASS_MARKER, path)
+    if 'platform_str == "discord"' in source:
+        return source, changed
+
+    matches = list(LEGACY_SEND_RE.finditer(source))
+    if len(matches) != 1:
+        raise RuntimeError(f"{path}: expected one legacy notifier send site, found {len(matches)}")
+
+    match = matches[0]
+    indent = match.group("indent")
+    replacement = (
+        f'{indent}if platform_str == "discord":\n'
+        f'{indent}    msg = _devkit_discord_kanban_message(\n'
+        f'{indent}        kind=kind, task=task, sub=sub, board_slug=board_slug,\n'
+        f'{indent}        event=ev, fallback=msg,\n'
+        f'{indent}    )\n'
+        f'{match.group(0)}'
+    )
+    source = source[:match.start()] + replacement + source[match.end():]
+    return source, True
+
+
+def _patch_notifier(source: str, path: Path) -> tuple[str, bool]:
+    source, changed = _insert_formatter(source, NOTIFIER_CLASS_MARKER, path)
+    if 'self.platform_str == "discord"' in source:
+        return source, changed
+
+    matches = list(NOTIFIER_SEND_RE.finditer(source))
+    if len(matches) != 1:
+        raise RuntimeError(f"{path}: expected one notifier send site, found {len(matches)}")
+
+    match = matches[0]
+    indent = match.group("indent")
+    replacement = (
+        f'{indent}if self.platform_str == "discord":\n'
+        f'{indent}    msg = _devkit_discord_kanban_message(\n'
+        f'{indent}        kind=ev.kind, task=self.task, sub=sub, board_slug=self.board_slug,\n'
+        f'{indent}        event=ev, fallback=msg,\n'
+        f'{indent}    )\n'
+        f'{match.group(0)}'
+    )
+    source = source[:match.start()] + replacement + source[match.end():]
+    return source, True
+
+
 def patch_source(path: Path) -> str:
     source = path.read_text(encoding="utf-8")
-    state = "already-patched"
-
-    if FORMATTER_MARKER not in source:
-        if CLASS_MARKER not in source:
-            raise RuntimeError(f"{path}: GatewayKanbanWatchersMixin marker not found")
-        source = source.replace(CLASS_MARKER, FORMATTER + CLASS_MARKER, 1)
-        state = "patched"
-
-    if SEND_PATCH not in source:
-        count = source.count(SEND_NEEDLE)
-        if count != 1:
-            raise RuntimeError(f"{path}: expected one notifier send site, found {count}")
-        source = source.replace(SEND_NEEDLE, SEND_PATCH, 1)
-        state = "patched"
+    if "class _KanbanNotification:" in source:
+        source, changed = _patch_notifier(source, path)
+        mode = "notifier"
+    elif "class GatewayKanbanWatchersMixin:" in source:
+        source, changed = _patch_legacy(source, path)
+        mode = "legacy"
+    else:
+        raise RuntimeError(f"{path}: unsupported Hermes Kanban notifier layout")
 
     path.write_text(source, encoding="utf-8")
     strict_compile(path)
-    return state
+    return f"patched-{mode}" if changed else f"already-patched-{mode}"
+
+
+def _assert_terms(path: Path, terms: tuple[str, ...]) -> None:
+    text = path.read_text(encoding="utf-8")
+    for term in terms:
+        if term not in text:
+            raise RuntimeError(f"self-test: missing {term}")
 
 
 def self_test() -> None:
-    sample = '''from __future__ import annotations\n\ndef _safe_review_reason(value, limit=160):\n    return str(value)[:limit]\n\nclass GatewayKanbanWatchersMixin:\n    async def run(self, adapter, sub, metadata, platform_str, kind, task, board_slug, ev, msg):\n        try:\n                            _send_res = await adapter.send(\n                                sub["chat_id"], msg, metadata=metadata,\n                            )\n        except Exception:\n            pass\n'''
+    legacy_sample = '''from __future__ import annotations\n\ndef _safe_review_reason(value, limit=160):\n    return str(value)[:limit]\n\nclass GatewayKanbanWatchersMixin:\n    async def run(self, adapter, sub, metadata, platform_str, kind, task, board_slug, ev, msg):\n        try:\n                            _send_res = await adapter.send(\n                                sub["chat_id"], msg, metadata=metadata,\n                            )\n        except Exception:\n            pass\n'''
+    notifier_sample = '''from __future__ import annotations\n\ndef _safe_review_reason(value, limit=160):\n    return str(value)[:limit]\n\nclass _KanbanNotification:\n    def __init__(self):\n        self.platform_str = "discord"\n        self.task = None\n        self.board_slug = "board"\n        self.sub = {"task_id": "t_1", "chat_id": "c_1"}\n        self.adapter = None\n\n    async def _send_event(self, ev, msg):\n        sub, adapter = self.sub, self.adapter\n        metadata = {}\n        _send_res = await adapter.send(sub["chat_id"], msg, metadata=metadata)\n'''
+
+    cases = (
+        ("legacy", legacy_sample, "patched-legacy", "already-patched-legacy", 'platform_str == "discord"'),
+        ("notifier", notifier_sample, "patched-notifier", "already-patched-notifier", 'self.platform_str == "discord"'),
+    )
     with tempfile.TemporaryDirectory(prefix="hermes-discord-kanban-selftest-") as temp_dir:
-        path = Path(temp_dir) / "kanban_watchers.py"
-        path.write_text(sample, encoding="utf-8")
-        if patch_source(path) != "patched":
-            raise RuntimeError("self-test: source was not patched")
-        if patch_source(path) != "already-patched":
-            raise RuntimeError("self-test: patch is not idempotent")
-        text = path.read_text(encoding="utf-8")
-        for term in (
-            "⛔",
-            "프로젝트",
-            "작업      {title}",
-            "상태      {status}",
-            "platform_str == \"discord\"",
-            'getattr(task, "result", "")',
-        ):
-            if term not in text:
-                raise RuntimeError(f"self-test: missing {term}")
+        for name, sample, patched_state, idempotent_state, platform_term in cases:
+            path = Path(temp_dir) / f"{name}.py"
+            path.write_text(sample, encoding="utf-8")
+            if patch_source(path) != patched_state:
+                raise RuntimeError(f"self-test {name}: source was not patched")
+            if patch_source(path) != idempotent_state:
+                raise RuntimeError(f"self-test {name}: patch is not idempotent")
+            _assert_terms(path, (
+                "⛔",
+                "프로젝트",
+                "작업      {title}",
+                "상태      {status}",
+                platform_term,
+                'getattr(task, "result", "")',
+            ))
 
 
 def main() -> None:
