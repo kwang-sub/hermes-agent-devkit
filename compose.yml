@@ -86,6 +86,13 @@ services:
       JIRA_INCLUDE_FIELD_NAMES: ${JIRA_INCLUDE_FIELD_NAMES:-}
       JIRA_VERIFY_SSL: ${JIRA_VERIFY_SSL:-true}
 
+      # Flow execution model policy. Actual values are resolved at approval time
+      # and pinned onto the Kanban task; changing env affects only new approvals.
+      HERMES_FLOW_MODEL_DEFAULT_PROVIDER: ${HERMES_FLOW_MODEL_DEFAULT_PROVIDER:-openai-codex}
+      HERMES_FLOW_MODEL_DEFAULT: ${HERMES_FLOW_MODEL_DEFAULT:-gpt-5.6-terra}
+      HERMES_FLOW_MODEL_PREMIUM_PROVIDER: ${HERMES_FLOW_MODEL_PREMIUM_PROVIDER:-openai-codex}
+      HERMES_FLOW_MODEL_PREMIUM: ${HERMES_FLOW_MODEL_PREMIUM:-gpt-6-astra}
+
       # Optional Kanban terminal-event notifications. Platform switching is env-only.
       HERMES_KANBAN_NOTIFY_ENABLED: ${HERMES_KANBAN_NOTIFY_ENABLED:-false}
       HERMES_KANBAN_NOTIFY_PLATFORM: ${HERMES_KANBAN_NOTIFY_PLATFORM:-discord}
