@@ -298,7 +298,7 @@ def main() -> int:
         print("\nSTATUS=dry-run")
         return 0
 
-    command = [HERMES_CLI, "kanban", "--board", meta.board, "create", args.title, "--body", body, "--assignee", meta.coder, "--workspace", f"dir:{repo}", "--created-by", "coder-fast-flow", "--idempotency-key", f"fast:{meta.project_id}:{task_key}", "--skill", "dev-implement-plan", "--model", model.model, "--provider", model.provider, "--json"]
+    command = [HERMES_CLI, "kanban", "--board", meta.board, "create", args.title, "--body", body, "--assignee", meta.coder, "--workspace", f"dir:{repo}", "--created-by", "coder-fast-flow", "--idempotency-key", f"fast:{meta.project_id}:{task_key}", "--skill", "dev-implement-plan", "--skill", "dev-flow-model-policy", "--model", model.model, "--provider", model.provider, "--json"]
     result = run(command)
     print(result.stdout.rstrip())
     print("STATUS=created")
