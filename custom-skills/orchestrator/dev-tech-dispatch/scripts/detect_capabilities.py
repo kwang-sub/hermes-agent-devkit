@@ -6,12 +6,12 @@ import json
 from pathlib import Path
 
 
-def ordered_add(items: list[str], value: str) -> None:
+def add(items: list[str], value: str) -> None:
     if value not in items:
         items.append(value)
 
 
-def read_text(path: Path) -> str:
+def read(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
@@ -26,7 +26,6 @@ def package_dependencies(repo: Path) -> set[str]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return set()
-
     result: set[str] = set()
     for key in ("dependencies", "devDependencies", "peerDependencies"):
         values = data.get(key, {})
@@ -35,77 +34,64 @@ def package_dependencies(repo: Path) -> set[str]:
     return result
 
 
-def detect(repo: Path) -> dict[str, list[str] | str]:
+def detect(repo: Path) -> dict[str, object]:
     stacks: list[str] = []
-    base_skills: list[str] = []
-    test_skills: list[str] = []
+    backend_skills: list[str] = []
+    frontend_hints: list[str] = []
 
-    gradle_files = [repo / "build.gradle", repo / "build.gradle.kts"]
+    gradle = [repo / "build.gradle", repo / "build.gradle.kts"]
     pom = repo / "pom.xml"
-    java_build = any(path.is_file() for path in gradle_files) or pom.is_file()
-    build_text = "\n".join(read_text(path) for path in [*gradle_files, pom] if path.is_file())
+    java_build = any(path.is_file() for path in gradle) or pom.is_file()
+    build_text = "\n".join(read(path) for path in [*gradle, pom] if path.is_file())
 
     if java_build:
-        ordered_add(stacks, "java")
-        ordered_add(base_skills, "dev-java-guidelines")
-
-    spring_markers = (
-        "org.springframework.boot",
-        "spring-boot",
-        "org.springframework",
-    )
-    if java_build and any(marker in build_text for marker in spring_markers):
-        ordered_add(stacks, "spring")
-        ordered_add(base_skills, "dev-spring-guidelines")
+        add(stacks, "java")
+        add(backend_skills, "dev-java-guidelines")
+    if java_build and any(marker in build_text for marker in ("org.springframework.boot", "spring-boot", "org.springframework")):
+        add(stacks, "spring")
+        add(backend_skills, "dev-spring-guidelines")
 
     deps = package_dependencies(repo)
     has_package = (repo / "package.json").is_file()
-
     if has_package and ((repo / "tsconfig.json").is_file() or "typescript" in deps):
-        ordered_add(stacks, "typescript")
-        ordered_add(base_skills, "dev-typescript-guidelines")
-
+        add(stacks, "typescript")
+        add(frontend_hints, "dev-typescript-guidelines")
     if "react" in deps or "react-dom" in deps:
-        ordered_add(stacks, "react")
-        ordered_add(base_skills, "dev-frontend-guidelines")
-
+        add(stacks, "react")
+        add(frontend_hints, "dev-frontend-guidelines")
     if "next" in deps:
-        ordered_add(stacks, "nextjs")
-        ordered_add(base_skills, "dev-nextjs-feature")
+        add(stacks, "nextjs")
+        add(frontend_hints, "dev-nextjs-feature")
 
-    frontend_test_markers = {
-        "vitest", "jest", "@testing-library/react", "@testing-library/jest-dom",
-        "@playwright/test", "playwright", "cypress",
-    }
-    if deps.intersection(frontend_test_markers):
-        ordered_add(test_skills, "dev-frontend-test")
+    test_markers = {"vitest", "jest", "@testing-library/react", "@testing-library/jest-dom", "@playwright/test", "playwright", "cypress"}
+    if deps.intersection(test_markers):
+        add(frontend_hints, "dev-frontend-test")
 
     has_frontend = any(stack in stacks for stack in ("typescript", "react", "nextjs"))
     has_backend = any(stack in stacks for stack in ("java", "spring"))
-
     return {
         "stacks": stacks,
-        "base_skills": base_skills,
-        "test_skills": test_skills,
+        "backend_skills": backend_skills,
+        "frontend_entry": "dev-frontend-feature" if has_frontend else "",
+        "frontend_hints": frontend_hints,
         "ui_candidate": "dev-ui-ux" if has_frontend else "",
         "cross_stack_candidate": "dev-api-contract" if has_frontend and has_backend else "",
     }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Detect project stacks and canonical capability candidates")
     parser.add_argument("--repo", required=True)
     args = parser.parse_args()
-
     repo = Path(args.repo).expanduser().resolve()
     if not repo.is_dir():
         print(f"ERROR=repository not found: {repo}")
         return 2
-
     result = detect(repo)
     print(f"STACKS={','.join(result['stacks'])}")
-    print(f"BASE_SKILLS={','.join(result['base_skills'])}")
-    print(f"TEST_SKILLS={','.join(result['test_skills'])}")
+    print(f"BACKEND_SKILLS={','.join(result['backend_skills'])}")
+    print(f"FRONTEND_ENTRY={result['frontend_entry']}")
+    print(f"FRONTEND_HINTS={','.join(result['frontend_hints'])}")
     print(f"UI_SKILL_CANDIDATE={result['ui_candidate']}")
     print(f"CROSS_STACK_SKILL_CANDIDATE={result['cross_stack_candidate']}")
     print("STATUS=pass")

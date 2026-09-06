@@ -31,6 +31,18 @@ jobs:
         shell: bash
         run: bash scripts/verify.sh
 
+      - name: Verify frontend capability contract
+        shell: bash
+        run: python3 scripts/check_frontend_capability_contract.py
+
+      - name: Verify stack capability detector
+        shell: bash
+        run: python3 custom-skills/orchestrator/dev-tech-dispatch/tests/test_detect_capabilities.py
+
+      - name: Verify Figma read-only adapter
+        shell: bash
+        run: python3 custom-skills/shared/dev-figma-design/tests/test_figma_context.py
+
       - name: Verify Kanban notification helper
         shell: bash
         run: python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py

@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 import tempfile
 
-
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "detect_capabilities.py"
 SPEC = importlib.util.spec_from_file_location("detect_capabilities", SCRIPT)
 MODULE = importlib.util.module_from_spec(SPEC)
@@ -25,51 +24,46 @@ def test_spring_only() -> None:
         write(repo / "build.gradle", 'plugins { id "org.springframework.boot" version "3.5.0" }')
         result = MODULE.detect(repo)
         assert result["stacks"] == ["java", "spring"]
-        assert result["base_skills"] == ["dev-java-guidelines", "dev-spring-guidelines"]
-        assert result["ui_candidate"] == ""
-        assert result["cross_stack_candidate"] == ""
+        assert result["backend_skills"] == ["dev-java-guidelines", "dev-spring-guidelines"]
+        assert result["frontend_entry"] == ""
+        assert result["frontend_hints"] == []
 
 
 def test_next_typescript_with_tests() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp)
         write(repo / "tsconfig.json", "{}")
-        write(
-            repo / "package.json",
-            json.dumps({
-                "dependencies": {"next": "15.0.0", "react": "19.0.0", "react-dom": "19.0.0"},
-                "devDependencies": {"typescript": "5.9.0", "vitest": "3.0.0"},
-            }),
-        )
+        write(repo / "package.json", json.dumps({
+            "dependencies": {"next": "15.0.0", "react": "19.0.0", "react-dom": "19.0.0"},
+            "devDependencies": {"typescript": "5.9.0", "vitest": "3.0.0"},
+        }))
         result = MODULE.detect(repo)
         assert result["stacks"] == ["typescript", "react", "nextjs"]
-        assert result["base_skills"] == [
-            "dev-typescript-guidelines",
-            "dev-frontend-guidelines",
-            "dev-nextjs-feature",
+        assert result["frontend_entry"] == "dev-frontend-feature"
+        assert result["frontend_hints"] == [
+            "dev-typescript-guidelines", "dev-frontend-guidelines", "dev-nextjs-feature", "dev-frontend-test"
         ]
-        assert result["test_skills"] == ["dev-frontend-test"]
         assert result["ui_candidate"] == "dev-ui-ux"
+        assert result["backend_skills"] == []
 
 
 def test_fullstack_contract_candidate() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp)
         write(repo / "pom.xml", "<artifactId>spring-boot-starter-web</artifactId>")
-        write(
-            repo / "package.json",
-            json.dumps({
-                "dependencies": {"next": "15.0.0", "react": "19.0.0"},
-                "devDependencies": {"typescript": "5.9.0"},
-            }),
-        )
         write(repo / "tsconfig.json", "{}")
+        write(repo / "package.json", json.dumps({
+            "dependencies": {"next": "15.0.0", "react": "19.0.0"},
+            "devDependencies": {"typescript": "5.9.0"},
+        }))
         result = MODULE.detect(repo)
+        assert result["frontend_entry"] == "dev-frontend-feature"
         assert result["cross_stack_candidate"] == "dev-api-contract"
+        assert result["backend_skills"] == ["dev-java-guidelines", "dev-spring-guidelines"]
 
 
 if __name__ == "__main__":
     test_spring_only()
     test_next_typescript_with_tests()
     test_fullstack_contract_candidate()
-    print("PASS")
+    print("[PASS] Stack capability detector tests")

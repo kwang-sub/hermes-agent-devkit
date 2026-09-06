@@ -1,56 +1,65 @@
 ---
 name: dev-ui-ux
-description: 기존 프로젝트 Design System을 최우선으로 유지하면서 UI/UX Pro Max의 검증된 우선순위와 frontend 접근성·반응형·interaction·chart 가이드를 adapter 형태로 적용하는 UI capability skill.
-version: 0.1.0
+description: 승인된 Figma/프로젝트 Design System을 우선하면서 UI/UX Pro Max의 검증된 우선순위와 접근성·반응형·interaction·chart 가이드를 adapter 형태로 적용하는 UI capability skill.
+version: 0.2.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, frontend, ui, ux, accessibility, responsive, design-system, chart]
-    related_skills: [dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract]
+    tags: [dev, frontend, ui, ux, accessibility, responsive, figma, design-system, chart]
+    related_skills: [dev-frontend-feature, dev-figma-design, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract]
     requires_tools: [terminal]
 ---
 
 # dev-ui-ux
 
-보이는 UI/interaction을 설계·구현·리뷰할 때만 사용하는 capability다.
-
-이 Skill은 UI/UX Pro Max를 DevKit에 그대로 복제하지 않는다. upstream의 안정적인 원칙을 **프로젝트 우선 adapter**로 사용한다. 출처와 pinned audit 정보는 `references/upstream.md`에 기록한다.
+보이는 UI/interaction을 설계·구현·리뷰할 때만 사용하는 quality capability다. UI/UX Pro Max 전체 runtime을 복제하지 않고 upstream의 안정적인 원칙을 프로젝트 우선 adapter로 사용한다.
 
 ## 우선순위
 
+FIGMA_DRIVEN:
+
 ```text
 사용자/Task 명시 요구
-→ 프로젝트의 기존 Design System / token / component library
+→ APPROVED Figma frame / Design System
+→ 프로젝트 기존 component/token/convention
 → 같은 화면/도메인의 기존 UI pattern
-→ 이 Skill의 UI/UX baseline
+→ dev-ui-ux baseline
 → 일반 UI best practice
 ```
 
-Public Skill 추천 때문에 기존 UI를 자동 redesign하지 않는다.
+CODE_DRIVEN:
+
+```text
+사용자/Task 명시 요구
+→ 프로젝트 기존 Design System/component/token
+→ 같은 화면/도메인의 기존 UI pattern
+→ dev-ui-ux baseline
+→ 일반 UI best practice
+```
+
+Public Skill 추천 때문에 기존 UI를 자동 redesign하지 않는다. 접근성/correctness 문제로 승인 디자인과 충돌하면 조용히 바꾸지 않고 `Design Conflict`로 보고한다.
 
 ## 적용 대상
 
 ```text
-layout / page / component visual change
-interaction / navigation / form UX
-responsive behavior
+layout/page/component visual
+interaction/navigation/form UX
+responsive
 accessibility
-typography / color / spacing
-chart / data visualization
-loading / empty / error visual state
+typography/color/spacing
+chart/data visualization
+loading/empty/error state
 ```
 
-pure backend/API/DB/DevOps 작업에는 적용하지 않는다.
+pure backend/API/DB/DevOps에는 적용하지 않는다.
 
 ## UI/UX baseline
-
-우선순위:
 
 1. Accessibility
 2. Touch & Interaction
 3. Performance / layout stability
-4. Existing style consistency
+4. Approved/project style consistency
 5. Layout & Responsive
 6. Typography & Color
 7. Animation / reduced motion
@@ -60,41 +69,38 @@ pure backend/API/DB/DevOps 작업에는 적용하지 않는다.
 
 상세 checklist는 `references/baseline.md`를 필요할 때만 읽는다.
 
-## 프로젝트 Design System
+## Financial/Data UI 추가 확인
 
-프로젝트에 이미 token/theme/component system이 있으면 그것이 source of truth다.
-
-새 프로젝트/화면에서 디자인 방향을 문서화해야 한다면 repository가 추적하는 위치에 다음과 유사한 구조를 사용할 수 있다.
+금액·수익률·차트처럼 데이터 밀도가 높은 화면에서는 다음을 확인한다.
 
 ```text
-docs/design-system/MASTER.md
-docs/design-system/pages/<page>.md
+색상만으로 positive/negative 의미 전달 금지
+숫자/단위/소수점/기준일 일관성
+긴 금액과 작은 viewport overflow
+chart legend/tooltip/accessible color
+loading/empty/error와 stale data 구분
 ```
-
-단, 기존 프로젝트 문서 구조가 있으면 그 위치를 우선한다. `.hermes/`는 DevKit 로컬 관리 경로이므로 버전 관리할 프로젝트 디자인 원본 위치로 사용하지 않는다.
 
 ## Dependency 통제
 
-아이콘, chart, animation, form, component library를 추천할 때:
-
 ```text
 기존 component/library
-→ platform/framework 기본
+→ framework/platform 기본
 → 이미 설치된 dependency
 → 그래도 부족할 때만 새 dependency 제안
 ```
-
-새 dependency가 필요한 경우 Standard Flow/승인 규칙을 따른다.
 
 ## Evidence
 
 ```text
 Skill: dev-ui-ux
-Existing Design System / UI references
+Frontend Mode
+Design Source / Status
+Existing Component/Token references
 Accessibility impact
-Responsive states checked
+Responsive states
 Interaction/loading/error states
-Chart semantics (해당 시)
-Intentional deviations
+Chart semantics
+Design Conflicts
 Verification
 ```
