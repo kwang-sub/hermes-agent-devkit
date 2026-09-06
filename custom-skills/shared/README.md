@@ -4,30 +4,73 @@
 
 ## 관리 원칙
 
-- 역할 전용 Skill은 기존처럼 `custom-skills/orchestrator`, `custom-skills/coder`, `custom-skills/reviewer`에서 관리합니다.
+- 역할 전용 Skill은 `custom-skills/orchestrator`, `custom-skills/coder`, `custom-skills/reviewer`에서 관리합니다.
 - 둘 이상의 프로필이 동일한 규칙/기능을 사용해야 하면 이 디렉터리에 한 벌만 둡니다.
-- 각 프로필은 자신의 역할별 디렉터리와 `/opt/custom-skills/shared`를 함께 `skills.external_dirs`로 참조합니다.
-- 동일한 Skill을 역할별 디렉터리에 복제하지 않습니다.
-- 공통 규칙은 가능한 한 `/opt/data/shared/references/coding-rules.md`에 두고, 언어/프레임워크 특화 규칙만 capability Skill로 분리합니다.
-- 기존 Profile local Skill을 공통으로 승격할 때는 현재 공통 규칙/기존 capability와 중복 여부를 먼저 확인하고, 중복은 합친 뒤 고유 규칙만 canonical shared Skill로 유지합니다.
+- 각 프로필은 자신의 역할별 디렉터리와 `/opt/custom-skills/shared`를 `skills.external_dirs`로 함께 참조합니다.
+- 동일 Skill을 역할별 디렉터리에 복제하지 않습니다.
+- 공통 규칙은 `/opt/data/shared/references/coding-rules.md`, `/opt/data/shared/references/implementation-decision-rules.md`에 두고 언어/프레임워크 특화 규칙만 capability Skill로 분리합니다.
+- Profile local Hub Skill을 Standard Flow runtime pin 용도로 사용할 때는 coder/reviewer 양쪽 설치 여부를 `dev-skill-preflight`가 검증합니다.
 
-## Java 공통 가이드
+## Canonical capability set
 
-기존 Orchestrator Profile local의 `java-project-conventions`는 DevKit가 관리하는 canonical Skill이 아니었으며 Coder/Reviewer 공통 Skill도 아니었습니다.
+### Backend
 
-Java 관련 공통 정책은 다음 구조로 정리합니다.
+```text
+dev-java-guidelines
+dev-spring-guidelines
+dev-spring-feature
+dev-spring-data
+dev-spring-test
+dev-spring-refactor
+```
+
+### Frontend
+
+```text
+dev-typescript-guidelines
+dev-frontend-guidelines
+dev-nextjs-feature
+dev-frontend-test
+dev-ui-ux
+```
+
+### Cross-stack
+
+```text
+dev-api-contract
+dev-api-docs
+```
+
+## Public Skill 정책
+
+Public Skill은 범용 전문 지식을 보완하는 용도로 사용할 수 있지만 다음을 지킵니다.
+
+```text
+우리 Foundation/Workflow 정책
+→ 프로젝트 기존 pattern
+→ audited shared adapter/capability
+→ Public Skill recommendation
+```
+
+- 외부 Skill을 프로젝트 convention보다 우선하지 않습니다.
+- Coder 한 profile에만 설치된 Skill을 Standard Flow의 필수 pinned skill로 간주하지 않습니다.
+- 외부 plugin이 모든 LLM turn/profile에 전역 영향을 주는 경우 baseline으로 바로 활성화하지 않습니다.
+- upstream source/version/license를 확인하고 자동 업데이트보다 review 가능한 pin/update 정책을 사용합니다.
+- Claude/Cursor 등 특정 runtime 경로를 전제로 한 Skill은 Hermes에서 그대로 복제하지 않고 adapter를 둡니다.
+
+`dev-ui-ux`는 UI/UX Pro Max의 안정적인 품질 우선순위를 참고한 adapter이며, upstream 전체 search dataset/engine을 vendor하지 않습니다.
+
+## Java legacy 정리
+
+기존 Orchestrator Profile local의 `java-project-conventions`는 canonical Skill이 아니었고 Coder/Reviewer 공통 Skill도 아니었습니다.
+
+Java 관련 공통 정책은 다음 구조를 사용합니다.
 
 ```text
 shared/references/coding-rules.md
-  → 언어 독립 코드 품질 규칙
-
+shared/references/implementation-decision-rules.md
 custom-skills/shared/dev-java-guidelines
-  → Java version/build/Lombok/type placement/JavaDoc 등 Java 전용 규칙
-
 custom-skills/shared/dev-spring-*
-  → Spring/JPA/API/Test 전용 규칙
 ```
 
-따라서 새 Task에서는 legacy 이름 `java-project-conventions`를 runtime pinned skill 또는 Applicable Skill로 사용하지 않습니다. Java 프로젝트는 canonical `dev-java-guidelines`를 사용합니다.
-
-기존 local 원본에 위 구조에 아직 반영되지 않은 고유 정책이 발견되면 내용을 그대로 복제하지 않고, 공통 규칙 또는 `dev-java-guidelines` 중 책임이 맞는 위치에 중복 없이 추가합니다.
+새 Task에서는 legacy 이름 `java-project-conventions`를 사용하지 않습니다.

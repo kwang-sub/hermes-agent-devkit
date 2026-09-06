@@ -1,13 +1,13 @@
 ---
 name: dev-implement-plan
-description: 승인된 Kanban 작업을 할당 Workspace에서 최소 구현·구조 품질 점검·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.20.0
+description: 승인된 Kanban 작업을 할당 Workspace에서 최소 구현·구조 품질 점검·stack별 검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
+version: 0.21.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, implementation, coder, kanban, workspace, review, fast-flow, capability, java, refactor, structural-quality, performance]
-    related_skills: [dev-fast-flow, dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-docs]
+    tags: [dev, implementation, coder, kanban, workspace, review, fast-flow, capability, java, spring, typescript, frontend, nextjs, refactor, structural-quality, performance]
+    related_skills: [dev-fast-flow, dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-docs, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract, dev-ui-ux]
     requires_tools: [terminal, kanban_show, kanban_request_review, kanban_complete, kanban_block, kanban_heartbeat, skill_view]
 ---
 
@@ -25,6 +25,7 @@ kanban_show
 → verify_workspace.py 단독 1회
 → STATUS=valid
 → 필요한 target source/test만 탐색
+→ 필요한 Stack/Capability Skill만 lazy-load
 → 구현
 → targeted verification
 → IMPLEMENTATION_STABLE
@@ -90,7 +91,7 @@ Fast Flow는 Task의 `Pre-existing effective changes at dispatch`를 기존 사�
 
 ## Source / Scope 계약
 
-Task의 `Project Pattern Summary`, `Pattern References`, `Goal`, `Acceptance Criteria`, `Implementation Tasks`, 기존 변경 baseline을 재사용한다. 실제 source와 충돌하지 않는 한 프로젝트 전체를 다시 분석하지 않는다.
+Task의 `Project Pattern Summary`, `Pattern References`, `Goal`, `Acceptance Criteria`, `Implementation Tasks`, `Applicable Skills`, 기존 변경 baseline을 재사용한다. 실제 source와 충돌하지 않는 한 프로젝트 전체를 다시 분석하지 않는다.
 
 첫 production patch 전에 다음을 만족한다.
 
@@ -99,7 +100,7 @@ SOURCE_EVIDENCE_READY
 Target:
 - <file/symbol>
 Direct Impact:
-- <caller/callee/persistence boundary>
+- <caller/callee/persistence/ui boundary>
 Tests:
 - <existing test path>
 Open Questions: NONE
@@ -123,19 +124,34 @@ Excluded:
 - 존재가 확인되지 않은 예상 test 파일을 연속 probe하지 않는다.
 - 기존 사용자 변경을 reset/restore/clean/stash하지 않는다.
 
-## Java / Spring capability lazy-load
+## Stack / Capability lazy-load
 
-실제 evidence가 필요한 경우에만 로드한다.
+실제 evidence와 Task affected area에 필요한 Skill만 로드한다.
+
+### Java / Spring
 
 - Java 언어/convention → `skill_view("dev-java-guidelines")`
 - 공통 Spring 규칙 → `skill_view("dev-spring-guidelines")`
 - API/Controller/Service/DTO/Validation/Exception → `skill_view("dev-spring-feature")`
 - JPA/Repository/QueryDSL/Converter/Paging → `skill_view("dev-spring-data")`
-- 테스트 작성/수정 → `skill_view("dev-spring-test")`
+- Spring/JPA 테스트 작성/수정 → `skill_view("dev-spring-test")`
 - Spring source 구현 완료 후 **구조 trigger**가 실제로 있을 때만 → `skill_view("dev-spring-refactor")`
 - OpenAPI/Swagger/Postman → `skill_view("dev-api-docs")`
 
-Java 프로젝트에서는 `dev-java-guidelines`가 Java version/build/Lombok/type placement/JavaDoc만 담당하고, 공통 품질 규칙은 `coding-rules.md`, Spring 규칙은 Spring capability에 맡긴다.
+Java 프로젝트에서는 `dev-java-guidelines`가 Java version/build/Lombok/type placement/JavaDoc만 담당하고 공통 품질 규칙은 Foundation, Spring 규칙은 Spring capability에 맡긴다.
+
+### TypeScript / React / Next.js
+
+- TypeScript source/type/config → `skill_view("dev-typescript-guidelines")`
+- React component/hook/state/browser UI → `skill_view("dev-frontend-guidelines")`
+- Next.js page/layout/route/Server·Client Component/metadata → `skill_view("dev-nextjs-feature")`
+- frontend test/spec/e2e → `skill_view("dev-frontend-test")`
+- backend API + frontend type/client contract → `skill_view("dev-api-contract")`
+- visual/layout/interaction/responsive/accessibility/chart → `skill_view("dev-ui-ux")`
+
+React/Next.js가 존재한다는 이유만으로 UI Skill을 모두 읽지 않는다. Task와 실제 diff에 필요한 것만 로드한다.
+
+Public Skill 추천보다 프로젝트의 기존 component/design token/state/data-fetching/test convention을 우선한다.
 
 구조 점검 evidence는 `Structural quality check: PASS | REFACTORED | ESCALATED`로 남긴다.
 
@@ -204,6 +220,28 @@ FULL_TEST_FAILURE_CLASSIFICATION
 
 `IN_SCOPE_OR_IMPACTED`이면 해당 실패를 먼저 targeted test로 재현/수정하고, 다시 `IMPLEMENTATION_STABLE`이 된 뒤 full test를 최종 1회 실행할 수 있다. `UNCERTAIN`은 evidence 재사용으로 우회하지 않고 risk/blocker로 남긴다.
 
+## Frontend 검증
+
+Frontend는 프로젝트의 package manager와 기존 `package.json` script/test stack을 먼저 확인한다. task-time에 Node/package manager/test library를 새로 설치하지 않는다.
+
+기본 순서:
+
+```text
+affected unit/component/spec
+→ typecheck/lint 중 변경과 직접 연결된 script
+→ IMPLEMENTATION_STABLE
+→ build 또는 wider test (Task/risk/AC에서 필요한 경우)
+```
+
+규칙:
+- `npm`, `pnpm`, `yarn`, `bun`을 임의 선택하지 않고 lockfile/`packageManager`/기존 명령을 따른다.
+- affected spec은 가능한 한 한 invocation으로 실행한다.
+- 동일 scope PASS를 확신 확보용으로 반복하지 않는다.
+- full frontend suite/e2e/build는 중간 탐색용으로 반복하지 않는다.
+- UI 변경은 필요한 경우 loading/empty/error, responsive, keyboard/focus, accessibility를 test 또는 bounded manual verification으로 확인한다.
+- verification을 위해 새 dependency를 추가하지 않는다.
+- dependency install이 필요한 환경 상태이면 승인 없이 install로 우회하지 말고 project/runtime contract에 따라 blocker 또는 기존 bootstrap 절차로 처리한다.
+
 ## Implementation Stable / Final Scope
 
 전체 회귀 검증 전에 다음을 확정한다.
@@ -221,13 +259,13 @@ IMPLEMENTATION_STABLE
 ```text
 targeted/integration verification
 → IMPLEMENTATION_STABLE
-→ full test 1회 (Task/Standard Flow/AC에서 필요한 경우)
+→ full test/build 1회 (Task/Standard Flow/AC에서 필요한 경우)
 → failure classification 또는 PASS 확정
-→ bootJar 등 artifact 검증 (필요한 경우)
+→ artifact 검증 (필요한 경우)
 → scoped change_summary.py 1회
 ```
 
-Full test 이후 executable production/test를 수정하면 해당 full-test evidence는 무효다. 단, `OUT_OF_SCOPE_UNCHANGED`로 분류한 실패 때문에 코드를 수정하지는 않는다.
+Full test/build 이후 executable production/test를 수정하면 해당 evidence는 무효다. 단, `OUT_OF_SCOPE_UNCHANGED`로 분류한 실패 때문에 코드를 수정하지는 않는다.
 
 최종 변경 범위가 확정된 뒤 scoped `change_summary.py`를 최종 검증으로 1회 실행한다.
 
@@ -250,9 +288,11 @@ Standard Flow에서 `--include` 없이 `change_summary.py`를 호출하지 않�
 
 다음은 `REVIEW_REQUIRED`다.
 - API/request/response 의미 변경
+- Backend ↔ Frontend contract/nullability/serialization 의미 변경
 - DB schema/data/query 의미 변경
 - transaction/security/concurrency 영향
 - shared/common behavior 변경
+- accessibility-critical interaction 또는 auth/payment/destructive UI 의미 변경
 - legacy/fallback/backward compatibility 변경
 - operational config/persistence 의미 변경
 - 영향 범위 불명확
@@ -261,6 +301,8 @@ Review handoff에는 최소 다음을 남긴다.
 
 ```text
 Changed Files:
+- ...
+Applied Capability Skills:
 - ...
 Verification Mode: <mode>
 Verification Commands / Results:
@@ -295,15 +337,24 @@ Residual Risk:
 - `GRADLE_STATUS=BLOCKED`인 검증은 review residual risk로 넘기지 않고 `kanban_block`한다.
 - `kanban_request_review` 성공 후 즉시 종료한다. 추가 `kanban_complete`, reviewer skill load, `kanban_show`, status probe를 실행하지 않는다.
 
-## 공통 Coding Rules 핵심
+## 공통 Foundation 핵심
 
-`/opt/data/shared/references/coding-rules.md`를 적용한다.
+다음을 적용한다.
+
+```text
+/opt/data/shared/references/coding-rules.md
+/opt/data/shared/references/implementation-decision-rules.md
+/opt/data/shared/references/project-pattern-rules.md
+```
 
 - 기존 abstraction/library/pattern을 재사용하고 unrelated refactor를 섞지 않는다.
+- 새 abstraction/dependency 전 구현 필요성 사다리를 적용한다.
+- 중요한 assumption을 source evidence로 먼저 닫고, product/architecture 선택이 남으면 임의 결정하지 않는다.
 - 함수/메서드 실행 block은 기본 `2-depth`를 지향한다.
 - 반복 I/O/N+1을 확인한다.
 - API는 기존 common response/error contract를 유지한다.
 - JPA는 단순 Method Query → 복잡/동적 QueryDSL → 근거 있는 Native Query 순서다.
+- accessibility/security/data integrity/validation/compatibility를 "최소 구현" 명목으로 생략하지 않는다.
 
 ## 공통 불변식
 
