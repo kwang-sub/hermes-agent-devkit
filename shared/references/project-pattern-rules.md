@@ -11,6 +11,8 @@
         ↓
 대상 프로젝트의 기존 구조·명명·구현 패턴
         ↓
+Common Coding / Implementation Decision Rules
+        ↓
 DevKit의 stack/capability reference
         ↓
 일반적인 framework best practice
@@ -20,6 +22,7 @@ DevKit의 stack/capability reference
 - package/module 구조, class/file naming, dependency 사용 방식, DTO/Entity/Service/Repository 배치, exception/validation/test convention은 대상 프로젝트를 우선한다.
 - 기존 패턴이 단순히 오래됐다는 이유로 architecture, library, naming, response contract를 임의 현대화하지 않는다.
 - 기존 방식에 실제 correctness, security, performance, maintainability 문제가 있더라도 요구 범위를 넘어 조용히 고치지 않는다. 필요한 경우 근거와 대안을 제시하고 사용자 결정 후 반영한다.
+- 새 abstraction/dependency가 필요하면 `/opt/data/shared/references/implementation-decision-rules.md`의 구현 필요성 사다리로 기존 대안을 먼저 검토한다.
 
 ## 2. 작업 전 탐색
 
@@ -41,6 +44,8 @@ Test 위치와 framework
 ```
 
 파일 이름만 보고 추정하지 않고 실제 호출 흐름과 사용 위치를 확인한다.
+
+구현 방향을 바꿀 수 있는 가정은 source/config/기존 구현으로 확인 가능한 것부터 evidence로 닫고, product/architecture 의도가 필요한 선택만 Open Question으로 남긴다.
 
 ## 3. Reference 선택
 
@@ -102,5 +107,7 @@ Preserved Conventions: <package/naming/response/test 등>
 Intentional Deviations: <없으면 None>
 Improvement Deferred: <있으면 이유와 제안>
 ```
+
+새 abstraction/dependency를 추가했다면 기존 대안이 충분하지 않았던 근거와 verification도 함께 남긴다.
 
 Reviewer는 새 코드가 임의의 새 스타일을 만들지 않았는지 확인하고, 차이가 있다면 요구사항 또는 명시적 정책으로 설명되는지 검증한다.
