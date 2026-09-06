@@ -4,6 +4,8 @@
 
 이 규칙은 프로젝트의 기존 architecture와 convention을 대체하지 않는다. 먼저 현재 프로젝트가 이미 사용하는 구조, naming, error model, data-access pattern, test style과 domain modeling 방식을 확인한 뒤 그 안에서 적용한다.
 
+코딩 전에 구현 필요성·가정·dependency/abstraction 선택을 판단할 때는 `/opt/data/shared/references/implementation-decision-rules.md`를 함께 적용한다. 이 문서는 공통 품질 규칙의 상위/하위 대체물이 아니라 **구현 전 의사결정 보완 규칙**이다.
+
 Stack-specific 또는 capability-specific Skill은 이 규칙을 **확장할 수는 있지만 약화하거나 대체하지 않는다.**
 
 ---
@@ -30,6 +32,8 @@ Repository / DAO / Data Access abstraction
 Coder 개인의 선호 때문에 기존 layer, package/module 구조, naming, error model, transaction boundary, persistence model 또는 domain modeling 방식을 바꾸지 않는다.
 
 기존 코드가 명백히 문제가 있더라도 현재 요구사항과 관계없는 architecture 개선이나 전면 refactor를 같은 작업에 섞지 않는다.
+
+새 구현·abstraction·dependency가 필요하다고 판단했다면 `implementation-decision-rules.md`의 구현 필요성 사다리를 따라 기존 대안부터 확인한다.
 
 ---
 
@@ -261,6 +265,8 @@ legacy cleanup
 
 Stack-specific 또는 capability-specific Skill이 로드되어 있더라도 해당 Skill의 목적 범위 밖 변경을 자동으로 확장하지 않는다.
 
+future-proofing만을 이유로 현재 사용되지 않는 abstraction/extension point를 추가하지 않는다. 단, 프로젝트의 기존 extension pattern을 유지하기 위해 필요한 경우는 예외다.
+
 ---
 
 # 10. 변경과 직접 연결된 검증을 수행한다
@@ -285,6 +291,8 @@ serialization / persistence compatibility
 
 실제로 실행하지 않은 검증을 PASS라고 보고하지 않는다.
 
+동일 scope의 이미 유효한 PASS를 단순 확신 확보 목적으로 반복하지 않는다. 구현 변경으로 기존 PASS의 scope가 달라졌다면 fresh verification을 수행한다.
+
 Repository/Tooling상 가능하면 Reviewer handoff 전 `git diff --check`를 실행한다.
 
 ---
@@ -297,6 +305,8 @@ Repository/Tooling상 가능하면 Reviewer handoff 전 `git diff --check`를 �
 
 ```text
 Common Coding Rules
+        ↓
+Implementation Decision Rules
         ↓
 dev-implement-plan
         ↓
@@ -311,7 +321,7 @@ Reviewer
 
 전문 Skill은 다음을 지킨다.
 
-- 공통 Coding Rules를 복사해 자체 문서에 중복하지 않는다.
+- 공통 Coding/Decision Rules를 복사해 자체 문서에 중복하지 않는다.
 - 현재 프로젝트 pattern 검색을 먼저 수행한다.
 - 언어/프레임워크별 특수 규칙만 추가한다.
 - 프로젝트의 이미 사용 중인 library/version/convention을 우선한다.
@@ -359,6 +369,8 @@ Reviewer는 correctness 검토와 함께 관련 있는 경우 다음을 확인�
 - 코드 번역형 또는 실제 동작과 다른 주석이 추가되지 않았는가.
 - 반복문 내부 DB/API/File/Network I/O로 불필요한 반복 호출이 발생하지 않는가.
 - 기존 Constant/Enum/Validator/Converter/Mapper 등 재사용 가능한 abstraction을 중복 구현하지 않았는가.
+- 새 abstraction/dependency가 Implementation Decision Rules의 기존 대안 검토 없이 추가되지 않았는가.
+- 최소 구현을 이유로 validation/security/data integrity/backward compatibility/accessibility/필수 검증이 빠지지 않았는가.
 - 오류를 숨기거나 민감정보를 log에 남기지 않는가.
 - 변경 범위와 테스트가 요구사항에 맞는가.
 - Task에 Stack/Capability Skill이 사용되었다면 해당 Skill의 stack-specific Acceptance Criteria와 verification도 충족하는가.
