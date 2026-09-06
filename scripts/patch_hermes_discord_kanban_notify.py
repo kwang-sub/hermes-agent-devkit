@@ -31,6 +31,12 @@ def _devkit_discord_kanban_message(*, kind, task, sub, board_slug, event, fallba
     title = str(getattr(task, "title", "") or task_id)[:160]
     assignee = str(getattr(task, "assignee", "") or "-")
     project = str(board_slug or "-")
+    model_override = str(getattr(task, "model_override", "") or "").strip()
+    provider_override = str(getattr(task, "provider_override", "") or "").strip()
+    if model_override:
+        model = f"{provider_override} / {model_override}" if provider_override else model_override
+    else:
+        model = "DEFAULT (profile)"
     payload = getattr(event, "payload", None) or {}
 
     labels = {
@@ -78,6 +84,7 @@ def _devkit_discord_kanban_message(*, kind, task, sub, board_slug, event, fallba
         f"작업      {title}",
         f"Task      {task_id}",
         f"담당      {assignee}",
+        f"모델      {model}",
         f"상태      {status}",
     ]
     if detail:
@@ -190,6 +197,10 @@ def self_test() -> None:
                 "⛔",
                 "프로젝트",
                 "작업      {title}",
+                "모델      {model}",
+                'getattr(task, "model_override", "")',
+                'getattr(task, "provider_override", "")',
+                'model = "DEFAULT (profile)"',
                 "상태      {status}",
                 platform_term,
                 'getattr(task, "result", "")',
