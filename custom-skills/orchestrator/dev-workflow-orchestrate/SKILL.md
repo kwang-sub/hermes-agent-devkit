@@ -1,13 +1,13 @@
 ---
 name: dev-workflow-orchestrate
 description: Jira/text 개발 요청의 project·plan·workspace 승인을 거쳐 coder/reviewer로 dispatch하는 orchestrator 전용 workflow.
-version: 0.5.2
+version: 0.5.1
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, workflow, orchestrator, approval, breakdown, dispatch, kanban, preflight, performance, stack, capability]
-    related_skills: [dev-work-intake, dev-project-resolve, dev-project-bootstrap, dev-project-pattern, dev-tech-dispatch, dev-breakdown, dev-skill-preflight, dev-workspace-dispatch]
+    tags: [dev, workflow, orchestrator, approval, breakdown, dispatch, kanban, preflight, performance]
+    related_skills: [dev-work-intake, dev-project-resolve, dev-project-bootstrap, dev-breakdown, dev-skill-preflight, dev-workspace-dispatch]
 ---
 
 # dev-workflow-orchestrate
@@ -20,7 +20,7 @@ metadata:
 
 1. 요구사항을 Common Work Item으로 정규화한다.
 2. managed project를 확정하고 Project Approval Gate를 통과한다.
-3. `dev-project-pattern → dev-tech-dispatch → dev-breakdown` 흐름으로 기존 pattern·실제 stack·필요 capability를 근거화하고 READY 계획을 만든 뒤 사용자에게 한국어 Implementation Plan을 제시한다. `dev-breakdown`이 내부에서 두 planning skill 결과를 재사용하므로 동일 project scan을 반복하지 않는다.
+3. `dev-breakdown`으로 READY 계획을 만들고 사용자에게 한국어 Implementation Plan을 제시한다.
 4. Plan Approval Gate를 통과한다.
 5. Workspace / Branch Approval Gate에서 workspace, current/create branch, 기존 변경 전체 보존 여부를 승인받는다.
 6. `dev-workspace-dispatch`를 실행해 승인 workspace/branch와 Base SHA를 확정한다.
@@ -118,7 +118,6 @@ Reviewer
 - `.hermes/project.yaml`의 managed metadata만 사용하며 repo/Board/profile을 추측하지 않는다.
 - Task Key, branch, Base SHA는 helper 계약을 따르고 임의 재해석하지 않는다.
 - `Applicable Skills`와 runtime pinned `task.skills`를 동일시하지 않는다.
-- `dev-tech-dispatch`는 planning resolver이며 runtime pinned skill이 아니다.
 - approval 없는 bootstrap/branch/worktree/Kanban 생성 금지.
 - Orchestrator는 commit, push, PR, merge를 수행하지 않는다.
 - 원격 저장소에 직접 기록하는 제목/설명/commit 메시지는 사용자 정책에 따라 한국어를 기본으로 한다.
