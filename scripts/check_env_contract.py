@@ -97,7 +97,7 @@ def render_compose_vars(text: str, overrides: dict[str, str]) -> str:
         key, default = match.groups()
         return overrides.get(key, default)
 
-    return re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)[:-]([^}]*)}", replace, text)
+    return re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*):-([^}]*)}", replace, text)
 
 
 def main() -> int:
