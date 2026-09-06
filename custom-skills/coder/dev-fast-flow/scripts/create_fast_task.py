@@ -5,6 +5,7 @@ import argparse
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+import os
 import re
 import subprocess
 import sys
@@ -12,6 +13,7 @@ import sys
 MANAGED_MARKER = "# managed-by: dev-project-bootstrap"
 HERMES_CLI = "/opt/hermes/.venv/bin/hermes"
 VERIFICATION_MODES = ("DOCS", "COMPILE", "TARGETED_TEST")
+MODEL_TIERS = ("DEFAULT", "PREMIUM")
 
 
 class FastFlowError(RuntimeError):
@@ -27,12 +29,34 @@ class ProjectMetadata:
     reviewer: str
 
 
+@dataclass(frozen=True)
+class ModelSelection:
+    tier: str
+    model: str
+    provider: str
+
+
 def run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(cmd, text=True, capture_output=True)
     if check and result.returncode != 0:
         detail = (result.stderr or result.stdout).strip()
         raise FastFlowError(f"command failed ({result.returncode}): {' '.join(cmd)}\n{detail}")
     return result
+
+
+def resolve_model_selection(tier: str) -> ModelSelection:
+    normalized = str(tier or "").strip().upper()
+    if normalized not in MODEL_TIERS:
+        raise FastFlowError(f"model tier must be one of {', '.join(MODEL_TIERS)}")
+    model_key = f"HERMES_FLOW_MODEL_{normalized}"
+    provider_key = f"HERMES_FLOW_MODEL_{normalized}_PROVIDER"
+    model = os.environ.get(model_key, "").strip()
+    provider = os.environ.get(provider_key, "").strip()
+    if not model:
+        raise FastFlowError(f"required model environment variable is missing: {model_key}")
+    if not provider:
+        raise FastFlowError(f"required model environment variable is missing: {provider_key}")
+    return ModelSelection(tier=normalized, model=model, provider=provider)
 
 
 def ensure_safe_directory(path: Path) -> None:
@@ -113,7 +137,7 @@ def _normalize_task_spec_value(value: str) -> str:
     return " ".join(value.split())
 
 
-def request_fingerprint(*, title: str, goal: str, acceptance: list[str], implementation: list[str], tests: list[str], risks: list[str], verification_mode: str) -> str:
+def request_fingerprint(*, title: str, goal: str, acceptance: list[str], implementation: list[str], tests: list[str], risks: list[str], verification_mode: str, model_tier: str) -> str:
     parts = [
         f"title={_normalize_task_spec_value(title)}",
         f"goal={_normalize_task_spec_value(goal)}",
@@ -122,6 +146,7 @@ def request_fingerprint(*, title: str, goal: str, acceptance: list[str], impleme
         *(f"test={_normalize_task_spec_value(value)}" for value in tests),
         *(f"risk={_normalize_task_spec_value(value)}" for value in risks),
         f"verification_mode={verification_mode}",
+        f"model_tier={model_tier}",
     ]
     return sha256("\n".join(parts).encode("utf-8")).hexdigest()[:8].upper()
 
@@ -135,13 +160,20 @@ def bullet_lines(values: list[str]) -> str:
     return "\n".join(f"- {value}" for value in values)
 
 
-def build_body(*, task_key: str, goal: str, acceptance: list[str], implementation: list[str], tests: list[str], risks: list[str], reviewer: str, workspace: Path, branch: str, base_sha: str, pre_existing: list[str], eol_only_count: int, verification_mode: str) -> str:
+def build_body(*, task_key: str, goal: str, acceptance: list[str], implementation: list[str], tests: list[str], risks: list[str], reviewer: str, workspace: Path, branch: str, base_sha: str, pre_existing: list[str], eol_only_count: int, verification_mode: str, model: ModelSelection) -> str:
     dirty = bool(pre_existing)
     baseline = bullet_lines(pre_existing) if pre_existing else "- none"
     return f"""Flow: FAST
 Task Key: {task_key}
 Review Policy: RISK_BASED
 Verification Mode: {verification_mode}
+
+Model Policy:
+- Coder Model Tier: {model.tier}
+- Coder Model: {model.model}
+- Coder Provider: {model.provider}
+- Reviewer Model: DEFAULT
+- Model Escalation: REQUIRE_REAPPROVAL
 
 Goal:
 {goal}
@@ -164,12 +196,13 @@ Known Risks:
 Fast Flow Escalation:
 - If source evidence reveals ambiguous product intent, architecture decisions, public API/schema changes, cross-repository work, dependency changes, or materially broader scope, do not expand implementation.
 - Call kanban_block with reason FAST_FLOW_ESCALATION_REQUIRED and include evidence required to restart through Standard Flow.
+- A stronger Coder model may be recommended, but changing Coder Model Tier/Provider/Model requires explicit user reapproval before redispatch.
 
 Review Policy Contract:
 - After implementation and targeted verification, coder evaluates Review Risk using dev-implement-plan.
 - LOW -> coder records risk reasons and verification, then kanban_complete.
-- REVIEW_REQUIRED -> coder calls kanban_request_review for {reviewer}.
-- Any CHANGES_REQUESTED retry must return to reviewer after the fix.
+- REVIEW_REQUIRED -> coder switches the task to Reviewer DEFAULT through flow_model_policy.py review-enter, then calls kanban_request_review for {reviewer}.
+- Any CHANGES_REQUESTED retry restores the approved Coder model before returning to coder and must return to reviewer after the fix.
 
 Reviewer Profile:
 {reviewer}
@@ -204,6 +237,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--test", action="append", required=True)
     parser.add_argument("--risk", action="append", default=[])
     parser.add_argument("--verification-mode", choices=VERIFICATION_MODES, default="TARGETED_TEST")
+    parser.add_argument("--model-tier", choices=MODEL_TIERS, required=True)
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -220,6 +254,7 @@ def main() -> int:
     if configured_repo != repo:
         raise FastFlowError(f"project metadata repository mismatch: metadata={configured_repo}, actual={repo}")
 
+    model = resolve_model_selection(args.model_tier)
     pre_existing, eol_only = workspace_status(repo)
     branch = current_branch(repo)
     base_sha = current_head(repo)
@@ -232,9 +267,10 @@ def main() -> int:
         tests=args.test,
         risks=risks,
         verification_mode=args.verification_mode,
+        model_tier=model.tier,
     )
     task_key = logical_task_key(args.title, base_sha, fingerprint)
-    body = build_body(task_key=task_key, goal=args.goal, acceptance=args.acceptance, implementation=args.implementation, tests=args.test, risks=risks, reviewer=meta.reviewer, workspace=repo, branch=branch, base_sha=base_sha, pre_existing=pre_existing, eol_only_count=len(eol_only), verification_mode=args.verification_mode)
+    body = build_body(task_key=task_key, goal=args.goal, acceptance=args.acceptance, implementation=args.implementation, tests=args.test, risks=risks, reviewer=meta.reviewer, workspace=repo, branch=branch, base_sha=base_sha, pre_existing=pre_existing, eol_only_count=len(eol_only), verification_mode=args.verification_mode, model=model)
 
     print("=== Fast Flow Dispatch ===")
     print(f"PROJECT={meta.project_id}")
@@ -250,6 +286,11 @@ def main() -> int:
     print(f"EOL_ONLY_CHANGE_COUNT={len(eol_only)}")
     print(f"CODER={meta.coder}")
     print(f"REVIEWER={meta.reviewer}")
+    print(f"MODEL_TIER={model.tier}")
+    print(f"MODEL={model.model}")
+    print(f"PROVIDER={model.provider}")
+    print("REVIEWER_MODEL=DEFAULT")
+    print("MODEL_ESCALATION=REQUIRE_REAPPROVAL")
 
     if args.dry_run:
         print("\n--- KANBAN BODY ---")
@@ -257,7 +298,7 @@ def main() -> int:
         print("\nSTATUS=dry-run")
         return 0
 
-    command = [HERMES_CLI, "kanban", "--board", meta.board, "create", args.title, "--body", body, "--assignee", meta.coder, "--workspace", f"dir:{repo}", "--created-by", "coder-fast-flow", "--idempotency-key", f"fast:{meta.project_id}:{task_key}", "--skill", "dev-implement-plan", "--json"]
+    command = [HERMES_CLI, "kanban", "--board", meta.board, "create", args.title, "--body", body, "--assignee", meta.coder, "--workspace", f"dir:{repo}", "--created-by", "coder-fast-flow", "--idempotency-key", f"fast:{meta.project_id}:{task_key}", "--skill", "dev-implement-plan", "--model", model.model, "--provider", model.provider, "--json"]
     result = run(command)
     print(result.stdout.rstrip())
     print("STATUS=created")
