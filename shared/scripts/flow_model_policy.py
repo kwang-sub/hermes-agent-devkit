@@ -39,11 +39,12 @@ def resolve_model_selection(tier: str, environ: dict[str, str] | None = None) ->
     normalized = str(tier or "").strip().upper()
     if normalized not in MODEL_TIERS:
         raise ModelPolicyError(f"model tier must be one of {', '.join(MODEL_TIERS)}")
-    prefix = f"HERMES_CODER_{normalized}_"
+    model_key = f"HERMES_FLOW_MODEL_{normalized}"
+    provider_key = f"HERMES_FLOW_MODEL_{normalized}_PROVIDER"
     return ModelSelection(
         tier=normalized,
-        model=_clean_value(env.get(prefix + "MODEL"), prefix + "MODEL"),
-        provider=_clean_value(env.get(prefix + "PROVIDER"), prefix + "PROVIDER"),
+        model=_clean_value(env.get(model_key), model_key),
+        provider=_clean_value(env.get(provider_key), provider_key),
     )
 
 
@@ -55,6 +56,7 @@ def model_contract_lines(selection: ModelSelection) -> str:
             f"- Coder Model: {selection.model}",
             f"- Coder Provider: {selection.provider}",
             "- Reviewer Model: DEFAULT",
+            "- Model Escalation: REQUIRE_REAPPROVAL",
         )
     )
 
@@ -77,6 +79,9 @@ def selection_from_task_body(body: str) -> ModelSelection:
     reviewer = field("Reviewer Model").upper()
     if reviewer != "DEFAULT":
         raise ModelPolicyError(f"Reviewer Model must be DEFAULT, got: {reviewer}")
+    escalation = field("Model Escalation").upper()
+    if escalation != "REQUIRE_REAPPROVAL":
+        raise ModelPolicyError(f"Model Escalation must be REQUIRE_REAPPROVAL, got: {escalation}")
     return ModelSelection(
         tier=tier,
         model=field("Coder Model"),
@@ -136,6 +141,7 @@ def print_selection(selection: ModelSelection) -> None:
     print(f"MODEL={selection.model}")
     print(f"PROVIDER={selection.provider}")
     print("REVIEWER_MODEL=DEFAULT")
+    print("MODEL_ESCALATION=REQUIRE_REAPPROVAL")
 
 
 def parse_args() -> argparse.Namespace:
