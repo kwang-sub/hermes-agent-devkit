@@ -1,14 +1,14 @@
 ---
 name: dev-flow-model-policy
 description: Standard/Fast Flow에서 승인된 Coder 모델을 Task에 고정하고 Reviewer는 DEFAULT를 사용하도록 Coder↔Reviewer 전이 시 모델 override를 관리하는 공통 정책.
-version: 0.1.0
+version: 0.2.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, flow, model, approval, coder, reviewer, kanban]
     related_skills: [dev-fast-flow, dev-workflow-orchestrate, dev-workspace-dispatch, dev-implement-plan, dev-code-review, dev-review-cycle]
-    requires_tools: [terminal, kanban_show, kanban_request_review, kanban_request_changes]
+    requires_tools: [terminal, kanban_show, kanban_request_review, kanban_request_changes, kanban_block]
 ---
 
 # dev-flow-model-policy
@@ -84,6 +84,18 @@ STATUS=review-default-ready
 
 Helper 실패 시 Reviewer handoff를 진행하지 말고 `kanban_block(kind=capability)`한다.
 
+### Review handoff 실패 복구
+
+`review-enter`는 성공했지만 이어지는 `kanban_request_review`가 실패하면 Task는 아직 Coder lane에 있으므로 즉시 원래 승인 Coder snapshot을 복원한다.
+
+```bash
+python3 /opt/data/shared/scripts/flow_model_policy.py changes-return
+```
+
+복원 성공(`STATUS=coder-model-restored`) 후 실패 원인을 처리한다. 모델을 복원하지 않은 채 Coder Task를 retry/종료하지 않는다.
+
+복원 helper까지 실패하면 `kanban_block(kind=capability)`하고 다음 dispatch를 막는다.
+
 ## 4. Reviewer 실행
 
 Review run은 Task `model_override/provider_override`가 비어 있어야 하며 Reviewer profile의 DEFAULT를 사용한다.
@@ -108,7 +120,38 @@ STATUS=coder-model-restored
 
 Helper 실패 시 Coder에게 잘못된 모델로 돌아갈 수 있으므로 `kanban_request_changes`를 호출하지 말고 `kanban_block(kind=capability)`한다.
 
-## 5. 금지
+### Changes handoff 실패 복구
+
+`changes-return`은 성공했지만 이어지는 `kanban_request_changes`가 실패하면 Task는 아직 Reviewer lane에 있으므로 Reviewer DEFAULT 상태로 즉시 되돌린다.
+
+```bash
+python3 /opt/data/shared/scripts/flow_model_policy.py review-enter
+```
+
+복구 성공(`STATUS=review-default-ready`) 후 실패 원인을 처리한다. Coder 모델 override를 남긴 채 Reviewer Task를 retry/종료하지 않는다.
+
+복구 helper까지 실패하면 `kanban_block(kind=capability)`하고 다음 dispatch를 막는다.
+
+## 5. 전이 상태표
+
+```text
+Coder running
+  model_override = approved Coder snapshot
+    ↓ review-enter
+  model_override = none
+    ↓ kanban_request_review 성공
+Reviewer review/running
+  model_override = none → Reviewer profile DEFAULT
+    ↓ changes-return
+  model_override = approved Coder snapshot
+    ↓ kanban_request_changes 성공
+Coder ready/running
+  model_override = approved Coder snapshot
+```
+
+Lifecycle 전이가 실패하면 바로 앞 model mutation을 반대로 실행해 원상복구한다.
+
+## 6. 금지
 
 ```text
 Reviewer를 PREMIUM으로 자동 승격
@@ -116,14 +159,17 @@ Coder가 요구사항 난이도를 이유로 스스로 PREMIUM 전환
 retry 때 ENV를 다시 해석해 기존 Task 모델 변경
 review 진입 후 Coder PREMIUM override 유지
 CHANGES_REQUESTED 반환 전 Coder 승인 모델 복원 생략
+lifecycle 전이 실패 후 다음 lane용 model override 방치
 Task body 승인 snapshot과 다른 model/provider로 set-model
 ```
 
-## 6. Discord 표시
+## 7. Discord 표시
 
 Discord Kanban 알림은 Task의 현재 `model_override/provider_override`를 우선 표시한다.
 
 - Coder 실행/완료: 승인된 실제 provider/model
 - Reviewer 단계: `DEFAULT (profile)`
+- `review_requested` 알림: Reviewer가 다음 실행 주체이므로 `DEFAULT (profile)`
+- `changes_requested` 알림: Coder가 다음 실행 주체이므로 복원된 승인 provider/model
 
 알림 표시는 실행 계약을 바꾸지 않으며, 실행 모델의 source of truth는 Kanban Task override와 Task body snapshot이다.
