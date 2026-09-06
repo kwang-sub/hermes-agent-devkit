@@ -27,12 +27,14 @@ REQUIRED = {
         "Stack/Capability Skill", "secret", "commit", "push", "한국어",
         "Review Policy: RISK_BASED", "REVIEW_REQUIRED", "기존 변경",
     ],
+    # Approval gates are owned by the workflow skill. Breakdown owns plan readiness only.
     "custom-skills/orchestrator/dev-workflow-orchestrate/SKILL.md": [
         "Project Approval", "Plan Approval", "Workspace / Branch", "dev-workspace-dispatch",
         "Base SHA", "coder", "reviewer", "READY", "BLOCKED", "commit", "push", "한국어",
     ],
     "custom-skills/orchestrator/dev-breakdown/SKILL.md": [
-        "Plan Approval", "Workspace / Branch", "READY", "BLOCKED", "coder", "한국어", "commit", "push",
+        "READY", "BLOCKED", "한국어", "commit", "push", "dev-project-pattern",
+        "Acceptance Criteria", "Applicable Skills",
     ],
     "custom-skills/coder/dev-fast-flow/SKILL.md": [
         "ACTIVE_TASK_FOLLOWUP", "Kanban", "coder", "reviewer", "current branch", "기존 변경",
@@ -41,12 +43,14 @@ REQUIRED = {
     ],
     "custom-skills/coder/dev-implement-plan/SKILL.md": [
         "Workspace", "Pattern References", "Flow: FAST", "FAST_FLOW_ESCALATION_REQUIRED",
-        "공통 Coding Rules 핵심", "2-depth", "skill_view", "coding-rules.md",
-        "secret", "commit", "push", "BLOCKED", "Review Risk", "LOW", "REVIEW_REQUIRED",
+        "공통 Foundation 핵심", "2-depth", "skill_view", "coding-rules.md",
+        "implementation-decision-rules.md", "secret", "commit", "push", "BLOCKED",
+        "Review Risk", "LOW", "REVIEW_REQUIRED",
     ],
     "custom-skills/reviewer/dev-code-review/SKILL.md": [
-        "Reviewer", "source를 수정하지", "Common Coding Review Gate", "2-depth",
-        "Stack / Capability Review Gate", "coding-rules.md", "secret", "commit", "push", "kanban_block",
+        "Reviewer", "source를 수정하지", "Common Foundation Review Gate", "2-depth",
+        "Stack / Capability Review Gate", "coding-rules.md", "implementation-decision-rules.md",
+        "secret", "commit", "push", "kanban_block",
     ],
 }
 
@@ -68,6 +72,8 @@ DETAIL_REQUIRED = {
 REFERENCES = [
     "shared/references/common-agent-rules.md",
     "shared/references/coding-rules.md",
+    "shared/references/implementation-decision-rules.md",
+    "shared/references/project-pattern-rules.md",
     "shared/references/stack-capability-skill-guide.md",
     "custom-skills/orchestrator/dev-workflow-orchestrate/references/workflow-details.md",
     "custom-skills/orchestrator/dev-breakdown/references/planning-details.md",

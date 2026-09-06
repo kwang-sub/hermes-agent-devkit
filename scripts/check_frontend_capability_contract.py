@@ -4,14 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 required_skills = (
-    "dev-frontend-feature",
-    "dev-typescript-guidelines",
-    "dev-frontend-guidelines",
-    "dev-nextjs-feature",
-    "dev-frontend-test",
-    "dev-api-contract",
-    "dev-figma-design",
-    "dev-ui-ux",
+    "dev-frontend-feature", "dev-typescript-guidelines", "dev-frontend-guidelines",
+    "dev-nextjs-feature", "dev-frontend-test", "dev-api-contract", "dev-figma-design", "dev-ui-ux",
 )
 for name in required_skills:
     path = ROOT / "custom-skills" / "shared" / name / "SKILL.md"
@@ -38,14 +32,22 @@ for label, (text, terms) in checks.items():
     if missing:
         raise SystemExit(f"{label} missing terms: {', '.join(missing)}")
 
-if 'method="POST"' in figma_script or 'method="PATCH"' in figma_script or 'method="DELETE"' in figma_script:
+if any(term in figma_script for term in ('method="POST"', 'method="PATCH"', 'method="DELETE"')):
     raise SystemExit("Figma adapter must remain read-only")
 
-sample = (ROOT / "sample.env").read_text(encoding="utf-8")
+sample_values = {}
+for raw in (ROOT / "sample.env").read_text(encoding="utf-8").splitlines():
+    line = raw.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        continue
+    key, value = line.split("=", 1)
+    sample_values[key] = value
 compose = (ROOT / "compose.yml").read_text(encoding="utf-8")
 for key in ("FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN"):
-    if f"{key}=" not in sample:
+    if key not in sample_values:
         raise SystemExit(f"sample.env missing {key}")
+    if sample_values[key]:
+        raise SystemExit(f"sample.env {key} must stay blank")
     if f"{key}: ${{{key}:-}}" not in compose:
         raise SystemExit(f"compose.yml missing {key}")
 
