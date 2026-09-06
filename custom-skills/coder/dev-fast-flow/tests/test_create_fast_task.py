@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -8,9 +9,16 @@ import tempfile
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "create_fast_task.py"
 
+MODEL_ENV = {
+    "HERMES_FLOW_MODEL_DEFAULT_PROVIDER": "openai-codex",
+    "HERMES_FLOW_MODEL_DEFAULT": "gpt-5.6-terra",
+    "HERMES_FLOW_MODEL_PREMIUM_PROVIDER": "openai-codex",
+    "HERMES_FLOW_MODEL_PREMIUM": "gpt-6-astra",
+}
 
-def run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True)
+
+def run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, env=env)
 
 
 def write_metadata(repo: Path) -> None:
@@ -54,13 +62,15 @@ def make_repo(root: Path) -> Path:
     return repo
 
 
-def invoke(repo: Path, title: str = "small fix", goal: str = "Small fix.", verification_mode: str = "TARGETED_TEST") -> subprocess.CompletedProcess[str]:
+def invoke(repo: Path, title: str = "small fix", goal: str = "Small fix.", verification_mode: str = "TARGETED_TEST", model_tier: str = "DEFAULT", model_env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env.update(MODEL_ENV if model_env is None else model_env)
     return run([
         "python3", str(SCRIPT), "--workspace", str(repo), "--title", title,
         "--goal", goal, "--acceptance", "Requested behavior works.",
         "--implementation", "Apply minimum fix.", "--test", "Run focused test.",
-        "--verification-mode", verification_mode, "--dry-run",
-    ])
+        "--verification-mode", verification_mode, "--model-tier", model_tier, "--dry-run",
+    ], env=env)
 
 
 def extract(stdout: str, key: str) -> str:
@@ -81,8 +91,11 @@ def test_clean_repo_dry_run() -> None:
             "EFFECTIVE_CHANGE_COUNT=0", "EOL_ONLY_CHANGE_COUNT=0", "REQUEST_FINGERPRINT=",
             "VERIFICATION_MODE=TARGETED_TEST", "Verification Mode: TARGETED_TEST",
             "CODER=coder", "REVIEWER=reviewer", "Flow: FAST", "Review Policy: RISK_BASED",
-            "Workspace dirty at dispatch: false", "Pre-existing effective changes at dispatch:", "- none",
-            "LOW -> coder", "REVIEW_REQUIRED -> coder", "FAST_FLOW_ESCALATION_REQUIRED", "STATUS=dry-run",
+            "MODEL_TIER=DEFAULT", "MODEL=gpt-5.6-terra", "PROVIDER=openai-codex",
+            "Coder Model Tier: DEFAULT", "Coder Model: gpt-5.6-terra", "Reviewer Model: DEFAULT",
+            "Model Escalation: REQUIRE_REAPPROVAL", "Workspace dirty at dispatch: false",
+            "Pre-existing effective changes at dispatch:", "- none", "LOW -> coder",
+            "REVIEW_REQUIRED -> coder", "FAST_FLOW_ESCALATION_REQUIRED", "STATUS=dry-run",
         )
         for term in required:
             if term not in result.stdout:
@@ -145,12 +158,40 @@ def test_verification_mode_changes_contract_and_fingerprint() -> None:
             raise AssertionError("verification mode must participate in request identity")
 
 
+def test_model_tier_changes_contract_and_fingerprint() -> None:
+    with tempfile.TemporaryDirectory(prefix="fast-flow-model-test-") as temp_dir:
+        repo = make_repo(Path(temp_dir))
+        default_result = invoke(repo, model_tier="DEFAULT")
+        premium_result = invoke(repo, model_tier="PREMIUM")
+        if default_result.returncode != 0 or premium_result.returncode != 0:
+            raise AssertionError(default_result.stderr or premium_result.stderr)
+        for term in ("MODEL_TIER=PREMIUM", "MODEL=gpt-6-astra", "Coder Model Tier: PREMIUM"):
+            if term not in premium_result.stdout:
+                raise AssertionError(premium_result.stdout)
+        if extract(default_result.stdout, "TASK_KEY") == extract(premium_result.stdout, "TASK_KEY"):
+            raise AssertionError("model tier must participate in request identity")
+
+
+def test_missing_model_env_fails_before_dispatch() -> None:
+    with tempfile.TemporaryDirectory(prefix="fast-flow-model-env-test-") as temp_dir:
+        repo = make_repo(Path(temp_dir))
+        env = dict(MODEL_ENV)
+        env["HERMES_FLOW_MODEL_PREMIUM"] = ""
+        result = invoke(repo, model_tier="PREMIUM", model_env=env)
+        if result.returncode == 0:
+            raise AssertionError("missing model env must fail")
+        if "HERMES_FLOW_MODEL_PREMIUM" not in result.stderr:
+            raise AssertionError(result.stderr)
+
+
 def main() -> int:
     test_clean_repo_dry_run()
     test_dirty_repo_is_accepted_and_recorded()
     test_crlf_only_tracked_change_is_not_dirty()
     test_same_request_is_stable_and_follow_up_is_distinct()
     test_verification_mode_changes_contract_and_fingerprint()
+    test_model_tier_changes_contract_and_fingerprint()
+    test_missing_model_env_fails_before_dispatch()
     print("[PASS] dev-fast-flow task creation tests")
     return 0
 
