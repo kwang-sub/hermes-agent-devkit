@@ -71,7 +71,7 @@ STATUS=resolved
 
 사용자가 승인한 Coder Model Tier/Provider/Model을 바꾸려면 반드시 재승인을 받는다. Agent는 PREMIUM 사용을 추천할 수 있지만 자동으로 전환하지 않는다.
 
-## Workspace 상태 검사 단일화 계약
+## Workspace / Branch 상태 검사 단일화 계약
 
 Execution Approval 전에 **working-tree 전체 scan을 하지 않는다**. 허용되는 것은 repository/workspace/current branch/base branch 같은 identity 조회뿐이다.
 
