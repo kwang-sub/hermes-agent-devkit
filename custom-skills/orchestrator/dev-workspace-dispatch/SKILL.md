@@ -36,7 +36,7 @@ Bootstrap과 동일하게 **필요하지 않은 repository-wide Git scan은 생�
 ```text
 prepare_dispatch.py --confirmed-dirty
 → repository/workspace/branch/Base SHA/Board만 검증
-→ repository-wide dirty/EOL/untracked 분류를 생략
+→ repository-wide dirty/EOL/untracked 분류를 **생략**
 → WORKSPACE_CHANGE_SCAN_MODE=skipped-approved-preservation
 → *_COUNT=-1, WORKSPACE_*_DIRTY=unknown
 ```
