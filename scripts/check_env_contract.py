@@ -36,6 +36,10 @@ DEFAULTS = {
     "JIRA_ACCEPTANCE_CRITERIA_FIELDS": "Acceptance Criteria",
     "JIRA_INCLUDE_FIELD_NAMES": "",
     "JIRA_VERIFY_SSL": "true",
+    "HERMES_FLOW_MODEL_DEFAULT_PROVIDER": "openai-codex",
+    "HERMES_FLOW_MODEL_DEFAULT": "gpt-5.6-terra",
+    "HERMES_FLOW_MODEL_PREMIUM_PROVIDER": "openai-codex",
+    "HERMES_FLOW_MODEL_PREMIUM": "gpt-6-astra",
     "HERMES_KANBAN_NOTIFY_ENABLED": "false",
     "HERMES_KANBAN_NOTIFY_PLATFORM": "discord",
     "HERMES_KANBAN_NOTIFY_TARGET": "",
@@ -160,6 +164,15 @@ def main() -> int:
 
     if "API_SERVER_ENABLED: ${HERMES_API_SERVER_ENABLED:-false}" not in compose:
         raise SystemExit("OpenAI-compatible API server must be explicitly disabled by default")
+
+    for required in (
+        "HERMES_FLOW_MODEL_DEFAULT_PROVIDER: ${HERMES_FLOW_MODEL_DEFAULT_PROVIDER:-openai-codex}",
+        "HERMES_FLOW_MODEL_DEFAULT: ${HERMES_FLOW_MODEL_DEFAULT:-gpt-5.6-terra}",
+        "HERMES_FLOW_MODEL_PREMIUM_PROVIDER: ${HERMES_FLOW_MODEL_PREMIUM_PROVIDER:-openai-codex}",
+        "HERMES_FLOW_MODEL_PREMIUM: ${HERMES_FLOW_MODEL_PREMIUM:-gpt-6-astra}",
+    ):
+        if required not in compose:
+            raise SystemExit(f"compose.yml missing Flow model contract: {required}")
 
     for required in (
         "HERMES_KANBAN_NOTIFY_ENABLED: ${HERMES_KANBAN_NOTIFY_ENABLED:-false}",

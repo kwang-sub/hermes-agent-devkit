@@ -1,13 +1,13 @@
 ---
 name: dev-fast-flow
-description: Interactive Coder의 mutation request를 DIRECT/FAST/STANDARD_REQUIRED로 라우팅하고, 이미 dispatch된 FAST Task의 후속 요구사항은 기존 Kanban Task로 전달하는 execution router.
-version: 0.6.0
+description: Interactive Coder의 mutation request를 DIRECT/FAST/STANDARD_REQUIRED로 라우팅하고, FAST 실행 시 Coder 모델까지 승인받아 Kanban으로 dispatch하며 이미 dispatch된 FAST Task의 후속 요구사항은 기존 Task로 전달하는 execution router.
+version: 0.7.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, coder, fast-flow, direct, kanban, review, intake, follow-up, notification]
-    related_skills: [dev-direct-flow, dev-implement-plan, dev-code-review, dev-review-cycle]
+    tags: [dev, coder, fast-flow, direct, kanban, review, intake, follow-up, notification, model, approval]
+    related_skills: [dev-direct-flow, dev-implement-plan, dev-code-review, dev-review-cycle, dev-flow-model-policy]
     requires_tools: [terminal, clarify]
 ---
 
@@ -25,6 +25,11 @@ Interactive Coder?
 Existing active FAST Task follow-up?
     ├─ YES → ACTIVE_TASK_FOLLOWUP → existing Task update/comment → STOP
     └─ NO  → DIRECT | FAST | STANDARD_REQUIRED
+                   ↓ FAST
+             Execution Approval
+             (Flow + Coder Model)
+                   ↓
+                dispatch
 ```
 
 ## EXECUTION SAFETY GATE — MUST RUN FIRST
@@ -41,7 +46,11 @@ Existing active FAST Task follow-up?
    - STANDARD_REQUIRED: 신규 기능/설계, multi-module/repo, API/request/response schema, DB schema, dependency, transaction/security/concurrency/common architecture 정책 결정, 복수 해석 요구사항.
 5. 현재 메시지 또는 바로 앞 execution-gate `clarify`에 명시적인 실행 방식 선택이 있는가?
    - DIRECT 승인: `DIRECT로 진행해주세요`, `직접 수정 모드로 진행해주세요`, 또는 바로 앞 `clarify`의 `직접 수정` 선택.
-   - FAST 승인: `FAST Flow로 진행`, `칸반으로 진행`, `/dev-fast-flow ...`.
+   - FAST 승인: **Flow와 Coder Model Tier가 함께 승인되어야 한다.**
+     - `FAST Flow · DEFAULT`
+     - `FAST Flow · PREMIUM`
+     - 자연어로 `FAST Flow로 DEFAULT 모델 사용`, `FAST를 PREMIUM으로 진행`처럼 둘 다 명시한 경우.
+   - `FAST Flow로 진행`, `칸반으로 진행`, `/dev-fast-flow ...`처럼 모델 등급이 빠진 요청은 FAST 의도만 승인된 것이며 모델 승인이 아니다. 모델 선택을 `clarify` 후 STOP한다.
    - Standard 요청: Coder 직접 실행 승인이 아니다. Orchestrator에서 진행하도록 안내하고 STOP.
    - 명시적 선택이 없으면 `clarify` 후 즉시 STOP.
 6. `수정해주세요`, `바로 수정해주세요`, `적용해주세요`, `고쳐주세요`, `재검토해주세요`, `오류가 있으면 수정해주세요`는 DIRECT 승인으로 간주하지 않는다.
@@ -49,6 +58,30 @@ Existing active FAST Task follow-up?
 8. 승인 대기 중 이런 메시지가 오면 요구사항만 갱신하고 다시 `clarify` 후 STOP.
 9. 승인 전 Interactive turn의 유일한 실행 action은 `clarify`다. plan/read/grep/find/write/patch/build/test/Kanban create 금지.
 10. DIRECT 선택 시에만 `dev-direct-flow` 계약으로 전환한다. FAST 선택 시 canonical dispatch만 수행하고 STOP한다.
+11. Coder 모델은 `DEFAULT | PREMIUM` 논리 등급만 승인받는다. 실제 provider/model은 `create_fast_task.py`가 승인 시점 ENV에서 해석해 Task에 고정한다.
+12. Reviewer 모델은 별도 선택하지 않으며 항상 Reviewer profile DEFAULT다. Agent는 PREMIUM escalation을 추천할 수 있지만 자동 전환할 수 없다.
+
+## FAST 모델 정책
+
+논리 등급과 실제 모델 매핑은 환경 변수로 관리한다.
+
+```text
+HERMES_FLOW_MODEL_DEFAULT_PROVIDER
+HERMES_FLOW_MODEL_DEFAULT
+HERMES_FLOW_MODEL_PREMIUM_PROVIDER
+HERMES_FLOW_MODEL_PREMIUM
+```
+
+현재 DevKit 기본값:
+
+```text
+DEFAULT = openai-codex / gpt-5.6-terra
+PREMIUM = openai-codex / gpt-6-astra
+```
+
+모델 세대가 바뀌면 ENV만 변경한다. 이미 승인·생성된 Task는 body와 Kanban `model_override/provider_override`에 저장된 snapshot을 사용하므로 ENV 변경 영향을 받지 않는다.
+
+모델/Provider 변경은 scope 변경과 별개로 **재승인 대상**이다. 같은 Task의 동일 승인 모델 retry는 재승인하지 않는다.
 
 ## ACTIVE_TASK_FOLLOWUP — 이미 dispatch된 FAST Task
 FAST 승인은 **task-scoped, one-shot dispatch approval**이다. 이전 turn에서 FAST를 승인했다는 사실은 이후 Interactive Coder가 source를 직접 수정할 권한이 아니다.
@@ -77,6 +110,7 @@ python3 /opt/custom-skills/coder/dev-fast-flow/scripts/update_fast_task.py \
 6. Task가 `done`/`archived`이면 기존 Task를 수정하지 않는다. 새 작업으로 진행할지 사용자에게 묻는다.
 7. `running` worker는 Hermes의 task comment injection을 통해 새 operator 지시를 받을 수 있으므로 worker 재생성/중복 Task 생성이 기본 경로가 아니다.
 8. follow-up이 FAST 범위를 materially 벗어나 architecture/API/schema/dependency/cross-repo 결정이 되면 Task comment로 임의 확장하지 말고 Standard Flow 전환이 필요하다고 안내한다.
+9. follow-up에서 Coder 모델 변경을 요청하면 일반 direction-change로 처리하지 않는다. 현재 승인 snapshot과 다른 Tier/Provider/Model은 사용자 재승인이 필요하다고 안내하고 STOP한다.
 
 Task에 기록되는 comment 형식은 helper가 고정한다.
 
@@ -91,8 +125,17 @@ Contract:
 ```
 
 ## `clarify` 선택지
-- DIRECT + FAST 모두 가능: `직접 수정`, `FAST Flow로 진행`, `분석만 진행`, `취소`.
-- FAST만 가능: `FAST Flow로 진행`, `분석만 진행`, `취소`.
+- DIRECT + FAST 모두 가능:
+  - `직접 수정`
+  - `FAST Flow · DEFAULT`
+  - `FAST Flow · PREMIUM`
+  - `분석만 진행`
+  - `취소`
+- FAST만 가능:
+  - `FAST Flow · DEFAULT`
+  - `FAST Flow · PREMIUM`
+  - `분석만 진행`
+  - `취소`
 - STANDARD_REQUIRED: 선택을 묻지 않고 Orchestrator 안내 후 STOP.
 
 ## DIRECT 판정 기준
@@ -116,14 +159,14 @@ Contract:
 - architecture/product/public API/DB schema/dependency/cross-repo 결정 불필요
 - 완료 조건과 검증 방법이 명확함
 
-사용자가 `/dev-fast-flow`를 명시해도 eligibility를 우회하지 않는다. 요청 자체에 public API/schema/dependency/DB/architecture 변경이 명시되면 `STANDARD_REQUIRED`로 판정한다.
+사용자가 `/dev-fast-flow`를 명시해도 eligibility와 모델 승인을 우회하지 않는다. 요청 자체에 public API/schema/dependency/DB/architecture 변경이 명시되면 `STANDARD_REQUIRED`로 판정한다.
 
 ## Fast Intake Budget
 FAST intake의 책임은 구현 분석이 아니라 eligibility 판정과 dispatch다.
 - 승인 전 capability skill preload 금지.
 - 사용자가 대상 파일/클래스를 명시했으면 repository-wide 탐색을 하지 않는다.
 - 구현 세부사항, dependency 흐름, 테스트 내부 분석은 worker 책임이다.
-- `create_fast_task.py`가 project.yaml, branch, Base SHA, effective dirty baseline을 계산하므로 수동 중복 검사를 하지 않는다.
+- `create_fast_task.py`가 project.yaml, branch, Base SHA, effective dirty baseline과 승인 모델 snapshot을 계산하므로 수동 중복 검사를 하지 않는다.
 - 정상 경로에서 `create_fast_task.py --help`, script source read, argument probe를 실행하지 않는다.
 - dispatch 성공 후 추가 source 조사 없이 STOP한다.
 
@@ -137,14 +180,15 @@ python3 /opt/custom-skills/coder/dev-fast-flow/scripts/create_fast_task.py \
   --implementation "<Implementation Tasks>" \
   --test "<Test Plan>" \
   --risk "<Known Risks>" \
-  --verification-mode "<DOCS|COMPILE|TARGETED_TEST>"
+  --verification-mode "<DOCS|COMPILE|TARGETED_TEST>" \
+  --model-tier "<DEFAULT|PREMIUM>"
 ```
 
 반복 항목은 같은 option을 여러 번 사용할 수 있다.
-허용 option: `--workspace`, `--title`, `--goal`, `--acceptance`, `--implementation`, `--test`, `--risk`, `--verification-mode`.
-사용 금지/존재하지 않는 option: `--test-plan`, `--risks`, `--review-policy`, `--reviewer`.
+허용 option: `--workspace`, `--title`, `--goal`, `--acceptance`, `--implementation`, `--test`, `--risk`, `--verification-mode`, `--model-tier`.
+사용 금지/존재하지 않는 option: `--test-plan`, `--risks`, `--review-policy`, `--reviewer`, `--model`, `--provider`.
 
-`Review Policy: RISK_BASED`와 Reviewer Profile은 script가 자동 기록한다.
+`Review Policy: RISK_BASED`, Reviewer Profile, 실제 Coder model/provider는 script가 자동 기록한다.
 
 ## Verification Mode
 - `DOCS`: 문서-only
@@ -154,7 +198,18 @@ python3 /opt/custom-skills/coder/dev-fast-flow/scripts/create_fast_task.py \
 
 ## Fast Intake 계약
 `<repo>/.hermes/project.yaml`, current branch, Base SHA, effective Git changes는 `create_fast_task.py`가 검증/계산한다. Windows bind mount의 CRLF/LF raw status noise는 dirty baseline으로 사용하지 않는다.
-Kanban에는 Goal, AC, Implementation Tasks, Test Plan, Risks, Workspace, Branch/Base SHA, pre-existing effective changes, Reviewer Profile, `Review Policy: RISK_BASED`를 기록한다.
+Kanban에는 Goal, AC, Implementation Tasks, Test Plan, Risks, Workspace, Branch/Base SHA, pre-existing effective changes, Reviewer Profile, `Review Policy: RISK_BASED`와 다음 모델 snapshot을 기록한다.
+
+```text
+Model Policy:
+- Coder Model Tier: DEFAULT | PREMIUM
+- Coder Model: <resolved model>
+- Coder Provider: <resolved provider>
+- Reviewer Model: DEFAULT
+- Model Escalation: REQUIRE_REAPPROVAL
+```
+
+Task 생성 시 `model_override/provider_override`에 Coder snapshot을 pin하고 `dev-implement-plan`, `dev-flow-model-policy`를 runtime skill로 pin한다.
 
 Task 생성 성공 후 출력된 Kanban Task ID를 사용해 아래 공통 notification helper를 정확히 한 번 호출한다.
 
@@ -172,13 +227,13 @@ python3 /opt/data/shared/scripts/kanban_notify_subscribe.py --task-id "<KANBAN_T
 ## Worker 결과
 - Fast 범위를 벗어나면 `FAST_FLOW_ESCALATION_REQUIRED`로 Block.
 - LOW면 evidence를 남기고 `kanban_complete`.
-- REVIEW_REQUIRED면 `kanban_request_review`.
-- CHANGES_REQUESTED 재작업은 다시 Reviewer에게 보낸다.
+- REVIEW_REQUIRED면 `dev-flow-model-policy` 계약에 따라 Reviewer DEFAULT로 전환 후 `kanban_request_review`.
+- CHANGES_REQUESTED 재작업은 승인된 Coder snapshot을 복원한 뒤 coder로 돌아가고, 수정 후 다시 Reviewer에게 보낸다.
 
 ## 불변식
 - 일반 mutation request는 execution router를 우회할 수 없다.
 - semantic skill auto-selection은 실행 승인이나 DIRECT 선택이 아니다.
-- FAST approval은 task-scoped one-shot이며 Interactive implementation approval이 아니다.
+- FAST approval은 Flow와 Coder Model Tier를 함께 승인한 task-scoped one-shot이다.
 - Active FAST Task 관련 mutation follow-up은 기존 Task update/comment-only 후 STOP한다.
 - Active FAST Task follow-up에서 Interactive Coder의 plan/read/grep/find/write/patch/build/test는 금지한다.
 - 일반적인 `수정/바로 수정/적용/고쳐주세요`는 DIRECT 승인 아님.
@@ -188,5 +243,8 @@ python3 /opt/data/shared/scripts/kanban_notify_subscribe.py --task-id "<KANBAN_T
 - Interactive FAST는 dispatch/update-only.
 - STANDARD_REQUIRED는 Orchestrator 안내 후 STOP.
 - Fast dispatch는 canonical CLI 1회 성공을 정상 경로로 한다.
+- 승인 모델 snapshot은 retry/review cycle에서 ENV를 다시 해석하지 않는다.
+- Coder 모델 변경/PREMIUM escalation은 반드시 사용자 재승인.
+- Reviewer는 DEFAULT 고정.
 - 기존 사용자 변경을 reset/restore/clean/stash하지 않는다.
 - branch/worktree 생성, commit/push/PR/merge 금지.

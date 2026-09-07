@@ -31,6 +31,10 @@ jobs:
         shell: bash
         run: bash scripts/verify.sh
 
+      - name: Verify Flow model policy
+        shell: bash
+        run: python3 shared/scripts/test_flow_model_policy.py
+
       - name: Verify Kanban notification helper
         shell: bash
         run: python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py

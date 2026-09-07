@@ -43,7 +43,7 @@ profiles:
     return repo
 
 
-def make_fake_hermes(root: Path, repo: Path, status: str) -> tuple[Path, Path]:
+def make_fake_hermes(root: Path, repo: Path) -> tuple[Path, Path]:
     log = root / "calls.log"
     cli = root / "hermes"
     cli.write_text(
@@ -61,7 +61,22 @@ def make_fake_hermes(root: Path, repo: Path, status: str) -> tuple[Path, Path]:
     return cli, log
 
 
-def invoke(repo: Path, cli: Path, log: Path, status: str, instruction: str = "UI only로 변경") -> subprocess.CompletedProcess[str]:
+def make_fake_model_policy(root: Path) -> tuple[Path, Path]:
+    log = root / "model-calls.log"
+    helper = root / "flow_model_policy.py"
+    helper.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        "with open(os.environ['FAKE_MODEL_LOG'], 'a', encoding='utf-8') as f:\n"
+        "    f.write(json.dumps(sys.argv[1:], ensure_ascii=False) + '\\n')\n"
+        "print('STATUS=coder-model-restored')\n",
+        encoding="utf-8",
+    )
+    helper.chmod(0o755)
+    return helper, log
+
+
+def invoke(repo: Path, cli: Path, log: Path, status: str, model_helper: Path | None = None, model_log: Path | None = None, instruction: str = "UI only로 변경") -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env.update({
         "HERMES_CLI": str(cli),
@@ -69,6 +84,9 @@ def invoke(repo: Path, cli: Path, log: Path, status: str, instruction: str = "UI
         "FAKE_TASK_STATUS": status,
         "FAKE_TASK_WORKSPACE": str(repo),
     })
+    if model_helper is not None and model_log is not None:
+        env["HERMES_FLOW_MODEL_POLICY_HELPER"] = str(model_helper)
+        env["FAKE_MODEL_LOG"] = str(model_log)
     return run([
         "python3", str(SCRIPT), "--workspace", str(repo), "--task", "t_active",
         "--instruction", instruction,
@@ -83,7 +101,7 @@ def test_running_task_adds_direction_comment_only() -> None:
     with tempfile.TemporaryDirectory(prefix="fast-followup-running-") as temp_dir:
         root = Path(temp_dir)
         repo = make_repo(root)
-        cli, log = make_fake_hermes(root, repo, "running")
+        cli, log = make_fake_hermes(root, repo)
         result = invoke(repo, cli, log, "running")
         if result.returncode != 0:
             raise AssertionError(result.stderr or result.stdout)
@@ -98,12 +116,13 @@ def test_running_task_adds_direction_comment_only() -> None:
             raise AssertionError(result.stdout)
 
 
-def test_review_task_reopens_before_comment() -> None:
+def test_review_task_reopens_restores_model_before_comment() -> None:
     with tempfile.TemporaryDirectory(prefix="fast-followup-review-") as temp_dir:
         root = Path(temp_dir)
         repo = make_repo(root)
-        cli, log = make_fake_hermes(root, repo, "review")
-        result = invoke(repo, cli, log, "review")
+        cli, log = make_fake_hermes(root, repo)
+        model_helper, model_log = make_fake_model_policy(root)
+        result = invoke(repo, cli, log, "review", model_helper, model_log)
         if result.returncode != 0:
             raise AssertionError(result.stderr or result.stdout)
         history = calls(log)
@@ -111,15 +130,19 @@ def test_review_task_reopens_before_comment() -> None:
             raise AssertionError(history)
         if "show" not in history[0] or "reopen-review" not in history[1] or "comment" not in history[2]:
             raise AssertionError(history)
-        if "REVIEW_REOPENED=true" not in result.stdout:
-            raise AssertionError(result.stdout)
+        model_history = calls(model_log)
+        if model_history != [["changes-return", "--board", "demo", "--task-id", "t_active"]]:
+            raise AssertionError(model_history)
+        for term in ("REVIEW_REOPENED=true", "CODER_MODEL_RESTORED=true", "STATUS=updated"):
+            if term not in result.stdout:
+                raise AssertionError(result.stdout)
 
 
 def test_terminal_task_is_rejected_without_comment() -> None:
     with tempfile.TemporaryDirectory(prefix="fast-followup-done-") as temp_dir:
         root = Path(temp_dir)
         repo = make_repo(root)
-        cli, log = make_fake_hermes(root, repo, "done")
+        cli, log = make_fake_hermes(root, repo)
         result = invoke(repo, cli, log, "done")
         if result.returncode == 0:
             raise AssertionError(result.stdout)
@@ -132,7 +155,7 @@ def test_terminal_task_is_rejected_without_comment() -> None:
 
 def main() -> int:
     test_running_task_adds_direction_comment_only()
-    test_review_task_reopens_before_comment()
+    test_review_task_reopens_restores_model_before_comment()
     test_terminal_task_is_rejected_without_comment()
     print("[PASS] dev-fast-flow active task follow-up tests")
     return 0

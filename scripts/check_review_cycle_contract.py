@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify coder/reviewer risk-based review-cycle copies and transition invariants."""
+"""Verify coder/reviewer risk-based review-cycle and model-transition invariants."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,6 +10,10 @@ REVIEWER_PROTOCOL = ROOT / "custom-skills/reviewer/dev-review-cycle/references/r
 IMPLEMENT = ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md"
 REVIEW = ROOT / "custom-skills/reviewer/dev-code-review/SKILL.md"
 FAST = ROOT / "custom-skills/coder/dev-fast-flow/SKILL.md"
+STANDARD = ROOT / "custom-skills/orchestrator/dev-workflow-orchestrate/SKILL.md"
+DISPATCH = ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/SKILL.md"
+MODEL_POLICY = ROOT / "custom-skills/shared/dev-flow-model-policy/SKILL.md"
+MODEL_HELPER = ROOT / "shared/scripts/flow_model_policy.py"
 
 
 def read(path: Path) -> str:
@@ -17,6 +21,9 @@ def read(path: Path) -> str:
 
 
 def require(path: Path, terms: tuple[str, ...], failures: list[str]) -> None:
+    if not path.is_file():
+        failures.append(f"{path.relative_to(ROOT)} missing")
+        return
     text = read(path)
     missing = [term for term in terms if term not in text]
     if missing:
@@ -48,7 +55,34 @@ def main() -> int:
 
     require(FAST, (
         "Review Policy: RISK_BASED", "LOW", "REVIEW_REQUIRED", "CHANGES_REQUESTED",
-        "kanban_complete", "kanban_request_review",
+        "kanban_complete", "kanban_request_review", "dev-flow-model-policy",
+        "FAST Flow · DEFAULT", "FAST Flow · PREMIUM", "Reviewer는 DEFAULT 고정",
+        "Model Escalation: REQUIRE_REAPPROVAL",
+    ), failures)
+
+    require(STANDARD, (
+        "Execution Approval Gate", "Coder Model: DEFAULT | PREMIUM", "Reviewer Model: DEFAULT",
+        "flow_model_policy.py resolve", "model=<MODEL>", "provider=<PROVIDER>",
+        "dev-flow-model-policy", "Model Escalation: REQUIRE_REAPPROVAL",
+    ), failures)
+
+    require(DISPATCH, (
+        "Coder Model Tier(DEFAULT|PREMIUM) 승인 완료", "model=MODEL", "provider=PROVIDER",
+        "dev-flow-model-policy", "model_override == MODEL", "provider_override == PROVIDER",
+        "review-enter", "changes-return", "Reviewer profile DEFAULT",
+    ), failures)
+
+    require(MODEL_POLICY, (
+        "HERMES_FLOW_MODEL_DEFAULT_PROVIDER", "HERMES_FLOW_MODEL_DEFAULT",
+        "HERMES_FLOW_MODEL_PREMIUM_PROVIDER", "HERMES_FLOW_MODEL_PREMIUM",
+        "Reviewer Model: DEFAULT", "Model Escalation: REQUIRE_REAPPROVAL",
+        "flow_model_policy.py review-enter", "flow_model_policy.py changes-return",
+        "Task body의 승인 snapshot", "자동 escalation은 금지",
+    ), failures)
+
+    require(MODEL_HELPER, (
+        "HERMES_FLOW_MODEL_", "review-enter", "changes-return", "set-model",
+        "selection_from_task_body", "Reviewer Model", "REQUIRE_REAPPROVAL",
     ), failures)
 
     # Compact implementer contract only carries the worker-facing transition rules.
@@ -60,8 +94,7 @@ def main() -> int:
     ), failures)
 
     # Reviewer compact contract validates its own verdict surface. The detailed
-    # CHANGES_REQUESTED -> original coder -> same Workspace loop is validated above
-    # in both dev-review-cycle copies and both canonical protocol references.
+    # CHANGES_REQUESTED -> original coder -> same Workspace loop is validated above.
     require(REVIEW, (
         "source를 수정하지 않는다", "kanban_request_changes", "kanban_complete",
         "kanban_block` 중 정확히 하나", "같은 Workspace", "needs_input", "Review Risk: LOW",
@@ -72,7 +105,7 @@ def main() -> int:
             print(f"[FAIL] {failure}")
         return 1
 
-    print("[PASS] risk-based review-cycle copies and transition invariants")
+    print("[PASS] risk-based review-cycle and model-transition invariants")
     return 0
 
 
