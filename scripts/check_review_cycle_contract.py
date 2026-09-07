@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify coder/reviewer risk-based review-cycle and model-transition invariants."""
+"""Verify coder/reviewer risk-based review-cycle, model-transition, and approval invariants."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +64,10 @@ def main() -> int:
         "Execution Approval Gate", "Coder Model: DEFAULT | PREMIUM", "Reviewer Model: DEFAULT",
         "flow_model_policy.py resolve", "model=<MODEL>", "provider=<PROVIDER>",
         "dev-flow-model-policy", "Model Escalation: REQUIRE_REAPPROVAL",
+        "기존 카드 재작업 계약", "Requirement Delta:", "Approval Reuse:",
+        "migrate-existing", "STATUS=legacy-task-migrated", "SNAPSHOT_SOURCE=durable-comment",
+        "신규/대체 Task 승인 불변식", "대체 카드 생성 승인", "PLAN_APPROVED",
+        "EXECUTION_APPROVED", "기존 승인들을 자동 상속하지 않는다",
     ), failures)
 
     require(DISPATCH, (
@@ -77,12 +81,15 @@ def main() -> int:
         "HERMES_FLOW_MODEL_PREMIUM_PROVIDER", "HERMES_FLOW_MODEL_PREMIUM",
         "Reviewer Model: DEFAULT", "Model Escalation: REQUIRE_REAPPROVAL",
         "flow_model_policy.py review-enter", "flow_model_policy.py changes-return",
-        "Task body의 승인 snapshot", "자동 escalation은 금지",
+        "자동 escalation은 금지", "MODEL_POLICY_SNAPSHOT_V1", "migrate-existing",
+        "durable Kanban comment", "pre-policy Task라는 이유만으로 새 카드 생성을 강제",
     ), failures)
 
     require(MODEL_HELPER, (
         "HERMES_FLOW_MODEL_", "review-enter", "changes-return", "set-model",
-        "selection_from_task_body", "Reviewer Model", "REQUIRE_REAPPROVAL",
+        "selection_from_task_payload", "Reviewer Model", "REQUIRE_REAPPROVAL",
+        "migrate-existing", "MODEL_POLICY_SNAPSHOT_V1", "legacy-task-migrated",
+        "durable-comment",
     ), failures)
 
     # Compact implementer contract only carries the worker-facing transition rules.
@@ -105,7 +112,7 @@ def main() -> int:
             print(f"[FAIL] {failure}")
         return 1
 
-    print("[PASS] risk-based review-cycle and model-transition invariants")
+    print("[PASS] risk-based review-cycle, model-transition, and approval invariants")
     return 0
 
 
