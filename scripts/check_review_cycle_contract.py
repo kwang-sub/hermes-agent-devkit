@@ -67,7 +67,7 @@ def main() -> int:
         "기존 카드 재작업 계약", "Requirement Delta:", "Approval Reuse:",
         "migrate-existing", "STATUS=legacy-task-migrated", "SNAPSHOT_SOURCE=durable-comment",
         "신규/대체 Task 승인 불변식", "대체 카드 생성 승인", "PLAN_APPROVED",
-        "EXECUTION_APPROVED", "새 Task를 대체하는 경우에도 기존 승인들을 자동 상속하지 않는다",
+        "EXECUTION_APPROVED", "기존 승인들을 자동 상속하지 않는다",
     ), failures)
 
     require(DISPATCH, (
