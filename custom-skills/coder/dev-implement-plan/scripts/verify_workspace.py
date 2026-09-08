@@ -62,53 +62,61 @@ def _clean(value: str | None) -> str:
     return str(value or "").strip()
 
 
-def verify_kanban_context(
-    *,
-    task_id: str,
-    board: str,
-    workspace: Path,
-    expected_profile: str,
-) -> tuple[str, str | None]:
-    """Fail closed when a Coder run did not come from the patched dispatcher.
+def verify_kanban_context(*, workspace: Path, expected_profile: str) -> tuple[str, str, str, str | None]:
+    """Validate dispatcher-owned worker context before any implementation work.
 
-    A server/container restart may legitimately lose the prior chat session, but
-    it must never lose task identity. The dispatcher rebuilds the Kanban worker
-    environment for every NEW or RESUME spawn. A manually resumed shell or any
-    alternate path missing that environment must not continue implementation.
+    A server/container restart may legitimately lose the prior chat session. It
+    must not lose Kanban identity: every dispatcher spawn, whether NEW or RESUME,
+    rebuilds Task/Board/Workspace/Profile/DB context. A manual ``hermes --resume``
+    or direct chat process that lacks these fields is not a valid Kanban worker.
     """
-    expected = {
-        "HERMES_KANBAN_TASK": task_id,
-        "HERMES_KANBAN_BOARD": board,
-        "HERMES_KANBAN_WORKSPACE": str(workspace.resolve()),
-        "HERMES_PROFILE": expected_profile,
-        "HERMES_SESSION_SOURCE": "kanban",
-        "HERMES_KANBAN_CONTEXT_VERSION": "1",
-    }
-    problems: list[str] = []
-    for key, wanted in expected.items():
-        actual = _clean(os.environ.get(key))
-        if key == "HERMES_KANBAN_WORKSPACE" and actual:
-            try:
-                actual = str(Path(actual).resolve())
-            except OSError:
-                pass
-        if actual != wanted:
-            problems.append(f"{key}: expected={wanted!r}, actual={actual!r}")
-
+    task_id = _clean(os.environ.get("HERMES_KANBAN_TASK"))
+    board = _clean(os.environ.get("HERMES_KANBAN_BOARD"))
     kanban_db = _clean(os.environ.get("HERMES_KANBAN_DB"))
+    actual_workspace = _clean(os.environ.get("HERMES_KANBAN_WORKSPACE"))
+    profile = _clean(os.environ.get("HERMES_PROFILE"))
+    source = _clean(os.environ.get("HERMES_SESSION_SOURCE"))
+    context_version = _clean(os.environ.get("HERMES_KANBAN_CONTEXT_VERSION"))
+
+    problems: list[str] = []
+    if not task_id:
+        problems.append("HERMES_KANBAN_TASK missing")
+    if not board:
+        problems.append("HERMES_KANBAN_BOARD missing")
     if not kanban_db:
-        problems.append("HERMES_KANBAN_DB: missing")
+        problems.append("HERMES_KANBAN_DB missing")
+    if not actual_workspace:
+        problems.append("HERMES_KANBAN_WORKSPACE missing")
+    else:
+        try:
+            if Path(actual_workspace).resolve() != workspace.resolve():
+                problems.append(
+                    f"HERMES_KANBAN_WORKSPACE mismatch: expected={workspace.resolve()}, actual={Path(actual_workspace).resolve()}"
+                )
+        except OSError:
+            problems.append(f"HERMES_KANBAN_WORKSPACE invalid: {actual_workspace}")
+    if profile != expected_profile:
+        problems.append(f"HERMES_PROFILE mismatch: expected={expected_profile!r}, actual={profile!r}")
+    if source != "kanban":
+        problems.append(f"HERMES_SESSION_SOURCE mismatch: expected='kanban', actual={source!r}")
+    if context_version != "1":
+        problems.append(
+            f"HERMES_KANBAN_CONTEXT_VERSION mismatch: expected='1', actual={context_version!r}"
+        )
 
     if problems:
         raise GuardError(
             "Kanban worker context is missing or mismatched. "
             "Do not continue from a manual `hermes --resume`/direct chat process; "
-            "requeue the same card so the dispatcher creates a fresh worker context. "
+            "requeue or unblock the same card so the dispatcher creates a fresh worker context. "
             + " | ".join(problems)
         )
 
-    return _clean(os.environ.get("HERMES_KANBAN_SESSION_MODE")) or "NEW", (
-        _clean(os.environ.get("HERMES_KANBAN_AFFINITY_SESSION_ID")) or None
+    return (
+        task_id,
+        board,
+        _clean(os.environ.get("HERMES_KANBAN_SESSION_MODE")) or "NEW",
+        _clean(os.environ.get("HERMES_KANBAN_AFFINITY_SESSION_ID")) or None,
     )
 
 
@@ -126,9 +134,6 @@ def main():
     ap.add_argument("--base-sha", required=True)
     ap.add_argument("--workspace")
     ap.add_argument("--expected-workspace")
-    ap.add_argument("--require-kanban-context", action="store_true")
-    ap.add_argument("--kanban-task-id")
-    ap.add_argument("--kanban-board")
     ap.add_argument("--expected-profile", default="coder")
     args = ap.parse_args()
 
@@ -136,21 +141,12 @@ def main():
     workspace = Path(args.workspace or ".").resolve()
     PHASE_TIMINGS.append(("PATH_RESOLVE", time.monotonic() - resolve_started))
 
-    session_mode = "-"
-    affinity_session_id: str | None = None
-    if args.require_kanban_context:
-        if not args.kanban_task_id or not args.kanban_board:
-            raise GuardError(
-                "--require-kanban-context requires --kanban-task-id and --kanban-board"
-            )
-        context_started = time.monotonic()
-        session_mode, affinity_session_id = verify_kanban_context(
-            task_id=args.kanban_task_id,
-            board=args.kanban_board,
-            workspace=workspace,
-            expected_profile=args.expected_profile,
-        )
-        PHASE_TIMINGS.append(("KANBAN_CONTEXT", time.monotonic() - context_started))
+    context_started = time.monotonic()
+    task_id, board, session_mode, affinity_session_id = verify_kanban_context(
+        workspace=workspace,
+        expected_profile=args.expected_profile,
+    )
+    PHASE_TIMINGS.append(("KANBAN_CONTEXT", time.monotonic() - context_started))
 
     ensure_safe_directory(workspace)
     top = run(
@@ -195,13 +191,12 @@ def main():
     print(f"BRANCH={branch}")
     print(f"BASE_SHA={base_sha}")
     print(f"TASK_KEY={args.task_key}")
-    if args.require_kanban_context:
-        print("KANBAN_CONTEXT=valid")
-        print(f"KANBAN_TASK_ID={args.kanban_task_id}")
-        print(f"KANBAN_BOARD={args.kanban_board}")
-        print(f"KANBAN_PROFILE={args.expected_profile}")
-        print(f"KANBAN_SESSION_MODE={session_mode}")
-        print(f"KANBAN_AFFINITY_SESSION_ID={affinity_session_id or '-'}")
+    print("KANBAN_CONTEXT=valid")
+    print(f"KANBAN_TASK_ID={task_id}")
+    print(f"KANBAN_BOARD={board}")
+    print(f"KANBAN_PROFILE={args.expected_profile}")
+    print(f"KANBAN_SESSION_MODE={session_mode}")
+    print(f"KANBAN_AFFINITY_SESSION_ID={affinity_session_id or '-'}")
     print("GIT_SAFE_DIRECTORY=true")
     print("GIT_WORKSPACE=true")
     emit_timings(total_started)
