@@ -16,11 +16,12 @@ SPEC.loader.exec_module(bootstrap)
 
 
 class BootstrapLauncherTest(unittest.TestCase):
-    def test_full_preflight_flag_is_not_forwarded_to_project_bootstrap(self) -> None:
+    def test_launcher_only_flags_are_not_forwarded_to_project_bootstrap(self) -> None:
         args = [
             "--repo",
             "/workspace/example",
             "--full-preflight",
+            "--refresh-stack",
             "--board",
             "example",
         ]
