@@ -235,6 +235,10 @@ run_check "Custom skill Python compilation" python3 -m compileall -q custom-skil
 run_check "Custom skill metadata and progressive-disclosure contract" python3 scripts/check_skill_contract.py
 run_check "DevKit updater contract" python3 scripts/check_update_devkit_contract.py
 run_check "Hermes CLI SyntaxWarning patch and strict compile" python3 scripts/patch_hermes_syntax_warning.py --self-test
+run_check "Hermes Discord Kanban notification patch" python3 scripts/patch_hermes_discord_kanban_notify.py --self-test
+run_check "Kanban task/profile session-affinity runtime" python3 scripts/devkit_session_affinity.py --self-test
+run_check "Kanban worker session-affinity patch" python3 scripts/patch_hermes_kanban_session_affinity.py --self-test
+run_check "Discord Kanban session-context patch" python3 scripts/patch_hermes_discord_kanban_session.py --self-test
 run_check "dev-fast-flow task creation regression tests" python3 custom-skills/coder/dev-fast-flow/tests/test_create_fast_task.py
 run_check "dev-fast-flow active task follow-up regression tests" python3 custom-skills/coder/dev-fast-flow/tests/test_update_fast_task.py
 run_check "dev-workspace-dispatch regression tests" python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py

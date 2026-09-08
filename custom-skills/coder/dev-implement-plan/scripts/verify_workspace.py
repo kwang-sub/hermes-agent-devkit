@@ -5,34 +5,59 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 
 class GuardError(RuntimeError):
     pass
 
-def run(cmd: list[str], check=True):
+PHASE_TIMINGS: list[tuple[str, float]] = []
+
+def run(cmd: list[str], check=True, phase: str | None = None):
+    started = time.monotonic()
     p = subprocess.run(cmd, text=True, capture_output=True)
+    duration = time.monotonic() - started
+    if phase:
+        PHASE_TIMINGS.append((phase, duration))
     if check and p.returncode != 0:
         raise GuardError((p.stderr or p.stdout).strip() or "command failed")
     return p
 
 def ensure_safe_directory(path: Path) -> None:
     resolved = str(path.resolve())
-    current = run(["git", "config", "--global", "--get-all", "safe.directory"], check=False)
+    current = run(
+        ["git", "config", "--global", "--get-all", "safe.directory"],
+        check=False,
+        phase="SAFE_DIRECTORY_READ",
+    )
     configured = {line.strip() for line in current.stdout.splitlines() if line.strip()}
     if resolved not in configured:
-        added = run(["git", "config", "--global", "--add", "safe.directory", resolved], check=False)
+        added = run(
+            ["git", "config", "--global", "--add", "safe.directory", resolved],
+            check=False,
+            phase="SAFE_DIRECTORY_WRITE",
+        )
         if added.returncode != 0:
             raise GuardError((added.stderr or added.stdout).strip() or f"cannot register safe.directory: {resolved}")
 
 def resolve_base_sha(root: Path, value: str) -> str:
     if not re.fullmatch(r"[0-9a-fA-F]{40}", value):
         raise GuardError("base SHA must be a full 40-character hexadecimal commit ID")
-    resolved = run(["git", "-C", str(root), "rev-parse", "--verify", f"{value}^{{commit}}"], check=False)
+    resolved = run(
+        ["git", "-C", str(root), "rev-parse", "--verify", f"{value}^{{commit}}"],
+        check=False,
+        phase="BASE_SHA_RESOLVE",
+    )
     if resolved.returncode != 0:
         raise GuardError(f"base SHA does not resolve to a commit: {value}")
     return resolved.stdout.strip()
 
+def emit_timings(total_started: float) -> None:
+    for name, duration in PHASE_TIMINGS:
+        print(f"WORKSPACE_VERIFY_PHASE_{name}_SECONDS={duration:.3f}")
+    print(f"WORKSPACE_VERIFY_TOTAL_SECONDS={time.monotonic() - total_started:.3f}")
+
 def main():
+    total_started = time.monotonic()
     ap = argparse.ArgumentParser()
     ap.add_argument("--task-key", required=True)
     ap.add_argument("--expected-branch", required=True)
@@ -41,9 +66,14 @@ def main():
     ap.add_argument("--expected-workspace")
     args = ap.parse_args()
 
+    resolve_started = time.monotonic()
     workspace = Path(args.workspace or ".").resolve()
+    PHASE_TIMINGS.append(("PATH_RESOLVE", time.monotonic() - resolve_started))
     ensure_safe_directory(workspace)
-    top = run(["git", "-C", str(workspace), "rev-parse", "--show-toplevel"]).stdout.strip()
+    top = run(
+        ["git", "-C", str(workspace), "rev-parse", "--show-toplevel"],
+        phase="REPO_ROOT",
+    ).stdout.strip()
     root = Path(top).resolve()
     if root != workspace:
         raise GuardError(f"workspace must be the Git repository root: workspace={workspace}, root={root}")
@@ -53,16 +83,26 @@ def main():
             f"workspace mismatch: expected={Path(args.expected_workspace).resolve()}, actual={root}"
         )
 
-    branch = run(["git", "-C", str(root), "branch", "--show-current"]).stdout.strip()
+    branch = run(
+        ["git", "-C", str(root), "branch", "--show-current"],
+        phase="BRANCH",
+    ).stdout.strip()
     if branch != args.expected_branch:
         raise GuardError(f"branch mismatch: expected={args.expected_branch}, actual={branch}")
 
-    inside = run(["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"]).stdout.strip()
+    inside = run(
+        ["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
+        phase="WORKTREE_CHECK",
+    ).stdout.strip()
     if inside != "true":
         raise GuardError("not inside Git workspace")
 
     base_sha = resolve_base_sha(root, args.base_sha)
-    ancestor = run(["git", "-C", str(root), "merge-base", "--is-ancestor", base_sha, "HEAD"], check=False)
+    ancestor = run(
+        ["git", "-C", str(root), "merge-base", "--is-ancestor", base_sha, "HEAD"],
+        check=False,
+        phase="ANCESTOR_CHECK",
+    )
     if ancestor.returncode == 1:
         raise GuardError(f"base SHA is not an ancestor of HEAD: {base_sha}")
     if ancestor.returncode != 0:
@@ -74,6 +114,7 @@ def main():
     print(f"TASK_KEY={args.task_key}")
     print("GIT_SAFE_DIRECTORY=true")
     print("GIT_WORKSPACE=true")
+    emit_timings(total_started)
     print("STATUS=valid")
     return 0
 

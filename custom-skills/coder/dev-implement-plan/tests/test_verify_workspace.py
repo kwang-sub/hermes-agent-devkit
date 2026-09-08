@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -32,6 +33,17 @@ class VerifyWorkspaceTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn(f"BASE_SHA={self.base}", proc.stdout)
         self.assertIn("STATUS=valid", proc.stdout)
+        for phase in (
+            "PATH_RESOLVE",
+            "SAFE_DIRECTORY_READ",
+            "REPO_ROOT",
+            "BRANCH",
+            "WORKTREE_CHECK",
+            "BASE_SHA_RESOLVE",
+            "ANCESTOR_CHECK",
+        ):
+            self.assertRegex(proc.stdout, rf"WORKSPACE_VERIFY_PHASE_{phase}_SECONDS=\d+\.\d+")
+        self.assertRegex(proc.stdout, r"WORKSPACE_VERIFY_TOTAL_SECONDS=\d+\.\d+")
 
     def test_rejects_malformed_and_unresolvable_sha(self):
         malformed = self.run_helper("not-a-sha")

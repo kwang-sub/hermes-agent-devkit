@@ -1,31 +1,32 @@
 ---
 name: dev-workspace-dispatch
-description: 승인된 구현 계획과 project pattern/capability 계약을 Git workspace와 Kanban으로 인계한다.
-version: 0.9.3
+description: 승인된 구현 계획·workspace·branch·Coder 모델과 project pattern/capability 계약을 최초 등록 알림과 함께 Kanban으로 인계한다.
+version: 0.11.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, capability, preflight, notification, performance]
-    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-skill-preflight, dev-workflow-orchestrate]
+    tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, capability, preflight, notification, registration, model, performance]
+    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-skill-preflight, dev-workflow-orchestrate, dev-flow-model-policy]
     requires_tools: [terminal, skill_view, kanban_create, kanban_show, kanban_unblock, clarify]
 ---
 
 # dev-workspace-dispatch
 
-사용자 승인까지 완료된 READY 구현 계획을 승인된 Git workspace와 branch 전략에 맞춰 Kanban 작업으로 인계한다.
-
-이 Skill이 신규 Dispatch의 표준이다. deprecated worktree dispatch 경로를 사용하지 않는다.
+사용자 승인까지 완료된 READY 구현 계획을 승인된 Git workspace/branch 및 **Coder 모델 snapshot**과 함께 Kanban 작업으로 인계한다. 이 Skill이 신규 Dispatch의 표준이다.
 
 ## 1. 진입 조건
 - Plan 승인 완료
+- 승인 이후 요구사항 변경 작업이면 Requirement Delta 승인 완료
 - workspace/current 또는 create branch 승인 완료
 - 기존 변경이 있을 수 있는 workspace라면 reset/restore/stash 없이 전부 보존할지 승인 완료
+- Coder Model Tier(DEFAULT|PREMIUM) 승인 완료
+- 승인 Tier를 `flow_model_policy.py resolve`로 해석한 `MODEL/PROVIDER` snapshot 확보
 - `.hermes/project.yaml` managed metadata 존재
 
-## 2. 대형 Workspace Fast Path
+Reviewer는 별도 모델 승인을 받지 않고 항상 Reviewer profile DEFAULT를 사용한다.
 
-Bootstrap과 동일하게 **필요하지 않은 repository-wide Git scan은 생략**한다.
+## 2. 대형 Workspace Fast Path
 
 사용자가 기존 변경 전체 보존을 이미 승인한 경우:
 
@@ -37,9 +38,7 @@ prepare_dispatch.py --confirmed-dirty
 → *_COUNT=-1, WORKSPACE_*_DIRTY=unknown
 ```
 
-`-1/unknown`은 실패가 아니라 **not-scanned** 의미다. 이 값을 0으로 해석하지 않는다.
-
-기존 변경 보존 승인이 없는 경우에만 `prepare_dispatch.py`가 정확한 dirty 상태 확인을 위해 다음 batch scan을 수행한다.
+`-1/unknown`은 not-scanned 의미다. 기존 변경 보존 승인이 없는 경우에만 helper가 batch scan을 수행한다.
 
 ```text
 git diff --name-only -z HEAD
@@ -47,7 +46,7 @@ git diff --name-only -z --ignore-cr-at-eol HEAD
 git ls-files -z --others --exclude-standard
 ```
 
-이 진단 경로에서도 파일별 `git diff --quiet` 반복 호출은 금지한다.
+파일별 `git diff --quiet` 반복 호출은 금지한다.
 
 ## 3. Helper 실행
 
@@ -72,7 +71,15 @@ python3 "${HERMES_SKILL_DIR}/scripts/prepare_dispatch.py" \
   [--confirmed-dirty]
 ```
 
-Helper 출력의 `BOARD`는 `.hermes/project.yaml`의 `kanban.board`이며 Standard Flow의 유일한 Kanban board source다. `HERMES_KANBAN_BOARD`나 이전 세션/default board를 fallback으로 사용하지 않는다.
+Helper 출력의 `BOARD`는 `.hermes/project.yaml`의 `kanban.board`이며 유일한 board source다. `HERMES_KANBAN_BOARD`나 current/default board fallback은 사용하지 않는다.
+
+모델은 승인 직후 정확히 1회 해석한다.
+
+```bash
+python3 /opt/data/shared/scripts/flow_model_policy.py resolve --tier "<DEFAULT|PREMIUM>"
+```
+
+`MODEL_TIER`, `MODEL`, `PROVIDER`를 immutable snapshot으로 사용한다.
 
 ## 4. Skill Preflight
 
@@ -83,32 +90,69 @@ VALIDATED_SKILLS → kanban_create.skills
 REJECTED_SKILLS → body 기록만 하고 pin 금지
 ```
 
+`dev-flow-model-policy`는 runtime pin 필수다. preflight 실패 시 dispatch하지 않는다.
+
 ## 5. Kanban 생성·알림 Gate 단일 경로
 
 Task는 알림 Gate가 완료되기 전 worker가 가져가지 못하도록 **처음부터 `blocked` 상태로 생성**한다.
 
 ```text
-prepare_dispatch.py 정확히 한 번만 수행
+prepare_dispatch.py 정확히 한 번
 → dev-skill-preflight
+→ approved model snapshot 확인
 → kanban_create(
      board=BOARD,
      initial_status="blocked",
+     model=MODEL,
+     provider=PROVIDER,
+     skills=[..., dev-flow-model-policy],
      ...
    ) tool 정확히 1회
 → kanban_show(board=BOARD, task_id=<CREATED_TASK_ID>) tool 정확히 1회
 → 등록 read-back 계약 검증
 → subscribe_notification.py --board BOARD --task-id <CREATED_TASK_ID> 정확히 1회
-→ NOTIFY_STATUS=subscribed + NOTIFY_VERIFIED=true
+→ NOTIFY_STATUS=subscribed + NOTIFY_VERIFIED=true + NOTIFY_REGISTRATION_EVENT=queued
    또는 NOTIFY_STATUS=disabled
 → kanban_unblock(board=BOARD, task_id=<CREATED_TASK_ID>) tool 정확히 1회
 → ready 전환 후 worker dispatch
 ```
 
-`kanban_show` 성공 전에는 알림 helper를 실행하지 않는다. 알림이 활성화된 환경에서 helper exit code가 0이 아니거나 `NOTIFY_STATUS=failed`이면 **절대 unblock하지 않는다**. Task는 `blocked` 상태로 남겨 수동 점검 후 재시도한다.
+### 최초 등록 알림
 
-알림이 명시적으로 비활성화된 경우(`NOTIFY_STATUS=disabled`)만 구독 없이 unblock을 허용한다.
+알림이 활성화된 환경에서는 `subscribe_notification.py`가 다음을 한 transaction flow로 보장한다.
 
-호출 횟수 계약은 다음과 같다.
+```text
+task read-back
+→ notify-subscribe
+→ notify-list 검증
+→ 구독 cursor 확정
+→ `registered` task_event enqueue
+→ NOTIFY_REGISTRATION_EVENT=queued
+```
+
+Hermes 새 subscription은 생성 시점의 최신 `task_events.id`를 cursor로 잡으므로, `registered` event는 **구독이 확인된 뒤에** 생성한다. 그래야 최초 등록 알림이 과거 이벤트로 간주되어 누락되지 않는다.
+
+Gateway notifier patch는 `registered`를 감시 대상 kind에 포함하고 Discord에서는 다음 의미로 표시한다.
+
+```text
+🆕 작업 등록
+상태 REGISTERED
+```
+
+등록 event는 Task별 1회만 enqueue하는 idempotent 계약이다. transient 재시도 때문에 같은 카드의 등록 알림을 중복 생성하지 않는다.
+
+`kanban_show` 성공 전에는 알림 helper를 실행하지 않는다. 알림 활성 환경에서 다음 중 하나라도 발생하면 **절대 unblock하지 않는다**.
+
+```text
+helper exit != 0
+NOTIFY_STATUS=failed
+NOTIFY_VERIFIED != true
+NOTIFY_REGISTRATION_EVENT != queued
+```
+
+Task는 blocked 상태로 남겨 수동 점검 후 재시도한다. 알림이 명시적으로 비활성화된 경우(`NOTIFY_STATUS=disabled`)만 구독/등록 알림 없이 unblock을 허용한다.
+
+호출 횟수 계약:
 
 ```text
 kanban_create tool 정확히 1회
@@ -124,7 +168,10 @@ board 인자 생략
 HERMES_KANBAN_BOARD fallback
 default/current board fallback
 알림 실패를 warning으로 무시하고 unblock
-알림 검증 전에 ready/running dispatch 허용
+등록 알림 enqueue 전에 ready/running dispatch 허용
+Coder 모델 승인 없이 create/unblock
+Requirement Delta가 필요한 작업을 승인 없이 create/unblock
+승인 뒤 ENV를 다시 resolve하여 model 변경
 hermes kanban --board <board> create --help
 hermes project list / --help
 Kanban body 임시 파일
@@ -139,22 +186,26 @@ board == BOARD
 workspace == dir:<APPROVED_WORKSPACE>
 assignee == profiles.coder
 reviewer == profiles.reviewer
-task.skills == VALIDATED_SKILLS
+task.skills == VALIDATED_SKILLS (+ dev-flow-model-policy)
 status == blocked
+model_override == MODEL
+provider_override == PROVIDER
 ```
 
-알림 helper는 동일한 `BOARD`로 다음 순서를 자체 검증한다.
+Task body 모델 계약:
 
 ```text
-hermes kanban --board BOARD show TASK --json
-→ notify-subscribe
-→ notify-list TASK --json
-→ 기대 platform/chat/profile/delivery_mode row 확인
+Model Policy:
+- Coder Model Tier: MODEL_TIER
+- Coder Model: MODEL
+- Coder Provider: PROVIDER
+- Reviewer Model: DEFAULT
+- Model Escalation: REQUIRE_REAPPROVAL
 ```
 
-따라서 세션 기본 board에서 Task를 찾는 fallback은 허용하지 않는다.
+하나라도 불일치하면 unblock 금지다.
 
-## 6. Workspace Contract
+## 6. Workspace / Model Contract
 
 Task body에는 다음을 남긴다.
 
@@ -170,26 +221,53 @@ Task body에는 다음을 남긴다.
 - Effective project changes at dispatch: <count | unknown>
 - EOL-only changes at dispatch: <count | unknown>
 - Hermes managed files at dispatch: <count | unknown>
+
+Model Policy:
+- Coder Model Tier: <DEFAULT|PREMIUM>
+- Coder Model: <MODEL>
+- Coder Provider: <PROVIDER>
+- Reviewer Model: DEFAULT
+- Model Escalation: REQUIRE_REAPPROVAL
 ```
 
-Fast Path에서는 exact 기존 변경 목록 대신 **모든 기존 변경 보존 승인** 자체가 baseline 계약이다. Coder는 자신의 실제 변경 scope를 구현 과정에서 명시적으로 기록하고 그 scope만 검증한다.
+Fast Path에서는 모든 기존 변경 보존 승인이 baseline 계약이다. Coder는 자신의 실제 변경 scope만 별도로 추적한다.
 
-## 7. 성능 불변식
+## 7. Coder↔Reviewer 모델 전이
 
-- Workspace 승인 전 working-tree 전체 scan을 하지 않는다.
-- `--confirmed-dirty` 이후 exact count를 얻기 위해 다시 `git status`, `git diff`, `git ls-files`, inline Python 분류를 실행하지 않는다.
-- Coder/Reviewer는 Task 전체 repository가 아니라 실제 changed scope만 검증한다.
-- large/binary file을 임의 크기 기준으로 제외하지 않는다. 불필요한 전체 scan 자체를 생략하고 필요한 path만 검사한다.
+```text
+Coder run
+→ Task override = approved MODEL/PROVIDER
+→ Reviewer handoff 직전 flow_model_policy.py review-enter
+→ override clear
+→ reviewer profile DEFAULT
 
-## 8. 회귀 검증
+Reviewer CHANGES_REQUESTED
+→ flow_model_policy.py changes-return
+→ Task body snapshot의 approved MODEL/PROVIDER 복원
+→ original coder 재실행
+```
+
+동일 승인 모델 retry는 재승인하지 않는다. 모델/Provider 변경 또는 PREMIUM escalation은 사용자 재승인 대상이다.
+
+## 8. 성능 불변식
+
+- Workspace 승인 전 working-tree 전체 scan 금지.
+- `--confirmed-dirty` 이후 exact count 복구를 위한 재scan 금지.
+- Coder/Reviewer는 실제 changed scope만 검증.
+- large/binary file을 임의 MB 기준으로 제외하지 않음.
+- 모델 snapshot은 승인 시 1회 resolve.
+
+## 9. 회귀 검증
 
 ```bash
 python3 scripts/check_skill_contract.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py
+python3 shared/scripts/test_kanban_registration_event.py
+python3 shared/scripts/test_flow_model_policy.py
 ```
 
-성능 관찰용 full scan 출력은 다음을 유지한다.
+성능 관찰용 full scan 출력:
 
 ```text
 GIT_TRACKED_SCAN_SECONDS

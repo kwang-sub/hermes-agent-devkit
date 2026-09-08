@@ -10,6 +10,7 @@ from pathlib import Path
 FORMATTER_MARKER = "def _devkit_discord_kanban_message("
 LEGACY_CLASS_MARKER = "\n\nclass GatewayKanbanWatchersMixin:"
 NOTIFIER_CLASS_MARKER = "\n\nclass _KanbanNotification:"
+REGISTERED_KIND_MARKER = '"registered": ("🆕", "작업 등록", "REGISTERED")'
 
 LEGACY_SEND_RE = re.compile(
     r'(?P<indent>^[ \t]*)_send_res\s*=\s*await\s+adapter\.send\(\s*\n'
@@ -22,6 +23,7 @@ NOTIFIER_SEND_RE = re.compile(
     r'sub\["chat_id"\],\s*msg,\s*metadata=metadata\)',
     re.MULTILINE,
 )
+TERMINAL_KINDS_RE = re.compile(r'(?m)^TERMINAL_KINDS\s*=\s*\((?P<body>[^\n]*)\)$')
 
 FORMATTER = r'''
 
@@ -31,9 +33,16 @@ def _devkit_discord_kanban_message(*, kind, task, sub, board_slug, event, fallba
     title = str(getattr(task, "title", "") or task_id)[:160]
     assignee = str(getattr(task, "assignee", "") or "-")
     project = str(board_slug or "-")
+    model_override = str(getattr(task, "model_override", "") or "").strip()
+    provider_override = str(getattr(task, "provider_override", "") or "").strip()
+    if model_override:
+        model = f"{provider_override} / {model_override}" if provider_override else model_override
+    else:
+        model = "DEFAULT (profile)"
     payload = getattr(event, "payload", None) or {}
 
     labels = {
+        "registered": ("🆕", "작업 등록", "REGISTERED"),
         "completed": ("✅", "작업 완료", "DONE"),
         "blocked": ("⛔", "작업 차단", "BLOCKED"),
         "gave_up": ("❌", "작업 실패", "GAVE_UP"),
@@ -47,7 +56,10 @@ def _devkit_discord_kanban_message(*, kind, task, sub, board_slug, event, fallba
 
     detail = ""
     detail_label = "상세"
-    if kind == "blocked":
+    if kind == "registered":
+        detail_label = "등록"
+        detail = "Coder 작업 대기열에 등록되었습니다."
+    elif kind == "blocked":
         detail_label = "사유"
         detail = str(payload.get("reason") or "")
     elif kind in {"gave_up", "crashed", "timed_out"}:
@@ -78,6 +90,7 @@ def _devkit_discord_kanban_message(*, kind, task, sub, board_slug, event, fallba
         f"작업      {title}",
         f"Task      {task_id}",
         f"담당      {assignee}",
+        f"모델      {model}",
         f"상태      {status}",
     ]
     if detail:
@@ -95,14 +108,39 @@ def strict_compile(path: Path) -> None:
 
 def _insert_formatter(source: str, class_marker: str, path: Path) -> tuple[str, bool]:
     if FORMATTER_MARKER in source:
+        # Existing DevKit formatter from an earlier image patch: add the new
+        # registration label in place without re-inserting the whole formatter.
+        if REGISTERED_KIND_MARKER not in source:
+            label_anchor = '    labels = {\n'
+            if label_anchor not in source:
+                raise RuntimeError(f"{path}: existing formatter labels anchor not found")
+            source = source.replace(label_anchor, label_anchor + f'        {REGISTERED_KIND_MARKER},\n', 1)
+            return source, True
         return source, False
     if class_marker not in source:
         raise RuntimeError(f"{path}: formatter insertion marker not found")
     return source.replace(class_marker, FORMATTER + class_marker, 1), True
 
 
+def _patch_terminal_kinds(source: str, path: Path) -> tuple[str, bool]:
+    if re.search(r'(?m)^TERMINAL_KINDS\s*=.*["\']registered["\']', source):
+        return source, False
+    match = TERMINAL_KINDS_RE.search(source)
+    if match is None:
+        # Legacy Hermes layouts may keep the watcher kinds elsewhere. Formatter
+        # compatibility can still be patched; current notifier layout is covered
+        # by the strict self-test below.
+        return source, False
+    body = match.group("body").strip()
+    new_body = f'"registered", {body}' if body else '"registered",'
+    source = source[: match.start("body")] + new_body + source[match.end("body") :]
+    return source, True
+
+
 def _patch_legacy(source: str, path: Path) -> tuple[str, bool]:
     source, changed = _insert_formatter(source, LEGACY_CLASS_MARKER, path)
+    source, kinds_changed = _patch_terminal_kinds(source, path)
+    changed = changed or kinds_changed
     if 'platform_str == "discord"' in source:
         return source, changed
 
@@ -126,6 +164,8 @@ def _patch_legacy(source: str, path: Path) -> tuple[str, bool]:
 
 def _patch_notifier(source: str, path: Path) -> tuple[str, bool]:
     source, changed = _insert_formatter(source, NOTIFIER_CLASS_MARKER, path)
+    source, kinds_changed = _patch_terminal_kinds(source, path)
+    changed = changed or kinds_changed
     if 'self.platform_str == "discord"' in source:
         return source, changed
 
@@ -172,28 +212,38 @@ def _assert_terms(path: Path, terms: tuple[str, ...]) -> None:
 
 def self_test() -> None:
     legacy_sample = '''from __future__ import annotations\n\ndef _safe_review_reason(value, limit=160):\n    return str(value)[:limit]\n\nclass GatewayKanbanWatchersMixin:\n    async def run(self, adapter, sub, metadata, platform_str, kind, task, board_slug, ev, msg):\n        try:\n                            _send_res = await adapter.send(\n                                sub["chat_id"], msg, metadata=metadata,\n                            )\n        except Exception:\n            pass\n'''
-    notifier_sample = '''from __future__ import annotations\n\ndef _safe_review_reason(value, limit=160):\n    return str(value)[:limit]\n\nclass _KanbanNotification:\n    def __init__(self):\n        self.platform_str = "discord"\n        self.task = None\n        self.board_slug = "board"\n        self.sub = {"task_id": "t_1", "chat_id": "c_1"}\n        self.adapter = None\n\n    async def _send_event(self, ev, msg):\n        sub, adapter = self.sub, self.adapter\n        metadata = {}\n        _send_res = await adapter.send(sub["chat_id"], msg, metadata=metadata)\n'''
+    notifier_sample = '''from __future__ import annotations\n\nTERMINAL_KINDS = ("completed", "blocked", "review_requested")\n\ndef _safe_review_reason(value, limit=160):\n    return str(value)[:limit]\n\nclass _KanbanNotification:\n    def __init__(self):\n        self.platform_str = "discord"\n        self.task = None\n        self.board_slug = "board"\n        self.sub = {"task_id": "t_1", "chat_id": "c_1"}\n        self.adapter = None\n\n    async def _send_event(self, ev, msg):\n        sub, adapter = self.sub, self.adapter\n        metadata = {}\n        _send_res = await adapter.send(sub["chat_id"], msg, metadata=metadata)\n'''
 
     cases = (
-        ("legacy", legacy_sample, "patched-legacy", "already-patched-legacy", 'platform_str == "discord"'),
-        ("notifier", notifier_sample, "patched-notifier", "already-patched-notifier", 'self.platform_str == "discord"'),
+        ("legacy", legacy_sample, "patched-legacy", "already-patched-legacy", 'platform_str == "discord"', False),
+        ("notifier", notifier_sample, "patched-notifier", "already-patched-notifier", 'self.platform_str == "discord"', True),
     )
     with tempfile.TemporaryDirectory(prefix="hermes-discord-kanban-selftest-") as temp_dir:
-        for name, sample, patched_state, idempotent_state, platform_term in cases:
+        for name, sample, patched_state, idempotent_state, platform_term, requires_kind in cases:
             path = Path(temp_dir) / f"{name}.py"
             path.write_text(sample, encoding="utf-8")
             if patch_source(path) != patched_state:
                 raise RuntimeError(f"self-test {name}: source was not patched")
             if patch_source(path) != idempotent_state:
                 raise RuntimeError(f"self-test {name}: patch is not idempotent")
-            _assert_terms(path, (
+            terms = [
+                "🆕",
+                "작업 등록",
+                "REGISTERED",
                 "⛔",
                 "프로젝트",
                 "작업      {title}",
+                "모델      {model}",
+                'getattr(task, "model_override", "")',
+                'getattr(task, "provider_override", "")',
+                'model = "DEFAULT (profile)"',
                 "상태      {status}",
                 platform_term,
                 'getattr(task, "result", "")',
-            ))
+            ]
+            if requires_kind:
+                terms.append('TERMINAL_KINDS = ("registered",')
+            _assert_terms(path, tuple(terms))
 
 
 def main() -> None:

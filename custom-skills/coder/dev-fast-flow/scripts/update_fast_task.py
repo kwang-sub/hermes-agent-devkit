@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 DEFAULT_HERMES_CLI = "/opt/hermes/.venv/bin/hermes"
+DEFAULT_MODEL_POLICY_HELPER = "/opt/data/shared/scripts/flow_model_policy.py"
 MANAGED_MARKER = "# managed-by: dev-project-bootstrap"
 TERMINAL_STATUSES = {"done", "archived"}
 ACTIVE_STATUSES = {"todo", "ready", "running", "blocked", "scheduled", "review"}
@@ -90,6 +91,7 @@ def main() -> int:
     repo = ensure_repo_root(Path(args.workspace))
     board = parse_board(repo / ".hermes" / "project.yaml")
     hermes_cli = os.environ.get("HERMES_CLI", DEFAULT_HERMES_CLI)
+    model_policy_helper = os.environ.get("HERMES_FLOW_MODEL_POLICY_HELPER", DEFAULT_MODEL_POLICY_HELPER)
 
     show = run([hermes_cli, "kanban", "--board", board, "show", args.task, "--json"])
     task = parse_task(show.stdout)
@@ -120,11 +122,23 @@ def main() -> int:
         return 0
 
     if status == "review":
+        # review 상태에서는 task model override가 Reviewer DEFAULT를 위해 비어 있다.
+        # 먼저 implementation lane으로 되돌린 뒤 승인 당시 Coder snapshot을 복원해야
+        # 다음 dispatcher tick이 올바른 Coder 모델을 사용한다.
         run([
             hermes_cli, "kanban", "--board", board, "reopen-review", task_id,
             "--reason", "USER_DIRECTION_CHANGE: implementation requirements changed during review",
         ])
+        restore = run([
+            sys.executable, model_policy_helper, "changes-return",
+            "--board", board, "--task-id", task_id,
+        ])
+        if "STATUS=coder-model-restored" not in restore.stdout:
+            raise FollowUpError(
+                "model policy helper did not confirm Coder model restoration after review reopen"
+            )
         print("REVIEW_REOPENED=true")
+        print("CODER_MODEL_RESTORED=true")
 
     run([
         hermes_cli, "kanban", "--board", board, "comment", task_id, comment,
