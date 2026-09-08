@@ -7,10 +7,8 @@ import tempfile
 from pathlib import Path
 
 PATCH_MARKER = "from hermes_cli.devkit_session_affinity import choose_worker_session"
+CONTEXT_MARKER = 'env["HERMES_KANBAN_CONTEXT_VERSION"] = "1"'
 
-# Hermes <= the pre-split worker command contract. Keep this path because
-# update-devkit.ps1 may be run against an older pinned/base image as well as
-# nousresearch/hermes-agent:latest.
 LEGACY_ANCHOR = '''    worker_toolsets = _resolve_worker_cli_toolsets(env.get("HERMES_HOME"))
     if worker_toolsets:
         cmd.extend(["--toolsets", ",".join(worker_toolsets)])
@@ -23,6 +21,7 @@ LEGACY_REPLACEMENT = '''    worker_toolsets = _resolve_worker_cli_toolsets(env.g
     if worker_toolsets:
         cmd.extend(["--toolsets", ",".join(worker_toolsets)])
     from hermes_cli.devkit_session_affinity import choose_worker_session
+    env["HERMES_KANBAN_CONTEXT_VERSION"] = "1"
     _devkit_session = choose_worker_session(
         task=task, workspace=workspace, profile=profile_arg,
         profile_home=env.get("HERMES_HOME"),
@@ -47,13 +46,11 @@ LEGACY_CONTEXT = (
     "kanban_db_path",
 )
 
-# Current Hermes main (kanban_db_dispatch.py) split command assembly into
-# _worker_argv(). Affinity must therefore be injected in _default_spawn after
-# argv construction, where workspace/profile/board env are all available.
 CURRENT_ANCHOR = '''    cmd = _worker_argv(task, profile_arg, env.get("HERMES_HOME"))
 '''
 CURRENT_REPLACEMENT = '''    cmd = _worker_argv(task, profile_arg, env.get("HERMES_HOME"))
     from hermes_cli.devkit_session_affinity import choose_worker_session
+    env["HERMES_KANBAN_CONTEXT_VERSION"] = "1"
     _devkit_worker_toolsets = _resolve_worker_cli_toolsets(env.get("HERMES_HOME"))
     _devkit_session = choose_worker_session(
         task=task, workspace=workspace, profile=profile_arg,
@@ -78,6 +75,10 @@ CURRENT_CONTEXT = (
     "def _worker_argv(",
     "def _default_spawn(",
     'env["HERMES_KANBAN_DB"]',
+    'env["HERMES_KANBAN_TASK"]',
+    'env["HERMES_KANBAN_WORKSPACE"]',
+    'env["HERMES_KANBAN_BOARD"]',
+    'env["HERMES_PROFILE"]',
     "_resolve_worker_cli_toolsets",
     "profile_arg",
 )
@@ -85,23 +86,15 @@ CURRENT_CONTEXT = (
 
 def strict_compile(path: Path) -> None:
     with tempfile.TemporaryDirectory() as directory:
-        py_compile.compile(
-            str(path),
-            cfile=str(Path(directory) / "x.pyc"),
-            doraise=True,
-        )
+        py_compile.compile(str(path), cfile=str(Path(directory) / "x.pyc"), doraise=True)
 
 
 def _matches_legacy(source: str) -> bool:
-    return source.count(LEGACY_ANCHOR) == 1 and all(
-        item in source for item in LEGACY_CONTEXT
-    )
+    return source.count(LEGACY_ANCHOR) == 1 and all(item in source for item in LEGACY_CONTEXT)
 
 
 def _matches_current(source: str) -> bool:
-    return source.count(CURRENT_ANCHOR) == 1 and all(
-        item in source for item in CURRENT_CONTEXT
-    )
+    return source.count(CURRENT_ANCHOR) == 1 and all(item in source for item in CURRENT_CONTEXT)
 
 
 def candidate(path: Path) -> bool:
@@ -125,6 +118,9 @@ def find_target(root: Path) -> Path:
 def patch_source(path: Path) -> str:
     source = path.read_text(encoding="utf-8")
     if PATCH_MARKER in source:
+        if CONTEXT_MARKER not in source:
+            source = source.replace(PATCH_MARKER, PATCH_MARKER + '\n    env["HERMES_KANBAN_CONTEXT_VERSION"] = "1"', 1)
+            path.write_text(source, encoding="utf-8")
         strict_compile(path)
         return "already-patched"
 
@@ -145,7 +141,7 @@ def _legacy_sample() -> str:
 
 
 def _current_sample() -> str:
-    return '''def _resolve_worker_cli_toolsets(home): return []\ndef _worker_argv(task, profile_arg, hermes_home):\n    return ["hermes", "-p", profile_arg, "chat", "-q", f"work kanban task {task.id}"]\ndef _default_spawn(task, workspace, *, board=None):\n    profile_arg = task.assignee\n    env = {"HERMES_HOME": "/tmp/p"}\n    env["HERMES_KANBAN_DB"] = "/tmp/kanban.db"\n    cmd = _worker_argv(task, profile_arg, env.get("HERMES_HOME"))\n    return cmd\n'''
+    return '''def _resolve_worker_cli_toolsets(home): return []\ndef _worker_argv(task, profile_arg, hermes_home):\n    return ["hermes", "-p", profile_arg, "chat", "-q", f"work kanban task {task.id}"]\ndef _default_spawn(task, workspace, *, board=None):\n    profile_arg = task.assignee\n    env = {"HERMES_HOME": "/tmp/p"}\n    env["HERMES_KANBAN_TASK"] = task.id\n    env["HERMES_KANBAN_WORKSPACE"] = workspace\n    env["HERMES_KANBAN_DB"] = "/tmp/kanban.db"\n    env["HERMES_KANBAN_BOARD"] = "demo"\n    env["HERMES_PROFILE"] = profile_arg\n    cmd = _worker_argv(task, profile_arg, env.get("HERMES_HOME"))\n    return cmd\n'''
 
 
 def self_test() -> None:
@@ -160,10 +156,8 @@ def self_test() -> None:
         assert patch_source(legacy) == "patched"
         assert patch_source(legacy) == "already-patched"
         legacy_text = legacy.read_text(encoding="utf-8")
+        assert CONTEXT_MARKER in legacy_text
         assert 'cmd.extend(["--resume", _devkit_session.session_id])' in legacy_text
-        assert legacy_text.index('cmd.extend(["--resume"') < legacy_text.index(
-            '    cmd.extend([\n        "chat"'
-        )
 
         current_root = root / "current"
         current_root.mkdir()
@@ -173,6 +167,7 @@ def self_test() -> None:
         assert patch_source(current) == "patched"
         assert patch_source(current) == "already-patched"
         current_text = current.read_text(encoding="utf-8")
+        assert CONTEXT_MARKER in current_text
         assert '_devkit_chat_index = cmd.index("chat")' in current_text
         assert 'cmd[_devkit_chat_index:_devkit_chat_index]' in current_text
         assert 'kanban_db_path=env["HERMES_KANBAN_DB"]' in current_text
