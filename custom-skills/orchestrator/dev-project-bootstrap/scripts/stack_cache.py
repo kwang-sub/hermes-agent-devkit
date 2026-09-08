@@ -69,6 +69,33 @@ def scalar(section: str, key: str) -> str | None:
     return value.strip("'\"")
 
 
+def list_value(section: str, key: str) -> list[str]:
+    lines = section.splitlines()
+    start = None
+    values: list[str] = []
+    for index, line in enumerate(lines):
+        if re.fullmatch(rf"\s{{2}}{re.escape(key)}:\s*(?:\[\])?\s*", line):
+            start = index + 1
+            if line.rstrip().endswith("[]"):
+                return []
+            break
+    if start is None:
+        return []
+    for line in lines[start:]:
+        if re.match(r"^\s{2}\S", line):
+            break
+        match = re.match(r"^\s{4}-\s+(.+?)\s*$", line)
+        if not match:
+            continue
+        raw = match.group(1)
+        try:
+            decoded = json.loads(raw)
+            values.append(str(decoded))
+        except Exception:
+            values.append(raw.strip("'\""))
+    return values
+
+
 def yaml_scalar(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
@@ -162,11 +189,30 @@ def write_cache(repo: Path, result: dict[str, Any]) -> str:
     return "updated" if had_technology else "created"
 
 
-def cached_values(sections: list[tuple[str, str]]) -> tuple[str | None, str | None]:
+def technology_body(sections: list[tuple[str, str]]) -> str | None:
     for key, body in sections:
         if key == TECHNOLOGY_KEY:
-            return scalar(body, "detector_version"), scalar(body, "fingerprint")
-    return None, None
+            return body
+    return None
+
+
+def cached_values(sections: list[tuple[str, str]]) -> tuple[str | None, str | None]:
+    body = technology_body(sections)
+    if body is None:
+        return None, None
+    return scalar(body, "detector_version"), scalar(body, "fingerprint")
+
+
+def cached_summary(body: str, current: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **current,
+        "stacks": list_value(body, "stacks"),
+        "backend_skills": list_value(body, "backend_skills"),
+        "frontend_entry": scalar(body, "frontend_entry") or "",
+        "frontend_hints": list_value(body, "frontend_hints"),
+        "ui_candidate": scalar(body, "ui_candidate") or "",
+        "cross_stack_candidate": scalar(body, "cross_stack_candidate") or "",
+    }
 
 
 def resolve(repo: Path, *, force: bool = False, write: bool = True) -> tuple[str, dict[str, Any]]:
@@ -180,15 +226,10 @@ def resolve(repo: Path, *, force: bool = False, write: bool = True) -> tuple[str
         and cached_version == str(current["detector_version"])
         and cached_fingerprint == str(current["fingerprint"])
     ):
-        result = detector.detect(repo) if not write else dict(current)
-        if write:
-            # Cache hit does not need full stack detection. Return cached summary lazily.
-            for key, body in sections:
-                if key == TECHNOLOGY_KEY:
-                    stacks = re.findall(r"(?m)^\s{4}-\s+['\"]?([^'\"\n]+)['\"]?\s*$", body)
-                    result["stacks"] = stacks
-                    break
-        return "reused", result
+        body = technology_body(sections)
+        if body is None:
+            raise StackCacheError("technology cache disappeared during cache resolution")
+        return "reused", cached_summary(body, current)
 
     result = detector.detect(repo)
     status = write_cache(repo, result) if write else "stale"
@@ -219,8 +260,12 @@ def main() -> int:
     print(f"DETECTOR_VERSION={result['detector_version']}")
     print(f"STACK_FINGERPRINT={result['fingerprint']}")
     print(f"STACK_INPUTS={','.join(result.get('inputs', []))}")
-    if "stacks" in result:
-        print(f"STACKS={','.join(result.get('stacks', []))}")
+    print(f"STACKS={','.join(result.get('stacks', []))}")
+    print(f"BACKEND_SKILLS={','.join(result.get('backend_skills', []))}")
+    print(f"FRONTEND_ENTRY={result.get('frontend_entry', '')}")
+    print(f"FRONTEND_HINTS={','.join(result.get('frontend_hints', []))}")
+    print(f"UI_SKILL_CANDIDATE={result.get('ui_candidate', '')}")
+    print(f"CROSS_STACK_SKILL_CANDIDATE={result.get('cross_stack_candidate', '')}")
     print("STATUS=pass")
     return 0
 
