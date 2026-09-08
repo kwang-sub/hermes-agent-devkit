@@ -2,12 +2,17 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import subprocess
 import sys
 
 
 MANAGED_MARKER = "# managed-by: dev-project-bootstrap"
+PRUNE_DIRS = {
+    ".git", ".gradle", ".idea", ".vscode", ".next", ".worktrees",
+    "node_modules", "build", "dist", "target", "out", "coverage",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,16 +35,30 @@ def managed_repo(metadata: Path) -> bool:
 def discover(root: Path, max_depth: int) -> list[Path]:
     root = root.resolve()
     repos: list[Path] = []
-    for metadata in root.glob("**/.hermes/project.yaml"):
+
+    for root_text, dirs, _ in os.walk(root):
+        current = Path(root_text)
         try:
-            relative = metadata.relative_to(root)
+            relative = current.relative_to(root)
         except ValueError:
             continue
-        repo_depth = max(0, len(relative.parts) - 2)
-        if repo_depth > max_depth:
-            continue
-        if managed_repo(metadata):
-            repos.append(metadata.parent.parent.resolve())
+        depth = len(relative.parts)
+
+        dirs[:] = sorted(
+            name for name in dirs
+            if name not in PRUNE_DIRS
+        )
+        if depth >= max_depth:
+            dirs[:] = [name for name in dirs if name == ".hermes"]
+
+        metadata = current / ".hermes" / "project.yaml"
+        if metadata.is_file() and managed_repo(metadata):
+            repos.append(current.resolve())
+            # Managed repository found. Do not recurse into its application tree;
+            # nested repositories are refreshed independently when their parent root
+            # is supplied explicitly.
+            dirs[:] = []
+
     return sorted(set(repos), key=lambda path: path.as_posix())
 
 
