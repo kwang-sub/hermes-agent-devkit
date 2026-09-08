@@ -1,19 +1,19 @@
 ---
 name: dev-project-pattern
-description: 개발 계획 전에 대상 Repository의 기존 구조·코드·UI·테스트 패턴과 실제 stack을 근거로 수집하고 유지해야 할 convention과 적용할 capability skill을 식별한다.
-version: 0.3.0
+description: 개발 계획 전에 Bootstrap 기술 스택 캐시와 대상 Repository의 기존 구조·코드·UI·테스트 패턴을 근거로 수집하고 유지해야 할 convention과 적용할 capability skill을 식별한다.
+version: 0.4.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, orchestrator, pattern, convention, project-analysis, stack, frontend, figma]
-    related_skills: [dev-tech-dispatch, dev-breakdown, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-api-docs, dev-frontend-feature, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract, dev-figma-design, dev-ui-ux]
+    tags: [dev, orchestrator, pattern, convention, project-analysis, stack, frontend, figma, cache]
+    related_skills: [dev-project-bootstrap, dev-tech-dispatch, dev-breakdown, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-api-docs, dev-frontend-feature, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract, dev-figma-design, dev-ui-ux]
     requires_tools: [terminal, skill_view]
 ---
 
 # dev-project-pattern
 
-복잡한 작업에서 `dev-breakdown` 전에 대상 프로젝트의 기존 패턴을 읽어 새 코드가 현재 프로젝트와 최대한 동일한 방식으로 작성되도록 기준을 만드는 read-only Skill이다.
+복잡한 작업에서 `dev-breakdown` 전에 대상 프로젝트의 기존 패턴을 읽어 새 코드가 현재 프로젝트와 최대한 동일한 방식으로 작성되도록 기준을 만드는 planning Skill이다.
 
 ```text
 /opt/data/shared/references/project-pattern-rules.md
@@ -25,23 +25,66 @@ metadata:
 
 ## 실행 순서
 
-1. managed project repository/workspace identity를 확인한다.
-2. instruction/AGENTS, build/dependency file, source root를 읽는다.
-3. `dev-tech-dispatch` detector를 한 번 실행해 project-level stack을 확인한다.
-4. 요청과 가장 유사한 기존 구현을 1~3개 찾는다.
-5. backend/frontend/data/UI/test convention을 evidence와 함께 요약한다.
-6. 실제 Task affected area와 detector 결과를 합쳐 runtime entry capability와 lazy capability hint를 결정한다.
-7. Figma URL이 있으면 Design Source/Status를 분리한다.
-8. 기존 패턴과 사용자 정책 충돌은 조용히 덮지 않고 최소 변경 방향과 Improvement Candidate로 전달한다.
+1. managed project repository/workspace identity와 `.hermes/project.yaml`을 확인한다.
+2. instruction/AGENTS, 실제 Task와 관련된 source root를 읽는다.
+3. `stack_cache.py`를 한 번 실행해 Bootstrap 기술 스택 캐시를 검증한다.
+4. `STACK_CACHE=reused`면 저장된 technology metadata를 그대로 사용한다.
+5. manifest fingerprint가 달라 `created|updated`가 나오면 detector가 재실행한 최신 stack 결과를 사용한다.
+6. 요청과 가장 유사한 기존 구현을 1~3개 찾는다.
+7. backend/frontend/data/UI/test convention을 evidence와 함께 요약한다.
+8. 실제 Task affected area와 stack 결과를 합쳐 runtime entry capability와 lazy capability hint를 결정한다.
+9. Figma URL이 있으면 Design Source/Status를 분리한다.
+10. 기존 패턴과 사용자 정책 충돌은 조용히 덮지 않고 최소 변경 방향과 Improvement Candidate로 전달한다.
 
-## Stack detection
+## Technology cache
+
+Bootstrap이 생성한 `.hermes/project.yaml`의 `technology:` section이 canonical project-level stack cache다.
 
 ```bash
-python3 /opt/custom-skills/orchestrator/dev-tech-dispatch/scripts/detect_capabilities.py \
+python3 /opt/custom-skills/orchestrator/dev-project-bootstrap/scripts/stack_cache.py \
   --repo "<managed repository>"
 ```
 
-Detector는 root build/dependency evidence만 확인한다. Stack Detection은 Skill Loading과 동일하지 않다.
+예:
+
+```text
+STACK_CACHE=reused
+DETECTOR_VERSION=2
+STACK_FINGERPRINT=sha256:...
+STACK_INPUTS=backend/build.gradle,frontend/package.json,frontend/tsconfig.json
+STACKS=java,spring,typescript,react,nextjs
+BACKEND_SKILLS=dev-java-guidelines,dev-spring-guidelines
+FRONTEND_ENTRY=dev-frontend-feature
+FRONTEND_HINTS=dev-typescript-guidelines,dev-frontend-guidelines,dev-nextjs-feature,dev-frontend-test
+STATUS=pass
+```
+
+`STACK_CACHE=reused`에서는 full stack detector를 다시 실행하지 않는다. Fingerprint는 build/dependency manifest만 대상으로 하므로 일반 source 변경은 cache invalidation 원인이 아니다.
+
+manifest 변경 또는 detector version 변경 시에만 stack을 다시 계산하고 Bootstrap-managed local metadata의 `technology:` section을 갱신한다. `.hermes/`는 Bootstrap `.gitignore` 정책으로 Git 추적에서 제외되므로 application source/config 변경으로 취급하지 않는다.
+
+기존 Bootstrap Repository가 `technology:` section이 없으면 최초 Standard Flow에서 자동 생성될 수 있지만, DevKit 업데이트 직후에는 다음 명시적 migration을 우선 권장한다.
+
+```bash
+python3 /opt/custom-skills/orchestrator/dev-project-bootstrap/scripts/bootstrap.py \
+  --repo "<managed repository>" \
+  --refresh-stack
+```
+
+여러 Repository는 `refresh_stacks.py --root <root>`로 일괄 갱신할 수 있다.
+
+## Stack Detection != Skill Loading
+
+Technology cache는 Repository가 사용할 수 있는 stack/capability 후보를 저장할 뿐 이번 Task가 Frontend/Backend/Full-stack인지 결정하지 않는다.
+
+```text
+Repository Stack
++ 사용자 요구사항
++ 실제 affected area
+= Task Capability
+```
+
+Repository에 Spring + Next.js가 함께 있어도 Backend-only Task에는 frontend entry를 적용하지 않는다. Frontend-only Task에도 backend skill을 자동 적용하지 않는다.
 
 ## Backend capability
 
@@ -96,6 +139,7 @@ Figma URL: <selected frame/component URL>
 ```text
 Project Pattern Summary
 - Language / Framework / Persistence / Build / Test
+- Technology Cache Status / Fingerprint
 - Detected Stacks
 - Pattern References
 - Package / Naming
@@ -114,8 +158,9 @@ Project Pattern Summary
 
 ## 불변식
 
-- source/config를 수정하지 않는다.
+- application source/build dependency를 수정하지 않는다.
+- `technology:` cache 갱신 외 project metadata를 planning 단계에서 변경하지 않는다.
 - 새 architecture/library/common contract를 제안 없이 확정하지 않는다.
 - 기존 패턴을 Public Skill/Figma 추천으로 광범위하게 교체하지 않는다.
-- `dev-tech-dispatch`는 planning resolver이며 runtime pinned skill이 아니다.
+- `dev-tech-dispatch`는 detector이며 runtime pinned skill이 아니다.
 - frontend 하위 capability를 전부 runtime pin하지 않고 `dev-frontend-feature`를 canonical entry로 사용한다.
