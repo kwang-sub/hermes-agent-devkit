@@ -39,6 +39,14 @@ jobs:
         shell: bash
         run: python3 custom-skills/orchestrator/dev-tech-dispatch/tests/test_detect_capabilities.py
 
+      - name: Verify bootstrap technology cache
+        shell: bash
+        run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_stack_cache.py
+
+      - name: Verify bootstrap stack refresh discovery
+        shell: bash
+        run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_refresh_stacks.py
+
       - name: Verify Figma read-only adapter
         shell: bash
         run: python3 custom-skills/shared/dev-figma-design/tests/test_figma_context.py
