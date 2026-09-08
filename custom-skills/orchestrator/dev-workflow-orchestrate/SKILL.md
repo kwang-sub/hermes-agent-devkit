@@ -1,7 +1,7 @@
 ---
 name: dev-workflow-orchestrate
 description: Jira/text 개발 요청의 project·workspace·branch·Coder 모델·plan을 독립 clarify Gate로 승인한 뒤 자동 Kanban dispatch하는 orchestrator 전용 workflow.
-version: 0.9.1
+version: 0.9.2
 author: local
 platforms: [linux]
 metadata:
@@ -167,7 +167,7 @@ MODEL_ESCALATION=REQUIRE_REAPPROVAL
 STATUS=resolved
 ```
 
-Task 생성 시 `model=<MODEL>`, `provider=<PROVIDER>`로 snapshot을 고정하고 `dev-flow-model-policy`를 runtime pin한다. 동일 승인 모델 retry는 재승인하지 않는다. Tier/Provider/Model 변경은 재승인 대상이다.
+Task body에도 `Model Escalation: REQUIRE_REAPPROVAL`을 기록한다. Task 생성 시 `model=<MODEL>`, `provider=<PROVIDER>`로 snapshot을 고정하고 `dev-flow-model-policy`를 runtime pin한다. 동일 승인 모델 retry는 재승인하지 않는다. Tier/Provider/Model 변경은 재승인 대상이다.
 
 ## 기존 카드 재작업 계약
 
