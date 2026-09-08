@@ -24,7 +24,7 @@ RUN python3 /opt/hermes/hermes_cli/devkit_session_affinity.py --self-test
 
 COPY scripts/patch_hermes_kanban_session_affinity.py /tmp/patch_hermes_kanban_session_affinity.py
 RUN python3 /tmp/patch_hermes_kanban_session_affinity.py --self-test \
-    && python3 /tmp/patch_hermes_kanban_session_affinity.py /opt/hermes/hermes_cli/kanban_db.py \
+    && python3 /tmp/patch_hermes_kanban_session_affinity.py --search-root /opt/hermes/hermes_cli \
     && rm /tmp/patch_hermes_kanban_session_affinity.py
 
 COPY scripts/patch_hermes_discord_kanban_notify.py /tmp/patch_hermes_discord_kanban_notify.py
@@ -45,9 +45,6 @@ RUN python3 /tmp/patch_hermes_discord_kanban_session.py --self-test \
        fi \
     && rm /tmp/patch_hermes_discord_kanban_session.py
 
-# DevKit baseline tools. Gradle itself is not installed globally; hermes-java
-# prepares the exact project-owned distribution under the persistent /opt/data
-# Gradle root on first use.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
@@ -87,8 +84,6 @@ ENV JAVA_HOME_21=/opt/jdks/temurin-21
 ENV JAVA_HOME=/opt/jdks/temurin-17
 ENV PATH="/opt/jdks/temurin-17/bin:${PATH}"
 
-# All Hermes Gradle state is persistent and outside bind-mounted source trees.
-# Project Gradle versions still come from gradle-wrapper.properties.
 ENV HERMES_GRADLE_ROOT=/opt/data/gradle
 ENV HERMES_GRADLE_USER_HOME=/opt/data/gradle/user-home
 ENV HERMES_GRADLE_DIST_ROOT=/opt/data/gradle/distributions
@@ -109,9 +104,6 @@ RUN ln -sf /opt/jdks/temurin-17/bin/java /usr/local/bin/java \
     && /usr/local/bin/javac -version
 
 COPY --chmod=0755 scripts/hermes-java /usr/local/bin/hermes-java
-# Keep the Python source separate from its Linux entrypoint. The source may come
-# from a Windows checkout with CRLF; invoking it explicitly with python3 avoids
-# relying on a shebang whose interpreter token could otherwise contain \r.
 COPY scripts/hermes-diff-check.py /usr/local/lib/hermes-diff-check.py
 RUN printf '%s\n' '#!/bin/sh' 'exec python3 /usr/local/lib/hermes-diff-check.py "$@"' > /usr/local/bin/hermes-diff-check \
     && chmod 0755 /usr/local/bin/hermes-diff-check \
