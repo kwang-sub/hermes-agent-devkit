@@ -4,11 +4,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 TRUE_VALUES = {"1", "true", "yes", "on"}
 ALLOWED_DELIVERY_MODES = {"notify", "wake", "notify+wake"}
+DEFAULT_REGISTRATION_HELPER = Path(__file__).resolve().with_name("kanban_registration_event.py")
 
 
 def parse_args() -> argparse.Namespace:
@@ -27,6 +30,11 @@ def hermes_cli() -> str:
     if override:
         return override
     return shutil.which("hermes") or "/usr/local/bin/hermes"
+
+
+def registration_helper() -> Path:
+    override = (os.getenv("HERMES_KANBAN_REGISTRATION_EVENT_HELPER") or "").strip()
+    return Path(override).expanduser() if override else DEFAULT_REGISTRATION_HELPER
 
 
 def run_command(cmd: list[str], *, timeout: int = 20) -> subprocess.CompletedProcess[str] | None:
@@ -58,6 +66,22 @@ def load_subscriptions(raw: str) -> list[dict]:
             if isinstance(value, list):
                 return [item for item in value if isinstance(item, dict)]
     raise ValueError("unexpected notify-list JSON shape")
+
+
+def enqueue_registration_event(board: str, task_id: str) -> tuple[bool, str]:
+    helper = registration_helper()
+    if not helper.is_file():
+        return False, f"registration event helper missing: {helper}"
+    result = run_command(
+        [sys.executable, str(helper), "--board", board, "--task-id", task_id],
+        timeout=20,
+    )
+    if result is None or result.returncode != 0:
+        return False, command_detail(result)
+    output = (result.stdout or "").strip()
+    if "REGISTRATION_EVENT_STATUS=queued" not in output and "REGISTRATION_EVENT_STATUS=existing" not in output:
+        return False, f"unexpected registration event result: {output[:300]}"
+    return True, output
 
 
 def main() -> int:
@@ -139,8 +163,16 @@ def main() -> int:
     if not matched:
         return fail("subscription verification did not find the expected board/task target")
 
+    # Hermes notification subscriptions start their cursor at the latest event.
+    # Therefore the registration event MUST be enqueued only after the verified
+    # subscription exists, otherwise the first-card notification is considered history.
+    queued, registration_detail = enqueue_registration_event(board, args.task_id)
+    if not queued:
+        return fail(f"registration notification enqueue failed: {registration_detail}")
+
     print("NOTIFY_STATUS=subscribed")
     print("NOTIFY_VERIFIED=true")
+    print("NOTIFY_REGISTRATION_EVENT=queued")
     print(f"NOTIFY_BOARD={board}")
     print(f"NOTIFY_PLATFORM={platform}")
     print(f"NOTIFY_TARGET={target}")
