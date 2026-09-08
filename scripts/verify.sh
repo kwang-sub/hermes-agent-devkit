@@ -245,8 +245,11 @@ run_check "dev-workspace-dispatch regression tests" python3 custom-skills/orches
 run_check "dev-implement-plan workspace verification tests" python3 custom-skills/coder/dev-implement-plan/tests/test_verify_workspace.py
 run_check "dev-code-review context tests" python3 custom-skills/reviewer/dev-code-review/tests/test_review_context.py
 run_check "dev-review-cycle contract" python3 scripts/check_review_cycle_contract.py
+run_check "dev-project-bootstrap launcher tests" python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_bootstrap_launcher.py
 run_check "dev-project-bootstrap metadata preservation tests" python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_metadata_preservation.py
+run_check "dev-project-bootstrap technology stack cache tests" python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_stack_cache.py
 run_check "dev-project-bootstrap development preflight tests" python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_dev_environment_preflight.py
+run_check "dev-tech-dispatch stack/fingerprint tests" python3 custom-skills/orchestrator/dev-tech-dispatch/tests/test_detect_capabilities.py
 run_check "dev-project-resolve tests" python3 custom-skills/orchestrator/dev-project-resolve/tests/test_project_resolve.py
 run_check "dev-breakdown shell syntax" bash -n custom-skills/orchestrator/dev-breakdown/scripts/collect_project_context.sh
 run_check "hermes-java shell syntax" bash -n scripts/hermes-java
