@@ -84,9 +84,38 @@ hermes kanban notify-subscribe <TASK_ID>
   [--chat-type <type>]
 ```
 
+## Kanban 세션 고정
+
+DevKit의 dispatcher worker는 `Task ID + Profile`을 세션 고정 키로 사용한다. 같은 카드라도 Coder와 Reviewer는 서로 다른 세션을 사용한다.
+
+```text
+Task t_3a1bde20
+├─ coder    → session C-001
+└─ reviewer → session R-001
+```
+
+동일 프로필의 재실행에서 실행 조건이 유지되면 기존 Hermes session을 `--resume`으로 재사용한다. 차단 후 입력 추가, 리뷰 수정 요청 후 재작업처럼 같은 작업 문맥을 이어가는 실행은 기존 조사·판단 컨텍스트를 유지한다.
+
+다음 실행 계약을 fingerprint로 비교한다.
+
+- workspace
+- branch
+- Base SHA
+- model / provider override
+- reasoning effort
+- pinned skills / worker toolsets
+- goal mode
+- 해당 profile의 `config.yaml`
+
+위 계약이 달라지면 같은 카드·프로필이라도 `NEW` 세션으로 시작한다. 특히 profile 기본 모델이나 reasoning 설정이 변경된 뒤 과거 session의 모델 설정이 복원되는 것을 방지하기 위해 profile 설정도 비교 대상에 포함한다.
+
+세션 고정 정보는 Hermes 공식 Kanban DB schema를 수정하지 않고 보드별 `devkit-session-affinity.db`에 별도로 저장한다. 세션 조회나 sidecar DB 접근에 실패하면 dispatch를 차단하지 않고 안전하게 `NEW` 세션으로 폴백한다.
+
 ## Discord 알림 포맷
 
 DevKit은 Discord로 전달되는 주요 Kanban terminal event를 업무용 한국어 포맷으로 변환한다. 다른 Gateway 플랫폼에는 Hermes 기본 포맷을 유지한다.
+
+`프로필`은 해당 terminal run을 실제 수행한 Hermes profile, `세션`은 실제 Hermes session ID, `세션 방식`은 `NEW` 또는 `RESUME`을 표시한다. 기존 기록이거나 세션 정보를 확인할 수 없는 경우 `-`로 표시할 수 있다.
 
 차단 예시:
 
@@ -97,6 +126,10 @@ DevKit은 Discord로 전달되는 주요 Kanban terminal event를 업무용 한�
 작업      Windows OC APP_SFTP 설치 자동화 구현
 Task      t_3a1bde20
 담당      coder
+프로필    coder
+모델      GPT-5.6 Terra
+세션      20260907_163138_b1481e
+세션 방식 RESUME
 상태      BLOCKED
 
 사유
@@ -112,8 +145,14 @@ Windows 검증 환경이 없어 수동 확인이 필요합니다.
 작업      Windows OC APP_SFTP 설치 자동화 구현
 Task      t_3a1bde20
 담당      coder
+프로필    coder
+모델      GPT-5.6 Terra
+세션      20260907_163138_b1481e
+세션 방식 RESUME
 상태      DONE
 ```
+
+`review_requested`와 `changes_requested`는 이벤트 provenance를 사용해 상태 전환 후 카드의 현재 담당자가 아니라 해당 terminal event를 실제 수행한 implementer/reviewer profile과 세션을 표시한다.
 
 동일한 형식으로 `gave_up`, `crashed`, `timed_out`, `review_requested`, `changes_requested`, `block_loop_detected`를 구분해 표시한다. 사유/오류/리뷰 내용은 외부 전달용 안전 필터를 거친 뒤 길이를 제한한다.
 
@@ -147,4 +186,4 @@ NOTIFY_STATUS=warning
 
 구독 성공 시 실제 소유 profile도 `NOTIFY_PROFILE=<profile>`로 출력한다.
 
-알림 실패를 이유로 Task를 `BLOCKED` 처리하거나 별도 notification Task를 만들지 않는다.
+알림 실패 또는 세션 정보 조회 실패를 이유로 Task를 `BLOCKED` 처리하거나 별도 notification Task를 만들지 않는다.

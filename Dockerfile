@@ -19,6 +19,14 @@ RUN python3 /tmp/patch_hermes_kanban_terminal.py --self-test \
     && python3 /tmp/patch_hermes_kanban_terminal.py /opt/hermes/agent/kanban_stop.py \
     && rm /tmp/patch_hermes_kanban_terminal.py
 
+COPY scripts/devkit_session_affinity.py /opt/hermes/hermes_cli/devkit_session_affinity.py
+RUN python3 /opt/hermes/hermes_cli/devkit_session_affinity.py --self-test
+
+COPY scripts/patch_hermes_kanban_session_affinity.py /tmp/patch_hermes_kanban_session_affinity.py
+RUN python3 /tmp/patch_hermes_kanban_session_affinity.py --self-test \
+    && python3 /tmp/patch_hermes_kanban_session_affinity.py /opt/hermes/hermes_cli/kanban_db.py \
+    && rm /tmp/patch_hermes_kanban_session_affinity.py
+
 COPY scripts/patch_hermes_discord_kanban_notify.py /tmp/patch_hermes_discord_kanban_notify.py
 RUN python3 /tmp/patch_hermes_discord_kanban_notify.py --self-test \
     && if [ -f /opt/hermes/gateway/kanban_watchers_notifier.py ]; then \
@@ -27,6 +35,15 @@ RUN python3 /tmp/patch_hermes_discord_kanban_notify.py --self-test \
          python3 /tmp/patch_hermes_discord_kanban_notify.py /opt/hermes/gateway/kanban_watchers.py; \
        fi \
     && rm /tmp/patch_hermes_discord_kanban_notify.py
+
+COPY scripts/patch_hermes_discord_kanban_session.py /tmp/patch_hermes_discord_kanban_session.py
+RUN python3 /tmp/patch_hermes_discord_kanban_session.py --self-test \
+    && if [ -f /opt/hermes/gateway/kanban_watchers_notifier.py ]; then \
+         python3 /tmp/patch_hermes_discord_kanban_session.py /opt/hermes/gateway/kanban_watchers_notifier.py; \
+       else \
+         python3 /tmp/patch_hermes_discord_kanban_session.py /opt/hermes/gateway/kanban_watchers.py; \
+       fi \
+    && rm /tmp/patch_hermes_discord_kanban_session.py
 
 # DevKit baseline tools. Gradle itself is not installed globally; hermes-java
 # prepares the exact project-owned distribution under the persistent /opt/data
