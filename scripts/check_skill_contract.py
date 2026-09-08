@@ -21,6 +21,10 @@ REQUIRED_REFERENCES = {
     ("orchestrator", "dev-workflow-orchestrate"): {"references/dispatch-efficiency.md"},
 }
 
+SHARED_REQUIRED_REFERENCES = {
+    "approval-gate-rules.md",
+}
+
 
 def fail(message: str) -> None:
     raise SystemExit(f"[FAIL] {message}")
@@ -71,6 +75,12 @@ def require_terms(text: str, label: str, terms: tuple[str, ...]) -> None:
         fail(f"{label} missing required contract terms: " + ", ".join(missing))
 
 
+def forbid_terms(text: str, label: str, terms: tuple[str, ...]) -> None:
+    present = [term for term in terms if term in text]
+    if present:
+        fail(f"{label} contains forbidden contract terms: " + ", ".join(present))
+
+
 def main() -> int:
     if not SKILLS_ROOT.is_dir():
         fail(f"custom skill root not found: {SKILLS_ROOT}")
@@ -114,6 +124,12 @@ def main() -> int:
             if not target.is_file() or not target.read_text(encoding="utf-8").strip():
                 fail(f"required reference missing/empty for {key}: {relative}")
 
+    shared_reference_root = REPO_ROOT / "shared" / "references"
+    for relative in SHARED_REQUIRED_REFERENCES:
+        target = shared_reference_root / relative
+        if not target.is_file() or not target.read_text(encoding="utf-8").strip():
+            fail(f"required shared reference missing/empty: {relative}")
+
     for (scope, skill_name), related in sorted(related_by_skill.items()):
         for related_name in related:
             if related_name.startswith("dev-") and related_name not in paths_by_name:
@@ -138,9 +154,47 @@ def main() -> int:
     preflight_text = preflight_file.read_text(encoding="utf-8")
     workflow_text = workflow_file.read_text(encoding="utf-8")
     reviewer_text = reviewer_file.read_text(encoding="utf-8")
+    approval_gate_text = (shared_reference_root / "approval-gate-rules.md").read_text(encoding="utf-8")
 
     require_terms(breakdown_text, "dev-breakdown", ('skill_view("dev-project-pattern")', "dev-java-guidelines"))
     require_terms(dispatch_text, "dev-workspace-dispatch preflight", ('skill_view("dev-skill-preflight")', "VALIDATED_SKILLS", "REJECTED_SKILLS", "kanban_create.skills"))
+
+    require_terms(workflow_text, "dev-workflow-orchestrate approval gates", (
+        "/opt/data/shared/references/approval-gate-rules.md",
+        "WORKSPACE_APPROVED",
+        "BRANCH_APPROVED",
+        "MODEL_APPROVED",
+        "PLAN_APPROVED",
+        "한 번의 사용자 확인에서는 **하나의 의사결정만** 요청한다",
+        "[Workspace 선택]",
+        "[Branch 선택]",
+        "[Coder 모델 선택]",
+        "1. PREMIUM",
+        "2. DEFAULT",
+        "3. 추가 요구사항 입력",
+        "[작업 계획 승인]",
+        "1. 승인",
+        "2. 차단",
+        "3. 수정 또는 추가 요구사항 입력",
+        "같은 Gate를 다시 출력",
+    ))
+
+    require_terms(approval_gate_text, "shared approval gate rules", (
+        "한 번의 사용자 확인에서는 하나의 의사결정만 요청한다",
+        "Workspace와 Branch는 서로 다른 Gate다",
+        "1. PREMIUM",
+        "2. DEFAULT",
+        "3. 추가 요구사항 입력",
+        "1. 승인",
+        "2. 차단",
+        "3. 수정 또는 추가 요구사항 입력",
+        "같은 Gate를 다시 출력",
+    ))
+
+    forbid_terms(workflow_text, "dev-workflow-orchestrate combined approval gate", (
+        "workspace, current/create branch, 기존 변경 전체 보존 여부, Coder Model Tier를 함께 승인받는다",
+        "Plan 승인 후 worker dispatch 전에 반드시 다음을 한 번에 보여준다",
+    ))
 
     require_terms(workflow_text, "dev-workflow-orchestrate dispatch efficiency", (
         "prepare_dispatch.py", "정확히 한 번", "working-tree 전체 scan을 하지 않는다",

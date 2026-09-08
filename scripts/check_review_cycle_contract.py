@@ -14,6 +14,7 @@ STANDARD = ROOT / "custom-skills/orchestrator/dev-workflow-orchestrate/SKILL.md"
 DISPATCH = ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/SKILL.md"
 MODEL_POLICY = ROOT / "custom-skills/shared/dev-flow-model-policy/SKILL.md"
 MODEL_HELPER = ROOT / "shared/scripts/flow_model_policy.py"
+APPROVAL_RULES = ROOT / "shared/references/approval-gate-rules.md"
 
 
 def read(path: Path) -> str:
@@ -61,13 +62,25 @@ def main() -> int:
     ), failures)
 
     require(STANDARD, (
-        "Execution Approval Gate", "Coder Model: DEFAULT | PREMIUM", "Reviewer Model: DEFAULT",
-        "flow_model_policy.py resolve", "model=<MODEL>", "provider=<PROVIDER>",
-        "dev-flow-model-policy", "Model Escalation: REQUIRE_REAPPROVAL",
+        "/opt/data/shared/references/approval-gate-rules.md",
+        "WORKSPACE_APPROVED", "BRANCH_APPROVED", "MODEL_APPROVED", "PLAN_APPROVED",
+        "[Workspace 선택]", "[Branch 선택]", "[Coder 모델 선택]", "[작업 계획 승인]",
+        "1. PREMIUM", "2. DEFAULT", "3. 추가 요구사항 입력",
+        "Reviewer Model은 항상 DEFAULT", "flow_model_policy.py resolve",
+        "model=<MODEL>", "provider=<PROVIDER>", "dev-flow-model-policy",
+        "Model Escalation: REQUIRE_REAPPROVAL",
         "기존 카드 재작업 계약", "Requirement Delta:", "Approval Reuse:",
         "migrate-existing", "STATUS=legacy-task-migrated", "SNAPSHOT_SOURCE=durable-comment",
-        "신규/대체 Task 승인 불변식", "대체 카드 생성 승인", "PLAN_APPROVED",
-        "EXECUTION_APPROVED", "기존 승인들을 자동 상속하지 않는다",
+        "신규/대체 Task 승인 불변식", "대체 카드 생성 승인",
+        "서로 다른 승인 Gate를 한 질문으로 합치지 않는다",
+    ), failures)
+
+    require(APPROVAL_RULES, (
+        "한 번의 사용자 확인에서는 하나의 의사결정만 요청한다",
+        "Workspace와 Branch는 서로 다른 Gate다",
+        "1. PREMIUM", "2. DEFAULT", "3. 추가 요구사항 입력",
+        "1. 승인", "2. 차단", "3. 수정 또는 추가 요구사항 입력",
+        "같은 Gate를 다시 출력",
     ), failures)
 
     require(DISPATCH, (
@@ -112,7 +125,7 @@ def main() -> int:
             print(f"[FAIL] {failure}")
         return 1
 
-    print("[PASS] risk-based review-cycle, model-transition, and approval invariants")
+    print("[PASS] risk-based review-cycle, model-transition, and separated approval-gate invariants")
     return 0
 
 
