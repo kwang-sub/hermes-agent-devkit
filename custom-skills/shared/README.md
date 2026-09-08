@@ -4,30 +4,60 @@
 
 ## 관리 원칙
 
-- 역할 전용 Skill은 기존처럼 `custom-skills/orchestrator`, `custom-skills/coder`, `custom-skills/reviewer`에서 관리합니다.
-- 둘 이상의 프로필이 동일한 규칙/기능을 사용해야 하면 이 디렉터리에 한 벌만 둡니다.
-- 각 프로필은 자신의 역할별 디렉터리와 `/opt/custom-skills/shared`를 함께 `skills.external_dirs`로 참조합니다.
-- 동일한 Skill을 역할별 디렉터리에 복제하지 않습니다.
-- 공통 규칙은 가능한 한 `/opt/data/shared/references/coding-rules.md`에 두고, 언어/프레임워크 특화 규칙만 capability Skill로 분리합니다.
-- 기존 Profile local Skill을 공통으로 승격할 때는 현재 공통 규칙/기존 capability와 중복 여부를 먼저 확인하고, 중복은 합친 뒤 고유 규칙만 canonical shared Skill로 유지합니다.
+- 역할 전용 Skill은 `custom-skills/orchestrator`, `custom-skills/coder`, `custom-skills/reviewer`에서 관리합니다.
+- 둘 이상의 프로필이 동일 규칙/기능을 사용하면 이 디렉터리에 한 벌만 둡니다.
+- 세 프로필은 자신의 역할 디렉터리와 `/opt/custom-skills/shared`를 함께 `skills.external_dirs`로 참조합니다.
+- Foundation 규칙은 `/opt/data/shared/references`에 두고 언어/프레임워크/기능 전문 지식만 capability Skill로 분리합니다.
+- Public Skill/외부 provider는 직접 Workflow에 박지 않고 DevKit adapter/capability 뒤에 둡니다.
 
-## Java 공통 가이드
-
-기존 Orchestrator Profile local의 `java-project-conventions`는 DevKit가 관리하는 canonical Skill이 아니었으며 Coder/Reviewer 공통 Skill도 아니었습니다.
-
-Java 관련 공통 정책은 다음 구조로 정리합니다.
+## Backend
 
 ```text
-shared/references/coding-rules.md
-  → 언어 독립 코드 품질 규칙
-
-custom-skills/shared/dev-java-guidelines
-  → Java version/build/Lombok/type placement/JavaDoc 등 Java 전용 규칙
-
-custom-skills/shared/dev-spring-*
-  → Spring/JPA/API/Test 전용 규칙
+dev-java-guidelines
+dev-spring-guidelines
+dev-spring-feature
+dev-spring-data
+dev-spring-test
+dev-spring-refactor
 ```
 
-따라서 새 Task에서는 legacy 이름 `java-project-conventions`를 runtime pinned skill 또는 Applicable Skill로 사용하지 않습니다. Java 프로젝트는 canonical `dev-java-guidelines`를 사용합니다.
+## Frontend
 
-기존 local 원본에 위 구조에 아직 반영되지 않은 고유 정책이 발견되면 내용을 그대로 복제하지 않고, 공통 규칙 또는 `dev-java-guidelines` 중 책임이 맞는 위치에 중복 없이 추가합니다.
+```text
+dev-frontend-feature        # canonical frontend entry
+dev-typescript-guidelines
+dev-frontend-guidelines
+dev-nextjs-feature
+dev-frontend-test
+dev-figma-design            # Figma REST read-only design evidence
+dev-ui-ux                   # audited UI/UX quality baseline
+```
+
+Frontend Task는 `dev-frontend-feature`를 runtime entry로 사용하고 세부 capability는 실제 evidence에 따라 lazy-load합니다.
+
+## Cross-stack
+
+```text
+dev-api-contract
+dev-api-docs
+```
+
+## Figma
+
+현재 `dev-figma-design`은 Figma 공식 REST API를 read-only provider로 사용합니다.
+
+```text
+FIGMA_ACCESS_TOKEN
+→ Personal Access Token 또는 Plan REST Access Token
+
+FIGMA_OAUTH_TOKEN
+→ OAuth access token
+```
+
+선택한 frame/component의 `node-id` URL을 우선해 bounded context를 읽고, 필요 시 rendered preview를 `/workspace` 또는 `/opt/data`처럼 `HERMES_WRITE_SAFE_ROOT` 안에 저장합니다.
+
+Figma canvas write는 현재 Hermes Frontend 구현 Flow의 책임이 아닙니다. GPT/Figma에서 승인된 디자인을 만들고 Hermes는 승인 디자인을 읽어 구현하는 흐름을 기본으로 합니다.
+
+## Java legacy
+
+legacy `java-project-conventions`를 새 Task에서 사용하지 않습니다. Java convention은 canonical `dev-java-guidelines`를 사용합니다.

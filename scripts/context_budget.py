@@ -31,8 +31,10 @@ REQUIRED = {
         "Project Approval", "Plan Approval", "Workspace / Branch", "dev-workspace-dispatch",
         "Base SHA", "coder", "reviewer", "READY", "BLOCKED", "commit", "push", "한국어",
     ],
+    # Breakdown owns plan readiness; approval gates remain in workflow-orchestrate.
     "custom-skills/orchestrator/dev-breakdown/SKILL.md": [
-        "Plan Approval", "Workspace / Branch", "READY", "BLOCKED", "coder", "한국어", "commit", "push",
+        "READY", "BLOCKED", "한국어", "commit", "push", "dev-project-pattern",
+        "Acceptance Criteria", "Applicable Skills",
     ],
     "custom-skills/coder/dev-fast-flow/SKILL.md": [
         "ACTIVE_TASK_FOLLOWUP", "Kanban", "coder", "reviewer", "current branch", "기존 변경",
@@ -68,6 +70,8 @@ DETAIL_REQUIRED = {
 REFERENCES = [
     "shared/references/common-agent-rules.md",
     "shared/references/coding-rules.md",
+    "shared/references/implementation-decision-rules.md",
+    "shared/references/project-pattern-rules.md",
     "shared/references/stack-capability-skill-guide.md",
     "custom-skills/orchestrator/dev-workflow-orchestrate/references/workflow-details.md",
     "custom-skills/orchestrator/dev-breakdown/references/planning-details.md",

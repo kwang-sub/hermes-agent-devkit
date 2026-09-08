@@ -22,6 +22,7 @@ HERMES_CLI_CANDIDATES = (
     Path("/home/hermes/.local/bin/hermes"),
 )
 FULL_PREFLIGHT_FLAG = "--full-preflight"
+REFRESH_STACK_FLAG = "--refresh-stack"
 DEFAULT_HOST_WORKSPACE = "D:/workspace"
 DEFAULT_CONTAINER_WORKSPACE = "/workspace"
 
@@ -43,7 +44,8 @@ def repo_arg(argv: list[str]) -> str:
 
 
 def project_args(argv: list[str]) -> list[str]:
-    return [value for value in argv if value != FULL_PREFLIGHT_FLAG]
+    ignored = {FULL_PREFLIGHT_FLAG, REFRESH_STACK_FLAG}
+    return [value for value in argv if value not in ignored]
 
 
 def _slash(value: str) -> str:
@@ -76,14 +78,6 @@ def _wsl_alias_for_windows_root(host_root: str) -> str | None:
 
 
 def canonical_repo_path(value: str) -> str:
-    """Map a host/WSL workspace path to the canonical container bind target.
-
-    Docker Desktop mounts HERMES_HOST_WORKSPACE_PATH at
-    HERMES_CONTAINER_WORKSPACE_PATH. A Windows path under that host root, or a
-    mechanically converted /mnt/<drive>/... alias for the same host root, must
-    resolve to the container bind target rather than be treated as a separate
-    filesystem path.
-    """
     host_root = os.getenv("HERMES_HOST_WORKSPACE_PATH", DEFAULT_HOST_WORKSPACE)
     container_root = os.getenv(
         "HERMES_CONTAINER_WORKSPACE_PATH", DEFAULT_CONTAINER_WORKSPACE
@@ -200,6 +194,7 @@ def main() -> int:
     requested_repo = repo_arg(launcher_args)
     repo = canonical_repo_path(requested_repo)
     full_preflight = FULL_PREFLIGHT_FLAG in launcher_args
+    refresh_stack = REFRESH_STACK_FLAG in launcher_args
     forwarded_args = rewrite_repo_arg(project_args(launcher_args), repo)
     hermes_cli = resolve_hermes_cli()
     env = child_env(hermes_cli)
@@ -210,12 +205,35 @@ def main() -> int:
             f"[INFO] Repository path mapped: {requested_repo} -> {repo}",
             flush=True,
         )
-    print(
-        f"[INFO] Bootstrap preflight: {'full' if full_preflight else 'fast'}",
-        flush=True,
-    )
+
+    if refresh_stack:
+        unsupported = [
+            value for value in forwarded_args
+            if value not in ("--repo", repo)
+        ]
+        if unsupported:
+            raise BootstrapLauncherError(
+                "--refresh-stack accepts only --repo; project/board/profile options are not used"
+            )
+        print("[INFO] Bootstrap mode: refresh-stack", flush=True)
+    else:
+        print(
+            f"[INFO] Bootstrap preflight: {'full' if full_preflight else 'fast'}",
+            flush=True,
+        )
 
     with bootstrap_lock(repo):
+        if refresh_stack:
+            run(
+                python_stage(scripts / "ensure_gitignore.py", "--repo", repo),
+                env=env,
+            )
+            run(
+                python_stage(scripts / "stack_cache.py", "--repo", repo, "--force"),
+                env=env,
+            )
+            return 0
+
         preflight_args = ["--repo", repo]
         if full_preflight:
             preflight_args.append("--full")
@@ -229,6 +247,10 @@ def main() -> int:
         )
         run(
             python_stage(scripts / "bootstrap_project.py", *forwarded_args),
+            env=env,
+        )
+        run(
+            python_stage(scripts / "stack_cache.py", "--repo", repo),
             env=env,
         )
     return 0

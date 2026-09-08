@@ -31,6 +31,26 @@ jobs:
         shell: bash
         run: bash scripts/verify.sh
 
+      - name: Verify frontend capability contract
+        shell: bash
+        run: python3 scripts/check_frontend_capability_contract.py
+
+      - name: Verify stack capability detector
+        shell: bash
+        run: python3 custom-skills/orchestrator/dev-tech-dispatch/tests/test_detect_capabilities.py
+
+      - name: Verify bootstrap technology cache
+        shell: bash
+        run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_stack_cache.py
+
+      - name: Verify bootstrap stack refresh discovery
+        shell: bash
+        run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_refresh_stacks.py
+
+      - name: Verify Figma read-only adapter
+        shell: bash
+        run: python3 custom-skills/shared/dev-figma-design/tests/test_figma_context.py
+
       - name: Verify Flow model policy
         shell: bash
         run: python3 shared/scripts/test_flow_model_policy.py
