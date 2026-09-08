@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import argparse, py_compile, tempfile
+
+import argparse
+import py_compile
+import tempfile
 from pathlib import Path
 
 PATCH_MARKER = "from hermes_cli.devkit_session_affinity import choose_worker_session"
-ANCHOR = '''    worker_toolsets = _resolve_worker_cli_toolsets(env.get("HERMES_HOME"))
+
+# Hermes <= the pre-split worker command contract. Keep this path because
+# update-devkit.ps1 may be run against an older pinned/base image as well as
+# nousresearch/hermes-agent:latest.
+LEGACY_ANCHOR = '''    worker_toolsets = _resolve_worker_cli_toolsets(env.get("HERMES_HOME"))
     if worker_toolsets:
         cmd.extend(["--toolsets", ",".join(worker_toolsets)])
     cmd.extend([
@@ -12,7 +19,7 @@ ANCHOR = '''    worker_toolsets = _resolve_worker_cli_toolsets(env.get("HERMES_H
         "-q", prompt,
     ])
 '''
-REPLACEMENT = '''    worker_toolsets = _resolve_worker_cli_toolsets(env.get("HERMES_HOME"))
+LEGACY_REPLACEMENT = '''    worker_toolsets = _resolve_worker_cli_toolsets(env.get("HERMES_HOME"))
     if worker_toolsets:
         cmd.extend(["--toolsets", ",".join(worker_toolsets)])
     from hermes_cli.devkit_session_affinity import choose_worker_session
@@ -33,48 +40,162 @@ REPLACEMENT = '''    worker_toolsets = _resolve_worker_cli_toolsets(env.get("HER
         "-q", prompt,
     ])
 '''
-CONTEXT = ('prompt = f"work kanban task {task.id}"', '_resolve_worker_cli_toolsets', 'profile_arg', 'kanban_db_path')
+LEGACY_CONTEXT = (
+    'prompt = f"work kanban task {task.id}"',
+    "_resolve_worker_cli_toolsets",
+    "profile_arg",
+    "kanban_db_path",
+)
+
+# Current Hermes main (kanban_db_dispatch.py) split command assembly into
+# _worker_argv(). Affinity must therefore be injected in _default_spawn after
+# argv construction, where workspace/profile/board env are all available.
+CURRENT_ANCHOR = '''    cmd = _worker_argv(task, profile_arg, env.get("HERMES_HOME"))
+'''
+CURRENT_REPLACEMENT = '''    cmd = _worker_argv(task, profile_arg, env.get("HERMES_HOME"))
+    from hermes_cli.devkit_session_affinity import choose_worker_session
+    _devkit_worker_toolsets = _resolve_worker_cli_toolsets(env.get("HERMES_HOME"))
+    _devkit_session = choose_worker_session(
+        task=task, workspace=workspace, profile=profile_arg,
+        profile_home=env.get("HERMES_HOME"),
+        kanban_db_path=env["HERMES_KANBAN_DB"],
+        worker_toolsets=_devkit_worker_toolsets or (),
+    )
+    env["HERMES_KANBAN_SESSION_MODE"] = _devkit_session.mode
+    if _devkit_session.session_id:
+        env["HERMES_KANBAN_AFFINITY_SESSION_ID"] = _devkit_session.session_id
+        try:
+            _devkit_chat_index = cmd.index("chat")
+        except ValueError as exc:
+            raise RuntimeError("Hermes Kanban worker argv has no chat command") from exc
+        cmd[_devkit_chat_index:_devkit_chat_index] = [
+            "--resume", _devkit_session.session_id,
+        ]
+    else:
+        env.pop("HERMES_KANBAN_AFFINITY_SESSION_ID", None)
+'''
+CURRENT_CONTEXT = (
+    "def _worker_argv(",
+    "def _default_spawn(",
+    'env["HERMES_KANBAN_DB"]',
+    "_resolve_worker_cli_toolsets",
+    "profile_arg",
+)
+
 
 def strict_compile(path: Path) -> None:
-    with tempfile.TemporaryDirectory() as d:
-        py_compile.compile(str(path), cfile=str(Path(d)/"x.pyc"), doraise=True)
+    with tempfile.TemporaryDirectory() as directory:
+        py_compile.compile(
+            str(path),
+            cfile=str(Path(directory) / "x.pyc"),
+            doraise=True,
+        )
+
+
+def _matches_legacy(source: str) -> bool:
+    return source.count(LEGACY_ANCHOR) == 1 and all(
+        item in source for item in LEGACY_CONTEXT
+    )
+
+
+def _matches_current(source: str) -> bool:
+    return source.count(CURRENT_ANCHOR) == 1 and all(
+        item in source for item in CURRENT_CONTEXT
+    )
+
 
 def candidate(path: Path) -> bool:
-    try: s=path.read_text(encoding="utf-8")
-    except Exception: return False
-    return PATCH_MARKER in s or (s.count(ANCHOR)==1 and all(x in s for x in CONTEXT))
+    try:
+        source = path.read_text(encoding="utf-8")
+    except Exception:
+        return False
+    return PATCH_MARKER in source or _matches_legacy(source) or _matches_current(source)
+
 
 def find_target(root: Path) -> Path:
-    found=[p for p in root.rglob("*.py") if candidate(p)]
-    if len(found)!=1:
-        raise RuntimeError(f"expected exactly one Hermes Kanban worker patch target under {root}; found {len(found)}: {found[:10]}")
+    found = [path for path in root.rglob("*.py") if candidate(path)]
+    if len(found) != 1:
+        raise RuntimeError(
+            "expected exactly one Hermes Kanban worker patch target under "
+            f"{root}; found {len(found)}: {found[:10]}"
+        )
     return found[0]
 
+
 def patch_source(path: Path) -> str:
-    s=path.read_text(encoding="utf-8")
-    if PATCH_MARKER in s:
-        strict_compile(path); return "already-patched"
-    if not all(x in s for x in CONTEXT) or s.count(ANCHOR)!=1:
+    source = path.read_text(encoding="utf-8")
+    if PATCH_MARKER in source:
+        strict_compile(path)
+        return "already-patched"
+
+    if _matches_current(source):
+        updated = source.replace(CURRENT_ANCHOR, CURRENT_REPLACEMENT, 1)
+    elif _matches_legacy(source):
+        updated = source.replace(LEGACY_ANCHOR, LEGACY_REPLACEMENT, 1)
+    else:
         raise RuntimeError(f"{path}: compatible Kanban worker command contract not found")
-    path.write_text(s.replace(ANCHOR, REPLACEMENT, 1), encoding="utf-8")
-    strict_compile(path); return "patched"
+
+    path.write_text(updated, encoding="utf-8")
+    strict_compile(path)
+    return "patched"
+
+
+def _legacy_sample() -> str:
+    return '''def _resolve_worker_cli_toolsets(home): return []\ndef kanban_db_path(board=None): return "/tmp/k"\ndef spawn_worker(task, workspace, *, board=None):\n    profile_arg=task.assignee\n    prompt = f"work kanban task {task.id}"\n    env={"HERMES_HOME":"/tmp/p"}\n    cmd=["hermes"]\n    worker_toolsets = _resolve_worker_cli_toolsets(env.get("HERMES_HOME"))\n    if worker_toolsets:\n        cmd.extend(["--toolsets", ",".join(worker_toolsets)])\n    cmd.extend([\n        "chat",\n        "-q", prompt,\n    ])\n'''
+
+
+def _current_sample() -> str:
+    return '''def _resolve_worker_cli_toolsets(home): return []\ndef _worker_argv(task, profile_arg, hermes_home):\n    return ["hermes", "-p", profile_arg, "chat", "-q", f"work kanban task {task.id}"]\ndef _default_spawn(task, workspace, *, board=None):\n    profile_arg = task.assignee\n    env = {"HERMES_HOME": "/tmp/p"}\n    env["HERMES_KANBAN_DB"] = "/tmp/kanban.db"\n    cmd = _worker_argv(task, profile_arg, env.get("HERMES_HOME"))\n    return cmd\n'''
+
 
 def self_test() -> None:
-    sample='''def _resolve_worker_cli_toolsets(home): return []\ndef kanban_db_path(board=None): return "/tmp/k"\ndef spawn_worker(task, workspace, *, board=None):\n    profile_arg=task.assignee\n    prompt = f"work kanban task {task.id}"\n    env={"HERMES_HOME":"/tmp/p"}\n    cmd=["hermes"]\n    worker_toolsets = _resolve_worker_cli_toolsets(env.get("HERMES_HOME"))\n    if worker_toolsets:\n        cmd.extend(["--toolsets", ",".join(worker_toolsets)])\n    cmd.extend([\n        "chat",\n        "-q", prompt,\n    ])\n'''
-    with tempfile.TemporaryDirectory() as d:
-        root=Path(d); p=root/"kanban_dispatcher.py"; p.write_text(sample,encoding="utf-8")
-        assert find_target(root)==p
-        assert patch_source(p)=="patched"
-        assert patch_source(p)=="already-patched"
-        text=p.read_text(encoding="utf-8")
-        assert 'cmd.extend(["--resume", _devkit_session.session_id])' in text
-        assert text.index('cmd.extend(["--resume"') < text.index('    cmd.extend([\n        "chat"')
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+
+        legacy_root = root / "legacy"
+        legacy_root.mkdir()
+        legacy = legacy_root / "kanban_dispatcher.py"
+        legacy.write_text(_legacy_sample(), encoding="utf-8")
+        assert find_target(legacy_root) == legacy
+        assert patch_source(legacy) == "patched"
+        assert patch_source(legacy) == "already-patched"
+        legacy_text = legacy.read_text(encoding="utf-8")
+        assert 'cmd.extend(["--resume", _devkit_session.session_id])' in legacy_text
+        assert legacy_text.index('cmd.extend(["--resume"') < legacy_text.index(
+            '    cmd.extend([\n        "chat"'
+        )
+
+        current_root = root / "current"
+        current_root.mkdir()
+        current = current_root / "kanban_db_dispatch.py"
+        current.write_text(_current_sample(), encoding="utf-8")
+        assert find_target(current_root) == current
+        assert patch_source(current) == "patched"
+        assert patch_source(current) == "already-patched"
+        current_text = current.read_text(encoding="utf-8")
+        assert '_devkit_chat_index = cmd.index("chat")' in current_text
+        assert 'cmd[_devkit_chat_index:_devkit_chat_index]' in current_text
+        assert 'kanban_db_path=env["HERMES_KANBAN_DB"]' in current_text
+
     print("Hermes Kanban session-affinity patch self-test passed")
 
-def main():
-    ap=argparse.ArgumentParser(); ap.add_argument("path", nargs="?", type=Path); ap.add_argument("--search-root", type=Path); ap.add_argument("--self-test", action="store_true"); a=ap.parse_args()
-    if a.self_test: self_test(); return
-    target=find_target(a.search_root) if a.search_root else a.path
-    if target is None: ap.error("path or --search-root required")
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("path", nargs="?", type=Path)
+    parser.add_argument("--search-root", type=Path)
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+
+    if args.self_test:
+        self_test()
+        return
+
+    target = find_target(args.search_root) if args.search_root else args.path
+    if target is None:
+        parser.error("path or --search-root required")
     print(f"Hermes Kanban session-affinity source state={patch_source(target)}: {target}")
-if __name__ == "__main__": main()
+
+
+if __name__ == "__main__":
+    main()
