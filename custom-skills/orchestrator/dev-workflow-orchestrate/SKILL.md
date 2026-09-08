@@ -1,7 +1,7 @@
 ---
 name: dev-workflow-orchestrate
 description: Jira/text 개발 요청의 project·workspace·branch·Coder 모델·plan을 독립 clarify Gate로 승인한 뒤 자동 Kanban dispatch하는 orchestrator 전용 workflow.
-version: 0.9.0
+version: 0.9.1
 author: local
 platforms: [linux]
 metadata:
@@ -12,9 +12,11 @@ metadata:
 
 # dev-workflow-orchestrate
 
-Orchestrator는 개발 요청의 상태 머신만 조정한다. application/test code, refactor, code review, commit, push, PR, merge, destructive cleanup은 직접 하지 않는다.
+Orchestrator는 개발 요청의 상태 머신만 조정한다. application/test code, refactor, code review, commit, push, PR, merge, destructive cleanup은 직접 하지 않는다. 계획/진행 보고와 승인 질문은 **한국어**로 작성한다.
 
 Standard Flow의 모든 사용자 승인 UI는 `/opt/data/shared/references/approval-gate-rules.md`를 canonical contract로 사용한다. **한 번의 사용자 확인에서는 하나의 의사결정만 요청한다.** 선택은 일반 텍스트 번호 목록이 아니라 Hermes 내장 `clarify` tool의 `choices`로 제공한다. TUI/CLI에서는 ↑/↓ + Enter 선택 UX를 사용한다.
+
+핵심 불변식은 `Project Approval`, `Plan Approval`, Workspace/Branch/Model 승인, 그리고 dispatch 시점의 `Base SHA` 보존이다.
 
 ## 상태 머신
 
@@ -51,12 +53,13 @@ EXISTING_TASK
 ## 신규 Standard Flow
 
 1. `dev-work-intake`로 요구사항을 정규화한다.
-2. `dev-project-resolve` 결과를 `[Project 선택]` clarify Gate로 승인받는다.
+2. `dev-project-resolve` 결과를 `[Project 선택]` clarify Gate로 승인받는다. 이것이 Project Approval이다.
 3. `dev-breakdown`으로 READY 계획을 만든다.
 4. `[Workspace 선택]` → `[Branch 선택]` → `[기존 변경 보존 확인]`(필요 시) → `[Coder 모델 선택]`을 각각 독립 clarify Gate로 승인받는다.
 5. 승인된 Tier를 `flow_model_policy.py resolve --tier <DEFAULT|PREMIUM>`으로 정확히 한 번 해석한다.
-6. Implementation Plan 본문을 보여준 뒤 `[작업 계획 승인]` clarify Gate를 수행한다.
+6. Implementation Plan 본문을 보여준 뒤 `[작업 계획 승인]` clarify Gate를 수행한다. 이것이 Plan Approval이다.
 7. Plan까지 승인되면 **추가 Kanban 생성 확인 없이 즉시 AUTO_DISPATCH**한다.
+8. `prepare_dispatch.py`가 승인 workspace/branch의 `Base SHA`를 확정하고 Task body에 보존한다.
 
 ## clarify Gate 계약
 
