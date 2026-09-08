@@ -27,6 +27,9 @@ def test_spring_only() -> None:
         assert result["backend_skills"] == ["dev-java-guidelines", "dev-spring-guidelines"]
         assert result["frontend_entry"] == ""
         assert result["frontend_hints"] == []
+        assert result["detector_version"] == "2"
+        assert result["inputs"] == ["build.gradle"]
+        assert str(result["fingerprint"]).startswith("sha256:")
 
 
 def test_next_typescript_with_tests() -> None:
@@ -62,8 +65,45 @@ def test_fullstack_contract_candidate() -> None:
         assert result["backend_skills"] == ["dev-java-guidelines", "dev-spring-guidelines"]
 
 
+def test_monorepo_detection_is_manifest_bounded() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        write(repo / "backend" / "build.gradle.kts", 'plugins { id("org.springframework.boot") }')
+        write(repo / "frontend" / "package.json", json.dumps({
+            "dependencies": {"next": "16.0.0", "react": "19.0.0"},
+            "devDependencies": {"typescript": "5.9.0", "@playwright/test": "1.55.0"},
+        }))
+        write(repo / "frontend" / "tsconfig.app.json", "{}")
+        write(repo / "frontend" / "node_modules" / "ignored" / "package.json", '{"dependencies":{"vue":"1"}}')
+        write(repo / "deep" / "one" / "two" / "three" / "package.json", '{"dependencies":{"vue":"1"}}')
+
+        result = MODULE.detect(repo)
+        assert result["stacks"] == ["java", "spring", "typescript", "react", "nextjs"]
+        assert result["cross_stack_candidate"] == "dev-api-contract"
+        assert "frontend/package.json" in result["inputs"]
+        assert "frontend/tsconfig.app.json" in result["inputs"]
+        assert not any("node_modules" in path for path in result["inputs"])
+        assert not any("deep/one/two/three" in path for path in result["inputs"])
+
+
+def test_fingerprint_changes_only_when_manifest_evidence_changes() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        write(repo / "package.json", '{"dependencies":{"react":"19"}}')
+        first = MODULE.fingerprint(repo)
+        write(repo / "src" / "page.tsx", "export default function Page() { return null }")
+        second = MODULE.fingerprint(repo)
+        assert first["fingerprint"] == second["fingerprint"]
+
+        write(repo / "package.json", '{"dependencies":{"react":"19","next":"16"}}')
+        third = MODULE.fingerprint(repo)
+        assert third["fingerprint"] != second["fingerprint"]
+
+
 if __name__ == "__main__":
     test_spring_only()
     test_next_typescript_with_tests()
     test_fullstack_contract_candidate()
+    test_monorepo_detection_is_manifest_bounded()
+    test_fingerprint_changes_only_when_manifest_evidence_changes()
     print("[PASS] Stack capability detector tests")
