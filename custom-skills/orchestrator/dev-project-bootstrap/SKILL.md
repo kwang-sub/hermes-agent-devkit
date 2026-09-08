@@ -1,12 +1,12 @@
 ---
 name: dev-project-bootstrap
-description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, 대용량 저장소용 Fast Preflight·선택적 Full Git 진단·중복 실행 방지·Java toolchain·EOL 정책·Hermes 로컬 파일 Git ignore·Kanban/Profile/Context/.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
-version: 0.4.3
+description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, Fast Preflight·기술 스택 fingerprint/cache·기존 저장소 refresh·Java toolchain·EOL·Git ignore·Kanban/Profile/Context/.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
+version: 0.5.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, project, bootstrap, kanban, context, orchestration, resolver, preflight, performance, eol, java, toolchain, git]
+    tags: [dev, project, bootstrap, kanban, context, orchestration, resolver, preflight, performance, stack, fingerprint, cache, monorepo, eol, java, toolchain, git]
     requires_tools: [terminal]
 ---
 
@@ -23,6 +23,8 @@ metadata:
 - Repository를 Git `safe.directory`에 idempotent하게 등록하고 쓰기 가능 여부를 확인한다.
 - CRLF/LF-only tracked 변경은 effective change에서 제외한다.
 - Gradle/Maven Java target을 감지해 DevKit JDK 8/17/21 중 runtime을 선택하고 `.hermes/toolchain.env`에 기록한다.
+- Repository build/dependency manifest에서 기술 스택을 탐지하고 `.hermes/project.yaml technology:`에 fingerprint와 결과를 저장한다.
+- 일반 source 변경은 technology cache를 무효화하지 않고 manifest 또는 detector version 변경 때만 재탐지한다.
 - `.gitattributes`와 `.gitignore`의 Hermes 관리 정책을 보장하되 기존 사용자 정책은 임의로 덮어쓰지 않는다.
 - 이미 유효한 Project/Board/Profile Binding은 재사용한다.
 - Resolver와 Legacy/Source-specific Metadata는 보존한다.
@@ -34,7 +36,8 @@ bootstrap.py
   ├─ repository process lock
   ├─ bootstrap_preflight.py (fast)
   ├─ ensure_gitignore.py
-  └─ bootstrap_project.py
+  ├─ bootstrap_project.py
+  └─ stack_cache.py
 ```
 
 일반 실행:
@@ -44,7 +47,105 @@ python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
   --repo "/workspace/dashboard"
 ```
 
-## 2. Fast Preflight
+최종 `.hermes/project.yaml`은 schema version 3 technology cache를 포함한다.
+
+예:
+
+```yaml
+technology:
+  detector_version: "2"
+  fingerprint: "sha256:..."
+  inputs:
+    - "backend/build.gradle"
+    - "frontend/package.json"
+    - "frontend/tsconfig.json"
+  stacks:
+    - "java"
+    - "spring"
+    - "typescript"
+    - "react"
+    - "nextjs"
+  backend_skills:
+    - "dev-java-guidelines"
+    - "dev-spring-guidelines"
+  frontend_entry: "dev-frontend-feature"
+  frontend_hints:
+    - "dev-typescript-guidelines"
+    - "dev-frontend-guidelines"
+    - "dev-nextjs-feature"
+```
+
+Repository stack은 Task 분류가 아니다. Standard Flow의 Orchestrator가 사용자 요구사항과 affected area를 함께 보고 Backend / Frontend / Full-stack을 판단한다.
+
+## 2. Technology Stack Cache
+
+Stack detector는 application source 전체를 훑지 않고 root 및 최대 3단계 하위의 build/dependency manifest만 본다.
+
+대표 input:
+
+```text
+build.gradle / build.gradle.kts / settings.gradle*
+pom.xml / gradle.properties / libs.versions.toml
+package.json / package-lock.json / pnpm-lock.yaml / pnpm-workspace.yaml
+yarn.lock / bun.lock*
+tsconfig*.json
+```
+
+따라서 다음 형태도 지원한다.
+
+```text
+repo/
+├─ backend/
+│  └─ build.gradle
+└─ frontend/
+   ├─ package.json
+   └─ tsconfig.json
+```
+
+fingerprint는 input path + file content + detector version으로 계산한다.
+
+```text
+manifest 변화 없음
+→ STACK_CACHE=reused
+→ full detector 생략
+
+manifest 또는 detector version 변화
+→ detector 재실행
+→ technology cache 갱신
+```
+
+일반 `.java`, `.kt`, `.ts`, `.tsx`, CSS 등 source 변경은 fingerprint에 포함하지 않는다.
+
+## 3. 기존 Bootstrap Repository 갱신
+
+DevKit 업데이트 전에 이미 Bootstrap된 Repository는 Project/Board/Profile을 다시 만들 필요 없이 stack cache만 갱신할 수 있다.
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
+  --repo "/workspace/product/oc/wsm17-oc" \
+  --refresh-stack
+```
+
+`--refresh-stack`은 다음만 수행한다.
+
+```text
+repository lock
+→ ensure_gitignore.py
+→ stack_cache.py --force
+```
+
+Project/Board/Profile/Context를 다시 등록하거나 Full Git scan을 하지 않는다.
+
+여러 Bootstrap-managed Repository는 일괄 갱신할 수 있다.
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/refresh_stacks.py" \
+  --root "/workspace/product"
+```
+
+`# managed-by: dev-project-bootstrap` metadata와 Repository identity가 확인되는 경로만 대상으로 한다. Bootstrap되지 않은 Repository는 대상으로 삼지 않는다.
+
+## 4. Fast Preflight
 
 일반 Bootstrap의 기본 모드다.
 
@@ -68,8 +169,6 @@ tracked unstaged 검사는 다음 형태를 사용한다.
 git diff --numstat -z --ignore-cr-at-eol --no-renames ...
 ```
 
-단순 `git diff --name-only --ignore-cr-at-eol`은 CRLF/LF-only 파일명이 남을 수 있으므로 Fast Path 판정에 사용하지 않는다.
-
 Fast Preflight에서는 성능을 위해 다음을 생략한다.
 
 ```text
@@ -89,11 +188,9 @@ EOL_ONLY_CHANGE_COUNT=-1
 UNTRACKED_CHANGE_COUNT=-1
 ```
 
-`-1`은 0건이 아니라 **Fast Path에서 전체 개수 산출을 생략**했다는 뜻이다.
+`-1`은 0건이 아니라 Fast Path에서 전체 개수 산출을 생략했다는 뜻이다.
 
-Fast Preflight는 Git dirty 여부만으로 Bootstrap을 자동 중단하지 않는다.
-
-## 3. Full Preflight
+## 5. Full Preflight
 
 정확한 untracked/EOL-only 진단이 필요한 경우에만 사용한다.
 
@@ -103,33 +200,13 @@ python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
   --full-preflight
 ```
 
-Full 모드는 Fast 검사에 다음을 추가한다.
-
-```text
-normal tracked diff
-untracked 전체 enumeration
-EOL-only noise count
-```
-
-출력:
-
-```text
-GIT_SCAN_MODE=full
-EFFECTIVE_SCOPE=all
-EFFECTIVE_CHANGE_COUNT=<tracked + staged + untracked>
-EOL_ONLY_CHANGE_COUNT=<number>
-UNTRACKED_CHANGE_COUNT=<number>
-```
+Full 모드는 Fast 검사에 normal tracked diff, untracked 전체 enumeration, EOL-only noise count를 추가한다.
 
 대용량 설치 패키지 저장소나 Windows/Docker bind mount에서는 Full 모드를 일반 Bootstrap에서 자동 선택하지 않는다.
 
-## 4. Bootstrap 중복 실행 방지
+## 6. Bootstrap 중복 실행 방지
 
-`bootstrap.py`는 Repository 절대경로의 SHA-256을 이용해 다음 lock을 사용한다.
-
-```text
-/tmp/hermes-bootstrap-<hash>.lock
-```
+`bootstrap.py`는 Repository 절대경로 SHA-256을 이용해 `/tmp/hermes-bootstrap-<hash>.lock`을 사용한다.
 
 같은 Repository Bootstrap이 이미 실행 중이면 두 번째 실행은 즉시 Block한다.
 
@@ -142,15 +219,9 @@ Bootstrap은 한 번만 시작한다.
 중복 실행 Block 메시지가 나오면 새 process를 만들지 않는다.
 ```
 
-## 5. Java 실행 계약
+## 7. Java 실행 계약
 
-Java 프로젝트에는 다음 파일을 보장한다.
-
-```text
-.hermes/toolchain.env
-```
-
-Coder/Reviewer는 `hermes-java` launcher를 우선한다.
+Java 프로젝트에는 `.hermes/toolchain.env`를 보장한다. Coder/Reviewer는 `hermes-java` launcher를 우선한다.
 
 ```bash
 hermes-java ./gradlew test
@@ -158,9 +229,9 @@ hermes-java ./gradlew compileJava
 hermes-java ./mvnw test
 ```
 
-지원 target/runtime은 Java 8/17/21이다. Gradle 9처럼 build runtime 요구 버전이 더 높은 경우 target과 runtime을 분리할 수 있다.
+지원 target/runtime은 Java 8/17/21이다.
 
-## 6. EOL 정책
+## 8. EOL 정책
 
 `.gitattributes`에 다음 규칙을 보장한다.
 
@@ -174,7 +245,7 @@ mvnw text eol=lf
 
 기존 충돌 규칙은 덮어쓰지 않고 Block한다. `git add --renormalize .`는 자동 실행하지 않는다.
 
-## 7. Git ignore 정책
+## 9. Git ignore 정책
 
 `.gitignore`에 다음 Hermes 관리 블록을 보장한다.
 
@@ -186,28 +257,11 @@ mvnw text eol=lf
 # <<< Hermes Agent managed <<<
 ```
 
+따라서 Bootstrap이 생성하는 `project.yaml`, `toolchain.env`, technology cache 등 `.hermes/` 하위 local metadata는 Git 변경으로 잡히지 않는다.
+
 `AGENTS.md`, `.gitattributes`, 소스/빌드 설정 등 프로젝트 공용 파일은 Hermes 관리 블록으로 ignore하지 않는다. 기존 사용자 규칙은 삭제하거나 재정렬하지 않는다.
 
-## 8. Preflight 단독 실행
-
-Fast:
-
-```bash
-python3 "${HERMES_SKILL_DIR}/scripts/bootstrap_preflight.py" \
-  --repo "/workspace/dashboard"
-```
-
-Full:
-
-```bash
-python3 "${HERMES_SKILL_DIR}/scripts/bootstrap_preflight.py" \
-  --repo "/workspace/dashboard" \
-  --full
-```
-
-기존 `dev_environment_preflight.py`는 Java/EOL 등의 공유 helper와 호환성 검증용으로 유지하되, 일반 Bootstrap launcher의 Git change 분류 경로에는 사용하지 않는다.
-
-## 9. Block 조건
+## 10. Block 조건
 
 - 같은 Repository의 Bootstrap이 이미 실행 중
 - Repo Path/Git root 오류
@@ -215,7 +269,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/bootstrap_preflight.py" \
 - Repository write 불가
 - Java target 충돌 또는 지원 범위 밖
 - 선택 JDK self-check 실패
-- unmanaged `.hermes/toolchain.env`
+- unmanaged `.hermes/toolchain.env` 또는 `.hermes/project.yaml`
 - 충돌하는 `.gitattributes` EOL 정책
 - 손상된 `.gitignore` Hermes marker
 - Hermes local path ignore 검증 실패
@@ -226,24 +280,25 @@ python3 "${HERMES_SKILL_DIR}/scripts/bootstrap_preflight.py" \
 - 필수 Profile 없음
 - Hermes CLI 실패
 
-## 10. 안전 규칙
+## 11. 안전 규칙
 
 절대 하지 않는다.
 
 - 오래 걸린다는 이유로 동일 Repository Bootstrap 재실행
-- Application build file Java 설정 임의 수정
+- Application build/dependency file을 stack cache 때문에 수정
+- technology detection을 위해 Repository 전체 source scan
 - `.gitattributes` 충돌 정책 자동 덮어쓰기
 - 기존 `.gitignore` 사용자 규칙 삭제/재정렬
 - `git rm --cached` 자동 실행
 - 전체 Repository 자동 renormalize
 - EOL noise 제거 목적의 reset/restore/checkout
-- Task 중 JDK/Gradle/Maven 임의 설치
+- Task 중 JDK/Gradle/Maven/npm dependency 임의 설치
 - Resolver 값 자동 추론
 - Project/Board 삭제
 - Git reset/clean/checkout/rebase/merge/commit
 - Unmanaged Metadata 덮어쓰기
 
-## 11. 권장 회귀 검증
+## 12. 권장 회귀 검증
 
 ```text
 Fast scan ignores CRLF-only tracked noise
@@ -255,4 +310,9 @@ safe.directory registration is idempotent
 Java 8/17/21 detection works
 .gitattributes/.gitignore policies are idempotent
 resolver/custom metadata is preserved
+technology cache creates/reuses/refreshes correctly
+source-only change keeps stack fingerprint stable
+manifest change invalidates stack fingerprint
+backend/frontend monorepo detection works
+refresh-stack does not redo Project/Board/Profile registration
 ```
