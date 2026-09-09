@@ -96,6 +96,14 @@ Invoke-DockerCheck -Label "hermes-java launcher" -DockerArgs @(
 Invoke-DockerCheck -Label "Hermes CLI stable path" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "/usr/local/bin/hermes", "--help"
 )
+Invoke-DockerCheck -Label "Codex Kanban worker-context runtime" -DockerArgs @(
+    "exec", "--user", "hermes", $Container,
+    "/opt/hermes/.venv/bin/python", "/opt/hermes/hermes_cli/devkit_kanban_worker_context.py", "--self-test"
+)
+Invoke-DockerCheck -Label "Codex Hermes MCP worker-context tool patch" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "sh", "-lc",
+    "grep -q 'devkit_kanban_worker_context import kanban_worker_context' /opt/hermes/agent/transports/hermes_tools_mcp_server.py && grep -q 'name=.*kanban_worker_context' /opt/hermes/agent/transports/hermes_tools_mcp_server.py"
+)
 Invoke-DockerCheck -Label "Shared custom skill root" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "test", "-d", "/opt/custom-skills/shared"
 )

@@ -18,8 +18,10 @@ def main() -> int:
             "COPY scripts/hermes-diff-check.py /usr/local/lib/hermes-diff-check.py",
             "exec python3 /usr/local/lib/hermes-diff-check.py",
             "/usr/local/bin/hermes-diff-check --help",
+            "COPY scripts/devkit_kanban_worker_context.py /opt/hermes/hermes_cli/devkit_kanban_worker_context.py",
+            "patch_hermes_codex_kanban_context.py --search-root /opt/hermes/agent/transports",
         ),
-        "Dockerfile diff checker runtime",
+        "Dockerfile runtime",
     )
     if "COPY --chmod=0755 scripts/hermes-diff-check.py /usr/local/bin/hermes-diff-check" in dockerfile:
         raise SystemExit("Dockerfile must not execute the checked-out Python file by shebang")
@@ -28,11 +30,16 @@ def main() -> int:
     require(
         implement,
         (
+            "Worker Context Gate 정확히 1회",
+            "kanban_worker_context MCP tool 정확히 1회",
+            "verify_worker_context.py",
+            "Codex shell에서 `HERMES_KANBAN_TASK` 등을 수동 주입",
+            "첫 Git/workspace terminal command",
+            "Git/Workspace 전용 검증기",
             "독립 terminal command로 정확히 1회",
             "다른 명령을 `+`, `&&`, `;`, background process 또는 batch 형태로 붙이지 않는다",
             "STATUS=valid",
             "`git status`, `git branch`, `git rev-parse` probe를 실행하지 않는다",
-            "`verify_workspace.py`는 Coder가 Task를 읽은 뒤 실행하는 첫 terminal command다",
             "Workspace 검증 전에 다음 명령 또는 동등한 inline Python/subprocess 조합을 실행하지 않는다",
             "git ls-files",
             "tracked/effective/EOL 변경 분류",
@@ -45,6 +52,36 @@ def main() -> int:
             "kanban_block",
         ),
         "dev-implement-plan runtime policy",
+    )
+
+    workspace_helper = (ROOT / "custom-skills/coder/dev-implement-plan/scripts/verify_workspace.py").read_text(encoding="utf-8")
+    if "HERMES_KANBAN_TASK" in workspace_helper or "verify_kanban_context" in workspace_helper:
+        raise SystemExit("verify_workspace.py must remain Git/Workspace-only for Codex shell compatibility")
+
+    worker_helper = (ROOT / "custom-skills/coder/dev-implement-plan/scripts/verify_worker_context.py").read_text(encoding="utf-8")
+    require(
+        worker_helper,
+        (
+            "HERMES_KANBAN_TASK",
+            "HERMES_KANBAN_BOARD",
+            "HERMES_KANBAN_CONTEXT_VERSION",
+            "HERMES_DELEGATED_CHILD_CONTEXT",
+            "WORKER_CONTEXT_STATUS=valid",
+        ),
+        "non-Codex worker context gate",
+    )
+
+    codex_context = (ROOT / "scripts/devkit_kanban_worker_context.py").read_text(encoding="utf-8")
+    require(
+        codex_context,
+        (
+            "HERMES_KANBAN_RUN_ID",
+            "HERMES_KANBAN_CLAIM_LOCK",
+            "task current_run_id does not match worker run",
+            "task claim_lock does not match worker claim",
+            '"context_source": "hermes-mcp"',
+        ),
+        "Codex MCP worker context gate",
     )
 
     gradle_helper = (ROOT / "custom-skills/coder/dev-implement-plan/scripts/gradle_verification.py").read_text(encoding="utf-8")

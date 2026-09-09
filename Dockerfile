@@ -27,6 +27,16 @@ RUN python3 /tmp/patch_hermes_kanban_session_affinity.py --self-test \
     && python3 /tmp/patch_hermes_kanban_session_affinity.py --search-root /opt/hermes/hermes_cli \
     && rm /tmp/patch_hermes_kanban_session_affinity.py
 
+# Codex native shell intentionally has no Kanban ownership env. Keep ownership
+# validation inside the Hermes MCP process that receives the dispatcher grant.
+COPY scripts/devkit_kanban_worker_context.py /opt/hermes/hermes_cli/devkit_kanban_worker_context.py
+RUN python3 /opt/hermes/hermes_cli/devkit_kanban_worker_context.py --self-test
+
+COPY scripts/patch_hermes_codex_kanban_context.py /tmp/patch_hermes_codex_kanban_context.py
+RUN python3 /tmp/patch_hermes_codex_kanban_context.py --self-test \
+    && python3 /tmp/patch_hermes_codex_kanban_context.py --search-root /opt/hermes/agent/transports \
+    && rm /tmp/patch_hermes_codex_kanban_context.py
+
 COPY scripts/patch_hermes_discord_kanban_notify.py /tmp/patch_hermes_discord_kanban_notify.py
 RUN python3 /tmp/patch_hermes_discord_kanban_notify.py --self-test \
     && if [ -f /opt/hermes/gateway/kanban_watchers_notifier.py ]; then \

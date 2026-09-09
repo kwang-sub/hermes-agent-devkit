@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: 승인된 Kanban 작업을 할당 Workspace에서 최소 구현·구조 품질 점검·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.20.0
+version: 0.21.0
 author: local
 platforms: [linux]
 metadata:
@@ -15,13 +15,15 @@ metadata:
 
 Coder worker의 compact 실행 계약이다. 상세 구현/검증/risk 형식이 필요할 때만 `references/implementation-details.md`를 읽는다.
 
-## 실행 순서 — Workspace Verify First
+## 실행 순서 — Worker Context Gate → Workspace Verify
 
 Coder run은 다음 순서를 고정한다.
 
 ```text
 kanban_show
 → dev-implement-plan load
+→ Worker Context Gate 정확히 1회
+→ WORKER CONTEXT valid
 → verify_workspace.py 단독 1회
 → STATUS=valid
 → 필요한 target source/test만 탐색
@@ -33,7 +35,34 @@ kanban_show
 → terminal transition 1회
 ```
 
-**`verify_workspace.py`는 Coder가 Task를 읽은 뒤 실행하는 첫 terminal command다.** Skill load는 가능하지만 그 전에 workspace를 훑는 terminal probe는 실행하지 않는다.
+### Worker Context Gate
+
+Task body의 `Coder Provider` snapshot을 기준으로 검증 경로를 분리한다.
+
+**`openai-codex` Worker**는 Codex native shell에 Kanban ownership 환경변수를 노출하지 않는 Hermes 보안 경계를 그대로 유지한다.
+
+```text
+kanban_worker_context MCP tool 정확히 1회
+→ status == valid
+→ task_id == 현재 Task
+→ board == 현재 Board
+→ task_status == running
+→ claim_bound == true
+```
+
+`kanban_worker_context`가 없거나 호출 실패/`status != valid`이면 `CAPABILITY` 또는 context blocker로 `kanban_block`하고 종료한다. Codex shell에서 `HERMES_KANBAN_TASK` 등을 수동 주입하거나 `verify_worker_context.py`로 우회하지 않는다.
+
+**그 외 Hermes Worker**는 아래 helper를 첫 terminal command로 정확히 1회 실행한다.
+
+```bash
+python3 /opt/custom-skills/coder/dev-implement-plan/scripts/verify_worker_context.py \
+  --expected-workspace "<Workspace>" \
+  --expected-profile coder
+```
+
+`WORKER_CONTEXT_STATUS=valid`이 아니면 구현/검증을 시작하지 않는다. 수동 `hermes --resume` 또는 직접 chat에서 Kanban env를 수동 주입해 Gate를 우회하지 않는다.
+
+Worker Context Gate가 성공한 뒤 `verify_workspace.py`가 **첫 Git/workspace terminal command**다. 그 전에 workspace를 훑는 terminal probe는 실행하지 않는다.
 
 Workspace 검증 전에 다음 명령 또는 동등한 inline Python/subprocess 조합을 실행하지 않는다.
 
@@ -61,6 +90,8 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/verify_workspace.py 
   --expected-branch "<Expected Branch>" \
   --base-sha "<Base SHA>"
 ```
+
+`verify_workspace.py`는 **Git/Workspace 전용 검증기**다. Kanban Task ownership 검증은 앞 단계 Worker Context Gate가 담당한다. 따라서 Codex native shell에서 `HERMES_KANBAN_TASK`가 보이지 않아도 이 helper는 정상 동작해야 한다.
 
 `STATUS=valid`이면 helper가 확인한 workspace/branch/base를 신뢰한다. 이를 재확인하기 위한 `git status`, `git branch`, `git rev-parse` probe를 실행하지 않는다. helper가 non-zero로 실패했을 때만 reported error를 해석하기 위한 최소 probe를 허용하며, 실패 전에 사전 probe로 우회하지 않는다.
 
@@ -151,10 +182,11 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification_
   --mode TARGETED_TEST \
   --test "<fully-qualified-test-selector>" \
   --scope-path "<covered-production-or-test-path>" \
-  --scope-path "<covered-production-or-test-path>"
+  --scope-path "<covered-production-or-test-path>" \
+  --evidence-root "/opt/data/gradle/verification-evidence/<Task ID>"
 ```
 
-`--scope-path`에는 이번 Gradle 검증이 실제로 cover하는 executable production/test 파일을 모두 넣는다. helper는 이 파일들과 build/toolchain 핵심 파일의 content fingerprint를 저장한다.
+`--scope-path`에는 이번 Gradle 검증이 실제로 cover하는 executable production/test 파일을 모두 넣는다. helper는 이 파일들과 build/toolchain 핵심 파일의 content fingerprint를 저장한다. `--evidence-root`는 Task ID별 경로를 명시해 Codex shell에서 ownership env가 제거되어도 서로 다른 Task가 PASS evidence를 공유하지 않게 한다. Task ID는 식별값으로만 사용하며 Kanban ownership/claim 권한을 부여하지 않는다.
 
 규칙:
 - 여러 targeted test는 가능한 한 한 invocation으로 합친다.
@@ -180,7 +212,7 @@ Verification Evidence: EXECUTED | REUSED
 Primary Reused: true | false
 ```
 
-동일 Task/Workspace에서 Coder 재개 또는 Reviewer가 검증할 때 scope fingerprint가 동일하면 PASS를 재사용한다. source/test/build/toolchain 변경으로 fingerprint가 달라지면 재사용 금지이며 fresh verification이 필수다.
+동일 Task/Workspace에서 Coder 재개 또는 Reviewer가 검증할 때 scope fingerprint가 동일하면 PASS를 재사용한다. source/test/build/toolchain 변경으로 fingerprint가 달라지면 재사용 금지이며 fresh Gradle verification이 필수다.
 
 ### Full Test 실패 재사용 정책
 

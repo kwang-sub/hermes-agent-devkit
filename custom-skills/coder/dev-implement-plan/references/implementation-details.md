@@ -16,14 +16,19 @@ Fast Review: Coder intake → Kanban → Coder worker → Reviewer
 
 ## 2. Worker 시작
 
-1. `kanban_show()`로 body/history/feedback을 읽는다.
-2. `$HERMES_KANBAN_WORKSPACE`에서 Task Key/Expected Branch/Base SHA를 검증한다.
-3. Goal, AC, Implementation Tasks, Test Plan, Risks를 확인한다.
-4. Task의 Project Pattern Summary / Pattern References / Applicable Skills를 재사용한다.
+1. `kanban_show()`로 body/history/feedback과 `Coder Provider` snapshot을 읽는다.
+2. Worker Context Gate를 provider-aware 경로로 정확히 1회 통과한다.
+   - `openai-codex`: Hermes MCP `kanban_worker_context`를 호출하고 `status=valid`, 현재 Task/Board, `task_status=running`, `claim_bound=true`를 확인한다.
+   - 그 외 provider: `verify_worker_context.py --expected-workspace <Workspace> --expected-profile coder`를 첫 terminal command로 실행하고 `WORKER_CONTEXT_STATUS=valid`를 확인한다.
+3. Worker Context Gate 성공 후 canonical `verify_workspace.py`로 Task body의 Workspace/Expected Branch/Base SHA를 검증한다.
+4. Goal, AC, Implementation Tasks, Test Plan, Risks를 확인한다.
+5. Task의 Project Pattern Summary / Pattern References / Applicable Skills를 재사용한다.
+
+Codex native shell에는 Hermes가 보안상 Kanban Task ownership env를 전달하지 않는다. 따라서 Codex에서 `HERMES_KANBAN_TASK`를 shell에 수동 주입하거나 `verify_worker_context.py`를 shell fallback으로 사용하지 않는다. ownership은 Hermes MCP가 검증하고, `verify_workspace.py`는 Git/Workspace만 검증한다.
 
 Workspace 검증은 canonical `verify_workspace.py`를 **단독 terminal command로 정확히 1회** 실행한다. 같은 terminal invocation에 `git status`, `git branch`, `git rev-parse`, toolchain/wrapper probe 등을 batch하지 않는다. `STATUS=valid`이면 branch/base/workspace를 다시 확인하기 위한 중복 Git probe를 실행하지 않는다. helper 자체가 실패했을 때만 실패 원인을 직접 확인하는 최소 probe를 허용한다.
 
-계약 누락 또는 Workspace 불일치로 correctness가 흔들리면 수정 전에 Block한다.
+Worker Context 계약 누락 또는 Workspace 불일치로 correctness가 흔들리면 수정 전에 Block한다. Context Gate 실패를 환경변수 수동 주입이나 direct chat/manual resume로 우회하지 않는다.
 
 ## 3. Fast Flow 재검증
 

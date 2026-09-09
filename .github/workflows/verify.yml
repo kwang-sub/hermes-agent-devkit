@@ -31,6 +31,18 @@ jobs:
         shell: bash
         run: bash scripts/verify.sh
 
+      - name: Verify Codex Kanban worker context runtime
+        shell: bash
+        run: python3 scripts/devkit_kanban_worker_context.py --self-test
+
+      - name: Verify Codex Hermes MCP worker context patch
+        shell: bash
+        run: python3 scripts/patch_hermes_codex_kanban_context.py --self-test
+
+      - name: Verify non-Codex worker context gate
+        shell: bash
+        run: python3 custom-skills/coder/dev-implement-plan/tests/test_verify_worker_context.py
+
       - name: Verify frontend capability contract
         shell: bash
         run: python3 scripts/check_frontend_capability_contract.py

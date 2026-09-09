@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 from pathlib import Path
 import os
-import re
 import subprocess
 import sys
 import tempfile
@@ -15,7 +16,7 @@ def git(repo: Path, *args: str) -> str:
 
 
 class VerifyWorkspaceTests(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.repo = Path(self.tmp.name) / "repo"
         subprocess.run(["git", "init", "-b", "main", str(self.repo)], capture_output=True, check=True)
@@ -26,50 +27,54 @@ class VerifyWorkspaceTests(unittest.TestCase):
         git(self.repo, "commit", "-m", "base")
         self.base = git(self.repo, "rev-parse", "HEAD")
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def kanban_env(self) -> dict[str, str]:
+    def codex_shell_env(self) -> dict[str, str]:
         env = os.environ.copy()
-        env.update({
-            "HERMES_KANBAN_TASK": "t_demo",
-            "HERMES_KANBAN_BOARD": "demo",
-            "HERMES_KANBAN_DB": str(Path(self.tmp.name) / "kanban.db"),
-            "HERMES_KANBAN_WORKSPACE": str(self.repo.resolve()),
-            "HERMES_PROFILE": "coder",
-            "HERMES_SESSION_SOURCE": "kanban",
-            "HERMES_KANBAN_CONTEXT_VERSION": "1",
-            "HERMES_KANBAN_SESSION_MODE": "NEW",
-        })
+        for key in tuple(env):
+            if key.startswith("HERMES_KANBAN_"):
+                env.pop(key, None)
+        env.pop("HERMES_PROFILE", None)
+        env.pop("HERMES_SESSION_SOURCE", None)
+        env.pop("HERMES_DELEGATED_CHILD_CONTEXT", None)
         return env
 
-    def run_helper(self, sha: str, *, env: dict[str, str] | None = None):
+    def run_helper(
+        self,
+        sha: str,
+        *,
+        expected_workspace: Path | None = None,
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
-                sys.executable, str(SCRIPT),
-                "--task-key", "TEST-1",
-                "--expected-branch", "main",
-                "--base-sha", sha,
-                "--workspace", str(self.repo),
-                "--expected-workspace", str(self.repo),
+                sys.executable,
+                str(SCRIPT),
+                "--task-key",
+                "TEST-1",
+                "--expected-branch",
+                "main",
+                "--base-sha",
+                sha,
+                "--workspace",
+                str(self.repo),
+                "--expected-workspace",
+                str(expected_workspace or self.repo),
             ],
             text=True,
             capture_output=True,
-            env=env or self.kanban_env(),
+            env=env or self.codex_shell_env(),
         )
 
-    def test_accepts_resolved_ancestor_base_sha(self):
+    def test_accepts_codex_shell_without_kanban_ownership_env(self) -> None:
         proc = self.run_helper(self.base)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn(f"BASE_SHA={self.base}", proc.stdout)
-        self.assertIn("KANBAN_CONTEXT=valid", proc.stdout)
-        self.assertIn("KANBAN_TASK_ID=t_demo", proc.stdout)
-        self.assertIn("KANBAN_BOARD=demo", proc.stdout)
-        self.assertIn("KANBAN_SESSION_MODE=NEW", proc.stdout)
         self.assertIn("STATUS=valid", proc.stdout)
+        self.assertNotIn("KANBAN_CONTEXT", proc.stdout)
         for phase in (
             "PATH_RESOLVE",
-            "KANBAN_CONTEXT",
             "SAFE_DIRECTORY_READ",
             "REPO_ROOT",
             "BRANCH",
@@ -80,52 +85,12 @@ class VerifyWorkspaceTests(unittest.TestCase):
             self.assertRegex(proc.stdout, rf"WORKSPACE_VERIFY_PHASE_{phase}_SECONDS=\d+\.\d+")
         self.assertRegex(proc.stdout, r"WORKSPACE_VERIFY_TOTAL_SECONDS=\d+\.\d+")
 
-    def test_allows_new_session_after_prior_session_loss(self):
-        env = self.kanban_env()
-        env["HERMES_KANBAN_SESSION_MODE"] = "NEW"
-        env.pop("HERMES_KANBAN_AFFINITY_SESSION_ID", None)
-        proc = self.run_helper(self.base, env=env)
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("KANBAN_SESSION_MODE=NEW", proc.stdout)
-        self.assertIn("KANBAN_AFFINITY_SESSION_ID=-", proc.stdout)
-
-    def test_accepts_resume_session_when_dispatcher_rehydrates_context(self):
-        env = self.kanban_env()
-        env["HERMES_KANBAN_SESSION_MODE"] = "RESUME"
-        env["HERMES_KANBAN_AFFINITY_SESSION_ID"] = "session-1"
-        proc = self.run_helper(self.base, env=env)
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("KANBAN_SESSION_MODE=RESUME", proc.stdout)
-        self.assertIn("KANBAN_AFFINITY_SESSION_ID=session-1", proc.stdout)
-
-    def test_rejects_manual_resume_without_kanban_context(self):
-        env = os.environ.copy()
-        for key in (
-            "HERMES_KANBAN_TASK",
-            "HERMES_KANBAN_BOARD",
-            "HERMES_KANBAN_DB",
-            "HERMES_KANBAN_WORKSPACE",
-            "HERMES_PROFILE",
-            "HERMES_SESSION_SOURCE",
-            "HERMES_KANBAN_CONTEXT_VERSION",
-            "HERMES_KANBAN_SESSION_MODE",
-            "HERMES_KANBAN_AFFINITY_SESSION_ID",
-        ):
-            env.pop(key, None)
-        proc = self.run_helper(self.base, env=env)
+    def test_rejects_expected_workspace_mismatch(self) -> None:
+        proc = self.run_helper(self.base, expected_workspace=Path(self.tmp.name) / "other")
         self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("Kanban worker context is missing or mismatched", proc.stderr)
-        self.assertIn("HERMES_KANBAN_TASK missing", proc.stderr)
-        self.assertIn("manual `hermes --resume`", proc.stderr)
+        self.assertIn("workspace mismatch", proc.stderr)
 
-    def test_rejects_workspace_context_mismatch(self):
-        env = self.kanban_env()
-        env["HERMES_KANBAN_WORKSPACE"] = str(Path(self.tmp.name) / "other")
-        proc = self.run_helper(self.base, env=env)
-        self.assertNotEqual(proc.returncode, 0)
-        self.assertIn("HERMES_KANBAN_WORKSPACE mismatch", proc.stderr)
-
-    def test_rejects_malformed_and_unresolvable_sha(self):
+    def test_rejects_malformed_and_unresolvable_sha(self) -> None:
         malformed = self.run_helper("not-a-sha")
         self.assertNotEqual(malformed.returncode, 0)
         self.assertIn("full 40-character", malformed.stderr)
@@ -133,7 +98,7 @@ class VerifyWorkspaceTests(unittest.TestCase):
         self.assertNotEqual(missing.returncode, 0)
         self.assertIn("does not resolve", missing.stderr)
 
-    def test_rejects_non_ancestor_base_sha(self):
+    def test_rejects_non_ancestor_base_sha(self) -> None:
         git(self.repo, "switch", "-c", "side", self.base)
         (self.repo / "side.txt").write_text("side\n")
         git(self.repo, "add", "side.txt")
