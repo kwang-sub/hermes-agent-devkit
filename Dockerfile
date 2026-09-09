@@ -38,6 +38,14 @@ RUN python3 /tmp/patch_hermes_codex_kanban_context.py --self-test \
     && HERMES_KANBAN_TASK=t_devkit_registry_check /opt/hermes/.venv/bin/python -c 'from model_tools import get_tool_definitions; from agent.transports.hermes_tools_mcp_server import EXPOSED_TOOLS; names={d["function"]["name"] for d in get_tool_definitions(enabled_toolsets=["kanban"], quiet_mode=True) if isinstance(d, dict) and d.get("type")=="function"}; assert "kanban_worker_context" in names, sorted(names); assert "kanban_worker_context" in EXPOSED_TOOLS, EXPOSED_TOOLS' \
     && rm /tmp/patch_hermes_codex_kanban_context.py
 
+# Reviewer DEFAULT / Coder approved-model transitions must run inside the claim-bound
+# Kanban lifecycle tool path, not in Codex native shell where ownership env is scrubbed.
+COPY scripts/patch_hermes_kanban_model_transition.py /tmp/patch_hermes_kanban_model_transition.py
+RUN python3 /tmp/patch_hermes_kanban_model_transition.py --self-test \
+    && python3 /tmp/patch_hermes_kanban_model_transition.py /opt/hermes/tools/kanban_tools.py \
+    && grep -q 'def _devkit_run_flow_model_transition' /opt/hermes/tools/kanban_tools.py \
+    && rm /tmp/patch_hermes_kanban_model_transition.py
+
 COPY scripts/patch_hermes_discord_kanban_notify.py /tmp/patch_hermes_discord_kanban_notify.py
 RUN python3 /tmp/patch_hermes_discord_kanban_notify.py --self-test \
     && if [ -f /opt/hermes/gateway/kanban_watchers_notifier.py ]; then \
