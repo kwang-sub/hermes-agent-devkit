@@ -25,6 +25,7 @@ class SubscribeNotificationTests(unittest.TestCase):
             "HERMES_KANBAN_NOTIFY_PROFILE",
             "HERMES_KANBAN_REGISTRATION_EVENT_HELPER",
             "HERMES_CLI",
+            "HERMES_PYTHON",
             "FAKE_HERMES_MODE",
             "FAKE_REGISTRATION_MODE",
         ):
@@ -108,6 +109,24 @@ class SubscribeNotificationTests(unittest.TestCase):
         """), encoding="utf-8")
         return helper, log
 
+    def make_fake_runtime_python(self, root: Path) -> tuple[Path, Path]:
+        log = root / "runtime-python.jsonl"
+        runtime = root / "hermes-python"
+        runtime.write_text(textwrap.dedent(f"""\
+            #!{sys.executable}
+            import json
+            import os
+            from pathlib import Path
+            import sys
+
+            log = Path({str(log)!r})
+            with log.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(sys.argv[1:]) + "\\n")
+            os.execv({sys.executable!r}, [{sys.executable!r}, *sys.argv[1:]])
+        """), encoding="utf-8")
+        runtime.chmod(0o755)
+        return runtime, log
+
     def notification_env(self, fake: Path, registration: Path, **extra: str) -> dict[str, str]:
         env = {
             "HERMES_KANBAN_NOTIFY_ENABLED": "true",
@@ -157,6 +176,27 @@ class SubscribeNotificationTests(unittest.TestCase):
             self.assertEqual(calls[0][3:6], ["show", "t_test123", "--json"])
             self.assertEqual(calls[1][3:5], ["notify-subscribe", "t_test123"])
             self.assertEqual(calls[2][3:6], ["notify-list", "t_test123", "--json"])
+            self.assertEqual(
+                self.read_log(registration_log),
+                [["--board", "wow-batch", "--task-id", "t_test123"]],
+            )
+
+    def test_explicit_hermes_python_runs_shared_and_registration_helpers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake, _ = self.make_fake_cli(root)
+            registration, registration_log = self.make_registration_helper(root)
+            runtime, runtime_log = self.make_fake_runtime_python(root)
+            proc = self.run_helper(
+                self.notification_env(fake, registration, HERMES_PYTHON=str(runtime))
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("NOTIFY_STATUS=subscribed", proc.stdout)
+
+            runtime_calls = self.read_log(runtime_log)
+            self.assertEqual(len(runtime_calls), 2)
+            self.assertEqual(Path(runtime_calls[0][0]).name, "kanban_notify_subscribe.py")
+            self.assertEqual(Path(runtime_calls[1][0]), registration)
             self.assertEqual(
                 self.read_log(registration_log),
                 [["--board", "wow-batch", "--task-id", "t_test123"]],

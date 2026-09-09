@@ -12,6 +12,7 @@ import sys
 TRUE_VALUES = {"1", "true", "yes", "on"}
 ALLOWED_DELIVERY_MODES = {"notify", "wake", "notify+wake"}
 DEFAULT_REGISTRATION_HELPER = Path(__file__).resolve().with_name("kanban_registration_event.py")
+DEFAULT_HERMES_PYTHON = Path("/opt/hermes/.venv/bin/python")
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,6 +31,15 @@ def hermes_cli() -> str:
     if override:
         return override
     return shutil.which("hermes") or "/usr/local/bin/hermes"
+
+
+def hermes_python() -> str:
+    override = (os.getenv("HERMES_PYTHON") or "").strip()
+    if override:
+        return str(Path(override).expanduser())
+    if DEFAULT_HERMES_PYTHON.is_file():
+        return str(DEFAULT_HERMES_PYTHON)
+    return sys.executable
 
 
 def registration_helper() -> Path:
@@ -73,7 +83,7 @@ def enqueue_registration_event(board: str, task_id: str) -> tuple[bool, str]:
     if not helper.is_file():
         return False, f"registration event helper missing: {helper}"
     result = run_command(
-        [sys.executable, str(helper), "--board", board, "--task-id", task_id],
+        [hermes_python(), str(helper), "--board", board, "--task-id", task_id],
         timeout=20,
     )
     if result is None or result.returncode != 0:
