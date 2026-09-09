@@ -100,10 +100,30 @@ Invoke-DockerCheck -Label "Codex Kanban worker-context runtime" -DockerArgs @(
     "exec", "--user", "hermes", $Container,
     "/opt/hermes/.venv/bin/python", "/opt/hermes/hermes_cli/devkit_kanban_worker_context.py", "--self-test"
 )
-Invoke-DockerCheck -Label "Codex Hermes MCP worker-context tool patch" -DockerArgs @(
-    "exec", "--user", "hermes", $Container, "sh", "-lc",
-    "grep -q 'devkit_kanban_worker_context import kanban_worker_context' /opt/hermes/agent/transports/hermes_tools_mcp_server.py && grep -q 'name=.*kanban_worker_context' /opt/hermes/agent/transports/hermes_tools_mcp_server.py"
-)
+
+$CodexContextRegistryCheck = @'
+import os
+os.environ["HERMES_KANBAN_TASK"] = "t_devkit_registry_check"
+from model_tools import get_tool_definitions
+from agent.transports.hermes_tools_mcp_server import EXPOSED_TOOLS
+names = {
+    item["function"]["name"]
+    for item in get_tool_definitions(enabled_toolsets=["kanban"], quiet_mode=True)
+    if isinstance(item, dict) and item.get("type") == "function"
+}
+if "kanban_worker_context" not in names:
+    raise SystemExit(f"kanban_worker_context missing from Hermes registry: {sorted(names)!r}")
+if "kanban_worker_context" not in EXPOSED_TOOLS:
+    raise SystemExit("kanban_worker_context missing from Codex Hermes MCP EXPOSED_TOOLS")
+print("Codex Kanban worker-context registry/MCP contract valid")
+'@
+
+$CodexContextRegistryCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
+if ($LASTEXITCODE -ne 0) {
+    throw "[FAIL] Codex Hermes MCP worker-context registry contract. Re-run .\update-devkit.ps1 or rebuild/recreate the container."
+}
+Write-Host "[OK] Codex Hermes MCP worker-context registry contract"
+
 Invoke-DockerCheck -Label "Shared custom skill root" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "test", "-d", "/opt/custom-skills/shared"
 )

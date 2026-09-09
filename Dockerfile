@@ -28,13 +28,14 @@ RUN python3 /tmp/patch_hermes_kanban_session_affinity.py --self-test \
     && rm /tmp/patch_hermes_kanban_session_affinity.py
 
 # Codex native shell intentionally has no Kanban ownership env. Keep ownership
-# validation inside the Hermes MCP process that receives the dispatcher grant.
+# validation inside the Hermes tool registry/MCP process that receives the dispatcher grant.
 COPY scripts/devkit_kanban_worker_context.py /opt/hermes/hermes_cli/devkit_kanban_worker_context.py
 RUN python3 /opt/hermes/hermes_cli/devkit_kanban_worker_context.py --self-test
 
 COPY scripts/patch_hermes_codex_kanban_context.py /tmp/patch_hermes_codex_kanban_context.py
 RUN python3 /tmp/patch_hermes_codex_kanban_context.py --self-test \
-    && python3 /tmp/patch_hermes_codex_kanban_context.py --search-root /opt/hermes/agent/transports \
+    && python3 /tmp/patch_hermes_codex_kanban_context.py --hermes-root /opt/hermes \
+    && HERMES_KANBAN_TASK=t_devkit_registry_check /opt/hermes/.venv/bin/python -c 'from model_tools import get_tool_definitions; from agent.transports.hermes_tools_mcp_server import EXPOSED_TOOLS; names={d["function"]["name"] for d in get_tool_definitions(enabled_toolsets=["kanban"], quiet_mode=True) if isinstance(d, dict) and d.get("type")=="function"}; assert "kanban_worker_context" in names, sorted(names); assert "kanban_worker_context" in EXPOSED_TOOLS, EXPOSED_TOOLS' \
     && rm /tmp/patch_hermes_codex_kanban_context.py
 
 COPY scripts/patch_hermes_discord_kanban_notify.py /tmp/patch_hermes_discord_kanban_notify.py
