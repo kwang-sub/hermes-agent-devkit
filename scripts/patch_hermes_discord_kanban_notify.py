@@ -6,11 +6,13 @@ import py_compile
 import re
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 FORMATTER_MARKER = "def _devkit_discord_kanban_message("
 LEGACY_CLASS_MARKER = "\n\nclass GatewayKanbanWatchersMixin:"
 NOTIFIER_CLASS_MARKER = "\n\nclass _KanbanNotification:"
 REGISTERED_KIND_MARKER = '"registered": ("🆕", "작업 등록", "REGISTERED")'
+REGISTERED_EVENT_FORMATTER_MARKER = '"registered": lambda ev, n: (f"🆕 {n.head} registered — {n.title}", None, None),'
 
 LEGACY_SEND_RE = re.compile(
     r'(?P<indent>^[ \t]*)_send_res\s*=\s*await\s+adapter\.send\(\s*\n'
@@ -24,6 +26,9 @@ NOTIFIER_SEND_RE = re.compile(
     re.MULTILINE,
 )
 TERMINAL_KINDS_RE = re.compile(r'(?m)^TERMINAL_KINDS\s*=\s*\((?P<body>[^\n]*)\)$')
+EVENT_FORMATTERS_RE = re.compile(
+    r'(?m)^(?P<indent>[ \t]*)_EVENT_FORMATTERS(?:\s*:[^=\n]+)?\s*=\s*\{\s*$'
+)
 
 FORMATTER = r'''
 
@@ -137,6 +142,25 @@ def _patch_terminal_kinds(source: str, path: Path) -> tuple[str, bool]:
     return source, True
 
 
+def _patch_event_formatters(source: str, path: Path) -> tuple[str, bool]:
+    match = EVENT_FORMATTERS_RE.search(source)
+    if match is None:
+        raise RuntimeError(f"{path}: _EVENT_FORMATTERS mapping not found in notifier layout")
+
+    block_start = match.end()
+    close_match = re.search(r'(?m)^[ \t]*}\s*$', source[block_start:])
+    if close_match is None:
+        raise RuntimeError(f"{path}: _EVENT_FORMATTERS closing brace not found")
+    block_end = block_start + close_match.start()
+    block = source[block_start:block_end]
+    if re.search(r'(?m)^[ \t]*["\']registered["\']\s*:', block):
+        return source, False
+
+    entry_indent = match.group("indent") + "    "
+    entry = f"\n{entry_indent}{REGISTERED_EVENT_FORMATTER_MARKER}"
+    return source[:block_start] + entry + source[block_start:], True
+
+
 def _patch_legacy(source: str, path: Path) -> tuple[str, bool]:
     source, changed = _insert_formatter(source, LEGACY_CLASS_MARKER, path)
     source, kinds_changed = _patch_terminal_kinds(source, path)
@@ -166,6 +190,8 @@ def _patch_notifier(source: str, path: Path) -> tuple[str, bool]:
     source, changed = _insert_formatter(source, NOTIFIER_CLASS_MARKER, path)
     source, kinds_changed = _patch_terminal_kinds(source, path)
     changed = changed or kinds_changed
+    source, formatter_changed = _patch_event_formatters(source, path)
+    changed = changed or formatter_changed
     if 'self.platform_str == "discord"' in source:
         return source, changed
 
@@ -210,9 +236,40 @@ def _assert_terms(path: Path, terms: tuple[str, ...]) -> None:
             raise RuntimeError(f"self-test: missing {term}")
 
 
+def _assert_notifier_registration_runtime(path: Path) -> None:
+    namespace: dict[str, object] = {}
+    source = path.read_text(encoding="utf-8")
+    exec(compile(source, str(path), "exec"), namespace)
+
+    notification_cls = namespace["_KanbanNotification"]
+    notification = notification_cls()  # type: ignore[operator]
+    event = SimpleNamespace(kind="registered", payload={})
+    rendered = notification.format_event(event)  # type: ignore[attr-defined]
+    if not rendered:
+        raise RuntimeError("self-test notifier: registered format_event returned no message")
+
+    discord_formatter = namespace["_devkit_discord_kanban_message"]
+    discord_message = discord_formatter(  # type: ignore[operator]
+        kind="registered",
+        task=SimpleNamespace(
+            id="t_1",
+            title="등록 테스트",
+            assignee="coder",
+            model_override="gpt-test",
+            provider_override="openai-codex",
+        ),
+        sub={"task_id": "t_1", "chat_id": "c_1"},
+        board_slug="board",
+        event=event,
+        fallback=rendered,
+    )
+    if "작업 등록" not in discord_message or "REGISTERED" not in discord_message:
+        raise RuntimeError("self-test notifier: Discord registered formatter contract failed")
+
+
 def self_test() -> None:
     legacy_sample = '''from __future__ import annotations\n\ndef _safe_review_reason(value, limit=160):\n    return str(value)[:limit]\n\nclass GatewayKanbanWatchersMixin:\n    async def run(self, adapter, sub, metadata, platform_str, kind, task, board_slug, ev, msg):\n        try:\n                            _send_res = await adapter.send(\n                                sub["chat_id"], msg, metadata=metadata,\n                            )\n        except Exception:\n            pass\n'''
-    notifier_sample = '''from __future__ import annotations\n\nTERMINAL_KINDS = ("completed", "blocked", "review_requested")\n\ndef _safe_review_reason(value, limit=160):\n    return str(value)[:limit]\n\nclass _KanbanNotification:\n    def __init__(self):\n        self.platform_str = "discord"\n        self.task = None\n        self.board_slug = "board"\n        self.sub = {"task_id": "t_1", "chat_id": "c_1"}\n        self.adapter = None\n\n    async def _send_event(self, ev, msg):\n        sub, adapter = self.sub, self.adapter\n        metadata = {}\n        _send_res = await adapter.send(sub["chat_id"], msg, metadata=metadata)\n'''
+    notifier_sample = '''from __future__ import annotations\n\nTERMINAL_KINDS = ("completed", "blocked", "review_requested")\n\ndef _safe_review_reason(value, limit=160):\n    return str(value)[:limit]\n\n_EVENT_FORMATTERS = {\n    "completed": lambda ev, n: ("done", None, None),\n}\n\nclass _KanbanNotification:\n    def __init__(self):\n        self.platform_str = "discord"\n        self.task = None\n        self.board_slug = "board"\n        self.sub = {"task_id": "t_1", "chat_id": "c_1"}\n        self.adapter = None\n        self.head = "Kanban t_1"\n        self.title = "등록 테스트"\n\n    def format_event(self, ev):\n        formatter = _EVENT_FORMATTERS.get(ev.kind)\n        if formatter is None:\n            return None\n        msg, _handoff, _review_detail = formatter(ev, self)\n        return msg\n\n    async def _send_event(self, ev, msg):\n        sub, adapter = self.sub, self.adapter\n        metadata = {}\n        _send_res = await adapter.send(sub["chat_id"], msg, metadata=metadata)\n'''
 
     cases = (
         ("legacy", legacy_sample, "patched-legacy", "already-patched-legacy", 'platform_str == "discord"', False),
@@ -242,8 +299,32 @@ def self_test() -> None:
                 'getattr(task, "result", "")',
             ]
             if requires_kind:
-                terms.append('TERMINAL_KINDS = ("registered",')
+                terms.extend(
+                    [
+                        'TERMINAL_KINDS = ("registered",',
+                        REGISTERED_EVENT_FORMATTER_MARKER,
+                    ]
+                )
             _assert_terms(path, tuple(terms))
+            if name == "notifier":
+                _assert_notifier_registration_runtime(path)
+
+        # Upgrade regression: images patched by the previous DevKit already have
+        # the Discord send hook and registered TERMINAL_KINDS entry, but can lack
+        # the _EVENT_FORMATTERS entry. Re-applying this patch must repair that
+        # exact shape instead of returning early as already-patched.
+        upgrade_path = Path(temp_dir) / "notifier-upgrade.py"
+        upgrade_path.write_text(notifier_sample, encoding="utf-8")
+        if patch_source(upgrade_path) != "patched-notifier":
+            raise RuntimeError("self-test notifier upgrade: initial patch failed")
+        upgraded = upgrade_path.read_text(encoding="utf-8").replace(
+            f"    {REGISTERED_EVENT_FORMATTER_MARKER}\n", "", 1
+        )
+        upgrade_path.write_text(upgraded, encoding="utf-8")
+        if patch_source(upgrade_path) != "patched-notifier":
+            raise RuntimeError("self-test notifier upgrade: missing registered formatter was not repaired")
+        _assert_terms(upgrade_path, (REGISTERED_EVENT_FORMATTER_MARKER,))
+        _assert_notifier_registration_runtime(upgrade_path)
 
 
 def main() -> None:

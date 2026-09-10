@@ -21,6 +21,21 @@ def fail(reason: str) -> int:
     return 1
 
 
+def row_id(row: object) -> int:
+    try:
+        return int(row["id"])  # type: ignore[index]
+    except (KeyError, TypeError):
+        return int(row[0])  # type: ignore[index]
+
+
+def print_success(*, status: str, board: str, task_id: str, event_id: int) -> int:
+    print(f"REGISTRATION_EVENT_STATUS={status}")
+    print(f"REGISTRATION_EVENT_ID={event_id}")
+    print(f"REGISTRATION_EVENT_BOARD={board}")
+    print(f"REGISTRATION_EVENT_TASK={task_id}")
+    return 0
+
+
 def main() -> int:
     args = parse_args()
     board = args.board.strip()
@@ -42,16 +57,21 @@ def main() -> int:
             return fail(f"task not found on board '{board}': {task_id}")
 
         # Idempotent by task: dispatch may resume after a transient subscription
-        # failure, but the user should receive at most one first-registration event.
+        # or delivery failure, but the user should receive at most one logical
+        # first-registration event. Return the durable event id on every retry so
+        # the caller can wait for the matching delivery acknowledgement.
         exists = conn.execute(
-            "SELECT 1 FROM task_events WHERE task_id = ? AND kind = 'registered' LIMIT 1",
+            "SELECT id FROM task_events "
+            "WHERE task_id = ? AND kind = 'registered' ORDER BY id ASC LIMIT 1",
             (task_id,),
         ).fetchone()
         if exists:
-            print("REGISTRATION_EVENT_STATUS=existing")
-            print(f"REGISTRATION_EVENT_BOARD={board}")
-            print(f"REGISTRATION_EVENT_TASK={task_id}")
-            return 0
+            return print_success(
+                status="existing",
+                board=board,
+                task_id=task_id,
+                event_id=row_id(exists),
+            )
 
         payload = json.dumps(
             {
@@ -63,16 +83,19 @@ def main() -> int:
             separators=(",", ":"),
         )
         with kb.write_txn(conn):
-            conn.execute(
+            cursor = conn.execute(
                 "INSERT INTO task_events (task_id, run_id, kind, payload, created_at) "
                 "VALUES (?, NULL, 'registered', ?, ?)",
                 (task_id, payload, int(time.time())),
             )
+            event_id = int(cursor.lastrowid)
 
-        print("REGISTRATION_EVENT_STATUS=queued")
-        print(f"REGISTRATION_EVENT_BOARD={board}")
-        print(f"REGISTRATION_EVENT_TASK={task_id}")
-        return 0
+        return print_success(
+            status="queued",
+            board=board,
+            task_id=task_id,
+            event_id=event_id,
+        )
     except Exception as exc:
         return fail(f"{type(exc).__name__}: {exc}")
     finally:
