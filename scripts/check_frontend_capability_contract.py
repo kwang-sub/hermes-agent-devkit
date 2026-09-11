@@ -50,13 +50,15 @@ checks = {
         "Performance Investigation Before Refactoring", "Project References", "Microsoft TypeScript Wiki: Performance",
     )),
     "react skill": (react, (
-        "version: 0.2.0", "Purity / Mutation", "Rules of Hooks", "State Structure", "Events vs Effects",
-        "Refs", "Memoization / React Compiler", "React Compiler / Strict Mode / Hooks lint", "Review Hotspots",
+        "version: 0.3.0", "Rules of Hooks / `use` 예외", "State Ownership", "`useEffectEvent` (React 19.2+)",
+        "Measurement First", "React Compiler 1.0+", "Compiler-aware ESLint", "Transition / Deferred Rendering",
+        "`<Activity>` (React 19.2+)", "Performance Evidence", "Review Hotspots",
     )),
     "react reference": (react_reference, (
-        "React Official Practices", "Components and Hooks must be pure", "Rules of Hooks", "State Structure",
-        "Preserving and Resetting State", "Events vs Effects", "Memoization and React Compiler",
-        "Strict Mode and Lint", "Primary Official Sources",
+        "React Official Practices", "Version Gate: React 17/18 / 19 / 19.2+", "Rules of Hooks and the `use` Exception",
+        "useEffectEvent", "Measure First: React DevTools / Profiler / Performance Tracks", "React Compiler 1.0+",
+        "Compiler-aware ESLint", "Transitions: `useTransition` / `startTransition`", "`useDeferredValue`",
+        "`<Activity>` (React 19.2+)", "Primary Official Sources",
     )),
     "nextjs skill": (nextjs, (
         "version: 0.2.0", "Version / Request API Gate", "Server / Client Boundary", "Cache / Revalidation",
@@ -96,4 +98,4 @@ for key in ("FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN"):
     if f"{key}: ${{{key}:-}}" not in compose:
         raise SystemExit(f"compose.yml missing {key}")
 
-print("[PASS] Frontend/React/TypeScript7/Next.js/Figma capability contract")
+print("[PASS] Frontend/React19.2/Compiler/TypeScript7/Next.js/Figma capability contract")

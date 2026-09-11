@@ -1,217 +1,340 @@
 ---
 name: dev-frontend-guidelines
-description: React 기반 frontend 구현에서 대상 프로젝트의 React/version/framework/state/style/data-fetching convention을 우선하고 공식 React 기준의 purity·Hook·state·Effect·ref·memoization 규칙을 적용하는 공통 capability skill.
-version: 0.2.0
+description: React 기반 frontend 구현에서 대상 React/framework version과 기존 state/style/data-fetching convention을 우선하고 공식 React 기준의 purity·Hook·Effect·Compiler·transition·profiling 최적화 규칙을 적용하는 공통 capability skill.
+version: 0.3.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, frontend, react, component, state, hooks, effect, ref, memoization, accessibility, convention]
+    tags: [dev, frontend, react, component, state, hooks, effect, compiler, profiler, transition, memoization, accessibility, performance]
     related_skills: [dev-typescript-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract, dev-ui-ux]
     requires_tools: [terminal]
 ---
 
 # dev-frontend-guidelines
 
-React 계열 UI application의 공통 구현 규칙이다. framework-specific routing/rendering 규칙은 `dev-nextjs-feature`, TypeScript 세부 타입 규칙은 `dev-typescript-guidelines`, 시각/UX 판단은 `dev-ui-ux`가 담당한다.
+React 계열 UI application의 공통 구현/성능 규칙이다. framework-specific routing/rendering/data cache는 `dev-nextjs-feature`, TypeScript 규칙은 `dev-typescript-guidelines`, 시각/UX 판단은 `dev-ui-ux`가 담당한다.
 
-상세 공식 근거와 예외 판단은 필요할 때만 `references/official-react-practices.md`를 읽는다.
+상세 version별 근거는 필요할 때만 `references/official-react-practices.md`를 읽는다.
 
 ## 우선순위
 
 ```text
 사용자/Task 명시 정책
-→ 대상 프로젝트의 React/framework version + 기존 convention
-→ 이 Skill의 React 공통 규칙
+→ 실제 React/framework/build/lint version
+→ 기존 project component/state/data-fetching convention
+→ 실제 Profiler/Performance evidence
+→ 이 Skill의 React 규칙
 → 공식 React 권장사항
 ```
 
-최신 React 기능, React Compiler, 새로운 state/data library를 사용하기 위해 dependency/framework를 unrelated Task에서 자동 upgrade하지 않는다.
+React/framework/Compiler/plugin upgrade를 unrelated Task에 자동 포함하지 않는다.
 
 ## 작업 전 확인
 
-- React 및 UI framework/version
-- React Compiler/Strict Mode/React lint 설정 여부
-- component/module 디렉터리 구조
-- styling 방식(CSS module, Tailwind, styled solution 등)
-- state 관리(local/context/existing store)
-- server data fetching/cache library
-- form/validation 방식
-- API client/error 처리
-- design token/component library
-- test framework/style
-
-## Existing Pattern First
-
-새 라이브러리를 기본값으로 제안하지 않는다.
-
-```text
-상태 관리 필요
-→ local state로 충분한가
-→ 가장 가까운 owner로 lift 가능한가
-→ 기존 Context/store가 있는가
-→ 이미 설치된 state library가 있는가
-→ 그래도 부족할 때만 새 선택 제안
-
-form 필요
-→ 기존 form pattern/validator 확인
-→ native/platform 기능 또는 설치된 library 재사용
-```
-
-Zustand, TanStack Query, React Hook Form, Zod, 새로운 UI library 등을 단순 선호로 추가하지 않는다.
+- React/framework 실제 version
+- React 17/18 | 19.x | 19.2+ lane
+- React Compiler 설치/version/compilationMode/gating 여부
+- `eslint-plugin-react-hooks` version/preset
+- Strict Mode
+- component/state/Context/store 구조
+- data-fetching/cache/form convention
+- existing manual `memo/useMemo/useCallback`
+- test/build script
+- 성능 Task면 느린 interaction과 측정 근거
 
 ## Purity / Mutation
 
-Component와 Hook의 render 계산은 순수하게 유지한다.
+Component와 Hook의 render는 순수하게 유지한다.
 
-- render 중 외부 system을 변경하거나 side effect를 실행하지 않는다.
-- props/state/shared object를 직접 mutate하지 않는다.
-- UI 변경은 state setter나 기존 application state boundary를 사용한다.
-- component 함수를 일반 함수처럼 직접 호출하지 않고 JSX/React 렌더링 경계를 사용한다.
-- render 내부 local 계산용 object/array 생성과 외부 shared mutation을 구분한다.
+- render 중 external/global/shared state mutation 금지
+- props/state 직접 mutation 금지
+- Component 함수를 일반 함수처럼 직접 호출하지 않는다.
+- render 결과를 ref/global variable로 우회 저장하지 않는다.
+- local calculation용 새 object/array와 shared mutation을 구분한다.
 
-## Rules of Hooks
+Purity는 correctness뿐 아니라 React Compiler 자동 최적화의 전제다.
 
-- Hook은 function component 또는 custom Hook의 top level에서 호출한다.
-- 조건문/반복문/nested function/event handler/try-catch 안에서 Hook 호출 순서를 바꾸지 않는다.
-- 일반 utility 함수에서 Hook을 호출하지 않는다.
-- Hook을 일반 callback/value처럼 동적으로 전달·교체하는 구조를 새로 만들지 않는다.
-- 기존 React Hooks lint 규칙을 suppression으로 우회하지 않는다.
+## Rules of Hooks / `use` 예외
 
-조건부 동작은 Hook 호출 자체를 조건부로 만들기보다 Hook 내부 조건, 반환값 또는 component 구조를 검토한다.
+일반 Hook은 Component/custom Hook의 top level에서 동일 순서로 호출한다.
 
-## State Structure
+- 조건문/반복문/nested callback/event handler에서 일반 Hook 호출 금지
+- early return 이후 Hook 호출 금지
+- 일반 utility/module scope에서 Hook 호출 금지
+- lint suppression으로 Rules of Hooks를 우회하지 않는다.
 
-- props/state에서 계산 가능한 값은 derived value로 두고 redundant state를 만들지 않는다.
-- 서로 모순될 수 있는 boolean state 여러 개보다 실제 finite state 구조를 우선 검토한다.
-- 같은 entity/value를 여러 state에 duplicate하지 않는다.
-- 동일 데이터에는 가능한 한 하나의 source of truth를 둔다.
-- 공유가 필요한 state는 무조건 global로 올리지 않고 가장 가까운 실제 owner로 lift한다.
-- line count만으로 stateful component를 분리하지 않는다.
-
-State reset/preserve가 중요한 경우 component identity와 `key`를 명시적으로 검토한다. nested component definition 때문에 accidental reset이 생기지 않게 한다.
-
-## Events vs Effects
-
-Effect는 외부 system과 동기화할 때 쓰는 escape hatch다.
-
-Effect를 기본 해법으로 사용하지 않는 경우:
+단, React의 `use()`는 공식 예외다.
 
 ```text
-render용 데이터 변환
-→ render에서 계산
-
-click/submit 등 특정 사용자 interaction
-→ event handler
-
-다른 props/state를 그대로 복제
-→ derived state / state structure 재검토
+use(resource)
+→ 조건문/반복문 호출 가능
+→ Component/Hook 내부라는 경계는 유지
+→ try/catch 안에서 Promise read 용도로 사용하지 않음
+→ 실제 React/framework version 지원 확인
 ```
 
-Effect 적합 후보:
+`use()`를 일반 Hook 규칙으로 기계적으로 top-level 이동하지 않는다.
 
-- browser/non-React API subscription
-- timer/listener/connection setup-cleanup
-- third-party widget lifecycle
-- 프로젝트가 Effect 기반으로 관리하는 외부 data synchronization
+## State Ownership
 
-Effect를 사용할 때:
+- props/state로 계산 가능한 값은 derived value로 둔다.
+- contradictory boolean state를 줄이고 실제 finite state를 표현한다.
+- 같은 entity/value를 여러 state에 복제하지 않는다.
+- transient form/hover/input state를 필요 이상 상위/global로 올리지 않는다.
+- 공유 state는 가장 가까운 실제 owner를 우선한다.
+- nested component definition으로 state identity를 매 render 깨뜨리지 않는다.
+- `key`는 warning 제거가 아니라 state identity 계약으로 본다.
 
-- setup/cleanup을 대칭적으로 구성한다.
-- dependency를 숨기기 위해 lint rule을 무시하거나 임의 omission하지 않는다.
-- dependency 때문에 반복 실행되면 object/function 생성 위치와 component 구조를 먼저 검토한다.
-- state update → dependency change → Effect 재실행 cycle을 경계한다.
-- async/network Effect는 stale result/race/cleanup에 대한 기존 project pattern을 따른다.
+## Events / Effects
+
+Effect는 external system synchronization용 escape hatch다.
+
+기본적으로 Effect가 아닌 것:
+
+```text
+render용 계산 → render/derived value
+사용자 click/submit → event handler
+props/state 복제 → state structure 재검토
+```
+
+Effect 사용 시:
+
+- setup/cleanup 대칭
+- dependency suppression 금지
+- object/function dependency가 반복 실행을 만들면 구조/생성 위치 먼저 수정
+- synchronous setState → rerender → Effect chain 경계
+- async/network stale result/race/cleanup은 기존 project pattern 유지
+
+## `useEffectEvent` (React 19.2+)
+
+Effect 내부의 비반응적 event logic이 최신 props/state를 읽되 Effect를 재연결할 필요가 없을 때만 검토한다.
+
+- dependency array 숨김 용도로 사용하지 않는다.
+- 일반 UI event handler 대체 금지
+- child callback prop 전달 금지
+- render 중 호출 금지
+- Effect Event 자체를 dependency에 넣지 않는다.
+- project Hooks lint가 API를 이해하는 version인지 확인한다.
 
 ## Refs
 
-- ref는 DOM 접근, timer/subscription handle, render를 유발할 필요 없는 mutable reference 등 좁은 escape hatch에 사용한다.
-- 화면에 보여야 하는 값은 state를 우선한다.
-- 일반 render 흐름에서 `ref.current`로 UI state를 우회하지 않는다.
-- ref를 application state management 대체재처럼 확장하지 않는다.
-- imperative DOM manipulation은 React ownership과 충돌하지 않는 경계에서만 사용한다.
+- DOM/imperative handle/timer/subscription handle 등 narrow boundary에 사용한다.
+- 화면에 보이는 값은 state를 우선한다.
+- render 중 `ref.current` read/write로 UI state를 우회하지 않는다.
+- ref를 global/application state 대체재로 사용하지 않는다.
 
-## Memoization / React Compiler
+## Measurement First
 
-`memo`, `useMemo`, `useCallback`은 correctness가 아니라 performance 최적화다.
+성능 최적화 전에 가능한 한 실제 bottleneck을 측정한다.
 
-- memoization이 없어도 동작이 올바르게 유지되어야 한다.
-- 모든 component/callback/value에 blanket memoization하지 않는다.
-- expensive calculation, child render pressure, dependency stabilization 등 실제 근거가 있을 때 적용한다.
-- profiler/performance evidence가 있으면 우선 사용한다.
-- React Compiler가 설정된 프로젝트에서는 compiler mode/directive/eslint contract를 먼저 확인한다.
-- Compiler 미설정 프로젝트에 unrelated Task로 자동 도입하지 않는다.
+```text
+React DevTools Profiler
+→ 느린 commit/component 확인
+→ React 19.2+이면 React Performance Tracks 확인
+→ 필요 시 <Profiler> actualDuration/baseDuration 기록
+```
 
-## Component 책임
+- Strict Mode 개발용 추가 render와 production latency를 구분한다.
+- 최적화 전/후 같은 interaction을 비교한다.
+- micro benchmark 하나만으로 architecture를 변경하지 않는다.
 
-- component를 단순히 line count 때문에 쪼개지 않는다.
-- 독립된 UI 책임, 재사용, state/effect ownership, 테스트 경계, rendering 비용이 명확할 때 분리한다.
-- business/domain 계산을 view component에 중복 구현하지 않는다.
-- key와 component identity를 warning 제거 수준이 아니라 state ownership 계약으로 본다.
+## Manual Memoization
+
+`memo`, `useMemo`, `useCallback`은 correctness가 아니라 measured performance optimization이다.
+
+기본 순서:
+
+```text
+불필요한 state lifting / broad Context / Effect chain 제거
+→ component ownership 정리
+→ Profiler hotspot 확인
+→ 필요한 곳만 memoization
+```
+
+- blanket memoization 금지
+- memoization이 없어도 correctness 유지
+- `useCallback`은 memoized child prop/Hook dependency처럼 identity가 실제 경계일 때 사용
+- `useMemo`는 비싼 계산 또는 reference identity가 실제 hotspot일 때 사용
+- 매 render 새 dependency 하나가 memoization 전체를 깨는지 확인
+
+## React Compiler 1.0+
+
+React Compiler 1.0은 stable production-ready 자동 memoization compiler다.
+
+Compiler가 있는 프로젝트:
+- `infer | all | annotation` mode와 `gating` 확인
+- 기존 manual memoization을 무조건 삭제하지 않는다.
+- `preserve-manual-memoization` 및 Compiler diagnostics 확인
+- Compiler가 skip한 component를 전체 failure로 해석하지 않는다.
+- 새 manual memoization은 compiler coverage/Profiler evidence를 확인한 뒤 추가한다.
+
+기존 프로젝트에서 Compiler 신규 도입:
+- framework/build tool 지원 확인
+- Rules of React lint health 확인
+- unit/integration/e2e coverage 확인
+- directory/annotation/gating 기반 점진 도입 우선
+- `"use memo"`는 annotation/명시 opt-in이 실제 필요한 경우만
+- `"use no memo"`는 임시 escape hatch로만
+- regression coverage가 약하면 Compiler exact version pinning 검토
+
+unrelated feature/fix에서 Compiler를 자동 설치하지 않는다.
+
+## Compiler-aware ESLint
+
+`eslint-plugin-react-hooks`는 Compiler 미설치 프로젝트에서도 Rules/Compiler 관련 diagnostics를 제공할 수 있다.
+
+React optimization Task에서는 기존 config를 기준으로 다음 hotspot을 확인한다.
+
+```text
+exhaustive-deps
+rules-of-hooks
+component-hook-factories
+globals
+immutability
+incompatible-library
+preserve-manual-memoization
+purity
+refs
+set-state-in-effect
+set-state-in-render
+static-components
+unsupported-syntax
+use-memo
+```
+
+plugin major/preset 변경은 영향 범위를 확인하고 별도 migration으로 분리할 수 있다.
+
+## Transition / Deferred Rendering
+
+### `useTransition` / `startTransition`
+
+큰 subtree update처럼 urgent하지 않은 render를 non-blocking으로 처리할 때 검토한다.
+
+- controlled text input state 자체는 Transition으로 감싸지 않는다.
+- pending UI가 필요하면 `useTransition`을 우선한다.
+- Transition은 계산 자체를 빠르게 만드는 기능이 아니다.
+- 모든 update를 Transition으로 감싸지 않는다.
+
+### `useDeferredValue`
+
+빠르게 변하는 값 때문에 느린 subtree가 urgent interaction을 막을 때 검토한다.
+
+후보:
+- 검색 input + 큰 result list
+- input/filter + 무거운 chart
+
+- debounce/throttle 대체로 오해하지 않는다.
+- slow subtree가 이전 value로 skip render할 수 있도록 Compiler/memoization 구조와 함께 확인한다.
+
+## `<Activity>` (React 19.2+)
+
+state/DOM을 보존하면서 hidden UI update를 낮은 우선순위로 처리하고 다음 화면을 pre-render할 가치가 있을 때만 검토한다.
+
+후보:
+- 다시 돌아올 tab/sidebar/page
+- back navigation state 보존
+- 다음 화면 pre-render로 interaction latency 감소
+
+주의:
+- hidden 시 Effects가 unmount됨
+- cleanup/remount correctness 확인
+- memory cost와 실제 latency 개선 비교
+- 단순 `display:none` 대체로 사용 금지
+
+## Context / Component Boundary
+
+Context performance 문제가 측정되면 다음 순서로 본다.
+
+```text
+state를 더 local하게 둘 수 있는가
+→ provider 범위를 줄일 수 있는가
+→ 책임별 Context 분리 근거가 있는가
+→ value identity가 실제 hotspot인가
+```
+
+성능 이유만으로 새 global store 도입이나 Context 기계 분할을 하지 않는다.
+
+component 분리는 line count보다 state/effect/render ownership, 재사용, 테스트, 성능 경계를 기준으로 한다.
 
 ## 접근성 기본선
 
-`dev-ui-ux`가 없어도 다음은 보호 영역이다.
-
-- semantic element를 우선한다.
-- keyboard로 핵심 동작이 가능해야 한다.
-- focus indicator를 대체 없이 제거하지 않는다.
-- icon-only control은 accessible name을 제공한다.
-- form label/error 관계를 유지한다.
-- 상태를 color 하나에만 의존해 전달하지 않는다.
+- semantic element 우선
+- keyboard 핵심 동작 보장
+- focus indicator 제거 금지
+- icon-only control accessible name
+- form label/error 관계 유지
+- color 하나만으로 상태 전달 금지
 
 ## API / Error
 
-- 기존 API client와 auth/error 처리 체계를 재사용한다.
-- backend response를 UI component 곳곳에서 임의 reshape하지 않는다.
-- API contract 변경은 `dev-api-contract` 적용 여부를 검토한다.
-- loading/empty/error/success 상태를 요구사항과 기존 UX pattern에 맞게 처리한다.
+- 기존 API client/auth/error contract 재사용
+- backend response를 component마다 ad-hoc reshape하지 않는다.
+- API contract 변경은 `dev-api-contract` 검토
+- loading/empty/error/success 상태를 기존 UX와 일치시킨다.
 
 ## Review Hotspots
 
-React diff에서는 필요할 때 다음을 우선 확인한다.
-
 ```text
-render 중 side effect/shared mutation
-props/state 직접 mutation
-conditional/dynamic Hook 호출
-component 함수 직접 호출
-redundant/duplicated/contradictory state
-Effect로 render data 변환 또는 event 처리
-Effect dependency suppression / cleanup 누락
-key/type 변경에 따른 state reset
-render value를 ref로 우회
-근거 없는 memo/useMemo/useCallback 남발
-React Compiler 설정과 충돌하는 수동 최적화
-불필요한 Context/global store 확대
+render side effect/global mutation
+props/state mutation
+일반 Hook의 conditional/dynamic 호출
+use() 공식 예외를 잘못 수정
+매 render nested component definition
+redundant state / 과도한 state lifting / broad Context
+Effect data transform/event handling/dependency suppression
+Effect synchronous setState chain
+useEffectEvent dependency 숨김 악용
+ref로 render state 우회
+Profiler 근거 없는 memoization
+Compiler와 중복되는 manual memoization
+Compiler diagnostics/incompatible library 무시
+Transition controlled input 오용
+useDeferredValue를 debounce로 오해
+Activity hidden Effect lifecycle 누락
 ```
 
-## Verification / Evidence
+## Verification / Performance Evidence
 
 프로젝트 script와 기존 test stack을 우선한다.
 
 ```text
 typecheck/lint
 affected component/hook test
-필요 시 page/e2e test
+필요 시 integration/e2e
 build
 ```
 
-state preserve/reset, Effect lifecycle, async interaction처럼 runtime behavior가 중요한 변경은 typecheck/lint만으로 완료 판단하지 않는다.
+React 성능 변경이면 가능하면 다음을 남긴다.
 
-Handoff:
+```text
+React version / framework
+React Compiler: off | infer | all | annotation | gated
+Hooks lint version/preset
+Measured interaction
+Profiler/Performance Track finding
+Before / After actualDuration 또는 user-visible latency
+Manual memoization decision
+Transition/deferred/Activity decision
+Residual risk
+```
+
+Compiler 도입/upgrade, Activity, Effect lifecycle 변경은 E2E 또는 실제 interaction regression을 포함한다.
+
+## Handoff
 
 ```text
 Skill: dev-frontend-guidelines
 Detected React/UI stack
-React version / framework
-React Compiler / Strict Mode / Hooks lint
+React version lane
+React Compiler / Hooks lint / Strict Mode
 State/Data fetching convention
 State ownership decision
-Effect/external-system boundary
-Ref usage
-Memoization decision
+Effect/useEffectEvent boundary
+Profiler evidence
+Manual memoization decision
+Transition/deferred/Activity decision
 Styling/Component convention
 Accessibility impact
-Verification
+Verification / performance evidence
 ```
