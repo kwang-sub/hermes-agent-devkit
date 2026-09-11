@@ -1,13 +1,13 @@
 ---
 name: dev-project-pattern
 description: 개발 계획 전에 Bootstrap 기술 스택 캐시와 대상 Repository의 기존 구조·코드·UI·테스트 패턴을 근거로 수집하고 유지해야 할 convention과 적용할 capability skill을 식별한다.
-version: 0.4.0
+version: 0.5.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, orchestrator, pattern, convention, project-analysis, stack, frontend, figma, cache]
-    related_skills: [dev-project-bootstrap, dev-tech-dispatch, dev-breakdown, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-api-docs, dev-frontend-feature, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract, dev-figma-design, dev-ui-ux]
+    tags: [dev, orchestrator, pattern, convention, project-analysis, stack, java, kotlin, frontend, figma, cache]
+    related_skills: [dev-project-bootstrap, dev-tech-dispatch, dev-breakdown, dev-java-guidelines, dev-kotlin-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-api-docs, dev-frontend-feature, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract, dev-figma-design, dev-ui-ux]
     requires_tools: [terminal, skill_view]
 ---
 
@@ -49,11 +49,11 @@ python3 /opt/custom-skills/orchestrator/dev-project-bootstrap/scripts/stack_cach
 
 ```text
 STACK_CACHE=reused
-DETECTOR_VERSION=2
+DETECTOR_VERSION=3
 STACK_FINGERPRINT=sha256:...
-STACK_INPUTS=backend/build.gradle,frontend/package.json,frontend/tsconfig.json
-STACKS=java,spring,typescript,react,nextjs
-BACKEND_SKILLS=dev-java-guidelines,dev-spring-guidelines
+STACK_INPUTS=backend/build.gradle.kts,frontend/package.json,frontend/tsconfig.json
+STACKS=kotlin,spring,typescript,react,nextjs
+BACKEND_SKILLS=dev-kotlin-guidelines,dev-spring-guidelines
 FRONTEND_ENTRY=dev-frontend-feature
 FRONTEND_HINTS=dev-typescript-guidelines,dev-frontend-guidelines,dev-nextjs-feature,dev-frontend-test
 STATUS=pass
@@ -63,7 +63,7 @@ STATUS=pass
 
 manifest 변경 또는 detector version 변경 시에만 stack을 다시 계산하고 Bootstrap-managed local metadata의 `technology:` section을 갱신한다. `.hermes/`는 Bootstrap `.gitignore` 정책으로 Git 추적에서 제외되므로 application source/config 변경으로 취급하지 않는다.
 
-기존 Bootstrap Repository가 `technology:` section이 없으면 최초 Standard Flow에서 자동 생성될 수 있지만, DevKit 업데이트 직후에는 다음 명시적 migration을 우선 권장한다.
+기존 Bootstrap Repository가 `technology:` section이 없거나 detector version이 바뀌면 최초 Standard Flow에서 자동 갱신될 수 있지만, DevKit 업데이트 직후에는 다음 명시적 migration을 우선 권장한다.
 
 ```bash
 python3 /opt/custom-skills/orchestrator/dev-project-bootstrap/scripts/bootstrap.py \
@@ -84,17 +84,31 @@ Repository Stack
 = Task Capability
 ```
 
-Repository에 Spring + Next.js가 함께 있어도 Backend-only Task에는 frontend entry를 적용하지 않는다. Frontend-only Task에도 backend skill을 자동 적용하지 않는다.
+Repository에 Kotlin/Spring + Next.js가 함께 있어도 Backend-only Task에는 frontend entry를 적용하지 않는다. Frontend-only Task에도 backend skill을 자동 적용하지 않는다.
 
 ## Backend capability
 
 ```text
 Java → dev-java-guidelines
+Kotlin → dev-kotlin-guidelines
 Spring → dev-spring-guidelines
 Controller/Service/DTO/Validation/Exception → dev-spring-feature
 JPA/Repository/DataJPA/QueryDSL/Converter/Paging → dev-spring-data
 Spring/JPA test → dev-spring-test
 OpenAPI/Swagger/Postman → dev-api-docs
+```
+
+Java + Kotlin mixed Repository에서는 두 언어 capability를 모두 project 후보로 유지하되 실제 Task diff/affected area의 언어에 맞춰 적용한다. Kotlin 파일 변경에 Java 언어 규칙을 대신 적용하거나 반대로 하지 않는다.
+
+Kotlin project pattern에서는 필요할 때 다음도 확인한다.
+
+```text
+Kotlin compiler/language version
+kotlin-spring / kotlin-jpa compiler plugin
+KSP / kapt
+nullability / data class / value class / sealed hierarchy convention
+coroutine 사용 여부와 blocking/reactive stack
+Java interop boundary
 ```
 
 ## Frontend canonical entry
@@ -146,6 +160,7 @@ Project Pattern Summary
 - Response Contract
 - Error / Validation Contract
 - Data Access Convention
+- Kotlin Language/Compiler/Interop Convention (해당 시)
 - Frontend Component/State/Style Convention (해당 시)
 - Design System Reference (해당 시)
 - Design Source / Status / Figma URL (해당 시)
@@ -162,5 +177,6 @@ Project Pattern Summary
 - `technology:` cache 갱신 외 project metadata를 planning 단계에서 변경하지 않는다.
 - 새 architecture/library/common contract를 제안 없이 확정하지 않는다.
 - 기존 패턴을 Public Skill/Figma 추천으로 광범위하게 교체하지 않는다.
+- Kotlin version/compiler plugin/KSP migration을 planning 근거 없이 자동 결정하지 않는다.
 - `dev-tech-dispatch`는 detector이며 runtime pinned skill이 아니다.
 - frontend 하위 capability를 전부 runtime pin하지 않고 `dev-frontend-feature`를 canonical entry로 사용한다.
