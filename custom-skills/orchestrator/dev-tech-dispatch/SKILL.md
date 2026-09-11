@@ -1,7 +1,7 @@
 ---
 name: dev-tech-dispatch
 description: managed Repository의 bounded build/dependency manifest에서 JVM/Frontend stack과 DBMS vendor candidate를 감지하고 backend/frontend/data capability entry 후보와 fingerprint를 반환하는 orchestrator 전용 resolver.
-version: 0.5.0
+version: 0.5.1
 author: local
 platforms: [linux]
 metadata:
@@ -36,6 +36,16 @@ FRONTEND_ENTRY=dev-frontend-feature
 DATABASE_VENDORS=postgresql
 DATA_ENTRY_CANDIDATE=dev-data-feature
 STATUS=pass
+```
+
+JVM mixed project도 그대로 보존한다.
+
+```text
+Kotlin + Spring
+→ STACKS=kotlin,spring
+
+Java + Kotlin + Spring
+→ STACKS=java,kotlin,spring
 ```
 
 Fingerprint만 필요하면 `--fingerprint-only`를 사용한다.
