@@ -14,6 +14,7 @@
 
 ```text
 dev-java-guidelines
+dev-kotlin-guidelines
 dev-spring-guidelines
 dev-spring-feature
 dev-spring-data
@@ -25,15 +26,39 @@ dev-spring-refactor
 
 ```text
 dev-frontend-feature        # canonical frontend entry
+dev-design-reference        # IMAGE/Figma normalized design evidence
 dev-typescript-guidelines
 dev-frontend-guidelines
 dev-nextjs-feature
-dev-frontend-test
-dev-figma-design            # Figma REST read-only design evidence
-dev-ui-ux                   # audited UI/UX quality baseline
+dev-frontend-test            # functional/component/e2e/visual verification
+dev-figma-design             # optional Figma REST read-only provider
+dev-ui-ux                    # audited UI/UX quality baseline
 ```
 
 Frontend Task는 `dev-frontend-feature`를 runtime entry로 사용하고 세부 capability는 실제 evidence에 따라 lazy-load합니다.
+
+Reference 기반 기본 경로:
+
+```text
+ChatGPT/Designer/Figma
+→ Approved Design Reference
+→ GitHub Reference Package
+→ Hermes implementation
+→ existing Storybook catalog (있을 때)
+→ Design Conformance
+→ approved browser screenshot
+→ Visual Regression
+```
+
+프로젝트에 별도 UI 문서 규칙이 없으면 IMAGE Reference는 다음 구조를 권장합니다.
+
+```text
+docs/ui/screens/<screen>/
+├─ reference.png
+└─ screen-spec.md
+```
+
+Figma는 필수 단계가 아니라 `dev-design-reference` 아래의 optional provider입니다.
 
 ## Cross-stack
 
@@ -56,7 +81,7 @@ FIGMA_OAUTH_TOKEN
 
 선택한 frame/component의 `node-id` URL을 우선해 bounded context를 읽고, 필요 시 rendered preview를 `/workspace` 또는 `/opt/data`처럼 `HERMES_WRITE_SAFE_ROOT` 안에 저장합니다.
 
-Figma canvas write는 현재 Hermes Frontend 구현 Flow의 책임이 아닙니다. GPT/Figma에서 승인된 디자인을 만들고 Hermes는 승인 디자인을 읽어 구현하는 흐름을 기본으로 합니다.
+Figma canvas write는 Hermes Frontend 구현 Flow의 책임이 아닙니다. Approved Figma가 있으면 Reference Provider로 읽고, Approved IMAGE가 있으면 Figma 없이 직접 REFERENCE_DRIVEN 구현합니다.
 
 ## Java legacy
 
