@@ -19,7 +19,9 @@ def main() -> int:
             "exec python3 /usr/local/lib/hermes-diff-check.py",
             "/usr/local/bin/hermes-diff-check --help",
             "COPY scripts/devkit_kanban_worker_context.py /opt/hermes/hermes_cli/devkit_kanban_worker_context.py",
-            "patch_hermes_codex_kanban_context.py --search-root /opt/hermes/agent/transports",
+            "patch_hermes_codex_kanban_context.py --hermes-root /opt/hermes",
+            'assert "kanban_worker_context" in names',
+            'assert "kanban_worker_context" in EXPOSED_TOOLS',
         ),
         "Dockerfile runtime",
     )
