@@ -18,7 +18,7 @@ def main() -> int:
     failures: list[str] = []
     skill = ROOT / "custom-skills/shared/dev-java-guidelines/SKILL.md"
     reference = ROOT / "custom-skills/shared/dev-java-guidelines/references/official-java-practices.md"
-    review = ROOT / "custom-skills/reviewer/dev-code-review/SKILL.md"
+    common = ROOT / "shared/AGENTS.common.md"
     compat = ROOT / "scripts/verify_latest_hermes_compat.sh"
 
     require(skill, (
@@ -45,9 +45,9 @@ def main() -> int:
         "Optional.get()",
         "parallelStream()",
     ), failures)
-    require(review, (
-        "Java Convention Review Gate",
-        "Preview / Incubator",
+    require(common, (
+        "Java Reviewer",
+        "Preview/Incubator",
         "record",
         "Optional",
         "mutable collection",
@@ -56,6 +56,7 @@ def main() -> int:
     ), failures)
     require(compat, (
         "/opt/custom-skills/shared/dev-java-guidelines/SKILL.md",
+        "/opt/custom-skills/shared/dev-java-guidelines/references/official-java-practices.md",
     ), failures)
 
     if failures:
