@@ -44,6 +44,7 @@ docker run --rm \
         test -f /opt/custom-skills/shared/dev-api-spec/SKILL.md
         test -f /opt/custom-skills/shared/dev-api-contract/SKILL.md
         test -f /opt/custom-skills/shared/dev-api-docs/SKILL.md
+        test -f /opt/custom-skills/shared/dev-kotlin-guidelines/SKILL.md
         test -f /opt/data/shared/references/approval-gate-rules.md
         test -f /opt/data/shared/scripts/flow_model_policy.py
     '
