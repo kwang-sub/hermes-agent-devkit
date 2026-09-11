@@ -58,8 +58,9 @@ DATABASE_NPM_MARKERS = {
     "oracle": {"oracledb"},
 }
 PERSISTENCE_JVM_MARKERS = (
-    "spring-data-jpa", "hibernate-core", "jakarta.persistence", "javax.persistence",
-    "flyway", "liquibase", "r2dbc", "jooq", "mybatis", "jdbc",
+    "spring-boot-starter-data-jpa", "spring-data-jpa", "hibernate-core",
+    "jakarta.persistence", "javax.persistence", "flyway", "liquibase",
+    "r2dbc", "jooq", "mybatis", "jdbc",
 )
 PERSISTENCE_NPM_MARKERS = {
     "prisma", "@prisma/client", "drizzle-orm", "typeorm", "sequelize",
