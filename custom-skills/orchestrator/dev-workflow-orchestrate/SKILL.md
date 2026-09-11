@@ -1,7 +1,7 @@
 ---
 name: dev-workflow-orchestrate
 description: Jira/text 개발 요청의 project·requirement delta·API spec·workspace·branch·Coder 모델·plan을 독립 clarify Gate로 승인한 뒤 자동 Kanban dispatch하는 orchestrator 전용 workflow.
-version: 0.11.0
+version: 0.11.1
 author: local
 platforms: [linux]
 metadata:
@@ -259,7 +259,23 @@ Task body에도 `Model Escalation: REQUIRE_REAPPROVAL`을 기록한다. Task 생
 
 승인 Gate 중에는 working-tree 전체 scan을 하지 않는다. repository/workspace/current branch/base branch identity 조회만 허용한다.
 
-기존 변경 전체 보존이 승인되면 `prepare_dispatch.py --confirmed-dirty` fast path를 사용하고 exact count 복구를 위한 재scan을 하지 않는다. Coder/Reviewer도 전체 저장소를 재스캔하지 않는다.
+기존 변경 전체 보존이 승인되면:
+
+```text
+prepare_dispatch.py --confirmed-dirty
+WORKSPACE_CHANGE_SCAN_MODE=skipped-approved-preservation
+```
+
+이후 exact count를 복구하려고 `git status`, `git diff`, `git ls-files`를 다시 실행하지 않는다.
+
+Coder/Reviewer도 전체 저장소를 재스캔하지 않는다.
+
+```text
+Coder → change_summary.py --include <changed-path>...
+Reviewer → review_context.py --include <changed-path>...
+```
+
+API `SOURCE_SYNC`/`AUDIT`도 Task/도메인 범위의 bounded scan을 기본으로 하며, 전체 API 감사가 명시된 경우에만 범위를 넓힌다.
 
 ## Kanban 생성·최초 알림 단일 경로
 
