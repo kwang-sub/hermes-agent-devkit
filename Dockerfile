@@ -4,11 +4,11 @@ FROM eclipse-temurin:8-jdk-jammy AS jdk8
 FROM eclipse-temurin:17-jdk-jammy AS jdk17
 FROM eclipse-temurin:21-jdk-jammy AS jdk21
 
-FROM ${HERMES_BASE_IMAGE}
+# Upstream-sensitive DevKit patches live in their own stage so CI can validate
+# nousresearch/hermes-agent:latest without paying the full Git/JDK runtime build cost.
+FROM ${HERMES_BASE_IMAGE} AS hermes-upstream-patched
 
 USER root
-
-ARG GIT_VERSION=2.55.0
 
 COPY scripts/patch_hermes_syntax_warning.py /tmp/patch_hermes_syntax_warning.py
 RUN python3 /tmp/patch_hermes_syntax_warning.py /opt/hermes/hermes_cli/update_cmd.py \
@@ -63,6 +63,22 @@ RUN python3 /tmp/patch_hermes_discord_kanban_session.py --self-test \
          python3 /tmp/patch_hermes_discord_kanban_session.py /opt/hermes/gateway/kanban_watchers.py; \
        fi \
     && rm /tmp/patch_hermes_discord_kanban_session.py
+
+# Fail the upstream compatibility stage immediately if a patched Hermes module no
+# longer compiles or the canonical CLI entry point disappears.
+RUN test -x /opt/hermes/.venv/bin/hermes \
+    && /opt/hermes/.venv/bin/hermes --help >/dev/null \
+    && /opt/hermes/.venv/bin/python -m py_compile \
+       /opt/hermes/tools/kanban_tools.py \
+       /opt/hermes/hermes_cli/devkit_session_affinity.py
+
+# The production DevKit image continues from the exact upstream-patched stage
+# validated by CI, then adds local Git/JDK/build tooling.
+FROM hermes-upstream-patched AS hermes-devkit-runtime
+
+USER root
+
+ARG GIT_VERSION=2.55.0
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
