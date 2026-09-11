@@ -1,13 +1,13 @@
 ---
 name: dev-breakdown
 description: managed 프로젝트의 실제 코드·디자인 근거와 기존 project pattern으로 한국어 Implementation Plan을 생성하며 구현하지 않는 orchestrator 전용 skill.
-version: 0.10.0
+version: 0.11.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, planning, analysis, breakdown, orchestrator, pattern, frontend, figma, api, spec]
-    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-tech-dispatch, dev-skill-preflight, dev-workspace-dispatch, dev-workflow-orchestrate, dev-java-guidelines, dev-frontend-feature, dev-api-spec]
+    tags: [dev, planning, analysis, breakdown, orchestrator, pattern, java, kotlin, frontend, figma, api, spec]
+    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-tech-dispatch, dev-skill-preflight, dev-workspace-dispatch, dev-workflow-orchestrate, dev-java-guidelines, dev-kotlin-guidelines, dev-frontend-feature, dev-api-spec]
     requires_tools: [terminal, skill_view]
 ---
 
@@ -24,7 +24,7 @@ metadata:
 5. Goal/Constraints/In-Out Scope/minimum affected areas를 정한다. product intent를 추측하지 않는다.
 6. 중요한 assumption은 source evidence로 닫고, product/architecture/design 승인 결정이 필요하면 Open Question으로 남긴다.
 7. 최대 7개 Implementation Tasks를 변경·근거·완료조건·verification과 함께 순서화한다.
-8. Java 프로젝트의 Java 변경은 `dev-java-guidelines`, Spring 변경은 기존 `dev-spring-*` capability를 Applicable Skills에 지정한다.
+8. Java 프로젝트의 Java 변경은 `dev-java-guidelines`, **Kotlin 프로젝트의 Kotlin 변경은 `dev-kotlin-guidelines`**, Spring 변경은 기존 `dev-spring-*` capability를 Applicable Skills에 지정한다. Java + Kotlin mixed project에서는 실제 affected source 언어에 따라 둘을 함께 또는 각각 적용한다.
 9. **Frontend Task는 `dev-frontend-feature`를 canonical Applicable Skill로 지정한다.** TypeScript/React/Next.js/Test/API/Figma/UI·UX 하위 Skill은 `Frontend Capability Hints`에 이름과 이유를 남기고 시작부터 모두 runtime pin하지 않는다.
 10. Backend API와 Frontend가 함께 바뀌는 Task는 Frontend Capability Hints에 `dev-api-contract`를 포함한다.
 11. API endpoint 신규/변경/문서화/감사 작업은 `dev-api-spec`을 적용하고 다음을 계획에 명시한다.
@@ -64,6 +64,21 @@ Frontend Mode: FIGMA_DRIVEN | CODE_DRIVEN
 13. `Applicable Skills`에 추정 이름을 만들지 않는다. runtime pin 가능 여부는 dispatch 직전 `dev-skill-preflight`가 검증한다.
 14. testable Acceptance Criteria와 risk-based Test Plan, Dependencies, Risks, Open Questions를 작성한다.
 15. project/repo·scope·pattern·AC·tasks·test·필요한 design/API approval이 확립될 때만 `READY`, 아니면 `BLOCKED`다.
+
+## Kotlin 계획 규칙
+
+Kotlin 변경이 포함되면 project pattern/technology cache에서 다음 evidence를 우선 재사용한다.
+
+```text
+Detected Kotlin version / language level
+JVM target / build tool
+kotlin-spring / kotlin-jpa compiler plugin
+KSP / kapt
+blocking/reactive stack
+Java interop boundary
+```
+
+Implementation Plan에는 Kotlin language upgrade, compiler plugin 추가, kapt→KSP migration을 요구사항 없이 자동 포함하지 않는다. `!!`, Entity `data class`, coroutine/Flow, value class boundary, annotation use-site target 변화가 실제 scope에 들어가면 위험과 검증 근거를 명시한다.
 
 ## Frontend 계획 규칙
 
