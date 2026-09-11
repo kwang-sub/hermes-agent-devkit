@@ -55,7 +55,7 @@ checks = {
         "Data Model Gate", "DBML Canvas", "Design-Time DBA", "lazy-load",
     )),
     "data modeling": (data_modeling, (
-        "responsibility", "cardinality", "Current / History / Snapshot / Derived",
+        "책임", "cardinality", "Current / History / Snapshot / Derived",
         "docs/data/schema.dbml", "dbml_guard.py", "full DBML parser",
     )),
     "stack guide": (stack_guide, (
