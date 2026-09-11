@@ -23,10 +23,8 @@ def main() -> int:
     workflow = ROOT / "custom-skills/orchestrator/dev-workflow-orchestrate/SKILL.md"
     approval = ROOT / "shared/references/approval-gate-rules.md"
     dispatch = ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/SKILL.md"
-    implement = ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md"
     contract = ROOT / "custom-skills/shared/dev-api-contract/SKILL.md"
     docs = ROOT / "custom-skills/shared/dev-api-docs/SKILL.md"
-    review = ROOT / "custom-skills/reviewer/dev-code-review/SKILL.md"
 
     require(spec, (
         "DESIGN_FIRST", "SOURCE_SYNC", "AUDIT", "docs/api/<domain>.md",
@@ -42,7 +40,7 @@ def main() -> int:
     ), failures)
     require(breakdown, (
         "dev-api-spec", "API Spec Mode", "DESIGN_FIRST", "SOURCE_SYNC", "AUDIT",
-        "API Spec Gate", "API Spec Path",
+        "API Spec Gate", "API Spec Path", "SOURCE_ONLY",
     ), failures)
     require(workflow, (
         "API_SPEC_REQUIRED", "API_SPEC_APPROVED", "[API 규격 승인]",
@@ -55,11 +53,9 @@ def main() -> int:
     ), failures)
     require(dispatch, (
         "API Spec Gate: REQUIRED | NOT_REQUIRED", "API Spec Status: APPROVED | DRAFT | NOT_REQUIRED",
-        "API Spec Path:", "API Spec Mode:",
-    ), failures)
-    require(implement, (
-        "dev-api-spec", "APPROVED Markdown API Specification", "SOURCE_SYNC",
-        "API_SPEC_MISMATCH", "Markdown Added / Updated",
+        "API Spec Path:", "API Spec Mode:", "dev-api-spec",
+        "Coder/Reviewer가 동일 Markdown contract",
+        "production API를 변경하기 전에 승인 snapshot을 repository Markdown에 materialize/update",
     ), failures)
     require(contract, (
         "APPROVED Markdown API Specification", "DESIGN_FIRST", "SOURCE_SYNC",
@@ -68,10 +64,6 @@ def main() -> int:
     require(docs, (
         "APPROVED Markdown API Specification", "API_SPEC_MISMATCH",
         "Documentation Source: APPLICATION_SOURCE", "SOURCE_SYNC",
-    ), failures)
-    require(review, (
-        "dev-api-spec", "API Spec Review Gate", "API Spec Status: APPROVED",
-        "API_SPEC_MISMATCH", "SOURCE_SYNC",
     ), failures)
 
     if failures:
