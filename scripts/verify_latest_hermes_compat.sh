@@ -52,6 +52,8 @@ docker run --rm \
         test -f /opt/custom-skills/shared/dev-spring-feature/SKILL.md
         test -f /opt/custom-skills/shared/dev-spring-data/SKILL.md
         test -f /opt/custom-skills/shared/dev-spring-test/SKILL.md
+        test -f /opt/custom-skills/shared/dev-typescript-guidelines/SKILL.md
+        test -f /opt/custom-skills/shared/dev-typescript-guidelines/references/official-typescript-practices.md
         test -f /opt/data/shared/references/approval-gate-rules.md
         test -f /opt/data/shared/scripts/flow_model_policy.py
     '
