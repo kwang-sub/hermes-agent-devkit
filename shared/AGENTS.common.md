@@ -45,7 +45,7 @@ Fast worker는 구현 후 risk를 판정한다. `LOW`는 위험 영역이 없고
 ### Standard Flow
 `Request → Project Approval → Breakdown → Plan Approval → Workspace / Branch Approval → Dispatch → Coder ↔ Reviewer`
 
-신규 기능, 설계/분해, multi-module/repository, API/Schema/Dependency 변경, 모호한 요구사항은 Standard Flow이며 Reviewer를 생략하지 않는다. Interactive Coder는 Standard Flow를 직접 실행하지 않고 Orchestrator에서 진행하도록 안내한다.
+신규 기능, 설계/분해, multi-module/repository, API/Schema/Dependency 변경, 모호한 요구사항은 Standard Flow이며 Reviewer를 생략하지 않는다. Interactive Coder는 Standard Flow를 직접 실행하지 않고 Orchestrator에서 진행하도록 안내하고 STOP한다.
 
 ## Kanban 계약
 Task에는 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Risks, Workspace, Expected/Base Branch, Base SHA, coder/reviewer를 보존한다. Fast Flow에는 `Flow: FAST`, `Review Policy: RISK_BASED`와 dispatch 시 기존 변경 baseline을 추가한다. Standard Flow에서 Coder self-complete는 금지한다.
