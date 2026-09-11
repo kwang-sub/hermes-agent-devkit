@@ -37,7 +37,7 @@ Capability = 어떤 기술 지식과 검증이 필요한가
 
 ## 3. dev-tech-dispatch
 
-두 번째 이상의 framework가 실제 사용되므로 canonical stack resolver로 사용한다.
+두 번째 이상의 framework/language가 실제 사용되므로 canonical stack resolver로 사용한다.
 
 ```text
 root build/dependency evidence
@@ -55,6 +55,7 @@ source 수정, architecture 선택, dependency 설치, runtime pin 결정, Kanba
 
 ```text
 dev-java-guidelines
+dev-kotlin-guidelines
 dev-spring-guidelines
 dev-spring-feature
 dev-spring-data
@@ -99,17 +100,28 @@ dev-api-docs
 8. reviewer handoff evidence
 ```
 
-새 dependency/framework를 기본값으로 추가하지 않는다.
+새 dependency/framework/language version을 기본값으로 추가하지 않는다.
 
-## 6. Java / Spring
+## 6. Java / Kotlin / Spring
 
 ```text
 Java convention → dev-java-guidelines
+Kotlin convention → dev-kotlin-guidelines
 Spring common → dev-spring-guidelines
 Controller/Service/DTO/Validation/Exception → dev-spring-feature
 JPA/Repository/QueryDSL/Converter/Paging → dev-spring-data
 Spring/JPA test → dev-spring-test
 ```
+
+Java와 Kotlin은 서로 대체 관계가 아닌 first-class JVM language capability다.
+
+```text
+Java-only project      → dev-java-guidelines
+Kotlin-only project    → dev-kotlin-guidelines
+Java + Kotlin mixed    → 두 capability를 후보로 유지하고 실제 changed source 언어에 적용
+```
+
+Kotlin capability는 project Kotlin/compiler version을 우선하고 Stable 기능만 기본 허용한다. null-safety, data/value/sealed modeling, compiler plugin, annotation target, coroutine, KSP/kapt, Java interop을 담당하며 Spring layer/transaction/JPA query 정책을 중복 소유하지 않는다.
 
 JPA Query 정책은 Method Query → QueryDSL → 근거 있는 Native Query 순서다.
 
