@@ -47,6 +47,11 @@ docker run --rm \
         test -f /opt/custom-skills/shared/dev-java-guidelines/SKILL.md
         test -f /opt/custom-skills/shared/dev-java-guidelines/references/official-java-practices.md
         test -f /opt/custom-skills/shared/dev-kotlin-guidelines/SKILL.md
+        test -f /opt/custom-skills/shared/dev-spring-guidelines/SKILL.md
+        test -f /opt/custom-skills/shared/dev-spring-guidelines/references/official-spring-practices.md
+        test -f /opt/custom-skills/shared/dev-spring-feature/SKILL.md
+        test -f /opt/custom-skills/shared/dev-spring-data/SKILL.md
+        test -f /opt/custom-skills/shared/dev-spring-test/SKILL.md
         test -f /opt/data/shared/references/approval-gate-rules.md
         test -f /opt/data/shared/scripts/flow_model_policy.py
     '
