@@ -23,13 +23,12 @@ def main() -> int:
     dispatch = ROOT / "custom-skills/orchestrator/dev-tech-dispatch/SKILL.md"
     pattern = ROOT / "custom-skills/orchestrator/dev-project-pattern/SKILL.md"
     breakdown = ROOT / "custom-skills/orchestrator/dev-breakdown/SKILL.md"
-    implement = ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md"
-    review = ROOT / "custom-skills/reviewer/dev-code-review/SKILL.md"
+    common = ROOT / "shared/AGENTS.common.md"
     compat = ROOT / "scripts/verify_latest_hermes_compat.sh"
 
     require(skill, (
         "Stable", "Experimental", "`!!`", "data class", "value class",
-        "sealed", "context parameters", "Explicit backing fields",
+        "sealed", "Context parameters", "Explicit backing fields",
         "kotlin-spring", "kotlin-jpa", "Annotation Use-site Target",
         "Coroutine / Flow", "GlobalScope", "KSP", "kapt", "JSpecify",
         "Java + Kotlin Mixed Project", "dev-spring-guidelines", "dev-spring-data",
@@ -53,13 +52,9 @@ def main() -> int:
     require(breakdown, (
         "Kotlin 프로젝트의 Kotlin 변경", "dev-kotlin-guidelines",
     ), failures)
-    require(implement, (
-        'skill_view("dev-kotlin-guidelines")', "Kotlin 언어/convention",
-        "Java/Kotlin 프로젝트",
-    ), failures)
-    require(review, (
-        'skill_view("dev-kotlin-guidelines")', "Kotlin Convention Review Gate",
-        "Entity `data class`", "GlobalScope",
+    require(common, (
+        "## JVM 언어 capability", 'skill_view("dev-kotlin-guidelines")',
+        "Entity `data class`", "GlobalScope", "Java + Kotlin mixed project",
     ), failures)
     require(compat, (
         "/opt/custom-skills/shared/dev-kotlin-guidelines/SKILL.md",
