@@ -1,13 +1,13 @@
 ---
 name: dev-project-pattern
-description: 개발 계획 전에 Bootstrap 기술 스택 캐시와 대상 Repository의 기존 구조·코드·UI·테스트 패턴을 근거로 수집하고 유지해야 할 convention과 적용할 capability skill을 식별한다.
-version: 0.5.0
+description: 개발 계획 전에 Bootstrap 기술 스택 캐시와 대상 Repository의 기존 구조·코드·UI·데이터·테스트 패턴을 근거로 수집하고 유지해야 할 convention과 적용할 capability skill을 식별한다.
+version: 0.6.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, orchestrator, pattern, convention, project-analysis, stack, java, kotlin, frontend, figma, cache]
-    related_skills: [dev-project-bootstrap, dev-tech-dispatch, dev-breakdown, dev-java-guidelines, dev-kotlin-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-api-docs, dev-frontend-feature, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract, dev-figma-design, dev-ui-ux]
+    tags: [dev, orchestrator, pattern, convention, project-analysis, stack, java, kotlin, frontend, figma, data, database, dbml, cache]
+    related_skills: [dev-project-bootstrap, dev-tech-dispatch, dev-breakdown, dev-java-guidelines, dev-kotlin-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-api-docs, dev-frontend-feature, dev-data-feature, dev-data-modeling, dev-db-schema, dev-db-query, dev-db-migration, dev-db-performance, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract, dev-figma-design, dev-ui-ux]
     requires_tools: [terminal, skill_view]
 ---
 
@@ -19,6 +19,7 @@ metadata:
 /opt/data/shared/references/project-pattern-rules.md
 /opt/data/shared/references/coding-rules.md
 /opt/data/shared/references/implementation-decision-rules.md
+/opt/data/shared/references/data-design-rules.md   # data affected area일 때
 ```
 
 을 공통 Foundation으로 적용한다.
@@ -34,11 +35,12 @@ metadata:
 7. backend/frontend/data/UI/test convention을 evidence와 함께 요약한다.
 8. 실제 Task affected area와 stack 결과를 합쳐 runtime entry capability와 lazy capability hint를 결정한다.
 9. Figma URL이 있으면 Design Source/Status를 분리한다.
-10. 기존 패턴과 사용자 정책 충돌은 조용히 덮지 않고 최소 변경 방향과 Improvement Candidate로 전달한다.
+10. data affected area이면 기존 schema/migration/DBML/data docs convention과 DBMS vendor candidate를 확인한다.
+11. 기존 패턴과 사용자 정책 충돌은 조용히 덮지 않고 최소 변경 방향과 Improvement Candidate로 전달한다.
 
 ## Technology cache
 
-Bootstrap이 생성한 `.hermes/project.yaml`의 `technology:` section이 canonical project-level stack cache다.
+Bootstrap이 생성한 `.hermes/project.yaml`의 `technology:` section이 canonical project-level stack/cache다.
 
 ```bash
 python3 /opt/custom-skills/orchestrator/dev-project-bootstrap/scripts/stack_cache.py \
@@ -49,17 +51,19 @@ python3 /opt/custom-skills/orchestrator/dev-project-bootstrap/scripts/stack_cach
 
 ```text
 STACK_CACHE=reused
-DETECTOR_VERSION=3
+DETECTOR_VERSION=4
 STACK_FINGERPRINT=sha256:...
 STACK_INPUTS=backend/build.gradle.kts,frontend/package.json,frontend/tsconfig.json
 STACKS=kotlin,spring,typescript,react,nextjs
 BACKEND_SKILLS=dev-kotlin-guidelines,dev-spring-guidelines
 FRONTEND_ENTRY=dev-frontend-feature
 FRONTEND_HINTS=dev-typescript-guidelines,dev-frontend-guidelines,dev-nextjs-feature,dev-frontend-test
+DATABASE_VENDORS=mssql
+DATA_ENTRY_CANDIDATE=dev-data-feature
 STATUS=pass
 ```
 
-`STACK_CACHE=reused`에서는 full stack detector를 다시 실행하지 않는다. Fingerprint는 build/dependency manifest만 대상으로 하므로 일반 source 변경은 cache invalidation 원인이 아니다.
+`STACK_CACHE=reused`에서는 full stack detector를 다시 실행하지 않는다. Fingerprint는 bounded build/dependency manifest와 `schema.prisma` 같은 schema manifest만 대상으로 하므로 일반 source/SQL 변경은 cache invalidation 원인이 아니다.
 
 manifest 변경 또는 detector version 변경 시에만 stack을 다시 계산하고 Bootstrap-managed local metadata의 `technology:` section을 갱신한다. `.hermes/`는 Bootstrap `.gitignore` 정책으로 Git 추적에서 제외되므로 application source/config 변경으로 취급하지 않는다.
 
@@ -75,16 +79,16 @@ python3 /opt/custom-skills/orchestrator/dev-project-bootstrap/scripts/bootstrap.
 
 ## Stack Detection != Skill Loading
 
-Technology cache는 Repository가 사용할 수 있는 stack/capability 후보를 저장할 뿐 이번 Task가 Frontend/Backend/Full-stack인지 결정하지 않는다.
+Technology cache는 Repository가 사용할 수 있는 stack/vendor/capability 후보를 저장할 뿐 이번 Task가 Backend/Frontend/Data/Full-stack인지 결정하지 않는다.
 
 ```text
-Repository Stack
+Repository Capability Candidate
 + 사용자 요구사항
 + 실제 affected area
 = Task Capability
 ```
 
-Repository에 Kotlin/Spring + Next.js가 함께 있어도 Backend-only Task에는 frontend entry를 적용하지 않는다. Frontend-only Task에도 backend skill을 자동 적용하지 않는다.
+Repository에 Kotlin/Spring + Next.js + MSSQL이 함께 있어도 Service-only Task에는 frontend/data entry를 적용하지 않는다.
 
 ## Backend capability
 
@@ -98,18 +102,9 @@ Spring/JPA test → dev-spring-test
 OpenAPI/Swagger/Postman → dev-api-docs
 ```
 
-Java + Kotlin mixed Repository에서는 두 언어 capability를 모두 project 후보로 유지하되 실제 Task diff/affected area의 언어에 맞춰 적용한다. Kotlin 파일 변경에 Java 언어 규칙을 대신 적용하거나 반대로 하지 않는다.
+Java + Kotlin mixed Repository에서는 실제 Task diff/affected area의 언어에 맞춰 적용한다.
 
-Kotlin project pattern에서는 필요할 때 다음도 확인한다.
-
-```text
-Kotlin compiler/language version
-kotlin-spring / kotlin-jpa compiler plugin
-KSP / kapt
-nullability / data class / value class / sealed hierarchy convention
-coroutine 사용 여부와 blocking/reactive stack
-Java interop boundary
-```
+Kotlin project pattern에서는 필요할 때 compiler/language version, kotlin-spring/kotlin-jpa, KSP/kapt, nullability/modeling, coroutine/reactive, Java interop boundary를 확인한다.
 
 ## Frontend canonical entry
 
@@ -131,7 +126,52 @@ visual/interaction/responsive/accessibility/chart → dev-ui-ux
 승인된 Figma → dev-figma-design
 ```
 
-React/Next.js가 repository에 있다는 이유만으로 frontend entry나 UI/UX를 자동 적용하지 않는다. Task affected area가 frontend일 때만 적용한다.
+React/Next.js가 repository에 있다는 이유만으로 frontend entry나 UI/UX를 자동 적용하지 않는다.
+
+## Data canonical entry
+
+실제 Task가 데이터 모델, relational schema, SQL dialect, migration, execution plan/index tuning을 변경하면 runtime entry 후보는:
+
+```text
+→ dev-data-feature
+```
+
+하위 Skill은 `Data Capability Hints`로 전달한다.
+
+```text
+모델/관계/cardinality/DBML → dev-data-modeling
+PK/FK/UNIQUE/type/index/constraint → dev-db-schema
+SQL/query semantics/dialect → dev-db-query
+DDL/backfill/compatibility → dev-db-migration
+execution plan/index/locking/statistics → dev-db-performance
+JPA implementation → dev-spring-data (backend companion)
+```
+
+다음은 구분한다.
+
+```text
+기존 승인 schema + JPA Repository/QueryDSL 구현만 변경
+→ dev-spring-data
+
+DBML/schema/DDL/vendor SQL/query tuning 자체가 Task 책임
+→ dev-data-feature
+```
+
+`DATABASE_VENDORS`는 project-level candidate다. 둘 이상이면 affected module에서 실제 target을 특정한다. vendor version은 dependency 이름만으로 추측하지 않는다.
+
+### DBML / Data Documentation Pattern
+
+Data Task이면 우선 다음을 찾는다.
+
+```text
+기존 *.dbml / ERD source
+docs/data 또는 project data docs
+Flyway/Liquibase/raw migration 위치
+schema naming / PK/FK/index naming
+actual DB vendor/version 근거
+```
+
+기존 표준이 없으면 `docs/data/schema.dbml`을 canonical relational model 기본값으로 추천한다. DBML Canvas는 Human View이며 runtime dependency가 아니다.
 
 ## Figma Design Source
 
@@ -143,10 +183,7 @@ Design Status: DRAFT | APPROVED
 Figma URL: <selected frame/component URL>
 ```
 
-- `APPROVED`: FIGMA_DRIVEN 구현 source of truth 후보.
-- `DRAFT`: 계획/비교 참고자료. 구현 source of truth로 확정하지 않는다.
-- status가 불명확한데 구현 방향을 바꿀 수 있으면 Open Question으로 남긴다.
-- file-level URL보다 selected frame/component `node-id` URL을 우선한다.
+`APPROVED`만 FIGMA_DRIVEN 구현 source of truth 후보다. `DRAFT` 또는 승인 상태 불명확 시 임의로 구현 기준으로 승격하지 않는다.
 
 ## 필수 출력
 
@@ -155,11 +192,13 @@ Project Pattern Summary
 - Language / Framework / Persistence / Build / Test
 - Technology Cache Status / Fingerprint
 - Detected Stacks
+- Database Vendor Candidates (해당 시)
 - Pattern References
 - Package / Naming
 - Response Contract
 - Error / Validation Contract
 - Data Access Convention
+- Data Schema/Migration/DBML Convention (해당 시)
 - Kotlin Language/Compiler/Interop Convention (해당 시)
 - Frontend Component/State/Style Convention (해당 시)
 - Design System Reference (해당 시)
@@ -167,6 +206,7 @@ Project Pattern Summary
 - Test Convention
 - Applicable Skills
 - Frontend Capability Hints
+- Data Capability Hints
 - Pattern Conflicts
 - Improvement Candidates (not auto-applied)
 ```
@@ -176,7 +216,8 @@ Project Pattern Summary
 - application source/build dependency를 수정하지 않는다.
 - `technology:` cache 갱신 외 project metadata를 planning 단계에서 변경하지 않는다.
 - 새 architecture/library/common contract를 제안 없이 확정하지 않는다.
-- 기존 패턴을 Public Skill/Figma 추천으로 광범위하게 교체하지 않는다.
-- Kotlin version/compiler plugin/KSP migration을 planning 근거 없이 자동 결정하지 않는다.
+- 기존 패턴을 Public Skill/Figma/DBML 기본값으로 광범위하게 교체하지 않는다.
+- DB driver가 있다는 이유만으로 Data entry를 자동 적용하지 않는다.
+- DBMS version/vendor-specific feature를 근거 없이 추측하지 않는다.
 - `dev-tech-dispatch`는 detector이며 runtime pinned skill이 아니다.
-- frontend 하위 capability를 전부 runtime pin하지 않고 `dev-frontend-feature`를 canonical entry로 사용한다.
+- frontend/data 하위 capability를 전부 runtime pin하지 않고 canonical entry를 사용한다.
