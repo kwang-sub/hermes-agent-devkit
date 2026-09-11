@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Iterable
 
 
-DETECTOR_VERSION = "3"
+DETECTOR_VERSION = "4"
 MAX_MANIFEST_DEPTH = 3
 SKIP_DIRS = {
     ".git", ".hermes", ".worktrees", ".gradle", ".idea", ".vscode",
@@ -20,6 +20,7 @@ EXACT_MANIFEST_NAMES = {
     "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
     "gradle.properties", "pom.xml", "package.json", "package-lock.json",
     "pnpm-lock.yaml", "pnpm-workspace.yaml", "yarn.lock", "bun.lockb", "bun.lock",
+    "schema.prisma",
 }
 
 KOTLIN_MARKERS = (
@@ -42,6 +43,34 @@ SPRING_MARKERS = (
     "org.springframework.boot", "spring-boot", "org.springframework",
 )
 
+DATABASE_JVM_MARKERS = {
+    "mssql": ("com.microsoft.sqlserver", "mssql-jdbc", "r2dbc-mssql"),
+    "mysql": ("com.mysql", "mysql-connector-j", "mysql-connector-java", "r2dbc-mysql"),
+    "mariadb": ("org.mariadb.jdbc", "mariadb-java-client", "r2dbc-mariadb"),
+    "postgresql": ("org.postgresql", "r2dbc-postgresql"),
+    "oracle": ("com.oracle.database.jdbc", "oracle.jdbc", "ojdbc", "r2dbc-oracle"),
+}
+DATABASE_NPM_MARKERS = {
+    "mssql": {"mssql", "tedious"},
+    "mysql": {"mysql", "mysql2"},
+    "mariadb": {"mariadb"},
+    "postgresql": {"pg", "postgres", "postgresql"},
+    "oracle": {"oracledb"},
+}
+PERSISTENCE_JVM_MARKERS = (
+    "spring-data-jpa", "hibernate-core", "jakarta.persistence", "javax.persistence",
+    "flyway", "liquibase", "r2dbc", "jooq", "mybatis", "jdbc",
+)
+PERSISTENCE_NPM_MARKERS = {
+    "prisma", "@prisma/client", "drizzle-orm", "typeorm", "sequelize",
+    "knex", "kysely", "objection",
+}
+PRISMA_PROVIDER_VENDOR = {
+    "sqlserver": "mssql",
+    "mysql": "mysql",
+    "postgresql": "postgresql",
+}
+
 
 def add(items: list[str], value: str) -> None:
     if value not in items:
@@ -55,12 +84,7 @@ def is_manifest_name(name: str) -> bool:
 
 
 def discover_inputs(repo: Path) -> list[Path]:
-    """Return bounded build/dependency manifests for root or small monorepos.
-
-    Source trees are never scanned for technology inference. Only manifest names
-    up to MAX_MANIFEST_DEPTH are considered and common generated/vendor roots
-    are pruned before descent.
-    """
+    """Return bounded build/dependency manifests for root or small monorepos."""
     repo = repo.resolve()
     found: list[Path] = []
 
@@ -109,6 +133,19 @@ def package_dependencies(paths: Iterable[Path]) -> set[str]:
     return result
 
 
+def prisma_vendors(paths: Iterable[Path]) -> set[str]:
+    result: set[str] = set()
+    provider_re = re.compile(r'provider\s*=\s*["\']([^"\']+)["\']', flags=re.IGNORECASE)
+    for path in paths:
+        if path.name != "schema.prisma":
+            continue
+        for provider in provider_re.findall(read(path)):
+            vendor = PRISMA_PROVIDER_VENDOR.get(provider.lower())
+            if vendor:
+                result.add(vendor)
+    return result
+
+
 def fingerprint(repo: Path, inputs: list[Path] | None = None) -> dict[str, object]:
     repo = repo.resolve()
     manifests = inputs if inputs is not None else discover_inputs(repo)
@@ -147,6 +184,7 @@ def detect(repo: Path) -> dict[str, object]:
     stacks: list[str] = []
     backend_skills: list[str] = []
     frontend_hints: list[str] = []
+    database_vendors: list[str] = []
 
     jvm_manifests = [
         path for path in manifests
@@ -160,15 +198,13 @@ def detect(repo: Path) -> dict[str, object]:
         if path.name in {"build.gradle", "build.gradle.kts", "pom.xml"}
     ]
     jvm_text = "\n".join(read(path) for path in jvm_manifests)
+    jvm_text_lower = jvm_text.lower()
 
     has_kotlin = any(marker in jvm_text for marker in KOTLIN_MARKERS)
     has_explicit_java = any(
         re.search(pattern, jvm_text, flags=re.IGNORECASE)
         for pattern in JAVA_EXPLICIT_PATTERNS
     )
-    # Preserve the legacy detector behavior for JVM build manifests with no
-    # Kotlin evidence. Once Kotlin is explicit, Java is reported only when the
-    # manifest also carries explicit Java/maven-compiler evidence.
     has_java = bool(build_files) and (not has_kotlin or has_explicit_java)
     has_spring = bool(build_files) and any(marker in jvm_text for marker in SPRING_MARKERS)
 
@@ -205,6 +241,23 @@ def detect(repo: Path) -> dict[str, object]:
     if deps.intersection(test_markers):
         add(frontend_hints, "dev-frontend-test")
 
+    for vendor, markers in DATABASE_JVM_MARKERS.items():
+        if any(marker.lower() in jvm_text_lower for marker in markers):
+            add(database_vendors, vendor)
+    for vendor, markers in DATABASE_NPM_MARKERS.items():
+        if deps.intersection(markers):
+            add(database_vendors, vendor)
+    for vendor in sorted(prisma_vendors(manifests)):
+        add(database_vendors, vendor)
+
+    has_persistence = bool(database_vendors)
+    if any(marker in jvm_text_lower for marker in PERSISTENCE_JVM_MARKERS):
+        has_persistence = True
+    if deps.intersection(PERSISTENCE_NPM_MARKERS):
+        has_persistence = True
+    if any(path.name == "schema.prisma" for path in manifests):
+        has_persistence = True
+
     has_frontend = any(stack in stacks for stack in ("typescript", "react", "nextjs"))
     has_backend = any(stack in stacks for stack in ("java", "kotlin", "spring"))
     return {
@@ -215,6 +268,8 @@ def detect(repo: Path) -> dict[str, object]:
         "frontend_hints": frontend_hints,
         "ui_candidate": "dev-ui-ux" if has_frontend else "",
         "cross_stack_candidate": "dev-api-contract" if has_frontend and has_backend else "",
+        "database_vendors": database_vendors,
+        "data_entry_candidate": "dev-data-feature" if has_persistence else "",
     }
 
 
@@ -229,6 +284,8 @@ def print_text(result: dict[str, object], *, fingerprint_only: bool) -> None:
         print(f"FRONTEND_HINTS={','.join(result['frontend_hints'])}")
         print(f"UI_SKILL_CANDIDATE={result['ui_candidate']}")
         print(f"CROSS_STACK_SKILL_CANDIDATE={result['cross_stack_candidate']}")
+        print(f"DATABASE_VENDORS={','.join(result['database_vendors'])}")
+        print(f"DATA_ENTRY_CANDIDATE={result['data_entry_candidate']}")
     print("STATUS=pass")
 
 

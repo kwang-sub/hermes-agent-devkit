@@ -57,7 +57,10 @@ def test_create_reuse_and_refresh() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp)
         meta = metadata(repo)
-        write(repo / "backend" / "build.gradle", 'plugins { id "org.springframework.boot" }')
+        write(repo / "backend" / "build.gradle", '''
+plugins { id "org.springframework.boot" }
+dependencies { runtimeOnly "com.microsoft.sqlserver:mssql-jdbc:12.8.1.jre11" }
+''')
         write(repo / "frontend" / "package.json", '{"dependencies":{"react":"19","next":"16"},"devDependencies":{"typescript":"5"}}')
         write(repo / "frontend" / "tsconfig.json", "{}")
 
@@ -71,12 +74,18 @@ def test_create_reuse_and_refresh() -> None:
         assert '    - "typescript"' in text1
         assert '    - "react"' in text1
         assert '    - "nextjs"' in text1
+        assert '    - "mssql"' in text1
+        assert '  data_entry_candidate: "dev-data-feature"' in text1
+        assert result1["database_vendors"] == ["mssql"]
+        assert result1["data_entry_candidate"] == "dev-data-feature"
         assert "custom_policy:\n  keep: true" in text1
         assert "resolver:\n  aliases:\n    - legacy" in text1
 
         status2, result2 = MODULE.resolve(repo)
         assert status2 == "reused"
         assert result2["fingerprint"] == result1["fingerprint"]
+        assert result2["database_vendors"] == ["mssql"]
+        assert result2["data_entry_candidate"] == "dev-data-feature"
         assert meta.read_text(encoding="utf-8") == text1
 
         write(repo / "frontend" / "package.json", '{"dependencies":{"react":"19"},"devDependencies":{"typescript":"5"}}')
@@ -84,6 +93,7 @@ def test_create_reuse_and_refresh() -> None:
         assert status3 == "updated"
         assert result3["fingerprint"] != result1["fingerprint"]
         assert "nextjs" not in result3["stacks"]
+        assert result3["database_vendors"] == ["mssql"]
 
 
 def test_kotlin_stack_is_cached_and_reused() -> None:
@@ -100,10 +110,12 @@ plugins {
         status1, result1 = MODULE.resolve(repo)
         text1 = meta.read_text(encoding="utf-8")
         assert status1 == "created"
-        assert result1["detector_version"] == "3"
+        assert result1["detector_version"] == "4"
         assert result1["stacks"] == ["kotlin", "spring"]
         assert result1["backend_skills"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
-        assert '  detector_version: "3"' in text1
+        assert result1["database_vendors"] == []
+        assert result1["data_entry_candidate"] == ""
+        assert '  detector_version: "4"' in text1
         assert '    - "kotlin"' in text1
         assert '    - "dev-kotlin-guidelines"' in text1
         assert '    - "java"' not in text1
@@ -113,6 +125,26 @@ plugins {
         assert result2["stacks"] == ["kotlin", "spring"]
         assert result2["fingerprint"] == result1["fingerprint"]
         assert meta.read_text(encoding="utf-8") == text1
+
+
+def test_prisma_database_vendor_is_cached() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        meta = metadata(repo)
+        write(repo / "package.json", '{"devDependencies":{"prisma":"6"}}')
+        write(repo / "prisma" / "schema.prisma", '''
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+''')
+        status, result = MODULE.resolve(repo)
+        text = meta.read_text(encoding="utf-8")
+        assert status == "created"
+        assert result["database_vendors"] == ["postgresql"]
+        assert result["data_entry_candidate"] == "dev-data-feature"
+        assert '    - "postgresql"' in text
+        assert '  data_entry_candidate: "dev-data-feature"' in text
 
 
 def test_source_change_keeps_cache_hit() -> None:
@@ -145,6 +177,7 @@ def test_unmanaged_metadata_is_blocked() -> None:
 if __name__ == "__main__":
     test_create_reuse_and_refresh()
     test_kotlin_stack_is_cached_and_reused()
+    test_prisma_database_vendor_is_cached()
     test_source_change_keeps_cache_hit()
     test_unmanaged_metadata_is_blocked()
     print("TEST_STATUS=PASS")
