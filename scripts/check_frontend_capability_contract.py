@@ -15,6 +15,11 @@ for name in required_skills:
 pattern = (ROOT / "custom-skills/orchestrator/dev-project-pattern/SKILL.md").read_text(encoding="utf-8")
 breakdown = (ROOT / "custom-skills/orchestrator/dev-breakdown/SKILL.md").read_text(encoding="utf-8")
 frontend = (ROOT / "custom-skills/shared/dev-frontend-feature/SKILL.md").read_text(encoding="utf-8")
+typescript = (ROOT / "custom-skills/shared/dev-typescript-guidelines/SKILL.md").read_text(encoding="utf-8")
+typescript_reference_path = ROOT / "custom-skills/shared/dev-typescript-guidelines/references/official-typescript-practices.md"
+if not typescript_reference_path.is_file():
+    raise SystemExit("TypeScript official practice reference is missing")
+typescript_reference = typescript_reference_path.read_text(encoding="utf-8")
 figma = (ROOT / "custom-skills/shared/dev-figma-design/SKILL.md").read_text(encoding="utf-8")
 figma_script = (ROOT / "custom-skills/shared/dev-figma-design/scripts/figma_context.py").read_text(encoding="utf-8")
 stack = (ROOT / "shared/references/stack-capability-skill-guide.md").read_text(encoding="utf-8")
@@ -22,10 +27,20 @@ stack = (ROOT / "shared/references/stack-capability-skill-guide.md").read_text(e
 checks = {
     "project pattern": (pattern, ("dev-tech-dispatch", "dev-frontend-feature", "Frontend Capability Hints", "Design Status: DRAFT | APPROVED")),
     "breakdown": (breakdown, ("dev-frontend-feature", "FIGMA_DRIVEN", "CODE_DRIVEN", "dev-api-contract", "dev-figma-design")),
-    "frontend entry": (frontend, ("canonical entry", "FIGMA_DRIVEN", "CODE_DRIVEN", "dev-ui-ux", "dev-figma-design", "lazy-load")),
+    "frontend entry": (frontend, ("canonical entry", "FIGMA_DRIVEN", "CODE_DRIVEN", "dev-ui-ux", "dev-figma-design", "lazy-load", "dev-typescript-guidelines")),
+    "typescript skill": (typescript, (
+        "version: 0.2.0", "Strictness Gate", "strictNullChecks", "`unknown` vs `any`", "Narrowing",
+        "Discriminated Union / Exhaustiveness", "Type Assertion / Non-null Assertion", "`satisfies`",
+        "exactOptionalPropertyTypes", "noUncheckedIndexedAccess", "TypeScript 6.0 Transition", "Review Hotspots",
+    )),
+    "typescript reference": (typescript_reference, (
+        "TypeScript Official Practices", "Project Convention First", "strict / strictNullChecks", "unknown vs any",
+        "Discriminated Union", "exactOptionalPropertyTypes", "noUncheckedIndexedAccess", "TypeScript 6.0 Transition",
+        "ignoreDeprecations", "TypeScript Handbook", "TSConfig Reference",
+    )),
     "figma skill": (figma, ("FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN", "file_content:read", "--preview-out", "read-only")),
     "figma provider": (figma_script, ("https://api.figma.com", "X-Figma-Token", "Authorization", "/v1/files/", "/v1/images/", "HERMES_WRITE_SAFE_ROOT", "MAX_DEPTH = 6")),
-    "stack guide": (stack, ("dev-frontend-feature", "dev-figma-design", "FIGMA_DRIVEN", "Stack Detection != Skill Loading")),
+    "stack guide": (stack, ("dev-frontend-feature", "dev-typescript-guidelines", "dev-figma-design", "FIGMA_DRIVEN", "Stack Detection != Skill Loading")),
 }
 for label, (text, terms) in checks.items():
     missing = [term for term in terms if term not in text]
@@ -51,4 +66,4 @@ for key in ("FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN"):
     if f"{key}: ${{{key}:-}}" not in compose:
         raise SystemExit(f"compose.yml missing {key}")
 
-print("[PASS] Frontend/Figma capability contract")
+print("[PASS] Frontend/TypeScript/Figma capability contract")
