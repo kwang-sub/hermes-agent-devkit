@@ -27,9 +27,80 @@ def test_spring_only() -> None:
         assert result["backend_skills"] == ["dev-java-guidelines", "dev-spring-guidelines"]
         assert result["frontend_entry"] == ""
         assert result["frontend_hints"] == []
-        assert result["detector_version"] == "2"
+        assert result["detector_version"] == "3"
         assert result["inputs"] == ["build.gradle"]
         assert str(result["fingerprint"]).startswith("sha256:")
+
+
+def test_kotlin_only() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        write(repo / "build.gradle.kts", 'plugins { kotlin("jvm") version "2.4.20" }')
+        result = MODULE.detect(repo)
+        assert result["stacks"] == ["kotlin"]
+        assert result["backend_skills"] == ["dev-kotlin-guidelines"]
+
+
+def test_kotlin_spring() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        write(repo / "build.gradle.kts", '''
+plugins {
+    kotlin("jvm") version "2.4.20"
+    kotlin("plugin.spring") version "2.4.20"
+    id("org.springframework.boot") version "4.0.0"
+}
+''')
+        result = MODULE.detect(repo)
+        assert result["stacks"] == ["kotlin", "spring"]
+        assert result["backend_skills"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+
+
+def test_kotlin_spring_jpa() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        write(repo / "build.gradle.kts", '''
+plugins {
+    kotlin("jvm") version "2.4.20"
+    id("org.jetbrains.kotlin.plugin.spring") version "2.4.20"
+    id("org.jetbrains.kotlin.plugin.jpa") version "2.4.20"
+    id("org.springframework.boot") version "4.0.0"
+}
+''')
+        result = MODULE.detect(repo)
+        assert result["stacks"] == ["kotlin", "spring"]
+        assert result["backend_skills"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+
+
+def test_java_kotlin_mixed() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        write(repo / "build.gradle.kts", '''
+plugins {
+    java
+    kotlin("jvm") version "2.4.20"
+    id("org.springframework.boot") version "4.0.0"
+}
+''')
+        result = MODULE.detect(repo)
+        assert result["stacks"] == ["java", "kotlin", "spring"]
+        assert result["backend_skills"] == [
+            "dev-java-guidelines", "dev-kotlin-guidelines", "dev-spring-guidelines"
+        ]
+
+
+def test_maven_kotlin() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        write(repo / "pom.xml", '''
+<project>
+  <dependencies><dependency><artifactId>spring-boot-starter-web</artifactId></dependency></dependencies>
+  <build><plugins><plugin><artifactId>kotlin-maven-plugin</artifactId></plugin></plugins></build>
+</project>
+''')
+        result = MODULE.detect(repo)
+        assert result["stacks"] == ["kotlin", "spring"]
+        assert result["backend_skills"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
 
 
 def test_next_typescript_with_tests() -> None:
@@ -63,6 +134,26 @@ def test_fullstack_contract_candidate() -> None:
         assert result["frontend_entry"] == "dev-frontend-feature"
         assert result["cross_stack_candidate"] == "dev-api-contract"
         assert result["backend_skills"] == ["dev-java-guidelines", "dev-spring-guidelines"]
+
+
+def test_kotlin_frontend_monorepo() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        write(repo / "backend" / "build.gradle.kts", '''
+plugins {
+    kotlin("jvm") version "2.4.20"
+    id("org.springframework.boot") version "4.0.0"
+}
+''')
+        write(repo / "frontend" / "package.json", json.dumps({
+            "dependencies": {"next": "16.0.0", "react": "19.0.0"},
+            "devDependencies": {"typescript": "5.9.0"},
+        }))
+        write(repo / "frontend" / "tsconfig.json", "{}")
+        result = MODULE.detect(repo)
+        assert result["stacks"] == ["kotlin", "spring", "typescript", "react", "nextjs"]
+        assert result["backend_skills"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+        assert result["cross_stack_candidate"] == "dev-api-contract"
 
 
 def test_monorepo_detection_is_manifest_bounded() -> None:
@@ -102,8 +193,14 @@ def test_fingerprint_changes_only_when_manifest_evidence_changes() -> None:
 
 if __name__ == "__main__":
     test_spring_only()
+    test_kotlin_only()
+    test_kotlin_spring()
+    test_kotlin_spring_jpa()
+    test_java_kotlin_mixed()
+    test_maven_kotlin()
     test_next_typescript_with_tests()
     test_fullstack_contract_candidate()
+    test_kotlin_frontend_monorepo()
     test_monorepo_detection_is_manifest_bounded()
     test_fingerprint_changes_only_when_manifest_evidence_changes()
     print("[PASS] Stack capability detector tests")
