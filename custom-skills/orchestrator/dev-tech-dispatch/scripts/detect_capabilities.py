@@ -5,11 +5,12 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from typing import Iterable
 
 
-DETECTOR_VERSION = "2"
+DETECTOR_VERSION = "3"
 MAX_MANIFEST_DEPTH = 3
 SKIP_DIRS = {
     ".git", ".hermes", ".worktrees", ".gradle", ".idea", ".vscode",
@@ -20,6 +21,25 @@ EXACT_MANIFEST_NAMES = {
     "gradle.properties", "pom.xml", "package.json", "package-lock.json",
     "pnpm-lock.yaml", "pnpm-workspace.yaml", "yarn.lock", "bun.lockb", "bun.lock",
 }
+
+KOTLIN_MARKERS = (
+    'kotlin("jvm")', "kotlin('jvm')",
+    'kotlin("plugin.spring")', "kotlin('plugin.spring')",
+    'kotlin("plugin.jpa")', "kotlin('plugin.jpa')",
+    "org.jetbrains.kotlin.jvm",
+    "org.jetbrains.kotlin.plugin.spring",
+    "org.jetbrains.kotlin.plugin.jpa",
+    "kotlin-maven-plugin",
+)
+JAVA_EXPLICIT_PATTERNS = (
+    r'id\s*\(\s*["\']java["\']\s*\)',
+    r'id\s+["\']java["\']',
+    r'java-library',
+    r'maven-compiler-plugin',
+)
+SPRING_MARKERS = (
+    "org.springframework.boot", "spring-boot", "org.springframework",
+)
 
 
 def add(items: list[str], value: str) -> None:
@@ -127,19 +147,37 @@ def detect(repo: Path) -> dict[str, object]:
     backend_skills: list[str] = []
     frontend_hints: list[str] = []
 
-    java_builds = [
+    jvm_manifests = [
+        path for path in manifests
+        if path.name in {
+            "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
+            "gradle.properties", "pom.xml", "libs.versions.toml",
+        }
+    ]
+    build_files = [
         path for path in manifests
         if path.name in {"build.gradle", "build.gradle.kts", "pom.xml"}
     ]
-    build_text = "\n".join(read(path) for path in java_builds)
+    jvm_text = "\n".join(read(path) for path in jvm_manifests)
 
-    if java_builds:
+    has_kotlin = any(marker in jvm_text for marker in KOTLIN_MARKERS)
+    has_explicit_java = any(
+        re.search(pattern, jvm_text, flags=re.IGNORECASE)
+        for pattern in JAVA_EXPLICIT_PATTERNS
+    )
+    # Preserve the legacy detector behavior for JVM build manifests with no
+    # Kotlin evidence. Once Kotlin is explicit, Java is reported only when the
+    # manifest also carries explicit Java/maven-compiler evidence.
+    has_java = bool(build_files) and (not has_kotlin or has_explicit_java)
+    has_spring = bool(build_files) and any(marker in jvm_text for marker in SPRING_MARKERS)
+
+    if has_java:
         add(stacks, "java")
         add(backend_skills, "dev-java-guidelines")
-    if java_builds and any(
-        marker in build_text
-        for marker in ("org.springframework.boot", "spring-boot", "org.springframework")
-    ):
+    if has_kotlin:
+        add(stacks, "kotlin")
+        add(backend_skills, "dev-kotlin-guidelines")
+    if has_spring:
         add(stacks, "spring")
         add(backend_skills, "dev-spring-guidelines")
 
@@ -167,7 +205,7 @@ def detect(repo: Path) -> dict[str, object]:
         add(frontend_hints, "dev-frontend-test")
 
     has_frontend = any(stack in stacks for stack in ("typescript", "react", "nextjs"))
-    has_backend = any(stack in stacks for stack in ("java", "spring"))
+    has_backend = any(stack in stacks for stack in ("java", "kotlin", "spring"))
     return {
         **fp,
         "stacks": stacks,
