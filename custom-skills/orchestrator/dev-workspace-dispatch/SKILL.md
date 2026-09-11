@@ -1,13 +1,13 @@
 ---
 name: dev-workspace-dispatch
-description: 승인된 구현 계획·workspace·branch·Coder 모델과 project pattern/capability 계약을 최초 등록 알림과 함께 Kanban으로 인계한다.
-version: 0.11.0
+description: 승인된 구현 계획·API 규격·workspace·branch·Coder 모델과 project pattern/capability 계약을 최초 등록 알림과 함께 Kanban으로 인계한다.
+version: 0.12.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, capability, preflight, notification, registration, model, performance]
-    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-skill-preflight, dev-workflow-orchestrate, dev-flow-model-policy]
+    tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, capability, preflight, notification, registration, model, api, spec, performance]
+    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-api-spec, dev-skill-preflight, dev-workflow-orchestrate, dev-flow-model-policy]
     requires_tools: [terminal, skill_view, kanban_create, kanban_show, kanban_unblock, clarify]
 ---
 
@@ -18,6 +18,8 @@ metadata:
 ## 1. 진입 조건
 - Plan 승인 완료
 - 승인 이후 요구사항 변경 작업이면 Requirement Delta 승인 완료
+- `API Spec Gate: REQUIRED`이면 `API Spec Status: APPROVED` 및 승인된 Markdown snapshot 확보
+- `API Spec Gate: NOT_REQUIRED`이면 Mode가 `SOURCE_SYNC | AUDIT | NOT_REQUIRED` 중 하나임을 확인
 - workspace/current 또는 create branch 승인 완료
 - 기존 변경이 있을 수 있는 workspace라면 reset/restore/stash 없이 전부 보존할지 승인 완료
 - Coder Model Tier(DEFAULT|PREMIUM) 승인 완료
@@ -90,6 +92,8 @@ VALIDATED_SKILLS → kanban_create.skills
 REJECTED_SKILLS → body 기록만 하고 pin 금지
 ```
 
+API Task의 `Applicable Skills`에 `dev-api-spec`이 있으면 Coder/Reviewer가 동일 Markdown contract를 볼 수 있도록 공통 pin 대상으로 검증한다. `dev-api-contract`, `dev-api-docs`도 계획에 필요한 경우 같은 방식으로 검증한다.
+
 `dev-flow-model-policy`는 runtime pin 필수다. preflight 실패 시 dispatch하지 않는다.
 
 ## 5. Kanban 생성·알림 Gate 단일 경로
@@ -99,6 +103,7 @@ Task는 알림 Gate가 완료되기 전 worker가 가져가지 못하도록 **�
 ```text
 prepare_dispatch.py 정확히 한 번
 → dev-skill-preflight
+→ approved API Spec contract 확인 (REQUIRED일 때)
 → approved model snapshot 확인
 → kanban_create(
      board=BOARD,
@@ -171,6 +176,7 @@ default/current board fallback
 등록 알림 enqueue 전에 ready/running dispatch 허용
 Coder 모델 승인 없이 create/unblock
 Requirement Delta가 필요한 작업을 승인 없이 create/unblock
+API Spec Gate가 REQUIRED인데 APPROVED 없이 create/unblock
 승인 뒤 ENV를 다시 resolve하여 model 변경
 hermes kanban --board <board> create --help
 hermes project list / --help
@@ -205,7 +211,7 @@ Model Policy:
 
 하나라도 불일치하면 unblock 금지다.
 
-## 6. Workspace / Model Contract
+## 6. Workspace / Model / API Spec Contract
 
 Task body에는 다음을 남긴다.
 
@@ -222,6 +228,14 @@ Task body에는 다음을 남긴다.
 - EOL-only changes at dispatch: <count | unknown>
 - Hermes managed files at dispatch: <count | unknown>
 
+API Specification:
+- API Spec Mode: DESIGN_FIRST | SOURCE_SYNC | AUDIT | NOT_REQUIRED
+- API Spec Gate: REQUIRED | NOT_REQUIRED
+- API Spec Status: APPROVED | DRAFT | NOT_REQUIRED
+- API Spec Path: <path | none>
+- API Spec Source: DESIGN | APPLICATION_SOURCE | MIGRATED_SPEC | none
+- API Spec Snapshot: <approved Markdown body or DRAFT/source-sync evidence when applicable>
+
 Model Policy:
 - Coder Model Tier: <DEFAULT|PREMIUM>
 - Coder Model: <MODEL>
@@ -229,6 +243,10 @@ Model Policy:
 - Reviewer Model: DEFAULT
 - Model Escalation: REQUIRE_REAPPROVAL
 ```
+
+`DESIGN_FIRST`에서는 `API Spec Status: APPROVED`와 승인 snapshot이 Coder/Reviewer의 normative contract다. Coder는 production API를 변경하기 전에 승인 snapshot을 repository Markdown에 materialize/update하고 `dev-api-spec` 계약을 따른다.
+
+`SOURCE_SYNC`에서는 `API Spec Status: DRAFT`, `API Spec Source: APPLICATION_SOURCE`가 정상이며 Coder는 bounded source evidence로 Markdown을 생성/갱신한다. 자동 APPROVED 승격은 금지한다.
 
 Fast Path에서는 모든 기존 변경 보존 승인이 baseline 계약이다. Coder는 자신의 실제 변경 scope만 별도로 추적한다.
 
@@ -253,6 +271,7 @@ Reviewer CHANGES_REQUESTED
 
 - Workspace 승인 전 working-tree 전체 scan 금지.
 - `--confirmed-dirty` 이후 exact count 복구를 위한 재scan 금지.
+- API SOURCE_SYNC/AUDIT도 Task/도메인 범위의 bounded scan을 기본으로 함.
 - Coder/Reviewer는 실제 changed scope만 검증.
 - large/binary file을 임의 MB 기준으로 제외하지 않음.
 - 모델 snapshot은 승인 시 1회 resolve.
@@ -261,6 +280,7 @@ Reviewer CHANGES_REQUESTED
 
 ```bash
 python3 scripts/check_skill_contract.py
+python3 scripts/check_api_spec_contract.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py
 python3 shared/scripts/test_kanban_registration_event.py
