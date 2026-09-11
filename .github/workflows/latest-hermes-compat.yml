@@ -1,0 +1,28 @@
+name: Verify Latest Hermes Compatibility
+
+on:
+  push:
+    branches:
+      - dev
+      - "fix/**"
+      - "feat/**"
+      - "feature/**"
+      - "perf/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  latest-hermes-compat:
+    name: latest Hermes update-devkit compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify latest Hermes upstream patch compatibility
+        shell: bash
+        run: HERMES_BASE_IMAGE=nousresearch/hermes-agent:latest bash scripts/verify_latest_hermes_compat.sh
