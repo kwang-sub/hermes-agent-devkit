@@ -24,6 +24,8 @@ class SubscribeNotificationTests(unittest.TestCase):
             "HERMES_KANBAN_NOTIFY_CHAT_TYPE",
             "HERMES_KANBAN_NOTIFY_PROFILE",
             "HERMES_KANBAN_REGISTRATION_EVENT_HELPER",
+            "HERMES_KANBAN_NOTIFY_REGISTRATION_ACK_TIMEOUT_SECONDS",
+            "HERMES_KANBAN_NOTIFY_REGISTRATION_ACK_POLL_SECONDS",
             "HERMES_CLI",
             "HERMES_PYTHON",
             "FAKE_HERMES_MODE",
@@ -79,7 +81,9 @@ class SubscribeNotificationTests(unittest.TestCase):
                     "platform": "discord",
                     "chat_id": "123456789",
                     "notifier_profile": "default",
-                    "delivery_mode": "notify"
+                    "delivery_mode": "notify",
+                    "last_event_id": 1,
+                    "last_ping_event_id": 1
                 }}]))
                 raise SystemExit(0)
 
@@ -106,6 +110,7 @@ class SubscribeNotificationTests(unittest.TestCase):
                 print("REGISTRATION_EVENT_STATUS=failed")
                 raise SystemExit(1)
             print("REGISTRATION_EVENT_STATUS=queued")
+            print("REGISTRATION_EVENT_ID=1")
         """), encoding="utf-8")
         return helper, log
 
@@ -136,6 +141,8 @@ class SubscribeNotificationTests(unittest.TestCase):
             "HERMES_KANBAN_NOTIFY_CHAT_TYPE": "channel",
             "HERMES_KANBAN_NOTIFY_PROFILE": "default",
             "HERMES_KANBAN_REGISTRATION_EVENT_HELPER": str(registration),
+            "HERMES_KANBAN_NOTIFY_REGISTRATION_ACK_TIMEOUT_SECONDS": "0.1",
+            "HERMES_KANBAN_NOTIFY_REGISTRATION_ACK_POLL_SECONDS": "0.01",
             "HERMES_CLI": str(fake),
         }
         env.update(extra)
@@ -167,15 +174,18 @@ class SubscribeNotificationTests(unittest.TestCase):
             self.assertIn("NOTIFY_STATUS=subscribed", proc.stdout)
             self.assertIn("NOTIFY_VERIFIED=true", proc.stdout)
             self.assertIn("NOTIFY_REGISTRATION_EVENT=queued", proc.stdout)
+            self.assertIn("NOTIFY_REGISTRATION_EVENT_ID=1", proc.stdout)
+            self.assertIn("NOTIFY_REGISTRATION_DELIVERED=true", proc.stdout)
             self.assertIn("NOTIFY_BOARD=wow-batch", proc.stdout)
 
             calls = self.read_log(log)
-            self.assertEqual(len(calls), 3)
+            self.assertEqual(len(calls), 4)
             for call in calls:
                 self.assertEqual(call[:3], ["kanban", "--board", "wow-batch"])
             self.assertEqual(calls[0][3:6], ["show", "t_test123", "--json"])
             self.assertEqual(calls[1][3:5], ["notify-subscribe", "t_test123"])
             self.assertEqual(calls[2][3:6], ["notify-list", "t_test123", "--json"])
+            self.assertEqual(calls[3][3:6], ["notify-list", "t_test123", "--json"])
             self.assertEqual(
                 self.read_log(registration_log),
                 [["--board", "wow-batch", "--task-id", "t_test123"]],
