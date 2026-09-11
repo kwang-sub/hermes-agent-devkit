@@ -34,7 +34,7 @@ def main() -> int:
         "Java + Kotlin Mixed Project", "dev-spring-guidelines", "dev-spring-data",
     ), failures)
     require(detector, (
-        'DETECTOR_VERSION = "3"', '"kotlin"', 'dev-kotlin-guidelines',
+        'DETECTOR_VERSION = "4"', '"kotlin"', 'dev-kotlin-guidelines',
         'org.jetbrains.kotlin.jvm', 'kotlin-maven-plugin',
         'org.jetbrains.kotlin.plugin.spring', 'org.jetbrains.kotlin.plugin.jpa',
     ), failures)
