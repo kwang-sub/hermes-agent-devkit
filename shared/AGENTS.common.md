@@ -53,6 +53,10 @@ Task에는 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Risks, Wo
 ## JVM 언어 capability
 - Java source 변경은 `dev-java-guidelines`, Kotlin source 변경은 `dev-kotlin-guidelines`를 적용한다.
 - Java + Kotlin mixed project에서는 두 capability를 project 후보로 유지하되 실제 changed/affected source 언어에 맞춰 적용한다.
+- Java 변경에서는 target Java와 기존 convention을 우선하고 Stable 기능만 기본 적용한다. Preview/Incubator 기능은 기존 프로젝트가 이미 명시적으로 사용 중인 경우 외에 신규 도입하지 않는다.
+- Java Coder는 필요할 때 `skill_view("dev-java-guidelines")`로 record/sealed/pattern matching, Optional, collection ownership, Stream/parallelStream, exception, virtual thread 계약을 확인한다.
+- Java Reviewer는 실제 Java diff 판단에 필요할 때 동일 `dev-java-guidelines`를 적용한다. 특히 unsupported/Preview/Incubator 문법, record의 JPA/framework compatibility, Optional field/parameter 남용 또는 Optional 자체 null, mutable collection/array 노출, Stream 내부 반복 I/O/N+1, 근거 없는 `parallelStream`, swallowed exception, CPU-bound 또는 runtime-context 검토 없는 virtual thread 도입을 확인한다.
+- Java라는 이유만으로 Java/JDK/Gradle/Maven/Spring version을 자동 upgrade하지 않는다.
 - Kotlin 변경에서는 프로젝트 Kotlin version/language level과 기존 convention이 우선이며, `Stable` 기능만 기본 허용한다. Beta/Experimental 신규 도입은 Task 근거 또는 사용자 승인 없이 하지 않는다.
 - Kotlin Coder는 필요할 때 `skill_view("dev-kotlin-guidelines")`로 null-safety, data/value/sealed modeling, compiler plugin, annotation target, coroutine, KSP/kapt, Java interop 계약을 확인한다.
 - Kotlin Reviewer는 실제 Kotlin diff 판단에 필요할 때 동일 `dev-kotlin-guidelines`를 적용한다. 특히 신규 `!!`, Entity `data class`, mutable collection 노출, platform type propagation, `GlobalScope`, blocking JPA/JDBC 위의 근거 없는 `suspend`/`Flow`, Experimental opt-in을 확인한다.
