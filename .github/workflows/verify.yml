@@ -31,6 +31,10 @@ jobs:
         shell: bash
         run: bash scripts/verify.sh
 
+      - name: Verify Kotlin first-class capability contract
+        shell: bash
+        run: python3 scripts/check_kotlin_capability_contract.py
+
       - name: Verify Codex Kanban worker context runtime
         shell: bash
         run: python3 scripts/devkit_kanban_worker_context.py --self-test
