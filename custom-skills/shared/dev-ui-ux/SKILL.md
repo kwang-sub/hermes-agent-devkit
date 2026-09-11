@@ -1,13 +1,13 @@
 ---
 name: dev-ui-ux
-description: 승인된 Figma/프로젝트 Design System을 우선하면서 UI/UX Pro Max의 검증된 우선순위와 접근성·반응형·interaction·chart 가이드를 adapter 형태로 적용하는 UI capability skill.
-version: 0.2.0
+description: 승인된 Design Reference와 프로젝트 Design System을 우선하면서 UI/UX Pro Max의 검증된 우선순위와 접근성·반응형·interaction·chart 가이드를 adapter 형태로 적용하는 UI quality capability skill.
+version: 0.3.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, frontend, ui, ux, accessibility, responsive, figma, design-system, chart]
-    related_skills: [dev-frontend-feature, dev-figma-design, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract]
+    tags: [dev, frontend, ui, ux, accessibility, responsive, design-reference, design-system, chart]
+    related_skills: [dev-frontend-feature, dev-design-reference, dev-figma-design, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract]
     requires_tools: [terminal]
 ---
 
@@ -15,17 +15,29 @@ metadata:
 
 보이는 UI/interaction을 설계·구현·리뷰할 때만 사용하는 quality capability다. UI/UX Pro Max 전체 runtime을 복제하지 않고 upstream의 안정적인 원칙을 프로젝트 우선 adapter로 사용한다.
 
+Design Source의 IMAGE/Figma/provider 차이는 `dev-design-reference`가 담당한다. 이 Skill은 정규화된 Design Evidence와 실제 구현 품질만 본다.
+
 ## 우선순위
 
-FIGMA_DRIVEN:
+REFERENCE_DRIVEN + APPROVED:
 
 ```text
 사용자/Task 명시 요구
-→ APPROVED Figma frame / Design System
-→ 프로젝트 기존 component/token/convention
+→ Approved Reference의 OBSERVED evidence
+→ 프로젝트 기존 Design System/component/token/convention
 → 같은 화면/도메인의 기존 UI pattern
+→ INFERRED evidence
 → dev-ui-ux baseline
 → 일반 UI best practice
+```
+
+REFERENCE 상태:
+
+```text
+사용자/Task 명시 요구
+→ 프로젝트 기존 Design System/component/token/convention
+→ Reference의 방향성
+→ dev-ui-ux baseline
 ```
 
 CODE_DRIVEN:
@@ -69,6 +81,24 @@ pure backend/API/DB/DevOps에는 적용하지 않는다.
 
 상세 checklist는 `references/baseline.md`를 필요할 때만 읽는다.
 
+## Reference의 UNKNOWN 처리
+
+이미지/Figma에 없는 상태를 UI/UX가 임의의 product behavior로 채우지 않는다.
+
+```text
+Reference UNKNOWN
++ project pattern 있음
+→ project pattern 사용
+
+Reference UNKNOWN
++ project pattern 없음
++ 접근성/사용성상 최소 상태 필요
+→ 최소 제안 + evidence 기록
+
+product 의미 결정 필요
+→ Open Question
+```
+
 ## Financial/Data UI 추가 확인
 
 금액·수익률·차트처럼 데이터 밀도가 높은 화면에서는 다음을 확인한다.
@@ -95,7 +125,8 @@ loading/empty/error와 stale data 구분
 ```text
 Skill: dev-ui-ux
 Frontend Mode
-Design Source / Status
+Design Source / Status / Fidelity
+Observed / Inferred / Unknown
 Existing Component/Token references
 Accessibility impact
 Responsive states

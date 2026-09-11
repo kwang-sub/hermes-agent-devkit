@@ -1,19 +1,19 @@
 ---
 name: dev-breakdown
-description: managed 프로젝트의 실제 코드·디자인·데이터 근거와 기존 project pattern으로 한국어 Implementation Plan을 생성하며 구현하지 않는 orchestrator 전용 skill.
-version: 0.12.1
+description: managed 프로젝트의 실제 코드·디자인 Reference·데이터 근거와 기존 project pattern으로 한국어 Implementation Plan을 생성하며 구현하지 않는 orchestrator 전용 skill.
+version: 0.13.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, planning, analysis, breakdown, orchestrator, pattern, java, kotlin, frontend, figma, data, dbml, api, spec]
-    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-tech-dispatch, dev-skill-preflight, dev-workspace-dispatch, dev-workflow-orchestrate, dev-java-guidelines, dev-kotlin-guidelines, dev-frontend-feature, dev-data-feature, dev-api-spec]
+    tags: [dev, planning, analysis, breakdown, orchestrator, pattern, java, kotlin, frontend, design-reference, image, figma, data, dbml, api, spec]
+    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-tech-dispatch, dev-skill-preflight, dev-workspace-dispatch, dev-workflow-orchestrate, dev-java-guidelines, dev-kotlin-guidelines, dev-frontend-feature, dev-design-reference, dev-data-feature, dev-api-spec]
     requires_tools: [terminal, skill_view]
 ---
 
 # dev-breakdown
 
-요구사항을 Coder가 실행 가능한 근거 기반 한국어 계획으로 바꾸는 read-only 단계다. source/config 수정, dependency 설치, workspace/branch/Kanban 생성, commit/push/reset/restore/clean/stash를 하지 않는다.
+요구사항을 Coder가 실행 가능한 근거 기반 **한국어 Implementation Plan**으로 바꾸는 read-only 단계다. source/config 수정, dependency 설치, workspace/branch/Kanban 생성, commit/push/reset/restore/clean/stash를 하지 않는다.
 
 ## 계약
 
@@ -24,16 +24,17 @@ metadata:
 5. Goal/Constraints/In-Out Scope/minimum affected areas를 정한다. product intent를 추측하지 않는다.
 6. 중요한 assumption은 source evidence로 닫고, product/architecture/design/data model 승인 결정이 필요하면 Open Question으로 남긴다.
 7. 최대 7개 Implementation Tasks를 변경·근거·완료조건·verification과 함께 순서화한다.
-8. Java 프로젝트의 Java 변경은 `dev-java-guidelines`, **Kotlin 프로젝트의 Kotlin 변경은 `dev-kotlin-guidelines`**, Spring 변경은 기존 `dev-spring-*` capability를 Applicable Skills에 지정한다. Java + Kotlin mixed project에서는 실제 affected source 언어에 따라 둘을 함께 또는 각각 적용한다.
-9. Frontend Task는 `dev-frontend-feature`를 canonical Applicable Skill로 지정하고 하위 Skill은 `Frontend Capability Hints`로만 전달한다.
+8. Java 프로젝트의 Java 변경은 `dev-java-guidelines`, **Kotlin 프로젝트의 Kotlin 변경**은 `dev-kotlin-guidelines`, Spring 변경은 기존 `dev-spring-*` capability를 Applicable Skills에 지정한다. Java + Kotlin mixed project에서는 실제 affected source 언어에 따라 둘을 함께 또는 각각 적용한다.
+9. Frontend Task는 `dev-frontend-feature`를 canonical Applicable Skill로 지정하고 하위 Skill은 `Frontend Capability Hints`로만 전달한다. IMAGE/Figma Reference가 있으면 `dev-design-reference`를 hint에 포함한다.
 10. Data 모델/schema/SQL/migration/performance Task는 `dev-data-feature`를 canonical Applicable Skill로 지정하고 하위 Skill은 `Data Capability Hints`로 전달한다. 승인된 기존 schema의 단순 JPA 구현은 기존 `dev-spring-data`만 사용할 수 있다.
 11. Backend API와 Frontend가 함께 바뀌는 Task는 Frontend Capability Hints에 `dev-api-contract`를 포함한다.
 12. API endpoint 신규/변경/문서화/감사 작업은 `dev-api-spec`을 적용하고 API Spec Mode/Gate/Status/Path/Source를 계획에 명시한다.
-13. Figma URL이 있으면 Design Source/Status/Figma URL/Frontend Mode를 보존하며 `APPROVED`만 FIGMA_DRIVEN으로 확정한다. 이 경우 Frontend Capability Hints에 `dev-figma-design`을 포함한다.
+13. Frontend 디자인 입력은 `REFERENCE_DRIVEN | CODE_DRIVEN`으로 일반화하고 `IMAGE | FIGMA | EXISTING_CODE` source를 구분한다.
 14. data model/schema 의미 변경이면 아래 Data Model 계약을 계획에 보존한다.
-15. `Applicable Skills`에 추정 이름을 만들지 않는다. runtime pin 가능 여부는 dispatch 직전 `dev-skill-preflight`가 검증한다.
-16. testable Acceptance Criteria와 risk-based Test Plan, Dependencies, Risks, Open Questions를 작성한다.
-17. project/repo·scope·pattern·AC·tasks·test·필요한 design/API/data model approval이 확립될 때만 `READY`, 아니면 `BLOCKED`다.
+15. Storybook/Playwright는 기존 project evidence가 있을 때만 계획에 활용한다. 화면 구현만을 이유로 자동 dependency 추가를 계획하지 않는다.
+16. `Applicable Skills`에 추정 이름을 만들지 않는다. runtime pin 가능 여부는 dispatch 직전 `dev-skill-preflight`가 검증한다.
+17. testable Acceptance Criteria와 risk-based Test Plan, Dependencies, Risks, Open Questions를 작성한다.
+18. project/repo·scope·pattern·AC·tasks·test·필요한 design/API/data model approval이 확립될 때만 `READY`, 아니면 `BLOCKED`다.
 
 ## API Spec 계약
 
@@ -52,7 +53,9 @@ Source ↔ Markdown ↔ OpenAPI 차이 조사 → AUDIT
 API contract 영향 없음 → NOT_REQUIRED
 ```
 
-`DESIGN_FIRST`이면 Plan Approval에서 spec 초안을 명시적으로 승인한다. `SOURCE_SYNC`는 Application Source 역문서화이며 자동 APPROVED로 승격하지 않는다.
+`DESIGN_FIRST`이면 `API Spec Gate: REQUIRED`, 최초 `API Spec Status: DRAFT`다. Plan Approval 전에 Markdown 규격 초안을 사용자에게 보여주되 source를 수정하지 않는다.
+
+`SOURCE_SYNC`는 Application Source 역문서화이며 `Status: DRAFT`, `Documentation Source: APPLICATION_SOURCE`를 유지하고 자동 APPROVED로 승격하지 않는다.
 
 `AUDIT`은 기본 read-only이며 결과를 다음 중 하나로 남긴다.
 
@@ -60,7 +63,7 @@ API contract 영향 없음 → NOT_REQUIRED
 IN_SYNC | SOURCE_ONLY | SPEC_ONLY | CONTRACT_MISMATCH
 ```
 
-기존 application source에는 endpoint가 있지만 Markdown specification이 없으면 `SOURCE_ONLY`로 분류하고, Task 범위 안에서 필요하면 `SOURCE_SYNC` 문서화를 계획한다.
+기존 application source에는 endpoint가 있지만 Markdown specification이 없으면 `SOURCE_ONLY`로 분류하고, Task 범위 안에서 필요하면 `SOURCE_SYNC` 문서화를 계획한다. 전체 API 스캔은 사용자가 명시적으로 전체 감사를 요청한 경우에만 허용한다.
 
 ## Data Model 계약
 
@@ -125,28 +128,92 @@ docs/data/schema.dbml
 
 Kotlin 변경이 포함되면 project pattern/technology cache에서 Kotlin/compiler version, JVM target, kotlin-spring/kotlin-jpa, KSP/kapt, blocking/reactive, Java interop evidence를 재사용한다.
 
-language upgrade, compiler plugin 추가, kapt→KSP migration을 요구사항 없이 자동 포함하지 않는다.
+Implementation Plan에는 Kotlin language upgrade, compiler plugin 추가, kapt→KSP migration을 요구사항 없이 자동 포함하지 않는다. `!!`, Entity `data class`, coroutine/Flow, value class boundary, annotation use-site target 변화가 실제 scope에 들어가면 위험과 검증 근거를 명시한다.
+
+## Frontend Design Reference 계약
+
+Frontend 디자인 입력은 다음 계약으로 보존한다.
+
+```text
+Frontend Mode: REFERENCE_DRIVEN | CODE_DRIVEN
+Design Source: IMAGE | FIGMA | EXISTING_CODE
+Design Status: DRAFT | REFERENCE | APPROVED | N/A
+Design Fidelity: STRUCTURE | VISUAL | HIGH | N/A
+Reference: <repo image path | selected Figma URL | current code>
+Screen Spec: <path | none>
+```
+
+판정:
+
+```text
+IMAGE + APPROVED
+→ stable GitHub Reference Package와 Screen Spec을 구현 기준으로 사용
+
+FIGMA + APPROVED
+→ REFERENCE_DRIVEN
+→ dev-design-reference + dev-figma-design hint
+
+REFERENCE
+→ 방향 참고. exact source of truth 아님
+
+DRAFT
+→ planning only. 구현 기준으로 임의 승격 금지
+
+외부 authoritative Reference 없음
+→ CODE_DRIVEN + EXISTING_CODE
+```
+
+`REFERENCE_DRIVEN` Task에서는 디자인 evidence를 구분한다.
+
+```text
+Observed Design Requirements
+Inferred Design Hints
+Unknown / Open Questions
+```
+
+IMAGE의 추정 spacing/radius/color를 exact token/CSS 값으로 확정하지 않는다.
 
 ## Frontend 계획 규칙
 
 ```text
 Frontend Entry: dev-frontend-feature
-Frontend Mode: FIGMA_DRIVEN | CODE_DRIVEN
+Frontend Mode: REFERENCE_DRIVEN | CODE_DRIVEN
+Design Source / Status / Fidelity
+Reference / Screen Spec
 Package Manager / Framework evidence
 Existing Component/Token references
 Frontend Capability Hints
-Design Source / Status
-Affected UI States
+Observed / Inferred / Unknown
+Affected UI States: loading | empty | error | populated (해당 시)
 Responsive scope
 API contract impact
+Storybook Catalog Plan: UPDATE | NOT_REQUIRED | NOT_AVAILABLE
+Visual Verification: DESIGN_CONFORMANCE | VISUAL_REGRESSION | BOTH | NOT_REQUIRED
+Regression Baseline: APPROVED_BROWSER_SCREENSHOT | EXISTING_PROJECT_BASELINE | NOT_REQUIRED
 Verification plan
 ```
 
-Figma가 `APPROVED`이면 필요한 hint 예시는 다음과 같다.
+`DESIGN_CONFORMANCE`는 Approved IMAGE/Figma Reference와 최초 구현의 구조·배치·visual intent 일치를 확인한다. `VISUAL_REGRESSION`은 승인된 실제 browser screenshot을 이후 golden으로 사용하는 회귀 검증이다. Design Reference PNG를 장기 regression golden과 동일시하지 않는다.
+
+예:
 
 ```text
-- dev-figma-design: approved selected frame/component evidence
-- dev-ui-ux: responsive/accessibility/interaction quality gate
+Applicable Skills:
+- dev-frontend-feature: Frontend canonical implementation entry
+
+Frontend Capability Hints:
+- dev-design-reference: APPROVED IMAGE/Figma evidence 정규화
+- dev-typescript-guidelines: API/UI type change
+- dev-nextjs-feature: App Router page/component change
+- dev-frontend-test: Storybook/Playwright visual verification
+- dev-ui-ux: responsive/accessibility/chart quality gate
+- dev-api-contract: Backend DTO와 frontend type 동시 변경
+```
+
+Figma인 경우에만 추가로:
+
+```text
+- dev-figma-design: APPROVED Figma selected frame provider
 ```
 
 ## 기존 Spring/JPA 정책 보존
@@ -163,6 +230,6 @@ DBML/schema 자체를 설계하지 않는 순수 JPA 구현까지 `dev-data-feat
 
 ## 필수 출력
 
-Task Identity; Project/working tree; Goal/Type/Requirement; Assumptions/Constraints/Out of Scope; Project Pattern Summary; Design Source/Status/Frontend Mode(해당 시); API Spec Mode/Gate/Status/Path/Source(해당 시); **Data Design Mode/Gate/Status/Task Class/Vendor/DBML Path(해당 시)**; Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Data Capability Hints; Acceptance Criteria; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
+Task Identity; Project/working tree; Goal/Type/Requirement; Assumptions/Constraints/Out of Scope; **Project Pattern Summary**; Frontend Mode/Design Source/Status/Fidelity/Reference/Screen Spec(해당 시); **API Spec Mode/Gate/Status/Path/Source(해당 시)**; **Data Design Mode/Gate/Status/Task Class/Vendor/DBML Path(해당 시)**; Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Data Capability Hints; Observed/Inferred/Unknown(해당 시); Storybook/Visual Verification Plan(해당 시); Acceptance Criteria; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
 
 유형별 상세 체크리스트와 출력 템플릿은 `references/planning-details.md`를 필요할 때만 읽는다.

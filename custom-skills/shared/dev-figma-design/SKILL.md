@@ -1,23 +1,23 @@
 ---
 name: dev-figma-design
-description: 승인된 Figma frame/component URL에서 공식 REST API로 bounded design context와 preview를 read-only 추출해 Frontend 구현 evidence로 전달한다.
-version: 0.1.0
+description: Figma frame/component URL에서 공식 REST API로 bounded design context와 preview를 read-only 추출해 dev-design-reference용 provider evidence로 전달한다.
+version: 0.2.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, frontend, figma, design, rest, read-only]
-    related_skills: [dev-frontend-feature, dev-ui-ux, dev-frontend-guidelines, dev-nextjs-feature]
+    tags: [dev, frontend, figma, design, provider, rest, read-only]
+    related_skills: [dev-design-reference, dev-frontend-feature, dev-ui-ux, dev-frontend-guidelines, dev-nextjs-feature]
     requires_tools: [terminal]
 ---
 
 # dev-figma-design
 
-Figma의 구현 대상 frame/component를 **read-only**로 읽어 Design Evidence를 만드는 Skill이다. Frontend source를 직접 구현하지 않으며 Figma canvas도 수정하지 않는다.
+Figma의 구현 대상 frame/component를 **read-only**로 읽는 Design Provider다. Frontend source나 Figma canvas를 수정하지 않는다.
+
+상위 Normalized Design Evidence 계약은 `dev-design-reference`가 소유한다.
 
 ## 인증
-
-컨테이너 환경에서 다음 중 하나를 사용한다.
 
 ```text
 FIGMA_ACCESS_TOKEN
@@ -35,11 +35,13 @@ FIGMA_OAUTH_TOKEN
 
 ```text
 DRAFT
-→ planning/reference only
-→ 구현 source of truth 아님
+→ planning only
+
+REFERENCE
+→ 시각/구조 참고
 
 APPROVED
-→ FIGMA_DRIVEN 구현 source of truth
+→ REFERENCE_DRIVEN 구현 기준으로 사용 가능
 ```
 
 상태가 명확하지 않으면 임의로 APPROVED로 승격하지 않는다.
@@ -66,9 +68,9 @@ python3 /opt/custom-skills/shared/dev-figma-design/scripts/figma_context.py insp
 
 file-level URL은 기본 차단한다. 명시적 planning 탐색이 필요할 때만 `--allow-file`을 사용하며 depth는 bounded다.
 
-## Evidence
+## Provider Evidence
 
-최소 다음을 해석한다.
+직접 API에서 확인한 값은 `OBSERVED` 후보다.
 
 ```text
 Frame/Component identity
@@ -83,7 +85,25 @@ child hierarchy
 render preview URL/path
 ```
 
+Figma에 정의되지 않은 responsive/product behavior는 `UNKNOWN`으로 남길 수 있다.
+
 raw API 전체 응답은 기본 출력하지 않으며 debugging 근거가 필요할 때만 `--raw`를 사용한다.
+
+## Normalized Evidence 전달
+
+`dev-design-reference`에는 다음을 전달한다.
+
+```text
+Design Source: FIGMA
+Design Status: DRAFT | REFERENCE | APPROVED
+Reference: <selected Figma URL>
+Observed:
+- exact Figma evidence
+Inferred:
+- provider evidence에서 합리적으로 추정한 내용
+Unknown:
+- Figma에 정의되지 않은 상태/behavior
+```
 
 ## Design Conflict
 
@@ -101,6 +121,8 @@ Improvement Deferred:
 
 ## Provider 정책
 
-현재 provider는 Figma 공식 REST API다. Figma 공식 MCP는 지원 catalog client 제약이 있으므로 Hermes에서 직접 가정하지 않는다. provider 교체가 필요해도 `dev-figma-design`의 Design Evidence 계약은 유지한다.
+현재 provider는 Figma 공식 REST API다. Figma 공식 MCP 지원 여부와 무관하게 Hermes에서 임의의 MCP contract를 가정하지 않는다.
+
+Provider 구현이 바뀌어도 상위 `dev-design-reference`의 Normalized Design Evidence 계약은 유지한다.
 
 세부 endpoint/source는 `references/figma-provider.md`를 따른다.
