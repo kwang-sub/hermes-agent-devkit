@@ -7,6 +7,9 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 UPDATER = ROOT / "update-devkit.ps1"
+DOCKERFILE = ROOT / "Dockerfile"
+LATEST_COMPAT_SCRIPT = ROOT / "scripts/verify_latest_hermes_compat.sh"
+LATEST_COMPAT_WORKFLOW = ROOT / ".github/workflows/latest-hermes-compat.yml"
 
 
 def require(text: str, terms: tuple[str, ...], label: str) -> None:
@@ -31,11 +34,14 @@ def executable_text(text: str) -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
-    if not UPDATER.is_file():
-        raise SystemExit("update-devkit.ps1 is missing")
+def read_required(path: Path, label: str) -> str:
+    if not path.is_file():
+        raise SystemExit(f"{label} is missing: {path.relative_to(ROOT)}")
+    return path.read_text(encoding="utf-8-sig")
 
-    text = UPDATER.read_text(encoding="utf-8-sig")
+
+def main() -> int:
+    text = read_required(UPDATER, "update-devkit.ps1")
 
     require(
         text,
@@ -131,7 +137,53 @@ def main() -> int:
             "update-devkit.ps1 must keep one cached repair build path"
         )
 
-    print("[PASS] DevKit updater contract verified.")
+    dockerfile = read_required(DOCKERFILE, "Dockerfile")
+    require(
+        dockerfile,
+        (
+            'FROM ${HERMES_BASE_IMAGE} AS hermes-upstream-patched',
+            'FROM hermes-upstream-patched AS hermes-devkit-runtime',
+            'patch_hermes_kanban_model_transition.py --self-test',
+            "grep -q 'def _devkit_run_flow_model_transition' /opt/hermes/tools/kanban_tools.py",
+            '/opt/hermes/.venv/bin/python -m py_compile',
+        ),
+        "Dockerfile latest-Hermes compatibility stage",
+    )
+
+    compat_script = read_required(LATEST_COMPAT_SCRIPT, "latest Hermes compatibility script")
+    require(
+        compat_script,
+        (
+            'nousresearch/hermes-agent:latest',
+            '--target hermes-upstream-patched',
+            '--pull',
+            'def _devkit_run_flow_model_transition',
+            'MODEL_POLICY_SNAPSHOT_V1',
+            '/opt/hermes/.venv/bin/hermes --help',
+            '/opt/custom-skills/shared/dev-api-spec/SKILL.md',
+            '/opt/data/shared/scripts/flow_model_policy.py',
+        ),
+        "latest Hermes compatibility smoke",
+    )
+
+    compat_workflow = read_required(LATEST_COMPAT_WORKFLOW, "latest Hermes compatibility workflow")
+    require(
+        compat_workflow,
+        (
+            'name: Verify Latest Hermes Compatibility',
+            '- dev',
+            '- "fix/**"',
+            '- "feat/**"',
+            '- "feature/**"',
+            '- "perf/**"',
+            'latest Hermes update-devkit compatibility',
+            'HERMES_BASE_IMAGE=nousresearch/hermes-agent:latest',
+            'bash scripts/verify_latest_hermes_compat.sh',
+        ),
+        "latest Hermes compatibility workflow",
+    )
+
+    print("[PASS] DevKit updater + latest Hermes CI compatibility contract verified.")
     return 0
 
 
