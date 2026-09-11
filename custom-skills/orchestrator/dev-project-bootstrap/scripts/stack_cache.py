@@ -128,7 +128,10 @@ def technology_section(result: dict[str, Any]) -> str:
     lines.extend([
         f"  ui_candidate: {yaml_scalar(str(result.get('ui_candidate', '')))}",
         f"  cross_stack_candidate: {yaml_scalar(str(result.get('cross_stack_candidate', '')))}",
+        "  database_vendors:",
     ])
+    yaml_list(lines, [str(value) for value in result.get("database_vendors", [])])
+    lines.append(f"  data_entry_candidate: {yaml_scalar(str(result.get('data_entry_candidate', '')))}")
     return "\n".join(lines) + "\n"
 
 
@@ -212,6 +215,8 @@ def cached_summary(body: str, current: dict[str, Any]) -> dict[str, Any]:
         "frontend_hints": list_value(body, "frontend_hints"),
         "ui_candidate": scalar(body, "ui_candidate") or "",
         "cross_stack_candidate": scalar(body, "cross_stack_candidate") or "",
+        "database_vendors": list_value(body, "database_vendors"),
+        "data_entry_candidate": scalar(body, "data_entry_candidate") or "",
     }
 
 
@@ -266,6 +271,8 @@ def main() -> int:
     print(f"FRONTEND_HINTS={','.join(result.get('frontend_hints', []))}")
     print(f"UI_SKILL_CANDIDATE={result.get('ui_candidate', '')}")
     print(f"CROSS_STACK_SKILL_CANDIDATE={result.get('cross_stack_candidate', '')}")
+    print(f"DATABASE_VENDORS={','.join(result.get('database_vendors', []))}")
+    print(f"DATA_ENTRY_CANDIDATE={result.get('data_entry_candidate', '')}")
     print("STATUS=pass")
     return 0
 

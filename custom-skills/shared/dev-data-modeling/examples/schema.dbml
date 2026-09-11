@@ -1,0 +1,17 @@
+Table account {
+  account_id bigint [pk]
+  name varchar(100) [not null]
+}
+
+Table transaction {
+  transaction_id bigint [pk]
+  account_id bigint [not null]
+  amount decimal(19,4) [not null]
+  occurred_at timestamp [not null]
+
+  indexes {
+    (account_id, occurred_at)
+  }
+}
+
+Ref: transaction.account_id > account.account_id
