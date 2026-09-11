@@ -31,6 +31,10 @@ jobs:
         shell: bash
         run: bash scripts/verify.sh
 
+      - name: Verify Java official-practice capability contract
+        shell: bash
+        run: python3 scripts/check_java_capability_contract.py
+
       - name: Verify Kotlin first-class capability contract
         shell: bash
         run: python3 scripts/check_kotlin_capability_contract.py
