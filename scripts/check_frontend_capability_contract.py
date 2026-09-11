@@ -20,6 +20,11 @@ typescript_reference_path = ROOT / "custom-skills/shared/dev-typescript-guidelin
 if not typescript_reference_path.is_file():
     raise SystemExit("TypeScript official practice reference is missing")
 typescript_reference = typescript_reference_path.read_text(encoding="utf-8")
+react = (ROOT / "custom-skills/shared/dev-frontend-guidelines/SKILL.md").read_text(encoding="utf-8")
+react_reference_path = ROOT / "custom-skills/shared/dev-frontend-guidelines/references/official-react-practices.md"
+if not react_reference_path.is_file():
+    raise SystemExit("React official practice reference is missing")
+react_reference = react_reference_path.read_text(encoding="utf-8")
 figma = (ROOT / "custom-skills/shared/dev-figma-design/SKILL.md").read_text(encoding="utf-8")
 figma_script = (ROOT / "custom-skills/shared/dev-figma-design/scripts/figma_context.py").read_text(encoding="utf-8")
 stack = (ROOT / "shared/references/stack-capability-skill-guide.md").read_text(encoding="utf-8")
@@ -27,7 +32,7 @@ stack = (ROOT / "shared/references/stack-capability-skill-guide.md").read_text(e
 checks = {
     "project pattern": (pattern, ("dev-tech-dispatch", "dev-frontend-feature", "Frontend Capability Hints", "Design Status: DRAFT | APPROVED")),
     "breakdown": (breakdown, ("dev-frontend-feature", "FIGMA_DRIVEN", "CODE_DRIVEN", "dev-api-contract", "dev-figma-design")),
-    "frontend entry": (frontend, ("canonical entry", "FIGMA_DRIVEN", "CODE_DRIVEN", "dev-ui-ux", "dev-figma-design", "lazy-load", "dev-typescript-guidelines")),
+    "frontend entry": (frontend, ("canonical entry", "FIGMA_DRIVEN", "CODE_DRIVEN", "dev-ui-ux", "dev-figma-design", "lazy-load", "dev-typescript-guidelines", "dev-frontend-guidelines")),
     "typescript skill": (typescript, (
         "version: 0.2.0", "Strictness Gate", "strictNullChecks", "`unknown` vs `any`", "Narrowing",
         "Discriminated Union / Exhaustiveness", "Type Assertion / Non-null Assertion", "`satisfies`",
@@ -38,9 +43,18 @@ checks = {
         "Discriminated Union", "exactOptionalPropertyTypes", "noUncheckedIndexedAccess", "TypeScript 6.0 Transition",
         "ignoreDeprecations", "TypeScript Handbook", "TSConfig Reference",
     )),
+    "react skill": (react, (
+        "version: 0.2.0", "Purity / Mutation", "Rules of Hooks", "State Structure", "Events vs Effects",
+        "Refs", "Memoization / React Compiler", "React Compiler / Strict Mode / Hooks lint", "Review Hotspots",
+    )),
+    "react reference": (react_reference, (
+        "React Official Practices", "Components and Hooks must be pure", "Rules of Hooks", "State Structure",
+        "Preserving and Resetting State", "Events vs Effects", "Memoization and React Compiler",
+        "Strict Mode and Lint", "Primary Official Sources",
+    )),
     "figma skill": (figma, ("FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN", "file_content:read", "--preview-out", "read-only")),
     "figma provider": (figma_script, ("https://api.figma.com", "X-Figma-Token", "Authorization", "/v1/files/", "/v1/images/", "HERMES_WRITE_SAFE_ROOT", "MAX_DEPTH = 6")),
-    "stack guide": (stack, ("dev-frontend-feature", "dev-typescript-guidelines", "dev-figma-design", "FIGMA_DRIVEN", "Stack Detection != Skill Loading")),
+    "stack guide": (stack, ("dev-frontend-feature", "dev-typescript-guidelines", "dev-frontend-guidelines", "dev-figma-design", "FIGMA_DRIVEN", "Stack Detection != Skill Loading")),
 }
 for label, (text, terms) in checks.items():
     missing = [term for term in terms if term not in text]
@@ -66,4 +80,4 @@ for key in ("FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN"):
     if f"{key}: ${{{key}:-}}" not in compose:
         raise SystemExit(f"compose.yml missing {key}")
 
-print("[PASS] Frontend/TypeScript/Figma capability contract")
+print("[PASS] Frontend/React/TypeScript/Figma capability contract")
