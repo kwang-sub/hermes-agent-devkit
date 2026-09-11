@@ -1,13 +1,13 @@
 ---
 name: dev-api-docs
-description: Framework에 종속되지 않은 API 문서화 skill로 OpenAPI/Swagger와 Postman Collection을 생성·갱신하며 Spring에서는 합의된 SpringDoc 예시 규격과 프로젝트 공통 응답 규격을 함께 반영한다.
-version: 0.2.0
+description: Framework에 종속되지 않은 API 문서화 skill로 승인 Markdown API Specification과 실제 Application Source를 대조해 OpenAPI/Swagger와 Postman Collection을 생성·갱신한다.
+version: 0.3.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, coder, api, docs, openapi, swagger, postman, springdoc]
-    related_skills: [dev-spring-guidelines, dev-spring-feature]
+    tags: [dev, coder, api, docs, openapi, swagger, postman, springdoc, spec]
+    related_skills: [dev-api-spec, dev-api-contract, dev-spring-guidelines, dev-spring-feature]
     requires_tools: [terminal, skill_view]
 ---
 
@@ -26,6 +26,46 @@ BOTH
 ```
 
 지정이 없고 기존 프로젝트에 한 방식만 존재하면 기존 방식을 우선한다. 새 문서 체계나 dependency 도입이 필요한 경우 Standard Flow 결정사항으로 올린다.
+
+## API Spec 연동
+
+먼저 Task의 `API Spec Mode`, `API Spec Status`, `API Spec Path`를 확인한다.
+
+### DESIGN_FIRST
+
+`API Spec Status: APPROVED`이면 다음 순서를 사용한다.
+
+```text
+APPROVED Markdown API Specification
+↕ contract check
+Application Source
+→ OpenAPI / Postman
+```
+
+승인 Markdown과 source가 다르면 현재 source 기준으로 문서를 조용히 생성하지 않는다.
+
+```text
+API_SPEC_MISMATCH
+```
+
+를 보고하고 Requirement Delta + API Spec 재승인 대상으로 올린다.
+
+### SOURCE_SYNC
+
+기존 API 역문서화에서는 Application Source가 descriptive 문서의 기준이다.
+
+```text
+Application Source
+→ Markdown DRAFT
+  Documentation Source: APPLICATION_SOURCE
+→ OpenAPI / Postman
+```
+
+SOURCE_SYNC Markdown DRAFT를 자동 APPROVED로 승격하지 않는다.
+
+### AUDIT
+
+AUDIT Task에서는 기본적으로 artifact를 수정하지 않고 Source ↔ Markdown ↔ OpenAPI/Postman 차이를 보고한다.
 
 ## Reference Loading
 
@@ -46,13 +86,16 @@ Reference는 외부 GitHub 저장소를 매번 조회하기 위한 것이 아니
 
 ## 공통 실행 순서
 
-1. 실제 Controller/route/request/response/error/auth contract를 source에서 확인한다.
-2. 기존 API 문서 artifact와 grouping/naming/environment 구조를 확인한다.
-3. 필요한 local reference를 로드한다.
-4. 문서가 source contract와 동일하도록 생성/수정한다.
-5. 프로젝트의 공통 응답 규격과 공통 Error contract를 문서 Schema/Example에 반영한다.
-6. 문서 때문에 production API contract를 임의 변경하지 않는다.
-7. 가능한 schema/collection validation과 compile/test를 수행한다.
+1. API Spec Mode/Status/Path를 확인한다.
+2. APPROVED Markdown API Specification이 있으면 먼저 읽는다.
+3. 실제 Controller/route/request/response/error/auth contract를 source에서 확인한다.
+4. Markdown과 source가 normative contract 기준으로 일치하는지 확인한다.
+5. 기존 API 문서 artifact와 grouping/naming/environment 구조를 확인한다.
+6. 필요한 local reference를 로드한다.
+7. OpenAPI/Postman이 승인 Spec과 실제 source contract 모두에 맞도록 생성/수정한다.
+8. 프로젝트의 공통 응답 규격과 공통 Error contract를 문서 Schema/Example에 반영한다.
+9. 문서 때문에 production API contract를 임의 변경하지 않는다.
+10. 가능한 schema/collection validation과 compile/test를 수행한다.
 
 ## Spring OpenAPI Reference
 
@@ -83,6 +126,7 @@ OperationCustomizer 기반 error response example 생성
 - 기존 springdoc config/annotation/customizer가 있으면 재사용한다.
 - Controller annotation 스타일과 API group naming은 프로젝트 기존 convention을 따른다.
 - API별 예상 ErrorCode를 실제 throw/handler flow와 대조한다.
+- APPROVED Markdown이 있으면 method/path/request/response/error/auth/nullability가 일치하는지 먼저 확인한다.
 - request/response field description/example annotation은 기존 DTO 문서화 패턴을 따른다.
 - 새 `SwaggerConfig`, custom annotation, dependency를 편의상 중복 생성하지 않는다.
 - SpringDoc이 없는 프로젝트에 신규 dependency를 추가해야 하면 자동 추가하지 않는다.
@@ -91,7 +135,7 @@ OperationCustomizer 기반 error response example 생성
 
 Postman 작업은 `references/postman-reference.md`를 사용한다.
 
-Postman Collection은 실제 API contract와 동일하게 구성한다.
+Postman Collection은 실제 API contract와 동일하게 구성하고, APPROVED Markdown Spec이 있으면 그 의미 계약과도 일치해야 한다.
 
 권장 구조는 프로젝트 기존 grouping을 우선하고 없으면 API/domain 단위 folder를 사용한다.
 
@@ -128,9 +172,11 @@ secret/token 실제 값을 collection에 기록하지 않는다.
 
 ## BOTH Mode
 
-OpenAPI와 Postman을 동시에 만들 때 두 문서가 별도 source of truth로 divergence하지 않도록 실제 application source contract를 기준으로 각각 검증한다.
+OpenAPI와 Postman을 동시에 만들 때 두 문서가 별도 source of truth로 divergence하지 않게 한다.
 
 ```text
+APPROVED Markdown API Specification (있을 때)
+              ↕
 Application Source Contract
     ├─ OpenAPI
     └─ Postman
@@ -141,6 +187,7 @@ Application Source Contract
 ```text
 Skill: dev-api-docs
 Mode: OPENAPI | POSTMAN | BOTH
+API Spec Mode / Status / Path
 Framework / API documentation stack
 References Loaded
 Pattern References
@@ -148,5 +195,6 @@ Response/Error Contract Used
 Artifacts Added / Updated
 Validation / Compile / Tests
 Contract Mismatches Found
+API Spec Mismatch: true | false
 Residual Risk
 ```
