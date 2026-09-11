@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import py_compile
 import tempfile
 from pathlib import Path
 
 PATCH_MARKER = "def _devkit_run_flow_model_transition("
 POLICY_MARKER = "MODEL_POLICY_SNAPSHOT_V1"
+REVIEW_WRAPPER_MARKER = "_devkit_original_handle_request_review = _handle_request_review"
+CHANGES_WRAPPER_MARKER = "_devkit_original_handle_request_changes = _handle_request_changes"
 
 HELPERS = r'''
 
@@ -16,31 +19,80 @@ _DEVKIT_MODEL_POLICY_SNAPSHOT_MARKER = "MODEL_POLICY_SNAPSHOT_V1"
 _DEVKIT_FLOW_MODEL_POLICY_SCRIPT = "/opt/data/shared/scripts/flow_model_policy.py"
 
 
-def _devkit_has_flow_model_policy(kb, conn, tid: str) -> bool:
-    """True only for DevKit tasks carrying the durable Coder/Reviewer model contract."""
-    task = kb.get_task(conn, tid)
-    body = str(getattr(task, "body", "") or "") if task is not None else ""
-    if "Coder Model Tier:" in body and "Reviewer Model:" in body:
-        return True
+def _devkit_open_kanban_board(board):
+    """Open the Kanban DB across legacy and current Hermes layouts."""
+    from hermes_cli import kanban_db as kb
     try:
-        comments = kb.list_comments(conn, tid)
-    except Exception:
-        comments = []
-    return any(
-        _DEVKIT_MODEL_POLICY_SNAPSHOT_MARKER in str(getattr(comment, "body", "") or "")
-        for comment in comments
-    )
+        from hermes_cli import kanban_db_connect as kbc
+    except ImportError:
+        return kb, kb.connect(board=board)
+    return kb, kbc.connect(board=board)
+
+
+def _devkit_model_policy_state(board, tid: str) -> tuple[bool, bool, str]:
+    """Return (inspection_ok, managed_by_devkit, detail) for one task."""
+    conn = None
+    try:
+        kb, conn = _devkit_open_kanban_board(board)
+        task = kb.get_task(conn, tid)
+        if task is None:
+            return False, False, f"task {tid} not found during model-policy inspection"
+        body = str(getattr(task, "body", "") or "")
+        if "Coder Model Tier:" in body and "Reviewer Model:" in body:
+            return True, True, "task body model policy"
+        try:
+            comments = kb.list_comments(conn, tid)
+        except Exception:
+            comments = []
+        managed = any(
+            _DEVKIT_MODEL_POLICY_SNAPSHOT_MARKER in str(getattr(comment, "body", "") or "")
+            for comment in comments
+        )
+        return True, managed, "durable model policy comment" if managed else "no DevKit model policy"
+    except Exception as exc:
+        return False, False, f"{type(exc).__name__}: {exc}"
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _devkit_transition_context(args: dict) -> tuple[str, bool, str | None]:
+    """Enable transition wrapping only for the dispatcher-owned task itself."""
+    import os
+
+    env_tid = str(os.environ.get("HERMES_KANBAN_TASK") or "")
+    tid = str(args.get("task_id") or env_tid or "")
+    if not env_tid or not tid or tid != env_tid:
+        return tid, False, None
+    try:
+        if not _is_dispatcher_owned_worker():
+            return tid, False, None
+    except Exception as exc:
+        return tid, False, f"dispatcher ownership check failed: {type(exc).__name__}: {exc}"
+
+    ok, managed, detail = _devkit_model_policy_state(args.get("board"), tid)
+    if not ok:
+        return tid, False, detail
+    return tid, managed, None
 
 
 def _devkit_run_flow_model_transition(action: str, tid: str) -> tuple[bool, str]:
-    """Run model-policy mutation only from the dispatcher-owned MCP worker context."""
-    if os.environ.get("HERMES_KANBAN_TASK") != tid:
-        return False, "dispatcher task ownership mismatch"
-    if not _is_dispatcher_owned_worker():
-        return False, "context is not dispatcher-owned"
-    from pathlib import Path
+    """Run model-policy mutation only from the dispatcher-owned worker context."""
+    import os
     import subprocess
     import sys
+    from pathlib import Path
+
+    if os.environ.get("HERMES_KANBAN_TASK") != tid:
+        return False, "dispatcher task ownership mismatch"
+    try:
+        if not _is_dispatcher_owned_worker():
+            return False, "context is not dispatcher-owned"
+    except Exception as exc:
+        return False, f"dispatcher ownership check failed: {type(exc).__name__}: {exc}"
 
     policy = Path(_DEVKIT_FLOW_MODEL_POLICY_SCRIPT)
     if not policy.is_file():
@@ -68,135 +120,98 @@ def _devkit_run_flow_model_transition(action: str, tid: str) -> tuple[bool, str]
     return True, output or expected or "ok"
 
 
-def _devkit_transition_or_reject(action: str, tid: str) -> None:
-    ok, detail = _devkit_run_flow_model_transition(action, tid)
-    if not ok:
-        raise _Reject(f"DevKit model transition {action} failed: {detail}")
+def _devkit_result_is_error(result) -> bool:
+    """Recognize Hermes structured tool errors without depending on handler internals."""
+    import json
+
+    if not isinstance(result, str):
+        return False
+    try:
+        payload = json.loads(result)
+    except Exception:
+        return False
+    return isinstance(payload, dict) and (
+        payload.get("ok") is False or bool(payload.get("error"))
+    )
 
 
-def _devkit_rollback_or_reject(action: str, tid: str, lifecycle_error: str) -> None:
+def _devkit_transition_failure(action: str, detail: str):
+    return tool_error(f"DevKit model transition {action} failed: {detail}")
+
+
+def _devkit_rollback_after_result(action: str, tid: str, result):
     ok, detail = _devkit_run_flow_model_transition(action, tid)
-    if not ok:
-        raise _Reject(
-            f"{lifecycle_error}; DevKit model rollback {action} also failed: {detail}"
-        )
+    if ok:
+        return result
+    return tool_error(
+        f"Kanban lifecycle failed and DevKit model rollback {action} also failed: {detail}"
+    )
 # ---- END DEVKIT FLOW MODEL TRANSITION ----
 '''
 
-REQUEST_REVIEW_OLD = r'''@_kanban_handler("kanban_request_review")
+REVIEW_WRAPPER = r'''
+
+# DevKit wraps the upstream handler instead of replacing its body. This keeps
+# upstream validation/redaction/goal/reviewer-profile behavior intact across
+# Hermes versions while adding the model transition around the lifecycle call.
+_devkit_original_handle_request_review = _handle_request_review
+
+
 def _handle_request_review(args: dict, **kw) -> str:
-    """Move implementation into the first-class review phase."""
-    tid = _worker_guard("kanban_request_review", args)
-    summary = _redact(_require_text(
-        args, "summary", "summary is required — describe what was implemented and how it "
-        "was verified so the reviewer has context"))
-    metadata = args.get("metadata")
-    _require_dict_metadata(metadata)
-    if metadata is not None:
-        metadata = _redact_metadata(metadata)
-        _check(metadata is not None, "metadata could not be safely serialized")
-    metadata = _stamp_worker_session_metadata(tid, metadata)
-    # Reviewer is model-supplied free text stored durably on the event payload.
-    reviewer = _redact_opt(args.get("reviewer") or None)
-    with _board(args.get("board")) as (kb, conn):
-        _goal_gate("kanban_request_review", kb.get_task(conn, tid), tid, summary)
-        ok, fail_reason = kb.request_review(
-            conn, tid, summary=summary, metadata=metadata, reviewer=reviewer,
-            expected_run_id=_worker_run_id(tid), with_reason=True)
-        _check(ok, f"could not request review for {tid}: "
-                   f"{fail_reason or 'unknown id or not in running/ready'}")
-        return _ok_landed(kb, conn, tid, "review")
-'''
+    tid, managed_model_policy, inspection_error = _devkit_transition_context(args)
+    if inspection_error is not None:
+        return tool_error(f"DevKit model policy inspection failed: {inspection_error}")
+    if not managed_model_policy:
+        return _devkit_original_handle_request_review(args, **kw)
 
-REQUEST_REVIEW_NEW = r'''@_kanban_handler("kanban_request_review")
-def _handle_request_review(args: dict, **kw) -> str:
-    """Move implementation into review, applying DevKit Reviewer DEFAULT atomically with rollback."""
-    tid = _worker_guard("kanban_request_review", args)
-    summary = _redact(_require_text(
-        args, "summary", "summary is required — describe what was implemented and how it "
-        "was verified so the reviewer has context"))
-    metadata = args.get("metadata")
-    _require_dict_metadata(metadata)
-    if metadata is not None:
-        metadata = _redact_metadata(metadata)
-        _check(metadata is not None, "metadata could not be safely serialized")
-    metadata = _stamp_worker_session_metadata(tid, metadata)
-    reviewer = _redact_opt(args.get("reviewer") or None)
-
-    with _board(args.get("board")) as (kb, conn):
-        task = kb.get_task(conn, tid)
-        _goal_gate("kanban_request_review", task, tid, summary)
-        managed_model_policy = _devkit_has_flow_model_policy(kb, conn, tid)
-
-    if managed_model_policy:
-        _devkit_transition_or_reject("review-enter", tid)
+    ok, detail = _devkit_run_flow_model_transition("review-enter", tid)
+    if not ok:
+        return _devkit_transition_failure("review-enter", detail)
 
     try:
-        with _board(args.get("board")) as (kb, conn):
-            ok, fail_reason = kb.request_review(
-                conn, tid, summary=summary, metadata=metadata, reviewer=reviewer,
-                expected_run_id=_worker_run_id(tid), with_reason=True)
-            if not ok:
-                lifecycle_error = (
-                    f"could not request review for {tid}: "
-                    f"{fail_reason or 'unknown id or not in running/ready'}"
-                )
-                if managed_model_policy:
-                    _devkit_rollback_or_reject("changes-return", tid, lifecycle_error)
-                raise _Reject(lifecycle_error)
-            return _ok_landed(kb, conn, tid, "review")
-    except _Reject:
+        result = _devkit_original_handle_request_review(args, **kw)
+    except Exception:
+        rollback_ok, rollback_detail = _devkit_run_flow_model_transition("changes-return", tid)
+        if not rollback_ok:
+            raise RuntimeError(
+                f"kanban_request_review raised and DevKit rollback changes-return also failed: {rollback_detail}"
+            )
         raise
-    except Exception as exc:
-        lifecycle_error = f"kanban_request_review raised {type(exc).__name__}: {exc}"
-        if managed_model_policy:
-            _devkit_rollback_or_reject("changes-return", tid, lifecycle_error)
-        raise
+
+    if _devkit_result_is_error(result):
+        return _devkit_rollback_after_result("changes-return", tid, result)
+    return result
 '''
 
-REQUEST_CHANGES_OLD = r'''@_kanban_handler("kanban_request_changes")
+CHANGES_WRAPPER = r'''
+
+_devkit_original_handle_request_changes = _handle_request_changes
+
+
 def _handle_request_changes(args: dict, **kw) -> str:
-    """Return a reviewer-owned running task to its implementer."""
-    tid = _worker_guard("kanban_request_changes", args)
-    reason = _redact(
-        _require_text(args, "reason", "reason is required — describe the changes needed"))
-    with _board(args.get("board")) as (kb, conn):
-        ok, detail = kb.request_changes(
-            conn, tid, reason=reason, expected_run_id=_worker_run_id(tid))
-        _check(ok, f"could not request changes for {tid}: {detail or 'invalid review state'}")
-        return _ok_landed(kb, conn, tid, "ready", implementer=detail)
-'''
+    tid, managed_model_policy, inspection_error = _devkit_transition_context(args)
+    if inspection_error is not None:
+        return tool_error(f"DevKit model policy inspection failed: {inspection_error}")
+    if not managed_model_policy:
+        return _devkit_original_handle_request_changes(args, **kw)
 
-REQUEST_CHANGES_NEW = r'''@_kanban_handler("kanban_request_changes")
-def _handle_request_changes(args: dict, **kw) -> str:
-    """Return review to Coder, restoring the approved DevKit Coder model with rollback."""
-    tid = _worker_guard("kanban_request_changes", args)
-    reason = _redact(
-        _require_text(args, "reason", "reason is required — describe the changes needed"))
-
-    with _board(args.get("board")) as (kb, conn):
-        managed_model_policy = _devkit_has_flow_model_policy(kb, conn, tid)
-
-    if managed_model_policy:
-        _devkit_transition_or_reject("changes-return", tid)
+    ok, detail = _devkit_run_flow_model_transition("changes-return", tid)
+    if not ok:
+        return _devkit_transition_failure("changes-return", detail)
 
     try:
-        with _board(args.get("board")) as (kb, conn):
-            ok, detail = kb.request_changes(
-                conn, tid, reason=reason, expected_run_id=_worker_run_id(tid))
-            if not ok:
-                lifecycle_error = f"could not request changes for {tid}: {detail or 'invalid review state'}"
-                if managed_model_policy:
-                    _devkit_rollback_or_reject("review-enter", tid, lifecycle_error)
-                raise _Reject(lifecycle_error)
-            return _ok_landed(kb, conn, tid, "ready", implementer=detail)
-    except _Reject:
+        result = _devkit_original_handle_request_changes(args, **kw)
+    except Exception:
+        rollback_ok, rollback_detail = _devkit_run_flow_model_transition("review-enter", tid)
+        if not rollback_ok:
+            raise RuntimeError(
+                f"kanban_request_changes raised and DevKit rollback review-enter also failed: {rollback_detail}"
+            )
         raise
-    except Exception as exc:
-        lifecycle_error = f"kanban_request_changes raised {type(exc).__name__}: {exc}"
-        if managed_model_policy:
-            _devkit_rollback_or_reject("review-enter", tid, lifecycle_error)
-        raise
+
+    if _devkit_result_is_error(result):
+        return _devkit_rollback_after_result("review-enter", tid, result)
+    return result
 '''
 
 
@@ -205,64 +220,107 @@ def strict_compile(path: Path) -> None:
         py_compile.compile(str(path), cfile=str(Path(directory) / "x.pyc"), doraise=True)
 
 
+def _top_level_function(source: str, name: str) -> ast.FunctionDef | ast.AsyncFunctionDef:
+    tree = ast.parse(source)
+    matches = [
+        node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(f"expected exactly one {name} handler, found {len(matches)}")
+    return matches[0]
+
+
+def _line_offsets(source: str) -> list[int]:
+    offsets = [0]
+    total = 0
+    for line in source.splitlines(keepends=True):
+        total += len(line)
+        offsets.append(total)
+    return offsets
+
+
+def _function_start_line(node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
+    decorator_lines = [decorator.lineno for decorator in node.decorator_list]
+    return min([node.lineno, *decorator_lines])
+
+
 def patch_source(path: Path) -> str:
     source = path.read_text(encoding="utf-8")
-    if PATCH_MARKER in source:
+    if (
+        PATCH_MARKER in source
+        and REVIEW_WRAPPER_MARKER in source
+        and CHANGES_WRAPPER_MARKER in source
+    ):
         strict_compile(path)
         return "already-patched"
 
-    if source.count(REQUEST_REVIEW_OLD) != 1:
-        raise RuntimeError(f"{path}: compatible kanban_request_review handler not found")
-    if source.count(REQUEST_CHANGES_OLD) != 1:
-        raise RuntimeError(f"{path}: compatible kanban_request_changes handler not found")
+    review = _top_level_function(source, "_handle_request_review")
+    changes = _top_level_function(source, "_handle_request_changes")
+    if review.end_lineno is None or changes.end_lineno is None:
+        raise RuntimeError(f"{path}: handler source boundaries unavailable")
 
-    source = source.replace(REQUEST_REVIEW_OLD, HELPERS + "\n" + REQUEST_REVIEW_NEW, 1)
-    source = source.replace(REQUEST_CHANGES_OLD, REQUEST_CHANGES_NEW, 1)
+    offsets = _line_offsets(source)
+    insertions = [
+        (offsets[_function_start_line(review) - 1], HELPERS + "\n"),
+        (offsets[review.end_lineno], REVIEW_WRAPPER + "\n"),
+        (offsets[changes.end_lineno], CHANGES_WRAPPER + "\n"),
+    ]
+
+    for offset, text in sorted(insertions, key=lambda item: item[0], reverse=True):
+        source = source[:offset] + text + source[offset:]
+
     path.write_text(source, encoding="utf-8")
     strict_compile(path)
     return "patched"
 
 
-def _fixture() -> str:
-    return (
-        'import os\n'
-        'def _is_dispatcher_owned_worker(): return True\n'
-        'class _Reject(Exception): pass\n'
-        'def _kanban_handler(name): return lambda fn: fn\n'
-        'def _worker_guard(name, args): return "t_demo"\n'
-        'def _redact(x): return x\n'
-        'def _require_text(args, name, message=None): return args.get(name, "x")\n'
-        'def _require_dict_metadata(x): pass\n'
-        'def _redact_metadata(x): return x\n'
-        'def _check(c, m):\n    if not c: raise _Reject(m)\n'
-        'def _stamp_worker_session_metadata(tid, m): return m\n'
-        'def _redact_opt(x): return x\n'
-        'def _worker_run_id(tid): return 1\n'
-        'def _ok_landed(kb, conn, tid, status, **kw): return status\n'
-        'class B:\n    def __enter__(self): return (self, self)\n    def __exit__(self,*a): pass\n    def get_task(self,*a): return type("T",(),{"body":""})()\n    def list_comments(self,*a): return []\n    def request_review(self,*a,**k): return (True,None)\n    def request_changes(self,*a,**k): return (True,"coder")\n'
-        'def _board(x): return B()\n'
-        'def _goal_gate(*a): pass\n\n'
-        + REQUEST_REVIEW_OLD + '\n' + REQUEST_CHANGES_OLD
-    )
+def _fixture_legacy() -> str:
+    """Hermes v2026.8.16.x style: plain handlers without _kanban_handler decorator."""
+    return '''import json\nimport os\n\ndef tool_error(message): return json.dumps({"error": message})\ndef _is_dispatcher_owned_worker(): return True\n\ndef _handle_request_review(args: dict, **kw) -> str:\n    reviewer = args.get("reviewer")\n    return json.dumps({"ok": True, "status": "review", "reviewer": reviewer})\n\ndef _handle_request_changes(args: dict, **kw) -> str:\n    return json.dumps({"ok": True, "status": "ready"})\n\ndef _handle_heartbeat(args: dict, **kw) -> str:\n    return json.dumps({"ok": True})\n'''
 
 
-def self_test() -> None:
+def _fixture_current() -> str:
+    """Current Hermes style: decorated handlers whose body may evolve upstream."""
+    return '''import functools\nimport json\nimport os\n\ndef tool_error(message): return json.dumps({"error": message})\ndef _is_dispatcher_owned_worker(): return True\ndef _kanban_handler(name):\n    def deco(fn):\n        @functools.wraps(fn)\n        def wrapper(args: dict, **kw):\n            try: return fn(args, **kw)\n            except Exception as exc: return tool_error(f"{name}: {exc}")\n        return wrapper\n    return deco\n\n@_kanban_handler("kanban_request_review")\ndef _handle_request_review(args: dict, **kw) -> str:\n    reviewer = args.get("reviewer")\n    if reviewer == "missing-profile":\n        return tool_error("reviewer profile does not exist")\n    return json.dumps({"ok": True, "status": "review", "reviewer": reviewer})\n\n@_kanban_handler("kanban_request_changes")\ndef _handle_request_changes(args: dict, **kw) -> str:\n    return json.dumps({"ok": True, "status": "ready"})\n\ndef _handle_heartbeat(args: dict, **kw) -> str:\n    return json.dumps({"ok": True})\n'''
+
+
+def _assert_fixture_patches(source: str) -> None:
+    import json
+
     with tempfile.TemporaryDirectory() as directory:
         target = Path(directory) / "kanban_tools.py"
-        target.write_text(_fixture(), encoding="utf-8")
+        target.write_text(source, encoding="utf-8")
         assert patch_source(target) == "patched"
         assert patch_source(target) == "already-patched"
-        source = target.read_text(encoding="utf-8")
+        patched = target.read_text(encoding="utf-8")
         for term in (
             PATCH_MARKER,
             POLICY_MARKER,
-            '_devkit_transition_or_reject("review-enter", tid)',
-            '_devkit_rollback_or_reject("changes-return", tid, lifecycle_error)',
-            '_devkit_transition_or_reject("changes-return", tid)',
-            '_devkit_rollback_or_reject("review-enter", tid, lifecycle_error)',
+            REVIEW_WRAPPER_MARKER,
+            CHANGES_WRAPPER_MARKER,
+            '_devkit_run_flow_model_transition("review-enter", tid)',
+            '_devkit_rollback_after_result("changes-return", tid, result)',
+            '_devkit_run_flow_model_transition("changes-return", tid)',
+            '_devkit_rollback_after_result("review-enter", tid, result)',
         ):
-            assert term in source, term
-    print("Hermes Kanban model transition patch self-test passed")
+            assert term in patched, term
+
+        # With no dispatcher task in env, wrappers preserve upstream behavior
+        # without touching the Kanban DB or model policy helper.
+        namespace: dict = {}
+        exec(compile(patched, str(target), "exec"), namespace)
+        review_result = namespace["_handle_request_review"]({"reviewer": "reviewer"})
+        changes_result = namespace["_handle_request_changes"]({})
+        assert json.loads(review_result)["ok"] is True
+        assert json.loads(changes_result)["ok"] is True
+
+
+def self_test() -> None:
+    _assert_fixture_patches(_fixture_legacy())
+    _assert_fixture_patches(_fixture_current())
+    print("Hermes Kanban model transition patch self-test passed (legacy + current handler layouts)")
 
 
 def main() -> None:
