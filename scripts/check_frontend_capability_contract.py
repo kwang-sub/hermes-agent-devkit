@@ -25,6 +25,11 @@ react_reference_path = ROOT / "custom-skills/shared/dev-frontend-guidelines/refe
 if not react_reference_path.is_file():
     raise SystemExit("React official practice reference is missing")
 react_reference = react_reference_path.read_text(encoding="utf-8")
+nextjs = (ROOT / "custom-skills/shared/dev-nextjs-feature/SKILL.md").read_text(encoding="utf-8")
+nextjs_reference_path = ROOT / "custom-skills/shared/dev-nextjs-feature/references/official-nextjs-practices.md"
+if not nextjs_reference_path.is_file():
+    raise SystemExit("Next.js official practice reference is missing")
+nextjs_reference = nextjs_reference_path.read_text(encoding="utf-8")
 figma = (ROOT / "custom-skills/shared/dev-figma-design/SKILL.md").read_text(encoding="utf-8")
 figma_script = (ROOT / "custom-skills/shared/dev-figma-design/scripts/figma_context.py").read_text(encoding="utf-8")
 stack = (ROOT / "shared/references/stack-capability-skill-guide.md").read_text(encoding="utf-8")
@@ -32,7 +37,7 @@ stack = (ROOT / "shared/references/stack-capability-skill-guide.md").read_text(e
 checks = {
     "project pattern": (pattern, ("dev-tech-dispatch", "dev-frontend-feature", "Frontend Capability Hints", "Design Status: DRAFT | APPROVED")),
     "breakdown": (breakdown, ("dev-frontend-feature", "FIGMA_DRIVEN", "CODE_DRIVEN", "dev-api-contract", "dev-figma-design")),
-    "frontend entry": (frontend, ("canonical entry", "FIGMA_DRIVEN", "CODE_DRIVEN", "dev-ui-ux", "dev-figma-design", "lazy-load", "dev-typescript-guidelines", "dev-frontend-guidelines")),
+    "frontend entry": (frontend, ("canonical entry", "FIGMA_DRIVEN", "CODE_DRIVEN", "dev-ui-ux", "dev-figma-design", "lazy-load", "dev-typescript-guidelines", "dev-frontend-guidelines", "dev-nextjs-feature")),
     "typescript skill": (typescript, (
         "version: 0.2.0", "Strictness Gate", "strictNullChecks", "`unknown` vs `any`", "Narrowing",
         "Discriminated Union / Exhaustiveness", "Type Assertion / Non-null Assertion", "`satisfies`",
@@ -52,9 +57,19 @@ checks = {
         "Preserving and Resetting State", "Events vs Effects", "Memoization and React Compiler",
         "Strict Mode and Lint", "Primary Official Sources",
     )),
+    "nextjs skill": (nextjs, (
+        "version: 0.2.0", "Version / Request API Gate", "Server / Client Boundary", "Cache / Revalidation",
+        "Mutation / Server Action", "Route Handler / API Boundary", "Proxy / Middleware",
+        "React Compiler / Turbopack", "Environment / Secrets", "Review Hotspots",
+    )),
+    "nextjs reference": (nextjs_reference, (
+        "Next.js Official Practices", "Version and Router Gate", "Server and Client Components",
+        "Request APIs and Version Differences", "Caching and Revalidation", "Mutations and Server Actions",
+        "Proxy / Middleware", "React Compiler and Turbopack", "Primary Official Sources",
+    )),
     "figma skill": (figma, ("FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN", "file_content:read", "--preview-out", "read-only")),
     "figma provider": (figma_script, ("https://api.figma.com", "X-Figma-Token", "Authorization", "/v1/files/", "/v1/images/", "HERMES_WRITE_SAFE_ROOT", "MAX_DEPTH = 6")),
-    "stack guide": (stack, ("dev-frontend-feature", "dev-typescript-guidelines", "dev-frontend-guidelines", "dev-figma-design", "FIGMA_DRIVEN", "Stack Detection != Skill Loading")),
+    "stack guide": (stack, ("dev-frontend-feature", "dev-typescript-guidelines", "dev-frontend-guidelines", "dev-nextjs-feature", "dev-figma-design", "FIGMA_DRIVEN", "Stack Detection != Skill Loading")),
 }
 for label, (text, terms) in checks.items():
     missing = [term for term in terms if term not in text]
@@ -80,4 +95,4 @@ for key in ("FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN"):
     if f"{key}: ${{{key}:-}}" not in compose:
         raise SystemExit(f"compose.yml missing {key}")
 
-print("[PASS] Frontend/React/TypeScript/Figma capability contract")
+print("[PASS] Frontend/React/TypeScript/Next.js/Figma capability contract")
