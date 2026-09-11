@@ -1,13 +1,13 @@
 ---
 name: dev-breakdown
-description: managed 프로젝트의 실제 코드·디자인 근거와 기존 project pattern으로 한국어 Implementation Plan을 생성하며 구현하지 않는 orchestrator 전용 skill.
-version: 0.11.0
+description: managed 프로젝트의 실제 코드·디자인 Reference 근거와 기존 project pattern으로 한국어 Implementation Plan을 생성하며 구현하지 않는 orchestrator 전용 skill.
+version: 0.12.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, planning, analysis, breakdown, orchestrator, pattern, java, kotlin, frontend, figma, api, spec]
-    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-tech-dispatch, dev-skill-preflight, dev-workspace-dispatch, dev-workflow-orchestrate, dev-java-guidelines, dev-kotlin-guidelines, dev-frontend-feature, dev-api-spec]
+    tags: [dev, planning, analysis, breakdown, orchestrator, pattern, java, kotlin, frontend, design-reference, image, figma, api, spec]
+    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-tech-dispatch, dev-skill-preflight, dev-workspace-dispatch, dev-workflow-orchestrate, dev-java-guidelines, dev-kotlin-guidelines, dev-frontend-feature, dev-design-reference, dev-api-spec]
     requires_tools: [terminal, skill_view]
 ---
 
@@ -25,7 +25,7 @@ metadata:
 6. 중요한 assumption은 source evidence로 닫고, product/architecture/design 승인 결정이 필요하면 Open Question으로 남긴다.
 7. 최대 7개 Implementation Tasks를 변경·근거·완료조건·verification과 함께 순서화한다.
 8. Java 프로젝트의 Java 변경은 `dev-java-guidelines`, **Kotlin 프로젝트의 Kotlin 변경은 `dev-kotlin-guidelines`**, Spring 변경은 기존 `dev-spring-*` capability를 Applicable Skills에 지정한다. Java + Kotlin mixed project에서는 실제 affected source 언어에 따라 둘을 함께 또는 각각 적용한다.
-9. **Frontend Task는 `dev-frontend-feature`를 canonical Applicable Skill로 지정한다.** TypeScript/React/Next.js/Test/API/Figma/UI·UX 하위 Skill은 `Frontend Capability Hints`에 이름과 이유를 남기고 시작부터 모두 runtime pin하지 않는다.
+9. **Frontend Task는 `dev-frontend-feature`를 canonical Applicable Skill로 지정한다.** IMAGE/Figma Reference가 있으면 `dev-design-reference`를 Frontend Capability Hints에 포함한다. TypeScript/React/Next.js/Test/API/Figma/UI·UX 하위 Skill은 이름과 이유를 남기고 시작부터 모두 runtime pin하지 않는다.
 10. Backend API와 Frontend가 함께 바뀌는 Task는 Frontend Capability Hints에 `dev-api-contract`를 포함한다.
 11. API endpoint 신규/변경/문서화/감사 작업은 `dev-api-spec`을 적용하고 다음을 계획에 명시한다.
 
@@ -51,19 +51,35 @@ API contract 영향 없음                                → NOT_REQUIRED
 `SOURCE_SYNC`는 현재 Application Source를 설명하는 역문서화이므로 별도 API Spec 승인 Gate가 필요하지 않다. 자동 생성 문서는 `Status: DRAFT`, `Documentation Source: APPLICATION_SOURCE`를 유지한다. 기존 API라는 이유만으로 `APPROVED`로 승격하지 않는다.
 
 `AUDIT`은 기본 read-only이며 `IN_SYNC | SOURCE_ONLY | SPEC_ONLY | CONTRACT_MISMATCH` 결과를 계획 Findings에 남긴다. 전체 API 스캔은 사용자가 명시적으로 전체 감사를 요청한 경우에만 허용한다.
-12. Figma URL이 있으면 다음 계약을 계획에 보존한다.
+12. Frontend 디자인 입력은 다음 계약으로 일반화한다.
 
 ```text
-Design Source: FIGMA
-Design Status: DRAFT | APPROVED
-Figma URL: <selected node URL>
-Frontend Mode: FIGMA_DRIVEN | CODE_DRIVEN
+Frontend Mode: REFERENCE_DRIVEN | CODE_DRIVEN
+Design Source: IMAGE | FIGMA | EXISTING_CODE
+Design Status: DRAFT | REFERENCE | APPROVED | N/A
+Design Fidelity: STRUCTURE | VISUAL | HIGH | N/A
+Reference: <repo image path | selected Figma URL | current code>
+Screen Spec: <path | none>
 ```
 
-`APPROVED`만 `FIGMA_DRIVEN`으로 확정한다. `DRAFT` 또는 승인 상태 불명확 시 임의로 구현 기준으로 승격하지 않는다.
-13. `Applicable Skills`에 추정 이름을 만들지 않는다. runtime pin 가능 여부는 dispatch 직전 `dev-skill-preflight`가 검증한다.
-14. testable Acceptance Criteria와 risk-based Test Plan, Dependencies, Risks, Open Questions를 작성한다.
-15. project/repo·scope·pattern·AC·tasks·test·필요한 design/API approval이 확립될 때만 `READY`, 아니면 `BLOCKED`다.
+- `IMAGE + APPROVED`: stable Reference Package와 Screen Spec을 우선한다.
+- `FIGMA + APPROVED`: `REFERENCE_DRIVEN`; Frontend Capability Hints에 `dev-design-reference`, `dev-figma-design`을 포함한다.
+- `REFERENCE`: 구현 방향 참고는 가능하지만 exact source of truth로 취급하지 않는다.
+- `DRAFT`: 구현 기준으로 임의 승격하지 않는다. 구현이 이 디자인 결정에 의존하면 Open Question으로 남긴다.
+- authoritative Reference가 없으면 `CODE_DRIVEN + EXISTING_CODE`를 사용한다.
+13. `REFERENCE_DRIVEN` Task에서는 디자인에서 직접 확인 가능한 내용과 추론/미확정 항목을 계획에서도 구분한다.
+
+```text
+Observed Design Requirements
+Inferred Design Hints
+Unknown / Open Questions
+```
+
+IMAGE의 추정 spacing/radius/color를 exact token으로 확정하지 않는다.
+14. Storybook/Playwright는 기존 project evidence가 있을 때만 계획에 활용한다. 화면 구현만을 이유로 자동 dependency 추가를 계획하지 않는다.
+15. `Applicable Skills`에 추정 이름을 만들지 않는다. runtime pin 가능 여부는 dispatch 직전 `dev-skill-preflight`가 검증한다.
+16. testable Acceptance Criteria와 risk-based Test Plan, Dependencies, Risks, Open Questions를 작성한다.
+17. project/repo·scope·pattern·AC·tasks·test·필요한 design/API approval이 확립될 때만 `READY`, 아니면 `BLOCKED`다.
 
 ## Kotlin 계획 규칙
 
@@ -86,16 +102,23 @@ Frontend Task에서는 다음을 명시한다.
 
 ```text
 Frontend Entry: dev-frontend-feature
-Frontend Mode: FIGMA_DRIVEN | CODE_DRIVEN
+Frontend Mode: REFERENCE_DRIVEN | CODE_DRIVEN
+Design Source / Status / Fidelity
+Reference / Screen Spec
 Package Manager / Framework evidence
 Existing Component/Token references
 Frontend Capability Hints
-Design Source / Status
+Observed / Inferred / Unknown
 Affected UI States: loading | empty | error | populated (해당 시)
 Responsive scope
 API contract impact
+Storybook Catalog Plan: UPDATE | NOT_REQUIRED | NOT_AVAILABLE
+Visual Verification: DESIGN_CONFORMANCE | VISUAL_REGRESSION | BOTH | NOT_REQUIRED
+Regression Baseline: APPROVED_BROWSER_SCREENSHOT | EXISTING_PROJECT_BASELINE | NOT_REQUIRED
 Verification plan
 ```
+
+`DESIGN_CONFORMANCE`는 Approved Reference와 최초 구현 의도 일치를 확인한다. `VISUAL_REGRESSION`은 승인된 실제 browser screenshot을 이후 golden으로 사용하는 회귀 검증이다. Design Reference PNG를 장기 regression golden과 동일시하지 않는다.
 
 예:
 
@@ -104,11 +127,18 @@ Applicable Skills:
 - dev-frontend-feature: Frontend canonical implementation entry
 
 Frontend Capability Hints:
+- dev-design-reference: APPROVED IMAGE + screen-spec evidence 정규화
 - dev-typescript-guidelines: API/UI type change
 - dev-nextjs-feature: App Router page/component change
-- dev-figma-design: APPROVED Figma frame evidence
+- dev-frontend-test: Storybook/Playwright visual verification
 - dev-ui-ux: responsive/accessibility/chart quality gate
 - dev-api-contract: Spring DTO와 frontend type 동시 변경
+```
+
+Figma인 경우에만 추가로:
+
+```text
+- dev-figma-design: APPROVED Figma selected frame provider
 ```
 
 ## API 계획 규칙
@@ -142,6 +172,6 @@ Native Query → 앞 방식으로 해결하기 어려운 근거가 있을 때만
 
 ## 필수 출력
 
-Task Identity; Project/working tree; Goal/Type/Requirement; Assumptions/Constraints/Out of Scope; **Project Pattern Summary**; Design Source/Status/Frontend Mode(해당 시); **API Spec Mode/Gate/Status/Path/Source(해당 시)**; Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Acceptance Criteria; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
+Task Identity; Project/working tree; Goal/Type/Requirement; Assumptions/Constraints/Out of Scope; **Project Pattern Summary**; Frontend Mode/Design Source/Status/Fidelity/Reference/Screen Spec(해당 시); **API Spec Mode/Gate/Status/Path/Source(해당 시)**; Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Observed/Inferred/Unknown(해당 시); Storybook/Visual Verification Plan(해당 시); Acceptance Criteria; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
 
 유형별 상세 체크리스트와 출력 템플릿은 `references/planning-details.md`를 필요할 때만 읽는다.
