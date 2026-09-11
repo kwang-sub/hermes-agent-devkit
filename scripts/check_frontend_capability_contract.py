@@ -39,14 +39,15 @@ checks = {
     "breakdown": (breakdown, ("dev-frontend-feature", "FIGMA_DRIVEN", "CODE_DRIVEN", "dev-api-contract", "dev-figma-design")),
     "frontend entry": (frontend, ("canonical entry", "FIGMA_DRIVEN", "CODE_DRIVEN", "dev-ui-ux", "dev-figma-design", "lazy-load", "dev-typescript-guidelines", "dev-frontend-guidelines", "dev-nextjs-feature")),
     "typescript skill": (typescript, (
-        "version: 0.2.0", "Strictness Gate", "strictNullChecks", "`unknown` vs `any`", "Narrowing",
-        "Discriminated Union / Exhaustiveness", "Type Assertion / Non-null Assertion", "`satisfies`",
-        "exactOptionalPropertyTypes", "noUncheckedIndexedAccess", "TypeScript 6.0 Transition", "Review Hotspots",
+        "version: 0.3.0", "Version Gate", "TypeScript 7 Gate", "Strictness Gate", "useUnknownInCatchVariables",
+        "noUncheckedSideEffectImports", "Type Design Performance", "Build Performance", "Incremental",
+        "Project References", "TypeScript 7 Parallelism", "skipLibCheck", "Performance Investigation", "Review Hotspots",
     )),
     "typescript reference": (typescript_reference, (
-        "TypeScript Official Practices", "Project Convention First", "strict / strictNullChecks", "unknown vs any",
-        "Discriminated Union", "exactOptionalPropertyTypes", "noUncheckedIndexedAccess", "TypeScript 6.0 Transition",
-        "ignoreDeprecations", "TypeScript Handbook", "TSConfig Reference",
+        "TypeScript Official Practices", "Version Gate: 5.x / 6.x / 7.x", "TypeScript 7.0 Native Compiler",
+        "TypeScript 7.0 Default / Migration Gate", "Additional Safety Options", "Easy-to-Compile Type Design",
+        "Build Performance: Incremental", "Build Performance: Project References", "TypeScript 7 Parallel Build Controls",
+        "Performance Investigation Before Refactoring", "Project References", "Microsoft TypeScript Wiki: Performance",
     )),
     "react skill": (react, (
         "version: 0.2.0", "Purity / Mutation", "Rules of Hooks", "State Structure", "Events vs Effects",
@@ -95,4 +96,4 @@ for key in ("FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN"):
     if f"{key}: ${{{key}:-}}" not in compose:
         raise SystemExit(f"compose.yml missing {key}")
 
-print("[PASS] Frontend/React/TypeScript/Next.js/Figma capability contract")
+print("[PASS] Frontend/React/TypeScript7/Next.js/Figma capability contract")
