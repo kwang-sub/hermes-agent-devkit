@@ -27,6 +27,26 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Diagnose AGENTS common synchronization
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          a=Path('AGENTS.md').read_text()
+          c=Path('shared/AGENTS.common.md').read_text().rstrip()
+          s=a.index('<!-- HERMES-COMMON:START -->')
+          e=a.index('<!-- HERMES-COMMON:END -->')+len('<!-- HERMES-COMMON:END -->')
+          b=a[s:e].rstrip()
+          print('ROOT_COMMON_LEN=', len(b), 'SHARED_LEN=', len(c))
+          if b != c:
+              for i,(x,y) in enumerate(zip(b,c)):
+                  if x != y:
+                      print('FIRST_DIFF=', i, 'ROOT=', repr(b[max(0,i-40):i+80]), 'SHARED=', repr(c[max(0,i-40):i+80]))
+                      break
+              else:
+                  print('PREFIX_EQUAL_LENGTH_DIFF', repr(b[len(c):]), repr(c[len(b):]))
+          PY
+
       - name: Verify repository contracts
         shell: bash
         run: bash scripts/verify.sh
