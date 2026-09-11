@@ -63,6 +63,14 @@ jobs:
         shell: bash
         run: python3 custom-skills/shared/dev-design-reference/tests/test_screen_spec_guard.py
 
+      - name: Verify Data DBA capability contract
+        shell: bash
+        run: python3 scripts/check_data_capability_contract.py
+
+      - name: Verify DBML lightweight guard
+        shell: bash
+        run: python3 custom-skills/shared/dev-data-modeling/tests/test_dbml_guard.py
+
       - name: Verify stack capability detector
         shell: bash
         run: python3 custom-skills/orchestrator/dev-tech-dispatch/tests/test_detect_capabilities.py
