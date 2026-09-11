@@ -34,6 +34,7 @@ KOTLIN_MARKERS = (
 JAVA_EXPLICIT_PATTERNS = (
     r'id\s*\(\s*["\']java["\']\s*\)',
     r'id\s+["\']java["\']',
+    r'(?m)^\s*java\s*$',
     r'java-library',
     r'maven-compiler-plugin',
 )
