@@ -1,7 +1,7 @@
 ---
 name: dev-flow-model-policy
 description: Standard/Fast Flow에서 승인된 Coder 모델을 Task에 고정하고 Reviewer는 DEFAULT를 사용하도록 Coder↔Reviewer 전이 시 모델 override를 관리하는 공통 정책.
-version: 0.4.0
+version: 0.4.1
 author: local
 platforms: [linux]
 metadata:
@@ -65,6 +65,8 @@ python3 /opt/data/shared/scripts/flow_model_policy.py migrate-existing \
 ```
 
 `done`/`archived` Task는 migration하지 않는다. `MODEL_POLICY_SNAPSHOT_V1` durable comment가 승인 snapshot을 보존한다.
+`MODEL_POLICY_SNAPSHOT_V1` snapshot은 같은 Task의 durable Kanban comment에 보존하며, migration 이후에도 승인 모델의 source of truth로 사용한다.
+pre-policy Task라는 이유만으로 새 카드 생성을 강제하지 않는다. 활성 Task는 가능한 경우 같은 Task에서 migration해 계속 사용한다.
 
 ## 4. Coder 실행
 
