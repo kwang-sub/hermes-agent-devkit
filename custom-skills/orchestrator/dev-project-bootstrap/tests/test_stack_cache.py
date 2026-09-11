@@ -86,6 +86,35 @@ def test_create_reuse_and_refresh() -> None:
         assert "nextjs" not in result3["stacks"]
 
 
+def test_kotlin_stack_is_cached_and_reused() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        meta = metadata(repo)
+        write(repo / "build.gradle.kts", '''
+plugins {
+    kotlin("jvm") version "2.4.20"
+    id("org.springframework.boot") version "4.0.0"
+}
+''')
+
+        status1, result1 = MODULE.resolve(repo)
+        text1 = meta.read_text(encoding="utf-8")
+        assert status1 == "created"
+        assert result1["detector_version"] == "3"
+        assert result1["stacks"] == ["kotlin", "spring"]
+        assert result1["backend_skills"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+        assert '  detector_version: "3"' in text1
+        assert '    - "kotlin"' in text1
+        assert '    - "dev-kotlin-guidelines"' in text1
+        assert '    - "java"' not in text1
+
+        status2, result2 = MODULE.resolve(repo)
+        assert status2 == "reused"
+        assert result2["stacks"] == ["kotlin", "spring"]
+        assert result2["fingerprint"] == result1["fingerprint"]
+        assert meta.read_text(encoding="utf-8") == text1
+
+
 def test_source_change_keeps_cache_hit() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp)
@@ -115,6 +144,7 @@ def test_unmanaged_metadata_is_blocked() -> None:
 
 if __name__ == "__main__":
     test_create_reuse_and_refresh()
+    test_kotlin_stack_is_cached_and_reused()
     test_source_change_keeps_cache_hit()
     test_unmanaged_metadata_is_blocked()
     print("TEST_STATUS=PASS")
