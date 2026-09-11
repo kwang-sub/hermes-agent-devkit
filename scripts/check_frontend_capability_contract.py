@@ -61,14 +61,19 @@ checks = {
         "`<Activity>` (React 19.2+)", "Primary Official Sources",
     )),
     "nextjs skill": (nextjs, (
-        "version: 0.2.0", "Version / Request API Gate", "Server / Client Boundary", "Cache / Revalidation",
-        "Mutation / Server Action", "Route Handler / API Boundary", "Proxy / Middleware",
-        "React Compiler / Turbopack", "Environment / Secrets", "Review Hotspots",
+        "version: 0.3.0", "Version Lane", "Measure First", "Client JS Budget", "Bundle Analysis / Package Optimization",
+        "Lazy Loading / Dynamic Import", "Navigation / Prefetch / Streaming", "Instant Navigation",
+        "Data Fetching / Waterfall", "Cache / Revalidation / Cache Components", "Image Optimization",
+        "Font Optimization", "Third-party Script Optimization", "Turbopack Dev / Build Performance",
+        "CI `.next/cache`", "Memory Investigation", "Web Vitals", "Performance Evidence", "Review Hotspots",
     )),
     "nextjs reference": (nextjs_reference, (
-        "Next.js Official Practices", "Version and Router Gate", "Server and Client Components",
-        "Request APIs and Version Differences", "Caching and Revalidation", "Mutations and Server Actions",
-        "Proxy / Middleware", "React Compiler and Turbopack", "Primary Official Sources",
+        "Next.js Official Practices", "Current Version / Support Gate", "Measure in Production Mode",
+        "Bundle Analysis", "Package Import Optimization", "Lazy Loading and Dynamic Import",
+        "Data Fetching and Waterfalls", "Cache Components / Caching / Revalidation", "Instant Navigation",
+        "Image Optimization", "Font Optimization", "Third-party Scripts", "React Compiler", "Turbopack",
+        "File System Cache", "Memory", "Build Performance / CI Cache", "Web Vitals / Runtime Monitoring",
+        "Performance Investigation Order", "Primary Official Sources",
     )),
     "figma skill": (figma, ("FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN", "file_content:read", "--preview-out", "read-only")),
     "figma provider": (figma_script, ("https://api.figma.com", "X-Figma-Token", "Authorization", "/v1/files/", "/v1/images/", "HERMES_WRITE_SAFE_ROOT", "MAX_DEPTH = 6")),
@@ -98,4 +103,4 @@ for key in ("FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN"):
     if f"{key}: ${{{key}:-}}" not in compose:
         raise SystemExit(f"compose.yml missing {key}")
 
-print("[PASS] Frontend/React19.2/Compiler/TypeScript7/Next.js/Figma capability contract")
+print("[PASS] Frontend/React19.2/Compiler/TypeScript7/Next16.3/Figma capability contract")
