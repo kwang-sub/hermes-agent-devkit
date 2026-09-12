@@ -37,9 +37,17 @@ docker run --rm \
         grep -q "def _devkit_run_flow_model_transition" /opt/hermes/tools/kanban_tools.py
         grep -q "MODEL_POLICY_SNAPSHOT_V1" /opt/hermes/tools/kanban_tools.py
 
+        grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/agent/skill_commands.py
+        grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/hermes_cli/commands_completion.py
+        grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/tui_gateway/methods_tools.py
+        test -f /opt/data/shared/references/skill-slash-suggest-policy.json
+
         /opt/hermes/.venv/bin/python -m py_compile \
             /opt/hermes/tools/kanban_tools.py \
-            /opt/hermes/hermes_cli/devkit_session_affinity.py
+            /opt/hermes/hermes_cli/devkit_session_affinity.py \
+            /opt/hermes/agent/skill_commands.py \
+            /opt/hermes/hermes_cli/commands_completion.py \
+            /opt/hermes/tui_gateway/methods_tools.py
 
         test -f /opt/custom-skills/shared/dev-api-spec/SKILL.md
         test -f /opt/custom-skills/shared/dev-api-contract/SKILL.md
