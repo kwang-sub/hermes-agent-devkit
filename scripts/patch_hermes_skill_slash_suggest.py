@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Patch Hermes so skill frontmatter can opt out of user slash suggestions only.
+"""Patch Hermes so internal skills can stay executable but disappear from slash suggestions.
 
-DevKit contract:
+Suggestion decision order:
+1. ``metadata.hermes.slash_suggest`` when explicitly true/false.
+2. DevKit policy file (default: /opt/data/shared/references/skill-slash-suggest-policy.json).
+3. Backward-compatible default: suggest the skill.
 
-    metadata:
-      hermes:
-        slash_suggest: false
-
-The skill stays registered, directly invokable, visible to skills_list/skill_view, and
-its execution trace is unchanged. Only CLI/TUI/Desktop input suggestion surfaces are
-filtered.
+The patch intentionally does NOT change direct slash dispatch, skills_list, skill_view,
+or execution/tool logs.
 """
 
 from __future__ import annotations
@@ -36,12 +34,29 @@ def patch_skill_commands(path: Path) -> str:
 
     old_entry = '''    commands[cmd_key] = {"name": name, "description": description or f"Invoke the {name} skill",
                          "skill_md_path": str(skill_md), "skill_dir": str(skill_md.parent)}'''
-    new_entry = '''    # DEVKIT_SLASH_SUGGEST_V1: preserve direct dispatch while exposing a suggestion-only flag.
+    new_entry = '''    # DEVKIT_SLASH_SUGGEST_V1: suggestion visibility is separate from registration/dispatch.
     metadata = frontmatter.get("metadata")
     hermes_metadata = metadata.get("hermes") if isinstance(metadata, dict) else None
-    slash_suggest = not (
-        isinstance(hermes_metadata, dict) and hermes_metadata.get("slash_suggest") is False
+    explicit_slash_suggest = (
+        hermes_metadata.get("slash_suggest")
+        if isinstance(hermes_metadata, dict) and isinstance(hermes_metadata.get("slash_suggest"), bool)
+        else None
     )
+    if explicit_slash_suggest is not None:
+        slash_suggest = explicit_slash_suggest
+    else:
+        slash_suggest = True
+        policy_path = Path(os.getenv(
+            "HERMES_SLASH_SUGGEST_POLICY",
+            "/opt/data/shared/references/skill-slash-suggest-policy.json",
+        ))
+        try:
+            policy = json.loads(policy_path.read_text(encoding="utf-8")) if policy_path.is_file() else {}
+            hidden = policy.get("hidden_skills", []) if isinstance(policy, dict) else []
+            if isinstance(hidden, list) and name in hidden:
+                slash_suggest = False
+        except Exception as exc:
+            logger.debug("Ignoring invalid slash suggestion policy %s: %s", policy_path, exc)
     commands[cmd_key] = {"name": name, "description": description or f"Invoke the {name} skill",
                          "skill_md_path": str(skill_md), "skill_dir": str(skill_md.parent),
                          "slash_suggest": slash_suggest}'''
@@ -52,14 +67,13 @@ def patch_skill_commands(path: Path) -> str:
 
 def patch_completion(path: Path) -> str:
     text = path.read_text(encoding="utf-8")
-    marker = "DEVKIT_SLASH_SUGGEST_V1"
-    if marker in text:
+    if MARKER in text:
         return "already-patched"
 
     old = '''    def _iter_skill_commands(self) -> Mapping[str, dict[str, Any]]:
         return self._call_provider(self._skill_commands_provider)'''
     new = '''    def _iter_skill_commands(self) -> Mapping[str, dict[str, Any]]:
-        # DEVKIT_SLASH_SUGGEST_V1: filter suggestions only; providers/direct dispatch keep the full map.
+        # DEVKIT_SLASH_SUGGEST_V1: autocomplete sees only suggested skills; dispatch keeps the full map.
         commands = self._call_provider(self._skill_commands_provider)
         return {key: info for key, info in commands.items()
                 if info.get("slash_suggest", True)}'''
@@ -70,14 +84,13 @@ def patch_completion(path: Path) -> str:
 
 def patch_catalog(path: Path) -> str:
     text = path.read_text(encoding="utf-8")
-    marker = "DEVKIT_SLASH_SUGGEST_V1"
-    if marker in text:
+    if MARKER in text:
         return "already-patched"
 
     old = '''    for k, info in sorted(_tools_mod("agent.skill_commands").scan_skill_commands().items()):
         cat.pairs.append([k, str(info.get("description", "Skill"))])'''
     new = '''    for k, info in sorted(_tools_mod("agent.skill_commands").scan_skill_commands().items()):
-        # DEVKIT_SLASH_SUGGEST_V1: commands.catalog feeds user input suggestions, not dispatch.
+        # DEVKIT_SLASH_SUGGEST_V1: commands.catalog is an input suggestion surface, not dispatch.
         if not info.get("slash_suggest", True):
             continue
         cat.pairs.append([k, str(info.get("description", "Skill"))])'''
@@ -120,7 +133,7 @@ def self_test() -> None:
         (root / "tui_gateway").mkdir()
 
         (root / "agent" / "skill_commands.py").write_text(
-            '''from typing import Any\n\ndef fixture(frontmatter, commands, cmd_key, name, description, skill_md):\n    commands[cmd_key] = {"name": name, "description": description or f"Invoke the {name} skill",\n                         "skill_md_path": str(skill_md), "skill_dir": str(skill_md.parent)}\n''', encoding="utf-8")
+            '''import json\nimport logging\nimport os\nfrom pathlib import Path\nfrom typing import Any\nlogger = logging.getLogger(__name__)\n\ndef fixture(frontmatter, commands, cmd_key, name, description, skill_md):\n    commands[cmd_key] = {"name": name, "description": description or f"Invoke the {name} skill",\n                         "skill_md_path": str(skill_md), "skill_dir": str(skill_md.parent)}\n''', encoding="utf-8")
         (root / "hermes_cli" / "commands_completion.py").write_text(
             '''from typing import Any, Mapping\n\nclass Fixture:\n    def _call_provider(self, provider):\n        return provider()\n    _skill_commands_provider = staticmethod(lambda: {})\n\n    def _iter_skill_commands(self) -> Mapping[str, dict[str, Any]]:\n        return self._call_provider(self._skill_commands_provider)\n''', encoding="utf-8")
         (root / "tui_gateway" / "methods_tools.py").write_text(
@@ -137,7 +150,9 @@ def self_test() -> None:
         completion_text = (root / "hermes_cli" / "commands_completion.py").read_text(encoding="utf-8")
         catalog_text = (root / "tui_gateway" / "methods_tools.py").read_text(encoding="utf-8")
         for needle, haystack in (
-            ('hermes_metadata.get("slash_suggest") is False', skill_text),
+            ('hermes_metadata.get("slash_suggest")', skill_text),
+            ('HERMES_SLASH_SUGGEST_POLICY', skill_text),
+            ('hidden_skills', skill_text),
             ('info.get("slash_suggest", True)', completion_text),
             ('info.get("slash_suggest", True)', catalog_text),
         ):
