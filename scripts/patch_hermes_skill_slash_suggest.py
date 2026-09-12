@@ -137,7 +137,7 @@ def self_test() -> None:
         (root / "hermes_cli" / "commands_completion.py").write_text(
             '''from typing import Any, Mapping\n\nclass Fixture:\n    def _call_provider(self, provider):\n        return provider()\n    _skill_commands_provider = staticmethod(lambda: {})\n\n    def _iter_skill_commands(self) -> Mapping[str, dict[str, Any]]:\n        return self._call_provider(self._skill_commands_provider)\n''', encoding="utf-8")
         (root / "tui_gateway" / "methods_tools.py").write_text(
-            '''class Cat:\n    pairs = []\ncat = Cat()\nclass M:\n    @staticmethod\n    def scan_skill_commands():\n        return {}\ndef _tools_mod(name):\n    return M\n\nfor k, info in sorted(_tools_mod("agent.skill_commands").scan_skill_commands().items()):\n    cat.pairs.append([k, str(info.get("description", "Skill"))])\n''', encoding="utf-8")
+            '''class Cat:\n    def __init__(self):\n        self.pairs = []\nclass M:\n    @staticmethod\n    def scan_skill_commands():\n        return {}\ndef _tools_mod(name):\n    return M\n\ndef catalog():\n    cat = Cat()\n    for k, info in sorted(_tools_mod("agent.skill_commands").scan_skill_commands().items()):\n        cat.pairs.append([k, str(info.get("description", "Skill"))])\n    return cat.pairs\n''', encoding="utf-8")
 
         states = patch_root(root)
         if set(states.values()) != {"patched"}:
