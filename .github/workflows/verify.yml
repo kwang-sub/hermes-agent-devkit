@@ -71,6 +71,12 @@ jobs:
         shell: bash
         run: python3 custom-skills/shared/dev-data-modeling/tests/test_dbml_guard.py
 
+      - name: Verify skill slash suggestion policy
+        shell: bash
+        run: |
+          python3 scripts/patch_hermes_skill_slash_suggest.py --self-test
+          python3 scripts/check_skill_slash_suggest_contract.py
+
       - name: Verify stack capability detector
         shell: bash
         run: python3 custom-skills/orchestrator/dev-tech-dispatch/tests/test_detect_capabilities.py

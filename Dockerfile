@@ -14,6 +14,13 @@ COPY scripts/patch_hermes_syntax_warning.py /tmp/patch_hermes_syntax_warning.py
 RUN python3 /tmp/patch_hermes_syntax_warning.py /opt/hermes/hermes_cli/update_cmd.py \
     && rm /tmp/patch_hermes_syntax_warning.py
 
+# Keep every skill directly invokable and visible to runtime/management, but allow
+# DevKit internal skills to opt out of user input slash suggestions.
+COPY scripts/patch_hermes_skill_slash_suggest.py /tmp/patch_hermes_skill_slash_suggest.py
+RUN python3 /tmp/patch_hermes_skill_slash_suggest.py --self-test \
+    && python3 /tmp/patch_hermes_skill_slash_suggest.py --hermes-root /opt/hermes \
+    && rm /tmp/patch_hermes_skill_slash_suggest.py
+
 COPY scripts/patch_hermes_kanban_terminal.py /tmp/patch_hermes_kanban_terminal.py
 RUN python3 /tmp/patch_hermes_kanban_terminal.py --self-test \
     && python3 /tmp/patch_hermes_kanban_terminal.py /opt/hermes/agent/kanban_stop.py \
@@ -68,9 +75,15 @@ RUN python3 /tmp/patch_hermes_discord_kanban_session.py --self-test \
 # longer compiles or the canonical CLI entry point disappears.
 RUN test -x /opt/hermes/.venv/bin/hermes \
     && /opt/hermes/.venv/bin/hermes --help >/dev/null \
+    && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/agent/skill_commands.py \
+    && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/hermes_cli/commands_completion.py \
+    && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/tui_gateway/methods_tools.py \
     && /opt/hermes/.venv/bin/python -m py_compile \
        /opt/hermes/tools/kanban_tools.py \
-       /opt/hermes/hermes_cli/devkit_session_affinity.py
+       /opt/hermes/hermes_cli/devkit_session_affinity.py \
+       /opt/hermes/agent/skill_commands.py \
+       /opt/hermes/hermes_cli/commands_completion.py \
+       /opt/hermes/tui_gateway/methods_tools.py
 
 # The production DevKit image continues from the exact upstream-patched stage
 # validated by CI, then adds local Git/JDK/build tooling.
