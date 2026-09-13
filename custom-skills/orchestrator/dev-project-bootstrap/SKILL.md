@@ -1,7 +1,7 @@
 ---
 name: dev-project-bootstrap
 description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, Fast Preflight·기술 스택 fingerprint/cache·기존 저장소 refresh·Java toolchain·EOL·Git ignore·Kanban/Profile/Context/.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
-version: 0.5.0
+version: 0.5.1
 author: local
 platforms: [linux]
 metadata:
@@ -22,7 +22,9 @@ metadata:
 - 개발환경 preflight를 Project/Board 변경보다 먼저 실행한다.
 - Repository를 Git `safe.directory`에 idempotent하게 등록하고 쓰기 가능 여부를 확인한다.
 - CRLF/LF-only tracked 변경은 effective change에서 제외한다.
-- Gradle/Maven Java target을 감지해 DevKit JDK 8/17/21 중 runtime을 선택하고 `.hermes/toolchain.env`에 기록한다.
+- `dev-tech-dispatch`와 동일한 bounded manifest 탐색 범위에서 Gradle/Maven build root를 찾고 Java target을 감지해 DevKit JDK 8/17/21 중 runtime을 선택한 뒤 Repository의 `.hermes/toolchain.env`에 기록한다.
+- 단일 프로젝트, Gradle/Maven multi-module, backend/frontend monorepo를 같은 탐색 계약으로 처리한다.
+- 독립 JVM build root가 여러 개이면 동일 Java target/runtime일 때 Repository toolchain을 공유하고, 서로 다른 Java toolchain이 필요하면 잘못된 JDK를 임의 선택하지 않고 Block한다.
 - Repository build/dependency manifest에서 기술 스택을 탐지하고 `.hermes/project.yaml technology:`에 fingerprint와 결과를 저장한다.
 - 일반 source 변경은 technology cache를 무효화하지 않고 manifest 또는 detector version 변경 때만 재탐지한다.
 - `.gitattributes`와 `.gitignore`의 Hermes 관리 정책을 보장하되 기존 사용자 정책은 임의로 덮어쓰지 않는다.
@@ -35,6 +37,7 @@ metadata:
 bootstrap.py
   ├─ repository process lock
   ├─ bootstrap_preflight.py (fast)
+  │   └─ project_builds.py (bounded build-root discovery)
   ├─ ensure_gitignore.py
   ├─ bootstrap_project.py
   └─ stack_cache.py
@@ -102,6 +105,8 @@ repo/
    └─ tsconfig.json
 ```
 
+Bootstrap Java preflight도 별도 무제한 재귀 탐색을 하지 않고 이 detector의 bounded manifest 결과를 재사용한다. 따라서 stack detection과 Java build-root detection이 서로 다른 디렉터리를 보는 문제를 만들지 않는다.
+
 fingerprint는 input path + file content + detector version으로 계산한다.
 
 ```text
@@ -154,19 +159,25 @@ python3 "${HERMES_SKILL_DIR}/scripts/refresh_stacks.py" \
 2. Git safe.directory 등록
 3. Git root 확인
 4. Repository write probe
-5. tracked unstaged effective change 검사
-6. staged change 검사
-7. Gradle/Maven 감지
-8. Java target/runtime 선택
-9. .hermes/toolchain.env ensure
+5. Fast 모드에서는 repository-wide Git change scan 생략
+6. bounded manifest에서 Gradle/Maven build root 탐색
+7. Gradle/Maven multi-module root와 sibling build root 구분
+8. 각 JVM build root의 Java target/runtime 선택
+9. compatible JVM roots이면 Repository .hermes/toolchain.env ensure
 10. .gitattributes ensure
-11. gradlew/mvnw EOL 확인
+11. 각 build root의 gradlew/mvnw EOL 확인
 ```
 
-tracked unstaged 검사는 다음 형태를 사용한다.
+Build root 출력 예:
 
 ```text
-git diff --numstat -z --ignore-cr-at-eol --no-renames ...
+Build      : gradle
+Build roots: 1
+[INFO] Build project: chagok-backend (gradle)
+
+BUILD_TYPE=gradle
+BUILD_PROJECT_COUNT=1
+BUILD_PROJECTS=gradle:chagok-backend
 ```
 
 Fast Preflight에서는 성능을 위해 다음을 생략한다.
@@ -181,9 +192,9 @@ Preflight 변경 이후 두 번째 repository-wide Git scan
 
 ```text
 GIT_SCAN_MODE=fast
-EFFECTIVE_SCOPE=tracked-only
-EFFECTIVE_DIRTY=true|false
-EFFECTIVE_CHANGE_COUNT=<tracked effective count>
+EFFECTIVE_SCOPE=not-scanned
+EFFECTIVE_DIRTY=unknown
+EFFECTIVE_CHANGE_COUNT=-1
 EOL_ONLY_CHANGE_COUNT=-1
 UNTRACKED_CHANGE_COUNT=-1
 ```
@@ -221,7 +232,7 @@ Bootstrap은 한 번만 시작한다.
 
 ## 7. Java 실행 계약
 
-Java 프로젝트에는 `.hermes/toolchain.env`를 보장한다. Coder/Reviewer는 `hermes-java` launcher를 우선한다.
+Java 프로젝트에는 Repository 단위 `.hermes/toolchain.env`를 보장한다. Coder/Reviewer는 `hermes-java` launcher를 우선한다.
 
 ```bash
 hermes-java ./gradlew test
@@ -230,6 +241,33 @@ hermes-java ./mvnw test
 ```
 
 지원 target/runtime은 Java 8/17/21이다.
+
+지원 구조:
+
+```text
+# 단일 프로젝트
+repo/
+├─ build.gradle.kts
+└─ src/
+
+# Gradle multi-module
+repo/
+├─ settings.gradle.kts
+├─ build.gradle.kts
+├─ domain/build.gradle.kts
+└─ api/build.gradle.kts
+
+# backend/frontend monorepo
+repo/
+├─ chagok-backend/build.gradle.kts
+└─ chagok-frontend/package.json
+```
+
+Gradle/Maven multi-module의 nested module manifest는 동일 ancestor build root 아래 하나의 build project로 취급한다. 반대로 sibling Gradle/Maven root는 독립 build project로 유지한다.
+
+독립 JVM build project가 여러 개여도 모두 동일 target/runtime을 요구하면 Repository `.hermes/toolchain.env`를 공유한다. Java 17과 Java 21처럼 서로 다른 toolchain이 필요하면 현재 `hermes-java`의 `1 repository = 1 toolchain` 계약에서 자동 선택하지 않고 Bootstrap을 Block한다. 이 경우 per-project runtime 계약을 별도 설계하거나 프로젝트 Java 기준을 정렬해야 한다.
+
+Frontend-only `package.json` 등은 Java build root로 취급하지 않는다.
 
 ## 8. EOL 정책
 
@@ -267,7 +305,8 @@ mvnw text eol=lf
 - Repo Path/Git root 오류
 - Git safe.directory 등록 실패
 - Repository write 불가
-- Java target 충돌 또는 지원 범위 밖
+- 동일 build root의 Java target 충돌 또는 지원 범위 밖
+- 독립 JVM build root 간 Java target/runtime 불일치
 - 선택 JDK self-check 실패
 - unmanaged `.hermes/toolchain.env` 또는 `.hermes/project.yaml`
 - 충돌하는 `.gitattributes` EOL 정책
@@ -286,7 +325,8 @@ mvnw text eol=lf
 
 - 오래 걸린다는 이유로 동일 Repository Bootstrap 재실행
 - Application build/dependency file을 stack cache 때문에 수정
-- technology detection을 위해 Repository 전체 source scan
+- technology/build-root detection을 위해 Repository 전체 source scan
+- 서로 다른 JVM toolchain 요구사항 중 하나를 임의 선택
 - `.gitattributes` 충돌 정책 자동 덮어쓰기
 - 기존 `.gitignore` 사용자 규칙 삭제/재정렬
 - `git rm --cached` 자동 실행
@@ -301,13 +341,17 @@ mvnw text eol=lf
 ## 12. 권장 회귀 검증
 
 ```text
-Fast scan ignores CRLF-only tracked noise
-Fast scan keeps real tracked/staged changes
-Fast scan skips untracked enumeration
+Fast preflight skips repository-wide change scan
 Full scan counts EOL-only/untracked changes
 same-repository duplicate bootstrap is blocked
 safe.directory registration is idempotent
 Java 8/17/21 detection works
+single-root Gradle/Maven project discovery works
+nested backend + frontend monorepo detects only JVM build root for Java toolchain
+Gradle/Maven multi-module candidates collapse to ancestor build root
+sibling JVM build roots remain independent
+same-Java sibling JVM roots share repository toolchain
+different-Java sibling JVM roots fail closed
 .gitattributes/.gitignore policies are idempotent
 resolver/custom metadata is preserved
 technology cache creates/reuses/refreshes correctly
