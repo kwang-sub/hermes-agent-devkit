@@ -1,7 +1,7 @@
 ---
 name: dev-node-dependencies
 description: Node.js 프로젝트의 dependency 추가·삭제·복원에서 package root/manager/version/lockfile 호환성을 먼저 검증하고 Tirith threat-intelligence incomplete를 보안 우회 없이 처리하는 공통 capability skill.
-version: 0.1.0
+version: 0.1.1
 author: local
 platforms: [linux]
 metadata:
@@ -20,6 +20,7 @@ Node.js dependency 변경의 공통 실행 계약이다. Frontend 전용이 아�
 ```text
 manifest/lock evidence
 → exact package root
+→ package-manager root
 → canonical package manager
 → Node/package-manager version compatibility
 → dependency manifest state
@@ -32,6 +33,7 @@ manifest/lock evidence
 - `node_modules`에 package가 존재한다는 이유만으로 설치 완료로 간주하지 않는다.
 - `node_modules`에는 있지만 `package.json`/canonical lockfile에 없으면 `EXTRANEOUS_PRESENT`다.
 - package manager를 임의로 바꾸지 않는다. `npm`, `pnpm`, `yarn`, `bun`은 lockfile과 `packageManager` evidence로 결정한다.
+- monorepo에서는 leaf package root와 상위 package-manager root를 구분한다. leaf에 manager evidence가 없으면 Task workspace 범위 안에서 가장 가까운 상위 `packageManager`/canonical lockfile 경계를 사용한다.
 - mixed/conflicting lockfile이면 자동 정리하거나 하나를 삭제하지 않고 BLOCK한다.
 - package manager major/version mismatch를 무시하고 설치하지 않는다.
 - install 실패를 해결하려고 다른 manager, global install, 임의 `--force`, `--legacy-peer-deps`, lockfile 삭제를 시도하지 않는다.
@@ -50,12 +52,13 @@ python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_dependency_
   [--package "<package-or-spec>" ...]
 ```
 
-여러 `package.json`이 존재하고 `--package-root` 없이 하나로 확정할 수 없으면 BLOCK한다. 임의로 root package를 선택하지 않는다.
+여러 `package.json`이 존재하고 `--package-root` 없이 하나로 확정할 수 없으면 BLOCK한다. 임의로 root package를 선택하지 않는다. 탐색은 bounded walk이며 `.git`, `.hermes`, `.worktrees`, `node_modules`, `.next`, build/dist/coverage 영역을 순회하지 않는다.
 
 PASS 출력의 최소 evidence:
 
 ```text
 PACKAGE_ROOT
+PACKAGE_MANAGER_ROOT
 PACKAGE_MANAGER
 PACKAGE_MANAGER_SOURCE
 PACKAGE_MANAGER_VERSION
@@ -63,6 +66,7 @@ PACKAGE_MANAGER_REQUIRED_VERSION
 NODE_VERSION
 NODE_REQUIREMENT
 CANONICAL_LOCKFILE
+LOCKFILE_PRESENT
 DEPENDENCY_<N>_MANIFEST_STATE
 DEPENDENCY_<N>_NODE_MODULES_STATE
 INSTALL_REQUIRED
@@ -77,9 +81,9 @@ STATUS=pass
 우선순위:
 
 ```text
-package.json packageManager
-→ canonical lockfile
-→ BLOCK (evidence 없음)
+leaf package root의 packageManager / canonical lockfile
+→ 가장 가까운 상위 package-manager root의 packageManager / canonical lockfile
+→ BLOCK (Task workspace 안에서 evidence 없음)
 ```
 
 canonical mapping:
@@ -91,9 +95,11 @@ yarn.lock                               → yarn
 bun.lock / bun.lockb                    → bun
 ```
 
-`packageManager`와 lockfile manager가 다르면 BLOCK한다. 서로 다른 manager의 lockfile이 2종 이상이면 BLOCK한다.
+`packageManager`와 같은 경계의 lockfile manager가 다르면 BLOCK한다. 같은 경계에 서로 다른 manager의 lockfile이 2종 이상이면 BLOCK한다.
 
 `packageManager`가 version을 pin하면 현재 실행 가능한 manager version과 일치해야 한다. mismatch면 environment compatibility blocker로 분류하고 dependency mutation을 하지 않는다.
+
+lockfile이 아직 없지만 `packageManager`가 authoritative evidence이면 manager별 기본 lockfile 경로를 `CANONICAL_LOCKFILE`로 예측하고 `LOCKFILE_PRESENT=false`를 출력한다. mutation 성공 후 해당 canonical lockfile이 생성/갱신됐는지 확인한다.
 
 ## 3. Node Version Evidence
 
@@ -102,6 +108,7 @@ bun.lock / bun.lockb                    → bun
 ```text
 package.json engines.node
 package.json volta.node
+상위 package-manager root의 engines.node / volta.node
 .nvmrc
 .node-version
 현재 node --version
@@ -155,7 +162,7 @@ TIRITH_PREFLIGHT=allow
 → install 진행 가능
 
 TIRITH_PREFLIGHT=approval_required
-→ 실제 positive warn/block finding. headless worker에서 install 실행 금지, Kanban BLOCK
+→ 실제 positive warn/block finding 또는 daemon 재검사 후에도 불완전. headless worker에서 install 실행 금지, Kanban BLOCK
 
 TIRITH_PREFLIGHT=unavailable
 → preflight binary를 찾지 못함. 실제 Hermes terminal guard를 그대로 사용하되 보안 우회 금지
@@ -180,7 +187,7 @@ one-shot check
 → 동일 exact command를 정확히 1회 재검사
 ```
 
-두 번째 검사가 `allow`이면 진행한다. 두 번째도 incomplete이거나 다른 warn/block finding이 있으면 `approval_required`로 종료한다.
+두 번째 검사가 `allow`이면 진행한다. 두 번째도 incomplete이거나 다른 warn/block finding이 있으면 `approval_required`로 종료한다. `analysis_incomplete`와 실제 finding이 함께 있으면 daemon retry로 실제 finding을 가리지 않고 즉시 `approval_required`다.
 
 보안 의미를 약화하지 않는다.
 
@@ -194,7 +201,7 @@ one-shot check
 
 ## 6. Dependency Mutation
 
-preflight가 PASS이고 install이 필요할 때만 `INSTALL_COMMAND`를 exact package root에서 **정확히 1회** 실행한다.
+preflight가 PASS이고 install이 필요할 때만 `INSTALL_COMMAND`를 exact package root에서 **정확히 1회** 실행한다. `PACKAGE_MANAGER_ROOT`가 상위에 있으면 그 경계를 canonical lockfile owner로 유지하며 mutation 뒤 다른 manager/leaf lockfile이 새로 생기지 않았는지 확인한다.
 
 기본 command:
 
@@ -228,9 +235,9 @@ DEPENDENCY_INSTALL_FAILURE_CLASS
 새 dependency 추가/변경이면 최소 다음을 확인한다.
 
 ```text
-package.json에 의도한 section 반영
-canonical lockfile 반영
-다른 manager lockfile 신규 생성 없음
+leaf package.json에 의도한 section 반영
+CANONICAL_LOCKFILE 생성/갱신
+다른 manager 또는 leaf 전용 lockfile이 의도치 않게 신규 생성되지 않음
 package manager의 install/resolve 결과 성공
 기존 project typecheck/lint/test/build 중 영향 범위 검증
 ```
@@ -244,6 +251,7 @@ package manager의 install/resolve 결과 성공
 ```text
 Node Dependency Preflight: PASS | BLOCKED
 Package Root: ...
+Package Manager Root: ...
 Package Manager: npm | pnpm | yarn | bun
 Package Manager Source: packageManager | lockfile
 Package Manager Version: ...
@@ -252,6 +260,7 @@ Node Version: ...
 Node Requirement: ... | NONE
 Node Requirement Check: pass | manual | blocked
 Canonical Lockfile: ...
+Lockfile Present Before: true | false
 Dependency State Before:
 - <package>: <manifest state> / <node_modules state>
 Tirith Preflight: allow | approval_required | unavailable
