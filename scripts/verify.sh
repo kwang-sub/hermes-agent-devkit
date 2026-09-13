@@ -15,7 +15,7 @@ run_check() {
 
 check_init_mount_contract() {
     python3 - <<'PYTHON'
-from pathlib import Path
+from pathlib import import Path
 
 source = Path("init-profiles.ps1").read_text(encoding="utf-8-sig")
 required = (
@@ -251,6 +251,8 @@ run_check "dev-project-bootstrap metadata preservation tests" python3 custom-ski
 run_check "dev-project-bootstrap technology stack cache tests" python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_stack_cache.py
 run_check "dev-project-bootstrap development preflight tests" python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_dev_environment_preflight.py
 run_check "dev-tech-dispatch stack/fingerprint tests" python3 custom-skills/orchestrator/dev-tech-dispatch/tests/test_detect_capabilities.py
+run_check "Node dependency compatibility preflight tests" python3 custom-skills/shared/dev-node-dependencies/tests/test_node_dependency_preflight.py
+run_check "Tirith package security preflight tests" python3 custom-skills/shared/dev-node-dependencies/tests/test_tirith_package_preflight.py
 run_check "dev-project-resolve tests" python3 custom-skills/orchestrator/dev-project-resolve/tests/test_project_resolve.py
 run_check "dev-breakdown shell syntax" bash -n custom-skills/orchestrator/dev-breakdown/scripts/collect_project_context.sh
 run_check "hermes-java shell syntax" bash -n scripts/hermes-java
