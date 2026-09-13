@@ -44,6 +44,9 @@ class NodeDependencyPreflightTests(unittest.TestCase):
         proc = self.run_helper("--package", "@supabase/ssr", "--dependency-type", "prod")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("PACKAGE_MANAGER=npm", proc.stdout)
+        self.assertIn(f"PACKAGE_MANAGER_ROOT={self.frontend}", proc.stdout)
+        self.assertIn(f"CANONICAL_LOCKFILE={self.frontend / 'package-lock.json'}", proc.stdout)
+        self.assertIn("LOCKFILE_PRESENT=true", proc.stdout)
         self.assertIn("DEPENDENCY_1_MANIFEST_STATE=ABSENT", proc.stdout)
         self.assertIn("DEPENDENCY_1_NODE_MODULES_STATE=EXTRANEOUS_PRESENT", proc.stdout)
         self.assertIn("INSTALL_REQUIRED=true", proc.stdout)
@@ -82,6 +85,34 @@ class NodeDependencyPreflightTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn("node version mismatch", proc.stderr)
 
+    def test_nested_package_inherits_workspace_manager_and_lockfile(self) -> None:
+        (self.frontend / "package-lock.json").unlink()
+        (self.workspace / "package.json").write_text(
+            json.dumps({"name": "root", "private": True, "workspaces": ["frontend"]}),
+            encoding="utf-8",
+        )
+        (self.workspace / "package-lock.json").write_text("{}\n", encoding="utf-8")
+
+        proc = self.run_helper("--package", "@supabase/ssr")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("PACKAGE_MANAGER=npm", proc.stdout)
+        self.assertIn(f"PACKAGE_MANAGER_ROOT={self.workspace}", proc.stdout)
+        self.assertIn(f"CANONICAL_LOCKFILE={self.workspace / 'package-lock.json'}", proc.stdout)
+        self.assertIn("LOCKFILE_PRESENT=true", proc.stdout)
+        self.assertIn("INSTALL_COMMAND=npm install @supabase/ssr", proc.stdout)
+
+    def test_package_manager_without_lockfile_reports_expected_canonical_lock(self) -> None:
+        (self.frontend / "package-lock.json").unlink()
+        npm_version = subprocess.run(
+            ["npm", "--version"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True
+        ).stdout.strip()
+        self.write_manifest({"name": "fixture", "packageManager": f"npm@{npm_version}"})
+
+        proc = self.run_helper("--package", "react")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(f"CANONICAL_LOCKFILE={self.frontend / 'package-lock.json'}", proc.stdout)
+        self.assertIn("LOCKFILE_PRESENT=false", proc.stdout)
+
     def test_ambiguous_package_roots_require_explicit_root(self) -> None:
         other = self.workspace / "admin"
         other.mkdir()
@@ -96,6 +127,20 @@ class NodeDependencyPreflightTests(unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 2)
         self.assertIn("package root is ambiguous", proc.stderr)
+
+    def test_package_discovery_ignores_node_modules_manifests(self) -> None:
+        nested = self.frontend / "node_modules" / "some-package"
+        nested.mkdir(parents=True)
+        (nested / "package.json").write_text('{"name":"some-package"}\n', encoding="utf-8")
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT), "--workspace", str(self.workspace), "--package", "react"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(f"PACKAGE_ROOT={self.frontend}", proc.stdout)
 
 
 if __name__ == "__main__":
