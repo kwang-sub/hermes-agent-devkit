@@ -85,7 +85,7 @@ exact package root
 → manifest + canonical lockfile 검증
 ```
 
-`node_modules`에만 존재하는 package는 정상 dependency evidence가 아니다. `package.json`/canonical lockfile에 없으면 extraneous로 취급하고 정상 manifest mutation이 필요하다.
+`node_modules`에만 존재하는 package는 정상 dependency evidence가 아니다. `package.json`/canonical lockfile에 없으면 `EXTRANEOUS_PRESENT`로 취급하고 정상 manifest mutation이 필요하다.
 
 Tirith가 `analysis_incomplete`를 반환하면 security finding으로 오인해 package manager를 바꾸거나 install flag를 추가하지 않는다. `dev-node-dependencies`의 daemon 재검사 1회 경로만 사용하고, 이후에도 verdict가 불완전하면 headless worker에서 반복하지 않고 BLOCK한다.
 
