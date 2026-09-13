@@ -65,12 +65,15 @@ checks = {
         "EXTRANEOUS", "analysis_incomplete", "Tirith Package Preflight",
     )),
     "node dependency skill": (node_dependencies, (
-        "version: 0.1.0", "node_modules", "EXTRANEOUS_PRESENT", "packageManager", "canonical lockfile",
+        "version: 0.1.1", "node_modules", "EXTRANEOUS_PRESENT", "packageManager", "canonical lockfile",
+        "package-manager root", "PACKAGE_MANAGER_ROOT", "LOCKFILE_PRESENT", "bounded walk",
         "node_dependency_preflight.py", "tirith_package_preflight.py", "analysis_incomplete", "daemon start --detach",
         "TIRITH_PREFLIGHT=allow", "TIRITH_PREFLIGHT=approval_required", "보안 scanner 문제를 source compatibility 문제로 오분류하지 않는다",
     )),
     "node dependency preflight": (node_preflight, (
-        "LOCKFILES", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "packageManager",
+        "LOCKFILES", "DEFAULT_LOCKFILE", "PREFERRED_LOCKFILES", "os.walk", "SKIP_DIRS",
+        "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "packageManager",
+        "resolve_manager_boundary", "PACKAGE_MANAGER_ROOT", "LOCKFILE_PRESENT",
         "conflicting package manager lockfiles", "package manager version mismatch", "EXTRANEOUS_PRESENT",
         "INSTALL_REQUIRED", "RESTORE_REQUIRED", "INSTALL_COMMAND", "STATUS=pass", "STATUS=blocked",
     )),
