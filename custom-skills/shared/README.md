@@ -22,7 +22,7 @@ dev-spring-test
 dev-spring-refactor
 ```
 
-## Frontend
+## Frontend / Node
 
 ```text
 dev-frontend-feature        # canonical frontend entry
@@ -31,11 +31,26 @@ dev-typescript-guidelines
 dev-frontend-guidelines
 dev-nextjs-feature
 dev-frontend-test            # functional/component/e2e/visual verification
+dev-node-dependencies        # Node package root/manager/lockfile + Tirith install preflight
 dev-figma-design             # optional Figma REST read-only provider
 dev-ui-ux                    # audited UI/UX quality baseline
 ```
 
-Frontend Task는 `dev-frontend-feature`를 runtime entry로 사용하고 세부 capability는 실제 evidence에 따라 lazy-load합니다.
+Frontend Task는 `dev-frontend-feature`를 runtime entry로 사용하고 세부 capability는 실제 evidence에 따라 lazy-load합니다. `dev-node-dependencies`는 Frontend 전용이 아니며 Node package add/remove/version/restore/lockfile 변경이 실제 Task 범위일 때 공통으로 사용할 수 있습니다.
+
+Node dependency 변경의 기본 경계:
+
+```text
+exact package root
+→ packageManager / canonical lockfile
+→ Node / package-manager version compatibility
+→ package.json vs node_modules 상태
+→ Tirith exact-command preflight
+→ dependency mutation 1회
+→ manifest + lockfile 검증
+```
+
+`node_modules`만 존재하고 `package.json`/lockfile에 없는 package는 정상 설치로 간주하지 않습니다. Tirith가 실제 finding이 아니라 `analysis_incomplete`를 반환한 경우에만 daemon 준비 후 동일 command를 1회 재검사하며, 재검사도 불완전하거나 positive finding이면 headless worker는 BLOCK합니다. Tirith/approval을 비활성화해 우회하지 않습니다.
 
 Reference 기반 기본 경로:
 
