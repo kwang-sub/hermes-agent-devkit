@@ -5,7 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 required_skills = (
     "dev-frontend-feature", "dev-design-reference", "dev-typescript-guidelines", "dev-frontend-guidelines",
-    "dev-nextjs-feature", "dev-frontend-test", "dev-api-contract", "dev-figma-design", "dev-ui-ux",
+    "dev-nextjs-feature", "dev-frontend-test", "dev-node-dependencies", "dev-api-contract", "dev-figma-design", "dev-ui-ux",
 )
 for name in required_skills:
     path = ROOT / "custom-skills" / "shared" / name / "SKILL.md"
@@ -15,6 +15,9 @@ for name in required_skills:
 pattern = (ROOT / "custom-skills/orchestrator/dev-project-pattern/SKILL.md").read_text(encoding="utf-8")
 breakdown = (ROOT / "custom-skills/orchestrator/dev-breakdown/SKILL.md").read_text(encoding="utf-8")
 frontend = (ROOT / "custom-skills/shared/dev-frontend-feature/SKILL.md").read_text(encoding="utf-8")
+node_dependencies = (ROOT / "custom-skills/shared/dev-node-dependencies/SKILL.md").read_text(encoding="utf-8")
+node_preflight = (ROOT / "custom-skills/shared/dev-node-dependencies/scripts/node_dependency_preflight.py").read_text(encoding="utf-8")
+tirith_preflight = (ROOT / "custom-skills/shared/dev-node-dependencies/scripts/tirith_package_preflight.py").read_text(encoding="utf-8")
 design = (ROOT / "custom-skills/shared/dev-design-reference/SKILL.md").read_text(encoding="utf-8")
 design_template_path = ROOT / "custom-skills/shared/dev-design-reference/references/screen-spec-template.md"
 design_guard_path = ROOT / "custom-skills/shared/dev-design-reference/scripts/screen_spec_guard.py"
@@ -54,11 +57,26 @@ checks = {
         "Regression Baseline: APPROVED_BROWSER_SCREENSHOT",
     )),
     "frontend entry": (frontend, (
-        "version: 0.3.0", "canonical entry", "REFERENCE_DRIVEN", "CODE_DRIVEN",
+        "version: 0.3.1", "canonical entry", "REFERENCE_DRIVEN", "CODE_DRIVEN",
         "Design Source", "IMAGE", "FIGMA", "EXISTING_CODE", "dev-design-reference",
         "OBSERVED", "INFERRED", "UNKNOWN", "Storybook Catalog",
         "DESIGN_CONFORMANCE", "VISUAL_REGRESSION", "dev-ui-ux", "dev-figma-design", "lazy-load",
-        "dev-typescript-guidelines", "dev-frontend-guidelines", "dev-nextjs-feature",
+        "dev-typescript-guidelines", "dev-frontend-guidelines", "dev-nextjs-feature", "dev-node-dependencies",
+        "EXTRANEOUS", "analysis_incomplete", "Tirith Package Preflight",
+    )),
+    "node dependency skill": (node_dependencies, (
+        "version: 0.1.0", "node_modules", "EXTRANEOUS_PRESENT", "packageManager", "canonical lockfile",
+        "node_dependency_preflight.py", "tirith_package_preflight.py", "analysis_incomplete", "daemon start --detach",
+        "TIRITH_PREFLIGHT=allow", "TIRITH_PREFLIGHT=approval_required", "보안 scanner 문제를 source compatibility 문제로 오분류하지 않는다",
+    )),
+    "node dependency preflight": (node_preflight, (
+        "LOCKFILES", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "packageManager",
+        "conflicting package manager lockfiles", "package manager version mismatch", "EXTRANEOUS_PRESENT",
+        "INSTALL_REQUIRED", "RESTORE_REQUIRED", "INSTALL_COMMAND", "STATUS=pass", "STATUS=blocked",
+    )),
+    "tirith package preflight": (tirith_preflight, (
+        "analysis_incomplete", "daemon", "start", "--detach", "daemon-recheck-pass", "daemon-recheck-fail",
+        "approval_required", "Hermes terminal guard remains authoritative", "do not execute install",
     )),
     "design reference": (design, (
         "Design Source", "IMAGE", "FIGMA", "DRAFT", "REFERENCE", "APPROVED",
@@ -127,8 +145,8 @@ checks = {
     )),
     "stack guide": (stack, (
         "dev-frontend-feature", "dev-design-reference", "dev-typescript-guidelines", "dev-frontend-guidelines",
-        "dev-nextjs-feature", "dev-figma-design", "REFERENCE_DRIVEN", "CODE_DRIVEN",
-        "DESIGN_CONFORMANCE", "VISUAL_REGRESSION", "Storybook", "Stack Detection != Skill Loading",
+        "dev-nextjs-feature", "dev-node-dependencies", "dev-figma-design", "REFERENCE_DRIVEN", "CODE_DRIVEN",
+        "EXTRANEOUS", "analysis_incomplete", "Tirith", "DESIGN_CONFORMANCE", "VISUAL_REGRESSION", "Storybook", "Stack Detection != Skill Loading",
     )),
 }
 for label, (text, terms) in checks.items():
@@ -155,4 +173,4 @@ for key in ("FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN"):
     if f"{key}: ${{{key}:-}}" not in compose:
         raise SystemExit(f"compose.yml missing {key}")
 
-print("[PASS] Frontend reference-driven/Image/Figma/Storybook/Playwright capability contract")
+print("[PASS] Frontend reference-driven/Node dependency/Image/Figma/Storybook/Playwright capability contract")
