@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 
 import dev_environment_preflight as shared
+import project_builds
 
 
 def parse_args() -> argparse.Namespace:
@@ -132,19 +133,37 @@ def main() -> int:
             flush=True,
         )
 
-    build_type = shared.detect_build(repo)
+    projects = project_builds.discover_build_projects(repo)
+    build_type = project_builds.summarize_build_type(projects)
     print(f"Build      : {build_type}", flush=True)
-    toolchain_file, warnings = shared.configure_java_toolchain(repo, build_type)
+    print(f"Build roots: {len(projects)}", flush=True)
+    for project in projects:
+        print(
+            "[INFO] Build project: "
+            f"{project_builds.project_label(repo, project.root)} ({project.build_type})",
+            flush=True,
+        )
+
+    toolchain_file, warnings = project_builds.configure_java_toolchain(
+        repo,
+        projects,
+    )
 
     gitattributes = shared.ensure_gitattributes(repo)
-    warnings.extend(shared.inspect_wrapper_eol(repo, build_type))
+    warnings.extend(project_builds.inspect_wrapper_eol(repo, projects))
     for warning in warnings:
         print(f"[WARN] {warning}", flush=True)
 
+    project_summary = ",".join(
+        f"{project.build_type}:{project_builds.project_label(repo, project.root)}"
+        for project in projects
+    )
     print("", flush=True)
     print(f"GIT_SCAN_MODE={mode}", flush=True)
     print(f"EFFECTIVE_SCOPE={'all' if args.full else 'not-scanned'}", flush=True)
     print(f"BUILD_TYPE={build_type}", flush=True)
+    print(f"BUILD_PROJECT_COUNT={len(projects)}", flush=True)
+    print(f"BUILD_PROJECTS={project_summary}", flush=True)
     print(f"TOOLCHAIN_FILE={toolchain_file}", flush=True)
     print(f"GITATTRIBUTES={gitattributes}", flush=True)
     print(
