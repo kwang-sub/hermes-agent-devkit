@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import re
 import shlex
@@ -18,6 +19,18 @@ LOCKFILES = {
     "yarn.lock": "yarn",
     "bun.lock": "bun",
     "bun.lockb": "bun",
+}
+DEFAULT_LOCKFILE = {
+    "npm": "package-lock.json",
+    "pnpm": "pnpm-lock.yaml",
+    "yarn": "yarn.lock",
+    "bun": "bun.lock",
+}
+PREFERRED_LOCKFILES = {
+    "npm": ("npm-shrinkwrap.json", "package-lock.json"),
+    "pnpm": ("pnpm-lock.yaml",),
+    "yarn": ("yarn.lock",),
+    "bun": ("bun.lock", "bun.lockb"),
 }
 SKIP_DIRS = {".git", ".hermes", ".worktrees", "node_modules", ".next", "dist", "build", "coverage", "target"}
 MAX_DEPTH = 3
@@ -90,17 +103,19 @@ def safe_resolve_under(root: Path, value: Path) -> Path:
 
 def discover_package_roots(workspace: Path) -> list[Path]:
     found: list[Path] = []
-    for root in sorted(workspace.rglob("package.json")):
-        try:
-            rel = root.relative_to(workspace)
-        except ValueError:
-            continue
-        if len(rel.parts) - 1 > MAX_DEPTH:
-            continue
-        if any(part in SKIP_DIRS or part.startswith(".") for part in rel.parts[:-1]):
-            continue
-        found.append(root.parent.resolve())
-    return found
+    for root_text, dirs, files in os.walk(workspace):
+        root = Path(root_text)
+        relative = root.relative_to(workspace)
+        depth = len(relative.parts)
+        dirs[:] = sorted(
+            name for name in dirs
+            if name not in SKIP_DIRS and not name.startswith(".")
+        )
+        if depth >= MAX_DEPTH:
+            dirs[:] = []
+        if "package.json" in files:
+            found.append(root.resolve())
+    return sorted(found)
 
 
 def read_json(path: Path) -> dict:
@@ -154,52 +169,59 @@ def node_modules_state(package_root: Path, name: str, state: str) -> str:
     return "ABSENT"
 
 
-def detect_manager(package_root: Path, manifest: dict) -> tuple[str, str, str, Path]:
-    package_manager_value = manifest.get("packageManager")
-    field_manager = ""
-    field_version = ""
-    if isinstance(package_manager_value, str) and package_manager_value.strip():
-        match = re.match(r"^(npm|pnpm|yarn|bun)@(.+)$", package_manager_value.strip())
-        if not match:
-            raise PreflightError(f"unsupported packageManager value: {package_manager_value}")
-        field_manager, field_version = match.group(1), normalize_version(match.group(2))
+def parse_package_manager_field(manifest: dict) -> tuple[str, str]:
+    value = manifest.get("packageManager")
+    if not isinstance(value, str) or not value.strip():
+        return "", ""
+    match = re.match(r"^(npm|pnpm|yarn|bun)@(.+)$", value.strip())
+    if not match:
+        raise PreflightError(f"unsupported packageManager value: {value}")
+    return match.group(1), normalize_version(match.group(2))
 
-    lock_managers: dict[str, list[Path]] = {}
+
+def lockfiles_at(root: Path) -> dict[str, list[Path]]:
+    result: dict[str, list[Path]] = {}
     for filename, manager in LOCKFILES.items():
-        path = package_root / filename
+        path = root / filename
         if path.is_file():
-            lock_managers.setdefault(manager, []).append(path)
-    if len(lock_managers) > 1:
-        detail = ", ".join(str(path.name) for paths in lock_managers.values() for path in paths)
-        raise PreflightError(f"conflicting package manager lockfiles: {detail}")
+            result.setdefault(manager, []).append(path)
+    return result
 
-    lock_manager = next(iter(lock_managers), "")
-    if field_manager and lock_manager and field_manager != lock_manager:
-        raise PreflightError(
-            f"packageManager/lockfile mismatch: packageManager={field_manager}, lockfile_manager={lock_manager}"
-        )
-    manager = field_manager or lock_manager
-    if not manager:
-        raise PreflightError("package manager cannot be determined: add packageManager or canonical lockfile evidence")
-    source = "packageManager" if field_manager else "lockfile"
 
-    lockfile = ""
-    if lock_manager:
-        paths = lock_managers[lock_manager]
-        preferred = {
-            "npm": ("npm-shrinkwrap.json", "package-lock.json"),
-            "pnpm": ("pnpm-lock.yaml",),
-            "yarn": ("yarn.lock",),
-            "bun": ("bun.lock", "bun.lockb"),
-        }[manager]
-        for name in preferred:
-            candidate = package_root / name
-            if candidate in paths:
-                lockfile = name
-                break
-    if not lockfile:
-        lockfile = "NONE"
-    return manager, source, field_version, package_root / lockfile if lockfile != "NONE" else package_root / "NONE"
+def resolve_manager_boundary(package_root: Path, workspace: Path) -> tuple[str, str, str, Path, bool, Path]:
+    current = package_root
+    while True:
+        manifest_path = current / "package.json"
+        manifest = read_json(manifest_path) if manifest_path.is_file() else {}
+        field_manager, field_version = parse_package_manager_field(manifest)
+        locks = lockfiles_at(current)
+        if len(locks) > 1:
+            detail = ", ".join(path.name for paths in locks.values() for path in paths)
+            raise PreflightError(f"conflicting package manager lockfiles: {detail}")
+        lock_manager = next(iter(locks), "")
+        if field_manager or lock_manager:
+            if field_manager and lock_manager and field_manager != lock_manager:
+                raise PreflightError(
+                    f"packageManager/lockfile mismatch: packageManager={field_manager}, lockfile_manager={lock_manager}"
+                )
+            manager = field_manager or lock_manager
+            source = "packageManager" if field_manager else "lockfile"
+            present_lockfile: Path | None = None
+            if lock_manager:
+                available = set(locks[lock_manager])
+                for filename in PREFERRED_LOCKFILES[manager]:
+                    candidate = current / filename
+                    if candidate in available:
+                        present_lockfile = candidate
+                        break
+            lock_path = present_lockfile or (current / DEFAULT_LOCKFILE[manager])
+            return manager, source, field_version, lock_path, present_lockfile is not None, current
+        if current == workspace:
+            break
+        if workspace not in current.parents:
+            break
+        current = current.parent
+    raise PreflightError("package manager cannot be determined: add packageManager or canonical lockfile evidence")
 
 
 def build_install_command(manager: str, dependency_type: str, packages: list[str]) -> str:
@@ -235,6 +257,28 @@ def nearest_version_file(package_root: Path, workspace: Path) -> tuple[str, str]
     return "", ""
 
 
+def inherited_node_requirement(package_manifest: dict, manager_root: Path, package_root: Path) -> tuple[str, str]:
+    engines = package_manifest.get("engines") if isinstance(package_manifest.get("engines"), dict) else {}
+    engine_node = str(engines.get("node", "")).strip() if engines else ""
+    volta = package_manifest.get("volta") if isinstance(package_manifest.get("volta"), dict) else {}
+    volta_node = str(volta.get("node", "")).strip() if volta else ""
+    if volta_node:
+        return "volta.node", volta_node
+    if engine_node:
+        return "engines.node", engine_node
+    if manager_root != package_root and (manager_root / "package.json").is_file():
+        root_manifest = read_json(manager_root / "package.json")
+        root_engines = root_manifest.get("engines") if isinstance(root_manifest.get("engines"), dict) else {}
+        root_engine_node = str(root_engines.get("node", "")).strip() if root_engines else ""
+        root_volta = root_manifest.get("volta") if isinstance(root_manifest.get("volta"), dict) else {}
+        root_volta_node = str(root_volta.get("node", "")).strip() if root_volta else ""
+        if root_volta_node:
+            return "manager-root volta.node", root_volta_node
+        if root_engine_node:
+            return "manager-root engines.node", root_engine_node
+    return "NONE", ""
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Resolve Node dependency mutation compatibility before install")
     parser.add_argument("--workspace", required=True)
@@ -264,7 +308,9 @@ def main() -> int:
             package_root = roots[0]
 
         manifest = read_json(package_root / "package.json")
-        manager, manager_source, required_manager_version, lock_path = detect_manager(package_root, manifest)
+        manager, manager_source, required_manager_version, lock_path, lock_present, manager_root = resolve_manager_boundary(
+            package_root, workspace
+        )
 
         node_version_raw = run_version(["node", "--version"])
         if not node_version_raw:
@@ -283,13 +329,10 @@ def main() -> int:
                 f"package manager version mismatch: required={required_manager_version}, actual={manager_version}"
             )
 
-        engines = manifest.get("engines") if isinstance(manifest.get("engines"), dict) else {}
-        engine_node = str(engines.get("node", "")).strip() if engines else ""
-        volta = manifest.get("volta") if isinstance(manifest.get("volta"), dict) else {}
-        volta_node = str(volta.get("node", "")).strip() if volta else ""
         version_file_name, version_file_value = nearest_version_file(package_root, workspace)
-        node_requirement = version_file_value or volta_node or engine_node
-        node_requirement_source = version_file_name or ("volta.node" if volta_node else ("engines.node" if engine_node else "NONE"))
+        manifest_requirement_source, manifest_requirement = inherited_node_requirement(manifest, manager_root, package_root)
+        node_requirement = version_file_value or manifest_requirement
+        node_requirement_source = version_file_name or manifest_requirement_source
         required_node_major = simple_required_major(node_requirement) if node_requirement else None
         node_check = "not_required"
         if node_requirement:
@@ -314,11 +357,13 @@ def main() -> int:
 
         print(f"WORKSPACE={workspace}")
         print(f"PACKAGE_ROOT={package_root}")
+        print(f"PACKAGE_MANAGER_ROOT={manager_root}")
         print(f"PACKAGE_MANAGER={manager}")
         print(f"PACKAGE_MANAGER_SOURCE={manager_source}")
         print(f"PACKAGE_MANAGER_VERSION={manager_version}")
         print(f"PACKAGE_MANAGER_REQUIRED_VERSION={required_manager_version or 'NONE'}")
-        print(f"CANONICAL_LOCKFILE={lock_path if lock_path.name != 'NONE' else 'NONE'}")
+        print(f"CANONICAL_LOCKFILE={lock_path}")
+        print(f"LOCKFILE_PRESENT={'true' if lock_present else 'false'}")
         print(f"NODE_VERSION={node_version}")
         print(f"NODE_REQUIREMENT={node_requirement or 'NONE'}")
         print(f"NODE_REQUIREMENT_SOURCE={node_requirement_source}")
