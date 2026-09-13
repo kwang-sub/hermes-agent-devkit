@@ -76,15 +76,18 @@ dev-design-reference
 dev-figma-design            # optional Figma provider
 ```
 
-### Frontend lazy capability
+### Frontend / Node lazy capability
 
 ```text
 dev-typescript-guidelines
 dev-frontend-guidelines
 dev-nextjs-feature
 dev-frontend-test
+dev-node-dependencies       # package add/remove/restore/lockfile + security preflight
 dev-ui-ux
 ```
+
+`dev-node-dependencies`는 Frontend 전용이 아니며 package mutation이 실제 Task 책임일 때 Node workspace에서 공통 사용한다.
 
 ### Data canonical entry
 
@@ -149,13 +152,33 @@ Design Reference IMAGE/Figma → dev-design-reference
 TypeScript → dev-typescript-guidelines
 React/component/state/form/browser → dev-frontend-guidelines
 Next.js → dev-nextjs-feature
+Node package add/remove/restore → dev-node-dependencies
 functional/component/e2e/visual → dev-frontend-test
 Figma provider → dev-figma-design
 visual/interaction/responsive/accessibility/chart → dev-ui-ux
 API integration → dev-api-contract
 ```
 
-repository가 React/Next.js를 포함한다는 이유만으로 frontend skill을 로드하지 않는다.
+repository가 React/Next.js를 포함한다는 이유만으로 frontend skill을 로드하지 않는다. package dependency mutation이 없는 Task에 `dev-node-dependencies`를 자동 적용하지 않는다.
+
+### Node dependency mutation boundary
+
+Node dependency 변경은 source 구현과 분리된 compatibility/security boundary로 취급한다.
+
+```text
+package.json / canonical lockfile
+→ exact package root
+→ package manager + version
+→ Node version evidence
+→ node_modules declared/extraneous 판정
+→ Tirith exact-command preflight
+→ package mutation 1회
+→ manifest + lockfile verification
+```
+
+`node_modules`는 source of truth가 아니다. package가 물리적으로 존재해도 manifest/lockfile에 없으면 extraneous다.
+
+Tirith의 `analysis_incomplete`는 positive security finding과 구분한다. dependency helper는 Tirith daemon을 준비한 뒤 동일 command를 정확히 1회 재검사할 수 있지만, incomplete를 allow로 재분류하거나 approval을 끄지 않는다. 재검사 후에도 warn/block이면 headless worker는 반복 실행하지 않고 BLOCK한다.
 
 ## 8. REFERENCE_DRIVEN / CODE_DRIVEN
 
@@ -305,10 +328,12 @@ enum/paging/auth
 
 ## 14. Verification
 
-Frontend는 기존 package manager/test runner를 사용한다.
+Frontend/Node는 기존 package manager/test runner를 사용한다. dependency 변경이면 package manager compatibility와 canonical lockfile 검증을 먼저 통과해야 한다.
 
 ```text
-affected functional/component test
+Node dependency preflight (해당 시)
+→ Tirith package preflight (해당 시)
+→ affected functional/component test
 → typecheck
 → lint
 → related integration/e2e
@@ -337,6 +362,8 @@ Pattern References
 Frontend Mode / Design Source / Status / Fidelity (해당 시)
 Reference / Screen Spec (해당 시)
 Observed / Inferred / Unknown (해당 시)
+Node package root / manager / version / lockfile (dependency 변경 시)
+Tirith package preflight / retry evidence (dependency 변경 시)
 Component/Token Reuse (해당 시)
 Storybook Catalog / Design Conformance / Visual Regression (해당 시)
 Data Task Class / Data Model Status / DBML Path (해당 시)
