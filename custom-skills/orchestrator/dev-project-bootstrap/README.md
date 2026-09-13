@@ -1,38 +1,30 @@
-# dev-project-bootstrap v0.4.3
+# dev-project-bootstrap v0.5.1
 
 기존 Git Repository를 Hermes Managed Project로 idempotent하게 등록하는 Skill입니다.
 
-## 변경된 기본 정책
+## 기본 정책
 
 대용량 Repository와 Windows/Docker bind mount에서 Bootstrap 초기화가 오래 걸리는 문제를 줄이기 위해 일반 실행은 **Fast Preflight**를 사용합니다.
 
-기존처럼 preflight 전후에 전체 Git 변경/EOL 분류를 반복하지 않습니다. 기본 경로는 tracked unstaged 의미 변경 1회와 staged index 변경 1회만 확인합니다.
+Fast Preflight는 repository-wide Git change/EOL/untracked scan을 기본 경로에서 생략하고, 정확한 진단이 필요할 때만 `--full-preflight`를 사용합니다.
 
 ```text
 bootstrap.py
   ├─ repository process lock
   ├─ bootstrap_preflight.py (fast)
+  │   └─ project_builds.py (bounded build-root discovery)
   ├─ ensure_gitignore.py
-  └─ bootstrap_project.py
+  ├─ bootstrap_project.py
+  └─ stack_cache.py
 ```
-
-Fast Preflight에서는 다음을 생략합니다.
-
-```text
-- untracked 전체 enumeration
-- EOL-only 개수 산출용 normal git diff
-- preflight 변경 후 두 번째 repository-wide Git scan
-```
-
-CRLF/LF-only tracked 변경은 `git diff --numstat -z --ignore-cr-at-eol` 방식으로 effective change에서 제외합니다.
 
 Fast 출력 예:
 
 ```text
 GIT_SCAN_MODE=fast
-EFFECTIVE_SCOPE=tracked-only
-EFFECTIVE_DIRTY=false
-EFFECTIVE_CHANGE_COUNT=0
+EFFECTIVE_SCOPE=not-scanned
+EFFECTIVE_DIRTY=unknown
+EFFECTIVE_CHANGE_COUNT=-1
 EOL_ONLY_CHANGE_COUNT=-1
 UNTRACKED_CHANGE_COUNT=-1
 ```
@@ -46,6 +38,46 @@ python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
   --repo /workspace/dashboard
 ```
 
+## 단일 프로젝트 / 멀티 프로젝트
+
+Java preflight는 `dev-tech-dispatch`와 동일한 bounded manifest 탐색 정책을 재사용합니다. 따라서 Git Repository root에 `build.gradle(.kts)` 또는 `pom.xml`이 없어도 최대 탐색 범위 안의 실제 JVM build root를 찾습니다.
+
+```text
+# 단일 프로젝트
+repo/
+├─ build.gradle.kts
+└─ src/
+
+# Gradle multi-module
+repo/
+├─ settings.gradle.kts
+├─ build.gradle.kts
+├─ domain/build.gradle.kts
+└─ api/build.gradle.kts
+
+# backend/frontend monorepo
+repo/
+├─ chagok-backend/build.gradle.kts
+└─ chagok-frontend/package.json
+```
+
+처리 기준:
+
+- Repository root JVM 프로젝트는 기존 동작을 그대로 유지합니다.
+- Gradle/Maven multi-module의 nested module은 ancestor build root 하나로 취급합니다.
+- sibling Gradle/Maven root는 독립 build project로 유지합니다.
+- frontend-only `package.json`은 Java toolchain 대상이 아닙니다.
+- 독립 JVM project가 여러 개여도 Java target/runtime이 같으면 Repository `.hermes/toolchain.env`를 공유합니다.
+- 서로 다른 Java toolchain이 필요하면 현재 `1 repository = 1 toolchain` 계약에서 임의 선택하지 않고 Bootstrap을 Block합니다.
+
+Bootstrap 출력에는 탐지된 build root가 추가됩니다.
+
+```text
+BUILD_TYPE=gradle
+BUILD_PROJECT_COUNT=1
+BUILD_PROJECTS=gradle:chagok-backend
+```
+
 ## Full Preflight
 
 정확한 untracked 및 EOL-only 개수가 필요한 진단 상황에서만 사용합니다.
@@ -56,7 +88,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
   --full-preflight
 ```
 
-Full 모드에서는 normal tracked diff와 `git ls-files --others --exclude-standard`를 추가 실행합니다.
+Full 모드에서는 tracked diff와 `git ls-files --others --exclude-standard`를 추가 실행합니다. CRLF/LF-only tracked 변경은 `git diff --numstat -z --ignore-cr-at-eol` 기반으로 의미 변경에서 제외합니다.
 
 ```text
 GIT_SCAN_MODE=full
@@ -77,17 +109,18 @@ Repository 절대경로를 기준으로 다음 lock을 사용합니다.
 
 따라서 Agent는 오래 걸리는 Bootstrap을 다시 실행하지 않고 최초 process handle을 poll해야 합니다.
 
-## 기존 보장 사항
+## 보장 사항
 
 - Git `safe.directory` 등록
 - Repository write probe
+- bounded Gradle/Maven build-root discovery
 - Java target 감지 및 JDK 8/17/21 runtime 선택
 - `.hermes/toolchain.env` 관리
 - `.gitattributes` EOL 정책
 - `.gitignore`의 `/.hermes/`, `/.worktrees/` 관리
 - Project / Board / Profile Binding ensure
 - `AGENTS.common.md` Managed Block 병합
-- `.hermes/project.yaml` Core Metadata 관리
+- `.hermes/project.yaml` Core Metadata / technology cache 관리
 - Resolver / Custom Metadata 보존
 
 ## Java 실행
