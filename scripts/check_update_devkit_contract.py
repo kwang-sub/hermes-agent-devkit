@@ -7,7 +7,9 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 UPDATER = ROOT / "update-devkit.ps1"
+RUNTIME_VERIFIER = ROOT / "scripts/verify-container-runtime.ps1"
 DOCKERFILE = ROOT / "Dockerfile"
+TIRITH_PATCH = ROOT / "scripts/patch_hermes_tirith_profile_guard.py"
 LATEST_COMPAT_SCRIPT = ROOT / "scripts/verify_latest_hermes_compat.sh"
 LATEST_COMPAT_WORKFLOW = ROOT / ".github/workflows/latest-hermes-compat.yml"
 
@@ -137,12 +139,46 @@ def main() -> int:
             "update-devkit.ps1 must keep one cached repair build path"
         )
 
+    runtime_verifier = read_required(RUNTIME_VERIFIER, "runtime verifier")
+    require(
+        runtime_verifier,
+        (
+            'Tirith routed-profile guard patch',
+            'DEVKIT_TIRITH_PROFILE_GUARD_V1',
+            '_devkit_tirith_subprocess_env',
+            '_devkit_only_analysis_incomplete',
+            'process-global environment',
+            'Shared Node dependency capability',
+        ),
+        "update-devkit runtime Tirith verification",
+    )
+
+    tirith_patch = read_required(TIRITH_PATCH, "Hermes Tirith routed-profile patch")
+    require(
+        tirith_patch,
+        (
+            'DEVKIT_TIRITH_PROFILE_GUARD_V1',
+            '_devkit_tirith_subprocess_env',
+            'get_hermes_home_override',
+            'apply_subprocess_home_env',
+            '_devkit_only_analysis_incomplete',
+            '_devkit_tirith_daemon_recheck',
+            'Positive findings are never retried/bypassed',
+            'profile_isolation',
+        ),
+        "Hermes Tirith routed-profile patch",
+    )
+
     dockerfile = read_required(DOCKERFILE, "Dockerfile")
     require(
         dockerfile,
         (
             'FROM ${HERMES_BASE_IMAGE} AS hermes-upstream-patched',
             'FROM hermes-upstream-patched AS hermes-devkit-runtime',
+            'patch_hermes_tirith_profile_guard.py --self-test',
+            'patch_hermes_tirith_profile_guard.py /opt/hermes/tools/tirith_security.py',
+            "grep -q 'DEVKIT_TIRITH_PROFILE_GUARD_V1' /opt/hermes/tools/tirith_security.py",
+            '/opt/hermes/tools/tirith_security.py',
             'patch_hermes_kanban_model_transition.py --self-test',
             "grep -q 'def _devkit_run_flow_model_transition' /opt/hermes/tools/kanban_tools.py",
             '/opt/hermes/.venv/bin/python -m py_compile',
@@ -159,8 +195,12 @@ def main() -> int:
             '--pull',
             'def _devkit_run_flow_model_transition',
             'MODEL_POLICY_SNAPSHOT_V1',
+            'DEVKIT_TIRITH_PROFILE_GUARD_V1',
+            '_devkit_tirith_subprocess_env',
+            '_devkit_only_analysis_incomplete',
             '/opt/hermes/.venv/bin/hermes --help',
             '/opt/custom-skills/shared/dev-api-spec/SKILL.md',
+            '/opt/custom-skills/shared/dev-node-dependencies/SKILL.md',
             '/opt/data/shared/scripts/flow_model_policy.py',
         ),
         "latest Hermes compatibility smoke",
@@ -183,7 +223,7 @@ def main() -> int:
         "latest Hermes compatibility workflow",
     )
 
-    print("[PASS] DevKit updater + latest Hermes CI compatibility contract verified.")
+    print("[PASS] DevKit updater + runtime verifier + latest Hermes CI + Tirith routed-profile compatibility contract verified.")
     return 0
 
 

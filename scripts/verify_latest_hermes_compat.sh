@@ -40,14 +40,36 @@ docker run --rm \
         grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/agent/skill_commands.py
         grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/hermes_cli/commands_completion.py
         grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/tui_gateway/methods_tools.py
+        grep -q "DEVKIT_TIRITH_PROFILE_GUARD_V1" /opt/hermes/tools/tirith_security.py
         test -f /opt/data/shared/references/skill-slash-suggest-policy.json
 
         /opt/hermes/.venv/bin/python -m py_compile \
+            /opt/hermes/tools/tirith_security.py \
             /opt/hermes/tools/kanban_tools.py \
             /opt/hermes/hermes_cli/devkit_session_affinity.py \
             /opt/hermes/agent/skill_commands.py \
             /opt/hermes/hermes_cli/commands_completion.py \
             /opt/hermes/tui_gateway/methods_tools.py
+
+        /opt/hermes/.venv/bin/python - <<"PY"
+import os
+from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+from tools.tirith_security import _devkit_only_analysis_incomplete, _devkit_tirith_subprocess_env
+
+before_home = os.environ.get("HOME")
+before_hermes_home = os.environ.get("HERMES_HOME")
+token = set_hermes_home_override("/tmp/devkit-tirith-profile")
+try:
+    env = _devkit_tirith_subprocess_env()
+    assert env.get("HERMES_HOME") == "/tmp/devkit-tirith-profile", env
+    assert env.get("HOME"), env
+    assert os.environ.get("HOME") == before_home
+    assert os.environ.get("HERMES_HOME") == before_hermes_home
+    assert _devkit_only_analysis_incomplete([{"rule_id": "analysis_incomplete"}])
+    assert not _devkit_only_analysis_incomplete([{"rule_id": "malware_package"}])
+finally:
+    reset_hermes_home_override(token)
+PY
 
         test -f /opt/custom-skills/shared/dev-api-spec/SKILL.md
         test -f /opt/custom-skills/shared/dev-api-contract/SKILL.md
@@ -66,6 +88,7 @@ docker run --rm \
         test -f /opt/custom-skills/shared/dev-frontend-guidelines/references/official-react-practices.md
         test -f /opt/custom-skills/shared/dev-nextjs-feature/SKILL.md
         test -f /opt/custom-skills/shared/dev-nextjs-feature/references/official-nextjs-practices.md
+        test -f /opt/custom-skills/shared/dev-node-dependencies/SKILL.md
         test -f /opt/data/shared/references/approval-gate-rules.md
         test -f /opt/data/shared/scripts/flow_model_policy.py
     '

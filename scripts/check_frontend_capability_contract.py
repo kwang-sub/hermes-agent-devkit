@@ -65,10 +65,12 @@ checks = {
         "EXTRANEOUS", "analysis_incomplete", "Tirith Package Preflight",
     )),
     "node dependency skill": (node_dependencies, (
-        "version: 0.1.1", "node_modules", "EXTRANEOUS_PRESENT", "packageManager", "canonical lockfile",
+        "version: 0.1.2", "node_modules", "EXTRANEOUS_PRESENT", "packageManager", "canonical lockfile",
         "package-manager root", "PACKAGE_MANAGER_ROOT", "LOCKFILE_PRESENT", "bounded walk",
         "node_dependency_preflight.py", "tirith_package_preflight.py", "analysis_incomplete", "daemon start --detach",
-        "TIRITH_PREFLIGHT=allow", "TIRITH_PREFLIGHT=approval_required", "보안 scanner 문제를 source compatibility 문제로 오분류하지 않는다",
+        "TIRITH_PREFLIGHT=allow", "TIRITH_PREFLIGHT=approval_required", "Hermes actual terminal guard parity",
+        "actual terminal guard", "profile state", "preflight allow를 actual guard bypass token으로 사용",
+        "보안 scanner 문제를 source compatibility 문제로 오분류하지 않는다",
     )),
     "node dependency preflight": (node_preflight, (
         "LOCKFILES", "DEFAULT_LOCKFILE", "PREFERRED_LOCKFILES", "os.walk", "SKIP_DIRS",

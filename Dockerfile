@@ -21,6 +21,15 @@ RUN python3 /tmp/patch_hermes_skill_slash_suggest.py --self-test \
     && python3 /tmp/patch_hermes_skill_slash_suggest.py --hermes-root /opt/hermes \
     && rm /tmp/patch_hermes_skill_slash_suggest.py
 
+# Tirith runs both as a terminal preflight child and inside Hermes' actual approval guard.
+# Keep their routed-profile HOME/HERMES_HOME identical and let the authoritative guard
+# perform one bounded daemon recheck only for a pure analysis_incomplete verdict.
+COPY scripts/patch_hermes_tirith_profile_guard.py /tmp/patch_hermes_tirith_profile_guard.py
+RUN python3 /tmp/patch_hermes_tirith_profile_guard.py --self-test \
+    && python3 /tmp/patch_hermes_tirith_profile_guard.py /opt/hermes/tools/tirith_security.py \
+    && grep -q 'DEVKIT_TIRITH_PROFILE_GUARD_V1' /opt/hermes/tools/tirith_security.py \
+    && rm /tmp/patch_hermes_tirith_profile_guard.py
+
 COPY scripts/patch_hermes_kanban_terminal.py /tmp/patch_hermes_kanban_terminal.py
 RUN python3 /tmp/patch_hermes_kanban_terminal.py --self-test \
     && python3 /tmp/patch_hermes_kanban_terminal.py /opt/hermes/agent/kanban_stop.py \
@@ -78,7 +87,9 @@ RUN test -x /opt/hermes/.venv/bin/hermes \
     && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/agent/skill_commands.py \
     && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/hermes_cli/commands_completion.py \
     && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/tui_gateway/methods_tools.py \
+    && grep -q 'DEVKIT_TIRITH_PROFILE_GUARD_V1' /opt/hermes/tools/tirith_security.py \
     && /opt/hermes/.venv/bin/python -m py_compile \
+       /opt/hermes/tools/tirith_security.py \
        /opt/hermes/tools/kanban_tools.py \
        /opt/hermes/hermes_cli/devkit_session_affinity.py \
        /opt/hermes/agent/skill_commands.py \

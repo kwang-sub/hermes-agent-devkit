@@ -1,7 +1,7 @@
 ---
 name: dev-node-dependencies
 description: Node.js 프로젝트의 dependency 추가·삭제·복원에서 package root/manager/version/lockfile 호환성을 먼저 검증하고 Tirith threat-intelligence incomplete를 보안 우회 없이 처리하는 공통 capability skill.
-version: 0.1.1
+version: 0.1.2
 author: local
 platforms: [linux]
 metadata:
@@ -25,6 +25,7 @@ manifest/lock evidence
 → Node/package-manager version compatibility
 → dependency manifest state
 → Tirith security preflight
+→ Hermes actual terminal guard
 → dependency mutation 정확히 1회
 → manifest + lockfile 검증
 → project verification
@@ -38,6 +39,7 @@ manifest/lock evidence
 - package manager major/version mismatch를 무시하고 설치하지 않는다.
 - install 실패를 해결하려고 다른 manager, global install, 임의 `--force`, `--legacy-peer-deps`, lockfile 삭제를 시도하지 않는다.
 - Tirith/approval을 끄거나 `TIRITH_ENABLED=0`, YOLO, approval off, fail-open 강제로 우회하지 않는다.
+- preflight 결과는 진단/사전 준비 evidence이며 실제 command 실행 허가는 Hermes terminal guard가 최종 결정한다.
 
 ## 1. Dependency Preflight
 
@@ -159,7 +161,7 @@ python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/tirith_package_p
 
 ```text
 TIRITH_PREFLIGHT=allow
-→ install 진행 가능
+→ actual terminal guard까지 진행 가능한 사전 evidence. guard bypass나 최종 승인 의미가 아님
 
 TIRITH_PREFLIGHT=approval_required
 → 실제 positive warn/block finding 또는 daemon 재검사 후에도 불완전. headless worker에서 install 실행 금지, Kanban BLOCK
@@ -177,7 +179,7 @@ rule_id=analysis_incomplete
 Package threat intelligence could not be completed
 ```
 
-이 경우 helper는:
+preflight helper는 사전 진단/daemon warm-up 목적으로 다음을 수행한다.
 
 ```text
 one-shot check
@@ -187,11 +189,37 @@ one-shot check
 → 동일 exact command를 정확히 1회 재검사
 ```
 
-두 번째 검사가 `allow`이면 진행한다. 두 번째도 incomplete이거나 다른 warn/block finding이 있으면 `approval_required`로 종료한다. `analysis_incomplete`와 실제 finding이 함께 있으면 daemon retry로 실제 finding을 가리지 않고 즉시 `approval_required`다.
+두 번째 검사가 `allow`이면 actual terminal guard까지 진행한다. 두 번째도 incomplete이거나 다른 warn/block finding이 있으면 `approval_required`로 종료한다. `analysis_incomplete`와 실제 finding이 함께 있으면 daemon retry로 실제 finding을 가리지 않고 즉시 `approval_required`다.
+
+### Hermes actual terminal guard parity
+
+실제 `npm install` 실행 직전의 Hermes guard가 최종 authority다. DevKit runtime patch는 guard의 Tirith subprocess가 terminal child와 같은 routed-profile state를 보도록 다음 계약을 유지한다.
+
+```text
+active profile ContextVar
+→ HERMES_HOME subprocess env bridge
+→ Hermes subprocess HOME contract 적용
+→ tirith check
+```
+
+따라서 Coder preflight가 보는 daemon/state와 actual guard가 보는 daemon/state가 profile별로 일치해야 한다.
+
+actual guard에서 결과가 오직 `analysis_incomplete`인 경우에만:
+
+```text
+tirith check
+→ pure analysis_incomplete
+→ 같은 profile env로 daemon status
+→ 필요 시 daemon start --detach
+→ 같은 profile env + 같은 exact command로 정확히 1회 재검사
+```
+
+한다. 실제 malware/positive warn/block finding은 daemon 재검사 대상으로 바꾸지 않으며 기존 approval/BLOCK 의미를 그대로 유지한다. daemon 준비/재검사 자체가 실패하면 최초 verdict를 보존하고 fail-open으로 재분류하지 않는다.
 
 보안 의미를 약화하지 않는다.
 
 ```text
+금지: preflight allow를 actual guard bypass token으로 사용
 금지: incomplete를 allow로 재분류
 금지: tirith_fail_open 강제
 금지: approval/yolo off
@@ -228,7 +256,7 @@ DEPENDENCY_INSTALL_FAILURE_CLASS
 - UNKNOWN
 ```
 
-동일 실패 command 반복은 금지한다. `SECURITY_INCOMPLETE`만 daemon preflight에서 허용한 단일 재검사 경로를 사용한다.
+동일 실패 command 반복은 금지한다. `SECURITY_INCOMPLETE`는 actual guard의 profile-scoped daemon 단일 재검사 이후에도 incomplete일 때만 사용한다.
 
 ## 7. Mutation Verification
 
@@ -264,7 +292,9 @@ Lockfile Present Before: true | false
 Dependency State Before:
 - <package>: <manifest state> / <node_modules state>
 Tirith Preflight: allow | approval_required | unavailable
-Tirith Retry: none | daemon-recheck-pass | daemon-recheck-fail
+Tirith Preflight Retry: none | daemon-recheck-pass | daemon-recheck-fail
+Tirith Actual Guard: allow | approval_required | block | not_run
+Tirith Guard Profile Parity: pass | blocked | not_observed
 Install Command: ... | NOT_REQUIRED
 Install Result: PASS | NOT_RUN | BLOCKED
 Manifest Updated: true | false | not_required
@@ -282,5 +312,6 @@ Residual Risk:
 - 기존 package manager/lockfile convention을 유지한다.
 - `node_modules`는 source of truth가 아니다.
 - security incomplete와 실제 security finding을 구분한다.
+- preflight와 actual guard의 profile state를 서로 다른 HOME/HERMES_HOME으로 실행하지 않는다.
 - headless worker가 interactive approval을 기다리며 같은 command를 반복하지 않는다.
 - 보안 scanner 문제를 source compatibility 문제로 오분류하지 않는다.
