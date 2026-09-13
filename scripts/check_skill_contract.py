@@ -42,6 +42,12 @@ def require_terms(text,label,terms):
 def forbid_terms(text,label,terms):
     present=[t for t in terms if t in text]
     if present: fail(f"{label} contains forbidden contract terms: "+", ".join(present))
+def extract_section(text:str,start_heading:str,end_heading:str)->str:
+    start=text.find(start_heading)
+    if start<0: fail(f"missing section heading: {start_heading}")
+    end=text.find(end_heading,start+len(start_heading))
+    if end<0: fail(f"missing section end heading after {start_heading}: {end_heading}")
+    return text[start:end]
 
 def main()->int:
     discovered={}; paths_by_name=defaultdict(list); related_by_skill={}
@@ -91,6 +97,30 @@ def main()->int:
         "[추가 요구사항 확인]","requirement_delta_approved","Requirement Delta",
         "AUTO_DISPATCH","NO_EXTRA_KANBAN_CONFIRMATION","Kanban 작업 카드를 등록할까요?","registration notification enqueue"))
     forbid_terms(workflow,"number-list approval UX",("1. PREMIUM","2. DEFAULT","번호 또는 요구사항을 입력해주세요."))
+
+    plan_gate_literal=(
+        "question:\n"
+        "  [작업 계획 승인]\n"
+        "  위 Implementation Plan을 승인할까요?\n"
+        "choices:\n"
+        "  - 승인\n"
+        "  - 차단"
+    )
+    approval_plan=extract_section(approval,"## Gate 5 — Plan","## 승인 상태 및 자동 Dispatch")
+    workflow_plan=extract_section(workflow,"### Plan Gate TUI 길이 계약","## Requirement Delta Approval")
+    require_terms(approval_plan,"Plan Gate compact clarify contract",(
+        plan_gate_literal,
+        "질문은 두 논리 줄만 가지며 동적 metadata를 보간하지 않는다",
+        "Plan 본문을 `clarify.question` 안으로 옮기지 않는다",
+        "`clarify` 선택 영역은 스크롤 가능한 상세 뷰가 아니라 **결정 UI**"))
+    require_terms(workflow_plan,"workflow Plan Gate TUI contract",(
+        "`clarify.questions[0].question`은 아래 문자열을 그대로 사용한다",
+        "[작업 계획 승인]\n위 Implementation Plan을 승인할까요?",
+        "Task", "Project / Workspace / Branch", "Coder Model", "Design Evidence", "Implementation Tasks",
+        "정보는 일반 메시지에 유지하고 결정 UI만 짧게 유지"))
+    forbid_terms(approval,"legacy verbose Plan Gate question",("위 Implementation Plan을 어떻게 처리할까요?",))
+    forbid_terms(workflow,"legacy verbose Plan Gate question",("위 Implementation Plan을 어떻게 처리할까요?",))
+
     require_terms(workflow,"dispatch efficiency",("prepare_dispatch.py","정확히 한 번","working-tree 전체 scan을 하지 않는다","kanban_create tool 1회","kanban_show tool 1회","hermes project list","Kanban body 임시 파일","dispatch-efficiency.md","skipped-approved-preservation","change_summary.py --include","review_context.py --include"))
     require_terms(dispatch,"dev-workspace-dispatch fast path",(
         "--confirmed-dirty","repository-wide dirty/EOL/untracked 분류를 **생략**","WORKSPACE_CHANGE_SCAN_MODE=skipped-approved-preservation","*_COUNT=-1","git diff --name-only -z HEAD","WORKSPACE_CLASSIFICATION_TOTAL_SECONDS",'initial_status="blocked"',
