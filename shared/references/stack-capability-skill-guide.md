@@ -170,13 +170,13 @@ package.json / canonical lockfile
 → exact package root
 → package manager + version
 → Node version evidence
-→ node_modules declared/extraneous 판정
+→ node_modules declared / EXTRANEOUS_PRESENT 판정
 → Tirith exact-command preflight
 → package mutation 1회
 → manifest + lockfile verification
 ```
 
-`node_modules`는 source of truth가 아니다. package가 물리적으로 존재해도 manifest/lockfile에 없으면 extraneous다.
+`node_modules`는 source of truth가 아니다. package가 물리적으로 존재해도 manifest/lockfile에 없으면 `EXTRANEOUS_PRESENT`다.
 
 Tirith의 `analysis_incomplete`는 positive security finding과 구분한다. dependency helper는 Tirith daemon을 준비한 뒤 동일 command를 정확히 1회 재검사할 수 있지만, incomplete를 allow로 재분류하거나 approval을 끄지 않는다. 재검사 후에도 warn/block이면 headless worker는 반복 실행하지 않고 BLOCK한다.
 
