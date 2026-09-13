@@ -7,6 +7,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 UPDATER = ROOT / "update-devkit.ps1"
+RUNTIME_VERIFIER = ROOT / "scripts/verify-container-runtime.ps1"
 DOCKERFILE = ROOT / "Dockerfile"
 TIRITH_PATCH = ROOT / "scripts/patch_hermes_tirith_profile_guard.py"
 LATEST_COMPAT_SCRIPT = ROOT / "scripts/verify_latest_hermes_compat.sh"
@@ -138,6 +139,20 @@ def main() -> int:
             "update-devkit.ps1 must keep one cached repair build path"
         )
 
+    runtime_verifier = read_required(RUNTIME_VERIFIER, "runtime verifier")
+    require(
+        runtime_verifier,
+        (
+            'Tirith routed-profile guard patch',
+            'DEVKIT_TIRITH_PROFILE_GUARD_V1',
+            '_devkit_tirith_subprocess_env',
+            '_devkit_only_analysis_incomplete',
+            'process-global environment',
+            'Shared Node dependency capability',
+        ),
+        "update-devkit runtime Tirith verification",
+    )
+
     tirith_patch = read_required(TIRITH_PATCH, "Hermes Tirith routed-profile patch")
     require(
         tirith_patch,
@@ -208,7 +223,7 @@ def main() -> int:
         "latest Hermes compatibility workflow",
     )
 
-    print("[PASS] DevKit updater + latest Hermes CI + Tirith routed-profile compatibility contract verified.")
+    print("[PASS] DevKit updater + runtime verifier + latest Hermes CI + Tirith routed-profile compatibility contract verified.")
     return 0
 
 
