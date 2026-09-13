@@ -1,7 +1,7 @@
 ---
 name: dev-workflow-orchestrate
 description: Jira/text 개발 요청의 project·requirement delta·API spec·workspace·branch·Coder 모델·plan을 독립 clarify Gate로 승인한 뒤 자동 Kanban dispatch하는 orchestrator 전용 workflow.
-version: 0.11.1
+version: 0.11.2
 author: local
 platforms: [linux]
 metadata:
@@ -15,6 +15,8 @@ metadata:
 Orchestrator는 개발 요청의 상태 머신만 조정한다. application/test code, refactor, code review, commit, push, PR, merge, destructive cleanup은 직접 하지 않는다. 계획/진행 보고와 승인 질문은 **한국어**로 작성한다.
 
 Standard Flow의 모든 사용자 승인 UI는 `/opt/data/shared/references/approval-gate-rules.md`를 canonical contract로 사용한다. **한 번의 사용자 확인에서는 하나의 의사결정만 요청한다.** 선택은 일반 텍스트 번호 목록이 아니라 Hermes 내장 `clarify` tool의 `choices`로 제공한다. TUI/CLI에서는 ↑/↓ + Enter 선택 UX를 사용한다.
+
+`clarify.question`은 상세 내용을 보여주는 영역이 아니라 결정을 받는 짧은 UI다. 특히 Plan Gate에서는 Implementation Plan을 일반 메시지로 먼저 보여주고, `clarify.question`에는 canonical 고정 리터럴만 사용한다. Task/Project/Workspace/Branch/Coder Model/Goal/Design Evidence/Implementation Tasks 같은 동적 Plan 내용을 질문에 재삽입하지 않는다.
 
 핵심 불변식은 `Project Approval`, `Requirement Delta Approval`, 필요한 경우 `API Spec Approval`, `Plan Approval`, Workspace/Branch/Model 승인, 그리고 dispatch 시점의 `Base SHA` 보존이다.
 
@@ -84,7 +86,7 @@ NOT_REQUIRED
 4. `DESIGN_FIRST + API Spec Gate: REQUIRED`이면 `skill_view("dev-api-spec")`로 Markdown API Spec DRAFT를 구성하고 일반 메시지로 보여준 뒤 `[API 규격 승인]` clarify Gate를 수행한다.
 5. `[Workspace 선택]` → `[Branch 선택]` → `[기존 변경 보존 확인]`(필요 시) → `[Coder 모델 선택]`을 각각 독립 clarify Gate로 승인받는다.
 6. 승인된 Tier를 `flow_model_policy.py resolve --tier <DEFAULT|PREMIUM>`으로 정확히 한 번 해석한다.
-7. Implementation Plan 본문을 보여준 뒤 `[작업 계획 승인]` clarify Gate를 수행한다. 이것이 Plan Approval이다.
+7. Implementation Plan 본문을 일반 메시지로 전부 보여준 뒤 `[작업 계획 승인]` clarify Gate를 수행한다. Plan이 길어도 질문 본문으로 옮기지 않고, Plan Gate 질문은 canonical 고정 리터럴만 사용한다. 이것이 Plan Approval이다.
 8. Plan까지 승인되면 **추가 Kanban 생성 확인 없이 즉시 AUTO_DISPATCH**한다.
 9. `prepare_dispatch.py`가 승인 workspace/branch의 `Base SHA`를 확정하고 Task body에 보존한다.
 
@@ -134,6 +136,23 @@ choices: [규격 승인, 규격 보류]
 선택 가능한 Coder Tier는 `DEFAULT | PREMIUM`뿐이다. Reviewer Model은 항상 DEFAULT이며 선택 Gate를 만들지 않는다. Agent가 PREMIUM을 추천할 수는 있지만 자동 escalation은 금지한다.
 
 `Other` 또는 다른 후보 지정/수정 요구는 승인으로 간주하지 않는다. 요구사항을 갱신한 뒤 **같은 Gate를 다시 출력**한다. Workspace와 Branch는 같은 질문에 합치지 않는다.
+
+### Plan Gate TUI 길이 계약
+
+Plan Gate는 일반 메시지와 `clarify`를 명확히 분리한다.
+
+1. 전체 Implementation Plan은 `clarify` 호출 **직전 일반 메시지**에 표시한다.
+2. Plan이 길면 Goal/Design Evidence/Implementation Tasks/Verification 같은 섹션 단위로 일반 메시지를 나눌 수 있다.
+3. `clarify.questions[0].question`은 아래 문자열을 그대로 사용한다. 추가 문장이나 metadata를 붙이지 않는다.
+
+```text
+[작업 계획 승인]
+위 Implementation Plan을 승인할까요?
+```
+
+4. `Task`, `Project / Workspace / Branch`, `Coder Model`, `Goal`, `Design Evidence`, `Implementation Tasks`, `Acceptance Criteria`, API/환경변수/인증 계약 상세를 Plan Gate 질문에 재출력하지 않는다.
+5. 앞선 Gate에서 승인된 Workspace/Branch/Model 값은 Plan 승인 질문에 반복하지 않는다.
+6. `clarify` 박스가 잘리거나 스크롤이 어려운 문제를 피하려고 정보를 제거하는 것이 아니라, **정보는 일반 메시지에 유지하고 결정 UI만 짧게 유지**한다.
 
 ## Requirement Delta Approval — 승인 이후 추가 요구사항
 
