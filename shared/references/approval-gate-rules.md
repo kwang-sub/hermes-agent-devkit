@@ -16,6 +16,9 @@
 10. Reviewer Model은 별도 선택 Gate 없이 항상 Reviewer profile DEFAULT를 사용한다.
 11. **Plan Gate까지 모두 승인되면 Kanban 생성/dispatch는 승인된 실행의 일부다.** `Kanban 카드를 등록할까요?`, `Coder/Reviewer로 배정해도 될까요?` 같은 추가 승인 질문을 하지 않고 즉시 dispatch한다.
 12. **이미 승인된 Plan/Task에 사용자가 추가 요구사항·롤백·범위 교체·목표 변경을 제시한 문장 자체는 승인으로 간주하지 않는다.** 먼저 `Requirement Delta`를 정규화해 명시적으로 확인받고, 그 뒤 필요한 API Spec/Plan을 다시 승인받아야 한다.
+13. **`clarify.question`은 결정만 묻는 짧은 UI다.** 긴 설명, 계획 본문, 이미 승인된 Gate 값은 일반 메시지에 두고 `clarify.question`에 다시 복사하지 않는다.
+14. **Plan Gate의 `clarify.question`은 아래 Gate 5의 고정 리터럴을 그대로 사용한다.** Task/Project/Workspace/Branch/Coder Model/Goal/Design Evidence/Implementation Tasks/Acceptance Criteria 같은 동적 내용을 보간하거나 덧붙이지 않는다.
+15. Implementation Plan이 길면 일반 메시지를 섹션 단위로 나눠 모두 보여줄 수 있지만, 화면 높이에 맞추기 위해 Plan 본문을 `clarify.question`으로 이동하거나 요약 뒤에 이어 붙이지 않는다.
 
 ## clarify 사용 계약
 
@@ -215,16 +218,33 @@ choices:
 
 ## Gate 5 — Plan
 
-Implementation Plan 본문은 일반 메시지로 먼저 보여주고 이어서 `clarify`를 호출한다.
+Implementation Plan 본문은 **반드시 일반 메시지로 먼저 전부 보여준다.** Plan이 길면 Goal/Design Evidence/Implementation Tasks/Verification 등 의미 있는 섹션 단위로 일반 메시지를 나눌 수 있다. 이때도 Plan 본문을 `clarify.question` 안으로 옮기지 않는다.
+
+Plan Gate의 `clarify.question`은 아래 리터럴을 그대로 사용한다. 질문은 두 논리 줄만 가지며 동적 metadata를 보간하지 않는다.
 
 ```text
 question:
   [작업 계획 승인]
-  위 Implementation Plan을 어떻게 처리할까요?
+  위 Implementation Plan을 승인할까요?
 choices:
   - 승인
   - 차단
 ```
+
+다음 항목은 Plan Gate `question`에 다시 넣지 않는다.
+
+```text
+Task
+Project / Workspace / Branch
+Coder Model
+Goal
+Design Evidence
+Implementation Tasks
+Acceptance Criteria
+API/환경변수/인증 계약 상세
+```
+
+위 정보가 승인 판단에 필요하면 바로 앞의 일반 Implementation Plan 메시지에 포함한다. 이미 Workspace/Branch/Model Gate에서 승인된 값은 Plan Gate 질문에 반복하지 않는다. `clarify` 선택 영역은 스크롤 가능한 상세 뷰가 아니라 **결정 UI**로 취급한다.
 
 `승인`은 Plan 승인이다. API Spec Gate가 REQUIRED인 Task는 `API_SPEC_APPROVED=true`가 선행되어야 한다. 모든 선행 Gate가 승인되었으면 **추가 질문 없이 AUTO_DISPATCH**한다. `차단`은 BLOCKED 유지다. Other 입력은 수정/추가 요구사항으로 처리해 계획을 갱신한 뒤 같은 Plan Gate를 다시 표시한다.
 
