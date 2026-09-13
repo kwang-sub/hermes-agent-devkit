@@ -1,13 +1,13 @@
 ---
 name: dev-frontend-feature
 description: Frontend 작업의 canonical entry point로 승인된 Design Reference 또는 기존 코드 기준을 TypeScript·React/Next.js·UI/UX·API contract·test capability와 조합한다.
-version: 0.3.0
+version: 0.3.1
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, frontend, feature, design-reference, image, figma, ui, ux, typescript, react, nextjs]
-    related_skills: [dev-design-reference, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract, dev-figma-design, dev-ui-ux]
+    related_skills: [dev-design-reference, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-node-dependencies, dev-api-contract, dev-figma-design, dev-ui-ux]
     requires_tools: [terminal, skill_view]
 ---
 
@@ -44,16 +44,17 @@ IMAGE와 FIGMA의 차이는 provider 단계에서만 다루고 이후 Coder/Revi
 
 ```text
 1. Frontend stack/package manager/version 확인
-2. REFERENCE_DRIVEN | CODE_DRIVEN 결정
-3. REFERENCE_DRIVEN이면 dev-design-reference load
-4. Screen Spec / Design Evidence와 기존 component/token/style/API/test pattern 대조
-5. 필요한 하위 capability만 lazy-load
-6. IMPLEMENTATION_SCOPE_READY 확정
-7. 최소 변경 구현
-8. 의미 있는 stateful/shared UI면 기존 Storybook catalog 갱신 검토
-9. UI 변경이면 dev-ui-ux quality gate
-10. affected test/typecheck/lint/build + 필요한 visual verification
-11. handoff evidence 기록
+2. dependency mutation이 실제 scope면 dev-node-dependencies preflight
+3. REFERENCE_DRIVEN | CODE_DRIVEN 결정
+4. REFERENCE_DRIVEN이면 dev-design-reference load
+5. Screen Spec / Design Evidence와 기존 component/token/style/API/test pattern 대조
+6. 필요한 하위 capability만 lazy-load
+7. IMPLEMENTATION_SCOPE_READY 확정
+8. 최소 변경 구현
+9. 의미 있는 stateful/shared UI면 기존 Storybook catalog 갱신 검토
+10. UI 변경이면 dev-ui-ux quality gate
+11. affected test/typecheck/lint/build + 필요한 visual verification
+12. handoff evidence 기록
 ```
 
 ## Lazy capability
@@ -63,11 +64,30 @@ IMAGE와 FIGMA의 차이는 provider 단계에서만 다루고 이후 Coder/Revi
 - TypeScript type/config/nullability → `dev-typescript-guidelines`
 - React component/state/form/browser behavior → `dev-frontend-guidelines`
 - Next.js router/server-client/cache/metadata → `dev-nextjs-feature`
+- Node dependency add/remove/restore/lockfile → `dev-node-dependencies`
 - frontend unit/component/e2e/visual verification → `dev-frontend-test`
 - backend↔frontend request/response contract → `dev-api-contract`
 - visual/interaction/responsive/accessibility/chart → `dev-ui-ux`
 
-React/Next.js가 존재한다는 이유만으로 모든 Skill을 로드하지 않는다.
+React/Next.js가 존재한다는 이유만으로 모든 Skill을 로드하지 않는다. `dev-node-dependencies`도 package mutation이 실제 구현 범위일 때만 로드한다.
+
+## Dependency Mutation
+
+새 package 추가·삭제·version 변경 또는 lockfile 갱신이 필요하면 production source 수정 전에 `skill_view("dev-node-dependencies")`를 적용한다.
+
+```text
+exact package root
+→ packageManager/lockfile evidence
+→ Node/package-manager version
+→ manifest/node_modules 상태
+→ Tirith package security preflight
+→ dependency mutation 1회
+→ manifest + canonical lockfile 검증
+```
+
+`node_modules`에만 존재하는 package는 정상 dependency evidence가 아니다. `package.json`/canonical lockfile에 없으면 extraneous로 취급하고 정상 manifest mutation이 필요하다.
+
+Tirith가 `analysis_incomplete`를 반환하면 security finding으로 오인해 package manager를 바꾸거나 install flag를 추가하지 않는다. `dev-node-dependencies`의 daemon 재검사 1회 경로만 사용하고, 이후에도 verdict가 불완전하면 headless worker에서 반복하지 않고 BLOCK한다.
 
 ## REFERENCE_DRIVEN 우선순위
 
@@ -164,6 +184,7 @@ Reviewer는 기존 `dev-code-review`의 diff-first/verification reuse 계약을 
 - fidelity finding에 원본이 필요할 때만 IMAGE/Figma Reference를 다시 확인한다.
 - `OBSERVED`, `INFERRED`, `UNKNOWN` 경계를 Coder가 무너뜨리지 않았는지 확인한다.
 - approved reference와 project Design System 충돌을 global redesign 요구로 확대하지 않는다.
+- dependency 변경이 있으면 `dev-node-dependencies`의 package root/manager/lockfile/Tirith evidence를 확인한다.
 - Storybook/Playwright가 없는 프로젝트에 review 단계에서 새 dependency 도입을 강제하지 않는다.
 
 ## Handoff
@@ -179,6 +200,9 @@ Observed / Inferred / Unknown:
 - ...
 Applied Capability Skills:
 - ...
+Node Dependency Preflight: PASS | BLOCKED | NOT_REQUIRED
+Package Root / Manager / Lockfile: <evidence | NOT_REQUIRED>
+Tirith Package Preflight: allow | approval_required | unavailable | NOT_REQUIRED
 Component/Token Reuse:
 - ...
 Storybook Catalog: UPDATED | NOT_REQUIRED | NOT_AVAILABLE
@@ -198,5 +222,7 @@ Residual Risk:
 - 이미지 추정치를 exact design fact로 바꾸지 않는다.
 - Approved Reference 일치를 이유로 unrelated global style/token refactor를 하지 않는다.
 - dependency/state/form/query/UI/test library를 편의상 추가하지 않는다.
+- package mutation이 필요한 경우 `node_modules`를 manifest/lockfile 대신 source of truth로 사용하지 않는다.
+- Tirith `analysis_incomplete`를 scanner 우회나 다른 package manager 사용의 근거로 삼지 않는다.
 - Design Conformance reference와 Visual Regression golden을 동일 개념으로 취급하지 않는다.
 - Reviewer가 독립성을 이유로 같은 이미지/Figma/test evidence를 불필요하게 반복 조회하지 않는다.
