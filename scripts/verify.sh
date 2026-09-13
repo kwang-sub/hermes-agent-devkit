@@ -15,7 +15,7 @@ run_check() {
 
 check_init_mount_contract() {
     python3 - <<'PYTHON'
-from pathlib import import Path
+from pathlib import Path
 
 source = Path("init-profiles.ps1").read_text(encoding="utf-8-sig")
 required = (
