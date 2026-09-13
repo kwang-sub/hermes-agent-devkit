@@ -51,6 +51,10 @@ jobs:
         shell: bash
         run: python3 scripts/patch_hermes_codex_kanban_context.py --self-test
 
+      - name: Verify Tirith routed-profile guard parity
+        shell: bash
+        run: python3 scripts/patch_hermes_tirith_profile_guard.py --self-test
+
       - name: Verify non-Codex worker context gate
         shell: bash
         run: python3 custom-skills/coder/dev-implement-plan/tests/test_verify_worker_context.py
