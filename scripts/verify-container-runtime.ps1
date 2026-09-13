@@ -96,10 +96,45 @@ Invoke-DockerCheck -Label "hermes-java launcher" -DockerArgs @(
 Invoke-DockerCheck -Label "Hermes CLI stable path" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "/usr/local/bin/hermes", "--help"
 )
+Invoke-DockerCheck -Label "Tirith routed-profile guard patch" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "sh", "-lc",
+    "grep -q DEVKIT_TIRITH_PROFILE_GUARD_V1 /opt/hermes/tools/tirith_security.py"
+)
 Invoke-DockerCheck -Label "Codex Kanban worker-context runtime" -DockerArgs @(
     "exec", "--user", "hermes", $Container,
     "/opt/hermes/.venv/bin/python", "/opt/hermes/hermes_cli/devkit_kanban_worker_context.py", "--self-test"
 )
+
+$TirithProfileGuardCheck = @'
+import os
+from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+from tools.tirith_security import _devkit_only_analysis_incomplete, _devkit_tirith_subprocess_env
+
+before_home = os.environ.get("HOME")
+before_hermes_home = os.environ.get("HERMES_HOME")
+token = set_hermes_home_override("/opt/data/profiles/coder")
+try:
+    env = _devkit_tirith_subprocess_env()
+    if env.get("HERMES_HOME") != "/opt/data/profiles/coder":
+        raise SystemExit(f"routed HERMES_HOME bridge mismatch: {env.get('HERMES_HOME')!r}")
+    if not env.get("HOME"):
+        raise SystemExit("Tirith subprocess HOME was not resolved")
+    if os.environ.get("HOME") != before_home or os.environ.get("HERMES_HOME") != before_hermes_home:
+        raise SystemExit("Tirith profile env helper mutated process-global environment")
+    if not _devkit_only_analysis_incomplete([{"rule_id": "analysis_incomplete"}]):
+        raise SystemExit("analysis_incomplete classification missing")
+    if _devkit_only_analysis_incomplete([{"rule_id": "malware_package"}]):
+        raise SystemExit("positive security finding was misclassified as analysis_incomplete")
+finally:
+    reset_hermes_home_override(token)
+print("Tirith routed-profile guard contract valid")
+'@
+
+$TirithProfileGuardCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
+if ($LASTEXITCODE -ne 0) {
+    throw "[FAIL] Tirith routed-profile guard runtime contract. Re-run .\update-devkit.ps1 or rebuild/recreate the container."
+}
+Write-Host "[OK] Tirith routed-profile guard runtime contract"
 
 $CodexContextRegistryCheck = @'
 import os
@@ -132,6 +167,9 @@ Invoke-DockerCheck -Label "Shared Spring guideline capability" -DockerArgs @(
 )
 Invoke-DockerCheck -Label "Shared Spring test capability" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "test", "-f", "/opt/custom-skills/shared/dev-spring-test/SKILL.md"
+)
+Invoke-DockerCheck -Label "Shared Node dependency capability" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "test", "-f", "/opt/custom-skills/shared/dev-node-dependencies/SKILL.md"
 )
 Invoke-DockerCheck -Label "Deprecated worktree skills removed" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "sh", "-lc",
