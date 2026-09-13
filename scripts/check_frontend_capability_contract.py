@@ -116,7 +116,7 @@ checks = {
         "Performance Investigation Before Refactoring", "Project References", "Microsoft TypeScript Wiki: Performance",
     )),
     "react skill": (react, (
-        "version: 0.3.0", "Version Gate", "Rules of Hooks / `use` 예외", "State Ownership", "`useEffectEvent` (React 19.2+)",
+        "version: 0.3.0", "Rules of Hooks / `use` 예외", "State Ownership", "`useEffectEvent` (React 19.2+)",
         "Measurement First", "React Compiler 1.0+", "Compiler-aware ESLint", "Transition / Deferred Rendering",
         "`<Activity>` (React 19.2+)", "Performance Evidence", "Review Hotspots",
     )),
