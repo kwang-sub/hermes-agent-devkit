@@ -139,10 +139,51 @@ def main() -> int:
     gradle_launcher = (ROOT / "scripts/hermes-java").read_text(encoding="utf-8")
     for required in (
         'gradle_project_cache_root="${HERMES_GRADLE_PROJECT_CACHE_ROOT:-$gradle_root/project-cache}"',
-        'gradle_extra_args=(--project-cache-dir "$project_cache_dir")',
+        'gradle_build_root="${HERMES_GRADLE_BUILD_ROOT:-$gradle_root/builds}"',
+        'gradle_init_root="${HERMES_GRADLE_INIT_ROOT:-$gradle_root/init}"',
+        'gradle_extra_args+=(--project-cache-dir "$project_cache_dir")',
+        'export HERMES_GRADLE_BUILD_DIR="$build_dir"',
+        'gradle_extra_args+=(--init-script "$build_init_script")',
+        'workspace_lock_file="$gradle_lock_root/workspace-${workspace_key}.lock"',
+        'HERMES_GRADLE_WORKSPACE_LOCK_TIMEOUT_SECONDS:-600',
     ):
         if required not in gradle_launcher:
-            raise SystemExit(f"hermes-java missing shared-workspace Gradle cache isolation: {required}")
+            raise SystemExit(f"hermes-java missing internal Gradle state isolation: {required}")
+
+    node_runtime_path = (
+        ROOT
+        / "custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py"
+    )
+    if not node_runtime_path.is_file():
+        raise SystemExit(f"missing Node runtime isolation helper: {node_runtime_path}")
+    node_runtime = node_runtime_path.read_text(encoding="utf-8")
+    for required in (
+        'DEFAULT_ROOT = Path(os.getenv("HERMES_NODE_ROOT", "/opt/data/node"))',
+        '"npm_cache": root / "npm-cache"',
+        '"pnpm_store": root / "pnpm-store"',
+        '"yarn_cache": root / "yarn-cache"',
+        '"bun_cache": root / "bun-cache"',
+        '"xdg_cache": root / "xdg-cache"',
+        '"tmp": workspace_state / "tmp"',
+        'lock_path = paths["lock_root"] / f"workspace-{key}.lock"',
+        "reject_dependency_mutation(command)",
+    ):
+        if required not in node_runtime:
+            raise SystemExit(f"Node runtime missing internal state isolation: {required}")
+
+    # Gradle build-output and Node runtime roots are DevKit implementation details.
+    # Keep them out of sample.env / Compose public configuration unless a future
+    # migration explicitly promotes them to user-facing settings.
+    for internal_key in (
+        "HERMES_GRADLE_BUILD_ROOT",
+        "HERMES_GRADLE_INIT_ROOT",
+        "HERMES_NODE_ROOT",
+        "HERMES_NODE_WORKSPACE_LOCK_TIMEOUT_SECONDS",
+    ):
+        if internal_key in sample:
+            raise SystemExit(f"internal runtime key must not be exposed in sample.env: {internal_key}")
+        if "${" + internal_key in compose:
+            raise SystemExit(f"internal runtime key must not be exposed in compose.yml: {internal_key}")
 
     for required in (
         "${HERMES_DASHBOARD_USERNAME:?Set HERMES_DASHBOARD_USERNAME in .env}",
