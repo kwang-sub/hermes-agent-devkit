@@ -2,132 +2,185 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
-from typing import Any
+from typing import Any, Callable
 
-BASE_URL = "https://context7.com/api/v2"
-DEFAULT_TIMEOUT = 15
-MAX_RESPONSE_BYTES = 2 * 1024 * 1024
-MAX_RESULTS = 5
-MAX_SNIPPETS = 8
-MAX_SNIPPET_CHARS = 1800
+MCP_URL = "https://mcp.context7.com/mcp"
+DEFAULT_TIMEOUT = 30
+MAX_RESULT_CHARS = 12000
+ALLOWED_TOOLS = frozenset({"resolve-library-id", "query-docs"})
 
 
 class ProviderError(RuntimeError):
     pass
 
 
-def _request(path: str, params: dict[str, str], timeout: int) -> Any:
-    query = urllib.parse.urlencode(params)
-    url = f"{BASE_URL}/{path}?{query}"
-    headers = {
-        "Accept": "application/json",
-        "User-Agent": "hermes-agent-devkit/context7-readonly",
-    }
+def _load_sdk() -> tuple[type[Any], Callable[..., Any]]:
+    """Load the MCP SDK lazily from the Hermes runtime.
+
+    Hermes currently supports both the modern ``streamable_http_client`` name
+    and the legacy ``streamablehttp_client`` alias. Keep the DevKit adapter
+    compatible with either SDK lane while preferring the modern symbol.
+    """
+
+    try:
+        from mcp import ClientSession
+        from mcp.client import streamable_http
+    except ImportError as exc:  # pragma: no cover - exercised in runtime smoke
+        raise ProviderError("Hermes MCP SDK is unavailable") from exc
+
+    http_client = getattr(streamable_http, "streamable_http_client", None)
+    if http_client is None:
+        http_client = getattr(streamable_http, "streamablehttp_client", None)
+    if http_client is None:
+        raise ProviderError("Hermes MCP SDK has no Streamable HTTP client")
+    return ClientSession, http_client
+
+
+def _headers() -> tuple[dict[str, str] | None, str]:
     api_key = os.getenv("CONTEXT7_API_KEY", "").strip()
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    request = urllib.request.Request(url, headers=headers, method="GET")
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            raw = response.read(MAX_RESPONSE_BYTES + 1)
-            if len(raw) > MAX_RESPONSE_BYTES:
-                raise ProviderError("Context7 response exceeded bounded size")
-    except urllib.error.HTTPError as exc:
-        if exc.code in {401, 403}:
-            raise ProviderError("Context7 authentication unavailable; configure CONTEXT7_API_KEY or use official fallback") from exc
-        if exc.code == 429:
-            raise ProviderError("Context7 rate limit exceeded; use official fallback") from exc
-        raise ProviderError(f"Context7 HTTP error: {exc.code}") from exc
-    except (urllib.error.URLError, TimeoutError) as exc:
-        raise ProviderError(f"Context7 network unavailable: {type(exc).__name__}") from exc
-    try:
-        return json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ProviderError("Context7 returned invalid JSON") from exc
+    if not api_key:
+        return None, "anonymous"
+    return {"Authorization": f"Bearer {api_key}"}, "bearer"
 
 
-def _as_number(value: Any) -> str:
-    return str(value) if isinstance(value, (int, float)) else "UNKNOWN"
+def _tool_names(list_result: Any) -> set[str]:
+    tools = getattr(list_result, "tools", None)
+    if tools is None and isinstance(list_result, dict):
+        tools = list_result.get("tools")
+    if not isinstance(tools, list):
+        return set()
+    names: set[str] = set()
+    for tool in tools:
+        name = getattr(tool, "name", None)
+        if name is None and isinstance(tool, dict):
+            name = tool.get("name")
+        if isinstance(name, str) and name:
+            names.add(name)
+    return names
+
+
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if hasattr(value, "model_dump"):
+        try:
+            return _json_safe(value.model_dump())
+        except Exception:
+            pass
+    return str(value)
+
+
+def _result_text(result: Any) -> str:
+    structured = getattr(result, "structuredContent", None)
+    if structured is None:
+        structured = getattr(result, "structured_content", None)
+    if structured is not None:
+        try:
+            rendered = json.dumps(_json_safe(structured), ensure_ascii=False, indent=2)
+            if rendered.strip() not in {"", "{}", "[]", "null"}:
+                return rendered[:MAX_RESULT_CHARS]
+        except (TypeError, ValueError):
+            pass
+
+    content = getattr(result, "content", None)
+    if content is None and isinstance(result, dict):
+        content = result.get("content")
+    if isinstance(content, list):
+        pieces: list[str] = []
+        for item in content:
+            text = getattr(item, "text", None)
+            if text is None and isinstance(item, dict):
+                text = item.get("text")
+            if text is not None:
+                pieces.append(str(text))
+        if pieces:
+            return "\n\n".join(pieces)[:MAX_RESULT_CHARS]
+
+    return str(_json_safe(result))[:MAX_RESULT_CHARS]
+
+
+async def _call_mcp_tool(tool_name: str, arguments: dict[str, Any], timeout: int) -> tuple[str, str]:
+    if tool_name not in ALLOWED_TOOLS:
+        raise ProviderError(f"Context7 MCP tool is not allowed: {tool_name}")
+
+    ClientSession, http_client = _load_sdk()
+    headers, auth_mode = _headers()
+
+    try:
+        async with asyncio.timeout(timeout):
+            async with http_client(MCP_URL, headers=headers) as transport:
+                read_stream, write_stream = transport[0], transport[1]
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    available = _tool_names(await session.list_tools())
+                    missing = ALLOWED_TOOLS - available
+                    if missing:
+                        raise ProviderError(
+                            "Context7 hosted MCP is missing expected tools: "
+                            + ", ".join(sorted(missing))
+                        )
+                    result = await session.call_tool(tool_name, arguments)
+    except TimeoutError as exc:
+        raise ProviderError("Context7 hosted MCP timed out") from exc
+    except ProviderError:
+        raise
+    except Exception as exc:
+        # Avoid echoing request headers or credentials through provider exceptions.
+        raise ProviderError(f"Context7 hosted MCP unavailable: {type(exc).__name__}") from exc
+
+    return _result_text(result), auth_mode
+
+
+def _call_mcp_tool_sync(tool_name: str, arguments: dict[str, Any], timeout: int) -> tuple[str, str]:
+    return asyncio.run(_call_mcp_tool(tool_name, arguments, timeout))
 
 
 def _normalize_version(value: str) -> str:
     return value.strip().removeprefix("v")
 
 
-def _candidate_versions(item: dict[str, Any]) -> list[str]:
-    raw = item.get("versions")
-    if not isinstance(raw, list):
-        return []
-    return [str(v) for v in raw if str(v).strip()]
-
-
-def _version_id(base_id: str, versions: list[str], requested: str) -> tuple[str, str]:
+def _version_match_hint(text: str, requested: str | None) -> str:
     if not requested:
-        return base_id, "UNKNOWN"
+        return "UNKNOWN"
     wanted = _normalize_version(requested)
-    for value in versions:
-        if _normalize_version(value) == wanted:
-            clean = value.strip()
-            return f"{base_id.rstrip('/')}/{clean}", "EXACT"
-    wanted_parts = wanted.split(".")
-    for value in versions:
-        candidate = _normalize_version(value)
-        parts = candidate.split(".")
-        if len(wanted_parts) >= 2 and len(parts) >= 2 and parts[:2] == wanted_parts[:2]:
-            return f"{base_id.rstrip('/')}/{value.strip()}", "COMPATIBLE"
-    return base_id, "LATEST_ONLY"
+    if not wanted:
+        return "UNKNOWN"
+    normalized_text = text.replace("@v", "@").replace("/v", "/")
+    return "EXACT" if wanted in normalized_text else "UNKNOWN"
 
 
 def resolve(args: argparse.Namespace) -> int:
+    arguments = {
+        "libraryName": args.library,
+        "query": args.query,
+    }
     try:
-        data = _request("libs/search", {
-            "libraryName": args.library,
-            "query": args.query,
-        }, args.timeout)
+        text, auth_mode = _call_mcp_tool_sync("resolve-library-id", arguments, args.timeout)
     except ProviderError as exc:
+        print("CONTEXT7_TRANSPORT=hosted_mcp")
         print("CONTEXT7_STATUS=unavailable")
         print(f"CONTEXT7_DETAIL={exc}")
-        return 0
-
-    results = data.get("results") if isinstance(data, dict) else None
-    if not isinstance(results, list) or not results:
-        print("CONTEXT7_STATUS=available")
-        print("CONTEXT7_MATCH_COUNT=0")
         print("STATUS=partial")
         return 0
 
+    print("CONTEXT7_TRANSPORT=hosted_mcp")
+    print(f"CONTEXT7_AUTH_MODE={auth_mode}")
     print("CONTEXT7_STATUS=available")
-    selected = 0
-    for index, raw in enumerate(results[:MAX_RESULTS], 1):
-        if not isinstance(raw, dict):
-            continue
-        library_id = str(raw.get("id", "")).strip()
-        if not library_id:
-            continue
-        versions = _candidate_versions(raw)
-        resolved_id, match = _version_id(library_id, versions, args.version or "")
-        print(f"CANDIDATE_{index}_ID={library_id}")
-        print(f"CANDIDATE_{index}_RESOLVED_ID={resolved_id}")
-        print(f"CANDIDATE_{index}_TITLE={str(raw.get('title', '')).replace(chr(10), ' ')[:200]}")
-        print(f"CANDIDATE_{index}_VERSION_MATCH={match}")
-        print(f"CANDIDATE_{index}_SOURCE_REPUTATION={raw.get('sourceReputation', 'UNKNOWN')}")
-        print(f"CANDIDATE_{index}_BENCHMARK_SCORE={_as_number(raw.get('benchmarkScore'))}")
-        print(f"CANDIDATE_{index}_VERSIONS={','.join(versions[:20]) if versions else 'UNKNOWN'}")
-        selected += 1
-    print(f"CONTEXT7_MATCH_COUNT={selected}")
-    print("STATUS=pass" if selected else "STATUS=partial")
+    if args.version:
+        print(f"CONTEXT7_REQUESTED_VERSION={args.version}")
+    print(f"VERSION_MATCH_HINT={_version_match_hint(text, args.version)}")
+    print("--- CONTEXT7_MCP_RESULT ---")
+    print(text)
+    print("STATUS=pass" if text.strip() else "STATUS=partial")
     return 0
-
-
-def _safe_text(value: Any, limit: int = MAX_SNIPPET_CHARS) -> str:
-    text = str(value or "").replace("\x00", "").strip()
-    return text[:limit]
 
 
 def query(args: argparse.Namespace) -> int:
@@ -135,55 +188,49 @@ def query(args: argparse.Namespace) -> int:
         print("BLOCK_REASON=library id must be an explicit Context7 /org/project[/version] id")
         print("STATUS=blocked")
         return 2
+
+    arguments = {
+        "libraryId": args.library_id,
+        "query": args.query,
+    }
     try:
-        data = _request("context", {
-            "libraryId": args.library_id,
-            "query": args.query,
-            "type": "json",
-        }, args.timeout)
+        text, auth_mode = _call_mcp_tool_sync("query-docs", arguments, args.timeout)
     except ProviderError as exc:
+        print("CONTEXT7_TRANSPORT=hosted_mcp")
         print("CONTEXT7_STATUS=unavailable")
         print(f"CONTEXT7_DETAIL={exc}")
         print("STATUS=partial")
         return 0
 
+    print("CONTEXT7_TRANSPORT=hosted_mcp")
+    print(f"CONTEXT7_AUTH_MODE={auth_mode}")
     print("CONTEXT7_STATUS=available")
     print(f"CONTEXT7_LIBRARY_ID={args.library_id}")
-    code = data.get("codeSnippets") if isinstance(data, dict) else []
-    info = data.get("infoSnippets") if isinstance(data, dict) else []
-    code = code if isinstance(code, list) else []
-    info = info if isinstance(info, list) else []
-    emitted = 0
+    print("--- CONTEXT7_MCP_RESULT ---")
+    print(text)
+    print("STATUS=pass" if text.strip() else "STATUS=partial")
+    return 0
 
-    for item in code:
-        if emitted >= MAX_SNIPPETS or not isinstance(item, dict):
-            break
-        emitted += 1
-        print(f"--- CODE_SNIPPET_{emitted} ---")
-        print(f"TITLE={_safe_text(item.get('codeTitle'), 300)}")
-        print(f"DESCRIPTION={_safe_text(item.get('codeDescription'), 500)}")
-        code_list = item.get("codeList")
-        if isinstance(code_list, list):
-            joined = "\n\n".join(
-                _safe_text(entry.get("code") if isinstance(entry, dict) else entry)
-                for entry in code_list[:3]
-            )
-            print(joined[:MAX_SNIPPET_CHARS])
 
-    for item in info:
-        if emitted >= MAX_SNIPPETS or not isinstance(item, dict):
-            break
-        emitted += 1
-        print(f"--- INFO_SNIPPET_{emitted} ---")
-        print(_safe_text(item.get("content")))
-
-    print(f"CONTEXT7_SNIPPET_COUNT={emitted}")
-    print("STATUS=pass" if emitted else "STATUS=partial")
+def self_test() -> int:
+    try:
+        _, http_client = _load_sdk()
+    except ProviderError as exc:
+        print(f"[FAIL] {exc}")
+        return 1
+    if not callable(http_client):
+        print("[FAIL] Context7 Hosted MCP HTTP client is not callable")
+        return 1
+    headers, auth_mode = _headers()
+    if auth_mode == "anonymous" and headers is not None:
+        print("[FAIL] anonymous mode must not send Authorization headers")
+        return 1
+    print("[PASS] Context7 Hosted MCP runtime client contract")
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Read-only Context7 official documentation provider")
+    parser = argparse.ArgumentParser(description="Read-only Context7 Hosted MCP documentation provider")
     sub = parser.add_subparsers(dest="command", required=True)
 
     resolve_parser = sub.add_parser("resolve")
@@ -198,10 +245,17 @@ def build_parser() -> argparse.ArgumentParser:
     query_parser.add_argument("--query", required=True)
     query_parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT)
     query_parser.set_defaults(func=query)
+
+    self_test_parser = sub.add_parser("--self-test")
+    self_test_parser.set_defaults(func=lambda _args: self_test())
     return parser
 
 
 def main() -> int:
+    # Support the conventional one-flag self-test form without complicating
+    # the normal resolve/query subcommand contract.
+    if sys.argv[1:] == ["--self-test"]:
+        return self_test()
     args = build_parser().parse_args()
     return args.func(args)
 
