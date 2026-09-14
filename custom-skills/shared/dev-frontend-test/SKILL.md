@@ -1,13 +1,13 @@
 ---
 name: dev-frontend-test
 description: frontend 변경에서 기존 Vitest/Jest/Testing Library/Storybook/Playwright/Cypress stack을 감지해 functional·component·e2e·design conformance·visual regression 검증을 선택하는 capability skill.
-version: 0.2.0
+version: 0.3.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, frontend, test, storybook, visual, playwright, vitest, jest, cypress, testing-library]
-    related_skills: [dev-design-reference, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-ui-ux]
+    related_skills: [dev-design-reference, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-ui-ux, dev-node-dependencies]
     requires_tools: [terminal]
 ---
 
@@ -179,6 +179,43 @@ Visual Regression: PASS | FAIL | NOT_RUN | NOT_REQUIRED
 - 전체 suite/build/e2e는 Task/risk/AC에서 필요할 때 implementation stable 이후 실행한다.
 - visual conformance와 visual regression이 목적이 다르다면 결과도 별도로 기록한다.
 
+## Hermes Node Runtime Isolation
+
+Windows bind-mounted workspace에서 `.next`, `dist`, `build`, `coverage` 같은 출력이 동시 실행이나 권한 문제로 충돌하지 않도록, Hermes가 수행하는 Node/frontend **검증 명령**은 다음 runtime helper를 사용한다.
+
+```bash
+python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py \
+  --workspace "<Task Workspace>" \
+  [--cwd "<package root relative to workspace>"] \
+  -- <기존 project verification command>
+```
+
+예:
+
+```bash
+python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py \
+  --workspace "$WORKSPACE" \
+  -- npm run test
+
+python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py \
+  --workspace "$WORKSPACE" \
+  -- npm run build
+```
+
+runtime helper 계약:
+
+```text
+npm/pnpm/yarn/bun cache → /opt/data/node
+XDG cache              → /opt/data/node
+TMPDIR                  → /opt/data/node/workspaces/<workspace-id>/tmp
+동일 workspace 명령      → workspace lock으로 직렬화
+.next/dist/build 등       → project 설정을 임의 변경하지 않음
+```
+
+Next/Vite/Storybook 등의 build output 경로를 DevKit이 일괄 override하지 않는다. framework마다 output 계약이 다르고 프로젝트의 deploy/CI script가 해당 경로를 직접 참조할 수 있기 때문이다. 대신 동일 Task workspace에 대한 Hermes build/test 실행을 직렬화한다.
+
+`node_runtime.py`는 dependency 추가/삭제/복원용이 아니다. `npm install`, `pnpm add`, `yarn add`, `bun add`, `npx` 등 package acquisition/mutation은 `dev-node-dependencies`의 exact command + Tirith actual guard 계약을 그대로 사용한다. helper가 해당 명령을 감싸 보안 검사를 우회해서는 안 된다.
+
 ## Handoff
 
 ```text
@@ -187,6 +224,9 @@ Detected test/catalog stack
 Verification Modes
 Affected tests/stories/pages
 Commands / Results
+Node Runtime Isolation: PASS | NOT_REQUIRED | BLOCKED
+Node Runtime Cache Root: /opt/data/node | NOT_REQUIRED
+Node Workspace Lock: PASS | NOT_REQUIRED | BLOCKED
 Storybook Catalog: UPDATED | NOT_REQUIRED | NOT_AVAILABLE
 Design Conformance: PASS | MANUAL_PASS | FAIL | NOT_RUN | NOT_REQUIRED
 Visual Regression: PASS | FAIL | NOT_RUN | NOT_REQUIRED
