@@ -76,7 +76,7 @@ def make_fake_model_policy(root: Path) -> tuple[Path, Path]:
     return helper, log
 
 
-def invoke(repo: Path, cli: Path, log: Path, status: str, model_helper: Path | None = None, model_log: Path | None = None, instruction: str = "UI only로 변경") -> subprocess.CompletedProcess[str]:
+def invoke(repo: Path, cli: Path, log: Path, status: str, model_helper: Path | None = None, model_log: Path | None = None, instruction: str = "UI만 변경") -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env.update({
         "HERMES_CLI": str(cli),
@@ -110,8 +110,12 @@ def test_running_task_adds_direction_comment_only() -> None:
             raise AssertionError(history)
         if any("reopen-review" in call for call in history):
             raise AssertionError(history)
-        if "USER_DIRECTION_CHANGE" not in " ".join(history[1]):
-            raise AssertionError(history[1])
+        joined = " ".join(history[1])
+        for term in ("USER_DIRECTION_CHANGE", "적용 계약:", "최신 요구사항", "기존 사용자 변경은 그대로 보존"):
+            if term not in joined:
+                raise AssertionError(history[1])
+        if "Treat this as the latest requirement" in joined or "Contract:" in joined:
+            raise AssertionError("user-visible follow-up contract must be Korean")
         if "STATUS=updated" not in result.stdout:
             raise AssertionError(result.stdout)
 
@@ -130,6 +134,8 @@ def test_review_task_reopens_restores_model_before_comment() -> None:
             raise AssertionError(history)
         if "show" not in history[0] or "reopen-review" not in history[1] or "comment" not in history[2]:
             raise AssertionError(history)
+        if "검토 중 구현 요구사항이 변경됨" not in " ".join(history[1]):
+            raise AssertionError(history[1])
         model_history = calls(model_log)
         if model_history != [["changes-return", "--board", "demo", "--task-id", "t_active"]]:
             raise AssertionError(model_history)

@@ -70,10 +70,10 @@ def direction_comment(instruction: str) -> str:
     return (
         "USER_DIRECTION_CHANGE\n"
         f"- {normalized}\n\n"
-        "Contract:\n"
-        "- Treat this as the latest requirement for the active FAST task.\n"
-        "- Re-evaluate the current implementation against this instruction.\n"
-        "- Preserve unrelated/pre-existing user changes."
+        "적용 계약:\n"
+        "- 이 지시를 현재 FAST 작업의 최신 요구사항으로 사용한다.\n"
+        "- 현재 구현을 이 지시 기준으로 다시 검토한다.\n"
+        "- 관련 없는 기존 사용자 변경은 그대로 보존한다."
     )
 
 
@@ -127,7 +127,7 @@ def main() -> int:
         # 다음 dispatcher tick이 올바른 Coder 모델을 사용한다.
         run([
             hermes_cli, "kanban", "--board", board, "reopen-review", task_id,
-            "--reason", "USER_DIRECTION_CHANGE: implementation requirements changed during review",
+            "--reason", "USER_DIRECTION_CHANGE: 검토 중 구현 요구사항이 변경됨",
         ])
         restore = run([
             sys.executable, model_policy_helper, "changes-return",

@@ -50,6 +50,12 @@ Fast worker는 구현 후 risk를 판정한다. `LOW`는 위험 영역이 없고
 ## Kanban 계약
 Task에는 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Risks, Workspace, Expected/Base Branch, Base SHA, coder/reviewer를 보존한다. Fast Flow에는 `Flow: FAST`, `Review Policy: RISK_BASED`와 dispatch 시 기존 변경 baseline을 추가한다. Standard Flow에서 Coder self-complete는 금지한다.
 
+## 사용자 가시 언어 정책
+- 계획/진행 보고뿐 아니라 **Kanban Task 제목·본문, Requirement Delta, 대체/후속 작업 설명, Task comment, review/dispatch handoff의 자연어는 기본 한국어로 작성한다.**
+- 사용자에게 보이는 자유 형식 섹션명을 `Task Key`, `Supersedes`, `Goal`, `Final ... Contract`, `Implementation Tasks`, `Test Plan`, `Known Risks`처럼 영어로 새로 만들지 않는다. 각각 `작업 키`, `대체 대상`, `목표`, `최종 ... 계약`, `구현 작업`, `테스트 계획`, `위험`처럼 한국어 제목을 사용한다.
+- 예외는 자동화가 정확한 문자열로 파싱하는 고정 키(`Flow`, `Review Policy`, `Verification Mode`, `Coder Model Tier`, `Coder Model`, `Coder Provider`, `Reviewer Model`, `Model Escalation`, `Base SHA`, API/Data contract field), enum/status 값, 코드·클래스·메서드·API·SQL·경로·브랜치·명령어·모델명 등 기술 식별자다. 이런 고정 키 주변의 설명 문장은 한국어로 쓴다.
+- 영어 Jira/문서/요구사항을 입력으로 받아도 의미를 보존해 한국어 계획으로 정규화한다. 정확한 원문 인용이 필요한 경우에만 영어 원문을 제한적으로 남긴다.
+
 ## JVM 언어 capability
 - Java source 변경은 `dev-java-guidelines`, Kotlin source 변경은 `dev-kotlin-guidelines`를 적용한다.
 - Java + Kotlin mixed project에서는 두 capability를 project 후보로 유지하되 실제 changed/affected source 언어에 맞춰 적용한다.
