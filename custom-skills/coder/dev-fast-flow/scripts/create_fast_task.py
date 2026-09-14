@@ -162,9 +162,9 @@ def bullet_lines(values: list[str]) -> str:
 
 def build_body(*, task_key: str, goal: str, acceptance: list[str], implementation: list[str], tests: list[str], risks: list[str], reviewer: str, workspace: Path, branch: str, base_sha: str, pre_existing: list[str], eol_only_count: int, verification_mode: str, model: ModelSelection) -> str:
     dirty = bool(pre_existing)
-    baseline = bullet_lines(pre_existing) if pre_existing else "- none"
+    baseline = bullet_lines(pre_existing) if pre_existing else "- 없음"
     return f"""Flow: FAST
-Task Key: {task_key}
+작업 키: {task_key}
 Review Policy: RISK_BASED
 Verification Mode: {verification_mode}
 
@@ -175,55 +175,55 @@ Model Policy:
 - Reviewer Model: DEFAULT
 - Model Escalation: REQUIRE_REAPPROVAL
 
-Goal:
+목표:
 {goal}
 
-Acceptance Criteria:
+승인 기준:
 {bullet_lines(acceptance)}
 
-Implementation Tasks:
+구현 작업:
 {bullet_lines(implementation)}
 
-Test Plan:
+테스트 계획:
 {bullet_lines(tests)}
 
-Dependencies:
-- none known at dispatch
+의존성:
+- dispatch 시점에 알려진 추가 의존성 없음
 
-Known Risks:
+위험:
 {bullet_lines(risks)}
 
-Fast Flow Escalation:
-- If source evidence reveals ambiguous product intent, architecture decisions, public API/schema changes, cross-repository work, dependency changes, or materially broader scope, do not expand implementation.
-- Call kanban_block with reason FAST_FLOW_ESCALATION_REQUIRED and include evidence required to restart through Standard Flow.
-- A stronger Coder model may be recommended, but changing Coder Model Tier/Provider/Model requires explicit user reapproval before redispatch.
+FAST Flow 확장 규칙:
+- source evidence에서 제품 의도가 모호하거나 architecture 결정, public API/schema 변경, cross-repository 작업, dependency 변경, 또는 materially broader scope가 드러나면 구현 범위를 임의로 확장하지 않는다.
+- `FAST_FLOW_ESCALATION_REQUIRED` 사유와 Standard Flow 재시작에 필요한 근거를 포함해 `kanban_block`을 호출한다.
+- 더 강한 Coder 모델을 추천할 수는 있지만 Coder Model Tier/Provider/Model 변경은 redispatch 전에 사용자 재승인이 필요하다.
 
-Review Policy Contract:
-- After implementation and targeted verification, coder evaluates Review Risk using dev-implement-plan.
-- LOW -> coder records risk reasons and verification, then kanban_complete.
-- REVIEW_REQUIRED -> coder switches the task to Reviewer DEFAULT through flow_model_policy.py review-enter, then calls kanban_request_review for {reviewer}.
-- Any CHANGES_REQUESTED retry restores the approved Coder model before returning to coder and must return to reviewer after the fix.
+리뷰 정책 계약:
+- 구현과 targeted verification 후 coder는 `dev-implement-plan` 기준으로 Review Risk를 판정한다.
+- `LOW`이면 위험 판단 근거와 검증 결과를 기록한 뒤 `kanban_complete`한다.
+- `REVIEW_REQUIRED`이면 `flow_model_policy.py review-enter`로 Reviewer DEFAULT 전환 후 {reviewer}에게 `kanban_request_review`한다.
+- `CHANGES_REQUESTED` 재시도는 원래 승인된 Coder 모델을 복원하고 수정 후 반드시 Reviewer에게 다시 반환한다.
 
-Reviewer Profile:
+Reviewer 프로필:
 {reviewer}
 
-Implementation Skill: dev-implement-plan
-Review Skill: dev-code-review
+구현 스킬: dev-implement-plan
+리뷰 스킬: dev-code-review
 
-Workspace Contract:
+작업 공간 계약:
 - Workspace: {workspace}
 - Branch mode: current
 - Expected branch: {branch}
 - Base branch: {branch}
 - Base SHA: {base_sha}
-- Workspace dirty at dispatch: {str(dirty).lower()}
-- Ignored tracked EOL-only changes at dispatch: {eol_only_count}
-- Pre-existing effective changes at dispatch:
+- dispatch 시점 Workspace dirty: {str(dirty).lower()}
+- dispatch 시점 무시한 tracked EOL-only 변경 수: {eol_only_count}
+- dispatch 시점 기존 유효 변경:
 {baseline}
-- Raw `git status` may contain Windows bind-mount EOL noise; do not use raw modified-file counts as the dirty baseline.
-- Coder must preserve pre-existing user changes and must not reset, restore, clean, or stash them.
-- Coder must not switch branches or create another worktree.
-- Coder must not commit, push, create a PR, or merge during implementation.
+- Windows bind-mount 환경에서는 raw `git status`에 EOL noise가 포함될 수 있으므로 raw modified-file count를 dirty baseline으로 사용하지 않는다.
+- Coder는 기존 사용자 변경을 보존하고 reset/restore/clean/stash하지 않는다.
+- Coder는 branch를 전환하거나 별도 worktree를 만들지 않는다.
+- Coder는 구현 중 commit/push/PR 생성/merge를 수행하지 않는다.
 """
 
 
@@ -258,7 +258,7 @@ def main() -> int:
     pre_existing, eol_only = workspace_status(repo)
     branch = current_branch(repo)
     base_sha = current_head(repo)
-    risks = args.risk or ["Fast Flow remains valid only while the task is local, unambiguous, and small."]
+    risks = args.risk or ["FAST Flow는 작업이 단일 Repository의 작고 명확한 범위로 유지될 때만 유효하다."]
     fingerprint = request_fingerprint(
         title=args.title,
         goal=args.goal,
