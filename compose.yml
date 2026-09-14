@@ -58,6 +58,14 @@ services:
       HERMES_HOST_WORKSPACE_PATH: ${HERMES_HOST_WORKSPACE_PATH:-D:/workspace}
       HERMES_CONTAINER_WORKSPACE_PATH: ${HERMES_CONTAINER_WORKSPACE_PATH:-/workspace}
 
+      # Keep Gradle project state on the Linux named volume instead of the Windows
+      # bind-mounted workspace. hermes-java injects this as --project-cache-dir.
+      HERMES_GRADLE_PROJECT_CACHE_ROOT: ${HERMES_GRADLE_PROJECT_CACHE_ROOT:-/opt/data/gradle/project-cache}
+
+      # Large legacy projects may require a full compile before targeted tests.
+      # Five minutes keeps that preflight bounded while allowing the cache to seed.
+      HERMES_GRADLE_COMPILE_PREFLIGHT_TIMEOUT_SECONDS: ${HERMES_GRADLE_COMPILE_PREFLIGHT_TIMEOUT_SECONDS:-300}
+
       # File tools may write only inside explicit development/persistent roots.
       # Multiple roots are separated with ':' on the Linux container.
       HERMES_WRITE_SAFE_ROOT: ${HERMES_WRITE_SAFE_ROOT:-/workspace:/opt/data}
