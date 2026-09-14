@@ -79,6 +79,10 @@ jobs:
         shell: bash
         run: python3 custom-skills/shared/dev-design-reference/tests/test_screen_spec_guard.py
 
+      - name: Verify Node runtime isolation
+        shell: bash
+        run: python3 custom-skills/shared/dev-node-dependencies/tests/test_node_runtime.py
+
       - name: Verify Data DBA capability contract
         shell: bash
         run: python3 scripts/check_data_capability_contract.py
@@ -144,6 +148,10 @@ jobs:
       - name: Verify hermes-java Gradle cache fallback
         shell: bash
         run: python3 scripts/test_hermes_java.py
+
+      - name: Verify Gradle internal build isolation
+        shell: bash
+        run: python3 scripts/test_hermes_java_internal_state.py
 
       - name: Verify DevKit updater contract
         shell: bash
