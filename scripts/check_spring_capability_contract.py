@@ -76,9 +76,13 @@ def main() -> int:
         "Compile Evidence",
     ), failures)
     require(official_docs, (
-        "version: 0.1.0",
+        "version: 0.1.1",
         "Version First",
-        "Context7 Provider",
+        "Context7 Hosted MCP Provider",
+        "https://mcp.context7.com/mcp",
+        "Default auth: anonymous",
+        "resolve-library-id",
+        "query-docs",
         "DEPENDENCY_DECLARATION_COMPATIBILITY",
         "compiler/typecheck/test/build",
     ), failures)
@@ -108,13 +112,14 @@ def main() -> int:
         "/opt/custom-skills/shared/dev-spring-guidelines/SKILL.md",
         "/opt/custom-skills/shared/dev-spring-guidelines/references/official-spring-practices.md",
         "/opt/custom-skills/shared/dev-spring-feature/SKILL.md",
+        "/opt/custom-skills/shared/dev-official-docs-context/scripts/context7_docs.py --self-test",
     ), failures)
 
     if failures:
         for failure in failures:
             print(f"[FAIL] {failure}")
         return 1
-    print("[PASS] Spring official-practice + external-docs capability contract")
+    print("[PASS] Spring official-practice + Hosted MCP external-docs capability contract")
     return 0
 
 

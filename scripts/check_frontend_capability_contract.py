@@ -68,7 +68,9 @@ checks = {
         "EXTRANEOUS", "analysis_incomplete", "Tirith Package Preflight",
     )),
     "official docs skill": (official_docs, (
-        "version: 0.1.0", "Version First", "Context7 Provider", "EXACT", "COMPATIBLE", "LATEST_ONLY", "LOCAL_ONLY",
+        "version: 0.1.1", "Version First", "Context7 Hosted MCP Provider",
+        "https://mcp.context7.com/mcp", "Default auth: anonymous", "resolve-library-id", "query-docs",
+        "EXACT", "COMPATIBLE", "LATEST_ONLY", "LOCAL_ONLY",
         "DEPENDENCY_DECLARATION_COMPATIBILITY", "compiler/typecheck/test/build",
     )),
     "node dependency skill": (node_dependencies, (
@@ -156,9 +158,10 @@ checks = {
         "https://api.figma.com", "X-Figma-Token", "Authorization", "/v1/files/", "/v1/images/", "HERMES_WRITE_SAFE_ROOT", "MAX_DEPTH = 6",
     )),
     "stack guide": (stack, (
-        "dev-frontend-feature", "dev-design-reference", "dev-typescript-guidelines", "dev-frontend-guidelines",
+        "dev-frontend-feature", "dev-design-reference", "dev-official-docs-context", "dev-typescript-guidelines", "dev-frontend-guidelines",
         "dev-nextjs-feature", "dev-node-dependencies", "dev-figma-design", "REFERENCE_DRIVEN", "CODE_DRIVEN",
-        "EXTRANEOUS", "analysis_incomplete", "Tirith", "DESIGN_CONFORMANCE", "VISUAL_REGRESSION", "Storybook", "Stack Detection != Skill Loading",
+        "실제 installed/resolved version", "DEPENDENCY_DECLARATION_COMPATIBILITY", "EXTRANEOUS", "analysis_incomplete", "Tirith",
+        "DESIGN_CONFORMANCE", "VISUAL_REGRESSION", "Storybook", "Stack Detection != Skill Loading",
     )),
 }
 for label, (text, terms) in checks.items():
