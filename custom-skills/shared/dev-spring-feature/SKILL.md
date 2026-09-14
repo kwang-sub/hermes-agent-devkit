@@ -1,14 +1,14 @@
 ---
 name: dev-spring-feature
 description: Spring 기능 단위 구현에서 기존 프로젝트 패턴을 유지하며 Controller, Service, DTO, Validation, Exception을 함께 변경하고 version-aware MVC validation/error contract를 적용한다.
-version: 0.2.0
+version: 0.2.1
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, coder, spring, feature, controller, service, dto, validation, exception, problem-detail]
-    related_skills: [dev-spring-guidelines, dev-spring-data, dev-spring-test, dev-api-docs]
-    requires_tools: [terminal]
+    related_skills: [dev-official-docs-context, dev-spring-guidelines, dev-spring-data, dev-spring-test, dev-api-docs]
+    requires_tools: [terminal, skill_view]
 ---
 
 # dev-spring-feature
@@ -31,17 +31,36 @@ ProblemDetail / ErrorResponse (기존 contract 또는 명시적 요구가 있을
 
 JPA/Repository/QueryDSL이 포함되면 `dev-spring-data`도 적용한다. 테스트가 포함되면 `dev-spring-test`, API 문서가 포함되면 `dev-api-docs`를 적용한다.
 
+외부 SDK/API/client library, 인증 provider, cloud/payment/AI service 등 **외부 연동 기술의 API surface를 새로 사용하거나 version-sensitive signature/config를 변경**하면 구현 전에 `skill_view("dev-official-docs-context")`를 적용한다.
+
 ## 실행 순서
 
 1. 요청과 가장 유사한 기존 기능을 찾는다.
 2. Controller → Service → Data/Domain → Response의 실제 호출 흐름을 확인한다.
 3. Spring Boot/Framework version과 MVC/WebFlux 여부를 확인한다.
-4. 기존 DTO naming/type, validation, exception, response wrapper를 확인한다.
-5. 요구사항을 만족하는 최소 변경을 구현한다.
-6. 기존 공통 응답/error 규격을 유지한다.
-7. validation 실패와 domain/business 오류가 기존 error contract로 표현되는지 확인한다.
-8. public API contract가 변경되면 Task/AC에 명시된 범위인지 확인한다.
-9. targeted test 및 compile을 실행한다.
+4. 외부 SDK/API가 scope면 실제 dependency resolved version → 공식 문서 → local API signature evidence를 확보한다.
+5. 기존 DTO naming/type, validation, exception, response wrapper를 확인한다.
+6. 요구사항을 만족하는 최소 변경을 구현한다.
+7. 기존 공통 응답/error 규격을 유지한다.
+8. validation 실패와 domain/business 오류가 기존 error contract로 표현되는지 확인한다.
+9. public API contract가 변경되면 Task/AC에 명시된 범위인지 확인한다.
+10. targeted test 및 compile을 실행한다.
+
+## External SDK / API Documentation Gate
+
+외부 기술은 기억이나 latest sample을 기준으로 구현하지 않는다.
+
+```text
+actual Gradle/Maven resolved dependency version
+→ Context7 version-matched official docs
+→ vendor official docs/repository/Javadoc
+→ 실제 dependency class/method signature
+→ compile/test
+```
+
+Context7가 exact version을 제공하지 않으면 `LATEST_ONLY`를 기록하고 신규 signature를 현재 dependency에 그대로 적용하지 않는다. local JAR/source/Javadoc signature와 compiler가 현재 설치 버전의 최종 compatibility evidence다.
+
+외부 dependency API 호환 문제를 해결하려고 unrelated dependency/JDK/Spring version을 임의 변경하지 않는다. 버전 변경이 필요하면 기존 dependency/Requirement Delta 정책을 따른다.
 
 ## Controller
 
@@ -114,11 +133,15 @@ Skill: dev-spring-feature
 Detected Spring Boot / Framework version
 Pattern References
 Affected API / Use Case
+Documentation Required: yes | no
+Documentation Version Match: EXACT | COMPATIBLE | LATEST_ONLY | LOCAL_ONLY | UNKNOWN | NOT_REQUIRED
+External SDK/API Version Evidence: ... | NOT_REQUIRED
+Official/Local Signature Evidence: ... | NOT_REQUIRED
 Response Contract Used
 Validation Mode: OBJECT | METHOD | BOTH | NONE
 Validation Exception Contract
 Error Contract Used
 Automated Tests
-Manual Contract Checks
+Compile Evidence
 Residual Risk
 ```
