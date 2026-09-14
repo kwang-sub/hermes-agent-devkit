@@ -1,7 +1,7 @@
 ---
 name: dev-official-docs-context
 description: 외부 library/framework/SDK/API 작업에서 프로젝트의 실제 설치 버전을 먼저 확정하고 Context7 공식 문서, 공식 upstream source, 설치된 local types/source를 계층적으로 확인해 version-aware 구현 evidence를 만드는 공통 capability skill.
-version: 0.1.0
+version: 0.1.1
 author: local
 platforms: [linux]
 metadata:
@@ -90,34 +90,63 @@ Maven dependencyManagement/plugin
 installed local package metadata
 ```
 
-## 2. Context7 Provider
+## 2. Context7 Hosted MCP Provider
 
-추가 package 설치 없이 stdlib helper를 사용한다.
+Context7 문서는 REST API를 직접 호출하지 않고 공식 Hosted MCP endpoint를 사용한다.
+
+```text
+Endpoint: https://mcp.context7.com/mcp
+Transport: Streamable HTTP
+Default auth: anonymous
+Allowed tools:
+- resolve-library-id
+- query-docs
+```
+
+익명 access가 정상 기본값이며 `CONTEXT7_API_KEY`는 **필수값이 아니다**. 값이 있는 경우에만 higher rate limit용 Bearer header를 사용한다. 값이 비어 있으면 Authorization header 자체를 보내지 않는다.
+
+DevKit helper는 Hermes runtime에 이미 포함된 MCP Python SDK를 사용하므로 Context7 조회를 위해 `npx`, npm global package, pip package를 설치하지 않는다.
 
 ### Library resolve
 
 ```bash
-python3 /opt/custom-skills/shared/dev-official-docs-context/scripts/context7_docs.py resolve \
+/opt/hermes/.venv/bin/python \
+  /opt/custom-skills/shared/dev-official-docs-context/scripts/context7_docs.py resolve \
   --library "Next.js" \
   --version "16.3.5" \
   --query "production build TypeScript generated route types"
 ```
 
-`resolve` 결과에서 공식/primary package를 우선한다. 결과의 library ID, available version, source reputation, benchmark score를 evidence로 남긴다. 정확한 version ID가 있으면 `/org/project/version`을 사용한다.
+내부적으로 Hosted MCP의 `resolve-library-id`를 다음 contract로 호출한다.
+
+```text
+libraryName: <library name>
+query: <single focused concept>
+```
+
+resolve 결과에서 공식/primary package를 우선한다. 결과의 library ID, available version, source reputation, benchmark score를 evidence로 사용한다. 정확한 version ID가 있으면 `/org/project/version`을 선택한다.
 
 ### Documentation query
 
 ```bash
-python3 /opt/custom-skills/shared/dev-official-docs-context/scripts/context7_docs.py query \
+/opt/hermes/.venv/bin/python \
+  /opt/custom-skills/shared/dev-official-docs-context/scripts/context7_docs.py query \
   --library-id "/vercel/next.js/v16.3.5" \
   --query "production build TypeScript generated route types"
 ```
 
-한 질문/기술에 `query`는 최대 3회로 제한하고 한 호출은 한 concept에 집중한다.
+내부적으로 Hosted MCP의 `query-docs`를 다음 contract로 호출한다.
 
-`CONTEXT7_API_KEY`가 있으면 Bearer 인증을 사용한다. 값은 log/Kanban/source에 출력하지 않는다. key가 없거나 provider가 401/429/timeout이면 우회 설치나 secret 요청 반복을 하지 않고 `CONTEXT7_STATUS=unavailable` evidence를 남긴 뒤 fallback한다.
+```text
+libraryId: /org/project[/version]
+query: <single focused concept>
+```
+
+한 질문/기술에 문서 query는 최대 3회로 제한하고 한 호출은 한 concept에 집중한다.
 
 Context7 query에는 public 기술 정보만 보낸다. API key, password, token, 사용자 개인정보, proprietary source 전체, 내부 URL/credential을 넣지 않는다.
+
+Provider가 anonymous rate limit/timeout/network 문제로 unavailable이면 API key 생성을 강제하거나 `npx` fallback을 수행하지 않는다. `CONTEXT7_STATUS=unavailable` evidence를 남기고 공식 upstream/local type source로 내려간다.
 
 ## 3. Version Match
 
@@ -145,7 +174,7 @@ UNKNOWN
 ## 4. Fallback Chain
 
 ```text
-Context7 version-matched official docs
+Context7 Hosted MCP version-matched official docs
 → vendor 공식 문서 / 공식 GitHub repository / release note
 → 설치된 node_modules/JAR/source/type metadata
 → compiler/typecheck/test/build
@@ -231,6 +260,8 @@ Documentation Ready: pass | partial | blocked
 Technology: ...
 Detected Version: ...
 Version Source: ...
+Context7 Transport: hosted_mcp | unavailable | not_required
+Context7 Auth Mode: anonymous | bearer | not_required
 Context7 Status: available | unavailable | not_required
 Context7 Library ID: ... | NONE
 Version Match: EXACT | COMPATIBLE | LATEST_ONLY | LOCAL_ONLY | UNKNOWN
@@ -250,6 +281,9 @@ Residual Version Drift Risk:
 ## 불변식
 
 - `Context7`는 provider이지 최종 correctness 판정자가 아니다.
+- Hosted MCP anonymous access를 정상 기본값으로 취급하며 API key 생성을 사용자에게 강제하지 않는다.
+- Hosted MCP 조회를 위해 `npx`, npm global install, pip install을 수행하지 않는다.
+- `resolve-library-id`, `query-docs` 외 Context7 tool을 사용하지 않는다.
 - actual installed/resolved version을 확인하기 전에 latest 문법을 도입하지 않는다.
 - 공식 문서와 프로젝트 기존 convention이 충돌하면 Task 범위와 사용자 정책을 우선하고 차이를 evidence로 남긴다.
 - 외부 기술 오류를 애플리케이션 source 오류로 성급하게 분류하지 않는다.
