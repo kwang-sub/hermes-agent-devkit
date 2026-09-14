@@ -1,13 +1,13 @@
 ---
 name: dev-frontend-feature
 description: Frontend 작업의 canonical entry point로 승인된 Design Reference 또는 기존 코드 기준을 TypeScript·React/Next.js·UI/UX·API contract·test capability와 조합한다.
-version: 0.3.1
+version: 0.3.2
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, frontend, feature, design-reference, image, figma, ui, ux, typescript, react, nextjs]
-    related_skills: [dev-design-reference, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-node-dependencies, dev-api-contract, dev-figma-design, dev-ui-ux]
+    related_skills: [dev-design-reference, dev-official-docs-context, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-node-dependencies, dev-api-contract, dev-figma-design, dev-ui-ux]
     requires_tools: [terminal, skill_view]
 ---
 
@@ -44,21 +44,23 @@ IMAGE와 FIGMA의 차이는 provider 단계에서만 다루고 이후 Coder/Revi
 
 ```text
 1. Frontend stack/package manager/version 확인
-2. dependency mutation이 실제 scope면 dev-node-dependencies preflight
-3. REFERENCE_DRIVEN | CODE_DRIVEN 결정
-4. REFERENCE_DRIVEN이면 dev-design-reference load
-5. Screen Spec / Design Evidence와 기존 component/token/style/API/test pattern 대조
-6. 필요한 하위 capability만 lazy-load
-7. IMPLEMENTATION_SCOPE_READY 확정
-8. 최소 변경 구현
-9. 의미 있는 stateful/shared UI면 기존 Storybook catalog 갱신 검토
-10. UI 변경이면 dev-ui-ux quality gate
-11. affected test/typecheck/lint/build + 필요한 visual verification
-12. handoff evidence 기록
+2. 외부 SDK/API·version-sensitive config/type 오류가 scope면 dev-official-docs-context Gate
+3. dependency mutation이 실제 scope면 dev-node-dependencies preflight
+4. REFERENCE_DRIVEN | CODE_DRIVEN 결정
+5. REFERENCE_DRIVEN이면 dev-design-reference load
+6. Screen Spec / Design Evidence와 기존 component/token/style/API/test pattern 대조
+7. 필요한 하위 capability만 lazy-load
+8. IMPLEMENTATION_SCOPE_READY 확정
+9. 최소 변경 구현
+10. 의미 있는 stateful/shared UI면 기존 Storybook catalog 갱신 검토
+11. UI 변경이면 dev-ui-ux quality gate
+12. affected test/typecheck/lint/build + 필요한 visual verification
+13. handoff evidence 기록
 ```
 
 ## Lazy capability
 
+- 외부 library/framework/SDK/API 공식 version evidence → `dev-official-docs-context`
 - Design Reference 정규화 → `dev-design-reference`
 - Figma provider read → `dev-figma-design`
 - TypeScript type/config/nullability → `dev-typescript-guidelines`
@@ -70,6 +72,32 @@ IMAGE와 FIGMA의 차이는 provider 단계에서만 다루고 이후 Coder/Revi
 - visual/interaction/responsive/accessibility/chart → `dev-ui-ux`
 
 React/Next.js가 존재한다는 이유만으로 모든 Skill을 로드하지 않는다. `dev-node-dependencies`도 package mutation이 실제 구현 범위일 때만 로드한다.
+
+## External Technology Documentation Gate
+
+다음 중 하나면 production source 수정 전에 `skill_view("dev-official-docs-context")`를 적용한다.
+
+```text
+외부 SDK/library/API 신규 사용
+인증/OAuth/Supabase/Firebase 등 외부 연동
+Next.js/React/TypeScript 등 version-sensitive API 또는 config 변경
+외부 dependency의 .d.ts / compiler compatibility 오류
+현재 설치 version의 API signature에 불확실성이 있음
+```
+
+순서는 고정한다.
+
+```text
+actual resolved version
+→ Context7 version-matched official docs
+→ official upstream/local package type-source evidence
+→ implementation
+→ typecheck/test/build
+```
+
+Context7 provider 장애만으로 구현을 중단하지 않는다. 공식 upstream 또는 설치된 local type/source로 충분한 evidence가 있으면 fallback한다. 반대로 latest docs만 보고 현재 project에 없는 API를 도입하지 않는다.
+
+외부 declaration 충돌은 앱 source 오류와 분리해 `DEPENDENCY_DECLARATION_COMPATIBILITY` 여부를 판단한다. 이를 숨기기 위해 `skipLibCheck=true`, `strict=false`, 임의 dependency/compiler downgrade를 자동 적용하지 않는다.
 
 ## Dependency Mutation
 
@@ -184,6 +212,7 @@ Reviewer는 기존 `dev-code-review`의 diff-first/verification reuse 계약을 
 - fidelity finding에 원본이 필요할 때만 IMAGE/Figma Reference를 다시 확인한다.
 - `OBSERVED`, `INFERRED`, `UNKNOWN` 경계를 Coder가 무너뜨리지 않았는지 확인한다.
 - approved reference와 project Design System 충돌을 global redesign 요구로 확대하지 않는다.
+- 외부 기술 변경이면 `Documentation Evidence`의 detected/resolved version, Version Match, local type/source, compiler evidence를 확인한다.
 - dependency 변경이 있으면 `dev-node-dependencies`의 package root/manager/lockfile/Tirith evidence를 확인한다.
 - Storybook/Playwright가 없는 프로젝트에 review 단계에서 새 dependency 도입을 강제하지 않는다.
 
@@ -199,6 +228,11 @@ Screen Spec: <path | none>
 Observed / Inferred / Unknown:
 - ...
 Applied Capability Skills:
+- ...
+Documentation Required: yes | no
+Documentation Ready: pass | partial | blocked | NOT_REQUIRED
+Documentation Version Match: EXACT | COMPATIBLE | LATEST_ONLY | LOCAL_ONLY | UNKNOWN | NOT_REQUIRED
+Official/Local Type Evidence:
 - ...
 Node Dependency Preflight: PASS | BLOCKED | NOT_REQUIRED
 Package Root / Manager / Lockfile: <evidence | NOT_REQUIRED>
@@ -222,6 +256,8 @@ Residual Risk:
 - 이미지 추정치를 exact design fact로 바꾸지 않는다.
 - Approved Reference 일치를 이유로 unrelated global style/token refactor를 하지 않는다.
 - dependency/state/form/query/UI/test library를 편의상 추가하지 않는다.
+- 외부 기술 변경에서 actual resolved version 확인 전에 latest 문법을 도입하지 않는다.
+- Context7 조회 성공을 typecheck/test/build 성공으로 대체하지 않는다.
 - package mutation이 필요한 경우 `node_modules`를 manifest/lockfile 대신 source of truth로 사용하지 않는다.
 - Tirith `analysis_incomplete`를 scanner 우회나 다른 package manager 사용의 근거로 삼지 않는다.
 - Design Conformance reference와 Visual Regression golden을 동일 개념으로 취급하지 않는다.
