@@ -27,6 +27,7 @@ dev-spring-refactor
 ```text
 dev-frontend-feature        # canonical frontend entry
 dev-design-reference        # IMAGE/Figma normalized design evidence
+dev-official-docs-context   # version-first Context7/official/local-type evidence
 dev-typescript-guidelines
 dev-frontend-guidelines
 dev-nextjs-feature
@@ -37,6 +38,8 @@ dev-ui-ux                    # audited UI/UX quality baseline
 ```
 
 Frontend Task는 `dev-frontend-feature`를 runtime entry로 사용하고 세부 capability는 실제 evidence에 따라 lazy-load합니다. `dev-node-dependencies`는 Frontend 전용이 아니며 Node package add/remove/version/restore/lockfile 변경이 실제 Task 범위일 때 공통으로 사용할 수 있습니다.
+
+외부 SDK/library/API 또는 version-sensitive framework 설정을 구현할 때는 `dev-official-docs-context`가 먼저 실제 resolved version을 확정하고 Context7 공식 문서 → 공식 upstream → 설치된 local type/source → compiler 순서로 evidence를 만듭니다. Context7는 provider일 뿐 compiler/typecheck/test/build를 대체하지 않습니다.
 
 Node dependency 변경의 기본 경계:
 
@@ -103,10 +106,23 @@ Oracle
 ## Cross-stack
 
 ```text
+dev-official-docs-context   # external technology version-aware official evidence
 dev-api-contract
 dev-api-docs
 dev-api-spec
 ```
+
+`dev-official-docs-context`는 다음 상황에서 lazy-load합니다.
+
+```text
+외부 SDK/API 신규 사용
+인증/OAuth/Supabase/Firebase 등 연동
+framework/library version-sensitive API/config 변경
+외부 dependency declaration/compiler compatibility 오류
+외부 API signature 불확실성
+```
+
+Context7 조회는 read-only이며 `CONTEXT7_API_KEY`는 선택 사항입니다. provider가 unavailable이면 공식 vendor repository/docs와 local type/source로 fallback하고 version drift를 Handoff에 기록합니다.
 
 ## Figma
 
