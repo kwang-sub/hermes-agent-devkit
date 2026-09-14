@@ -19,6 +19,10 @@ official_docs = (ROOT / "custom-skills/shared/dev-official-docs-context/SKILL.md
 node_dependencies = (ROOT / "custom-skills/shared/dev-node-dependencies/SKILL.md").read_text(encoding="utf-8")
 node_preflight = (ROOT / "custom-skills/shared/dev-node-dependencies/scripts/node_dependency_preflight.py").read_text(encoding="utf-8")
 tirith_preflight = (ROOT / "custom-skills/shared/dev-node-dependencies/scripts/tirith_package_preflight.py").read_text(encoding="utf-8")
+node_runtime_path = ROOT / "custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py"
+if not node_runtime_path.is_file():
+    raise SystemExit("Node runtime isolation helper is missing")
+node_runtime = node_runtime_path.read_text(encoding="utf-8")
 design = (ROOT / "custom-skills/shared/dev-design-reference/SKILL.md").read_text(encoding="utf-8")
 design_template_path = ROOT / "custom-skills/shared/dev-design-reference/references/screen-spec-template.md"
 design_guard_path = ROOT / "custom-skills/shared/dev-design-reference/scripts/screen_spec_guard.py"
@@ -92,6 +96,11 @@ checks = {
         "analysis_incomplete", "daemon", "start", "--detach", "daemon-recheck-pass", "daemon-recheck-fail",
         "approval_required", "Hermes terminal guard remains authoritative", "do not execute install",
     )),
+    "node runtime": (node_runtime, (
+        'HERMES_NODE_ROOT", "/opt/data/node"', "npm-cache", "pnpm-store", "yarn-cache", "bun-cache",
+        "xdg-cache", "TMPDIR", "workspace-", "fcntl.flock", "reject_dependency_mutation",
+        "timed out waiting for Node workspace lock", "project-controlled;workspace-serialized",
+    )),
     "design reference": (design, (
         "Design Source", "IMAGE", "FIGMA", "DRAFT", "REFERENCE", "APPROVED",
         "STRUCTURE", "VISUAL", "HIGH", "OBSERVED", "INFERRED", "UNKNOWN",
@@ -108,10 +117,11 @@ checks = {
         "SCREEN_SPEC_STATUS=pass", "IMAGE reference not found", "FIGMA reference must be",
     )),
     "frontend test": (frontend_test, (
-        "version: 0.2.0", "Storybook", "Playwright", "FUNCTIONAL", "COMPONENT", "E2E",
+        "version: 0.3.0", "Storybook", "Playwright", "FUNCTIONAL", "COMPONENT", "E2E",
         "VISUAL_CONFORMANCE", "VISUAL_REGRESSION", "Design Conformance", "Visual Regression",
         "Approved Implementation", "Browser Screenshot Golden", "toHaveScreenshot",
-        "NOT_AVAILABLE", "자동 설치하지 않는다",
+        "NOT_AVAILABLE", "자동 설치하지 않는다", "Hermes Node Runtime Isolation", "node_runtime.py",
+        "/opt/data/node", "workspace lock", "project 설정을 임의 변경하지 않음", "Tirith actual guard",
     )),
     "typescript skill": (typescript, (
         "version: 0.3.0", "Version Gate", "TypeScript 7 Gate", "Strictness Gate", "useUnknownInCatchVariables",
@@ -188,4 +198,4 @@ for key in ("FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN", "CONTEXT7_API_KEY"):
     if f"{key}: ${{{key}:-}}" not in compose:
         raise SystemExit(f"compose.yml missing {key}")
 
-print("[PASS] Frontend reference-driven/official-docs/Node dependency/Image/Figma/Storybook/Playwright capability contract")
+print("[PASS] Frontend reference-driven/official-docs/Node dependency/runtime isolation/Image/Figma/Storybook/Playwright capability contract")
