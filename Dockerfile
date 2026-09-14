@@ -129,6 +129,9 @@ RUN apt-get update && \
     && make NO_RUST=1 prefix=/usr/local all \
     && make NO_RUST=1 prefix=/usr/local install \
     && git --version \
+    && git worktree repair -h 2>&1 | grep -q -- '--relative-paths' \
+    && git config --system worktree.useRelativePaths true \
+    && test "$(git config --system --bool --get worktree.useRelativePaths)" = "true" \
     && rm -rf /tmp/git-src /tmp/git.tar.xz \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*

@@ -66,6 +66,14 @@ if ($ContainerEnv -notcontains $ExpectedJavaHomeEntry) {
 }
 Write-Host "[OK] JAVA_HOME -> /opt/jdks/temurin-17"
 
+Invoke-DockerCheck -Label "Pinned Git 2.55.0 runtime" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "sh", "-lc",
+    'test "$(/usr/local/bin/git --version)" = "git version 2.55.0"'
+)
+Invoke-DockerCheck -Label "Relative Git worktree paths" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "sh", "-lc",
+    'test "$(/usr/local/bin/git config --system --bool --get worktree.useRelativePaths)" = "true"'
+)
 Invoke-DockerCheck -Label "Default Java 17 command" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "/usr/local/bin/java", "-version"
 )

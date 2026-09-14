@@ -143,6 +143,10 @@ def main() -> int:
     require(
         runtime_verifier,
         (
+            'Pinned Git 2.55.0 runtime',
+            '/usr/local/bin/git --version',
+            'Relative Git worktree paths',
+            'worktree.useRelativePaths',
             'Tirith routed-profile guard patch',
             'DEVKIT_TIRITH_PROFILE_GUARD_V1',
             '_devkit_tirith_subprocess_env',
@@ -150,7 +154,7 @@ def main() -> int:
             'process-global environment',
             'Shared Node dependency capability',
         ),
-        "update-devkit runtime Tirith verification",
+        "update-devkit runtime Git/Tirith verification",
     )
 
     tirith_patch = read_required(TIRITH_PATCH, "Hermes Tirith routed-profile patch")
@@ -175,6 +179,10 @@ def main() -> int:
         (
             'FROM ${HERMES_BASE_IMAGE} AS hermes-upstream-patched',
             'FROM hermes-upstream-patched AS hermes-devkit-runtime',
+            'ARG GIT_VERSION=2.55.0',
+            "git worktree repair -h 2>&1 | grep -q -- '--relative-paths'",
+            'git config --system worktree.useRelativePaths true',
+            'git config --system --bool --get worktree.useRelativePaths',
             'patch_hermes_tirith_profile_guard.py --self-test',
             'patch_hermes_tirith_profile_guard.py /opt/hermes/tools/tirith_security.py',
             "grep -q 'DEVKIT_TIRITH_PROFILE_GUARD_V1' /opt/hermes/tools/tirith_security.py",
@@ -183,7 +191,7 @@ def main() -> int:
             "grep -q 'def _devkit_run_flow_model_transition' /opt/hermes/tools/kanban_tools.py",
             '/opt/hermes/.venv/bin/python -m py_compile',
         ),
-        "Dockerfile latest-Hermes compatibility stage",
+        "Dockerfile latest-Hermes/Git compatibility stage",
     )
 
     compat_script = read_required(LATEST_COMPAT_SCRIPT, "latest Hermes compatibility script")
@@ -223,7 +231,7 @@ def main() -> int:
         "latest Hermes compatibility workflow",
     )
 
-    print("[PASS] DevKit updater + runtime verifier + latest Hermes CI + Tirith routed-profile compatibility contract verified.")
+    print("[PASS] DevKit updater + runtime verifier + latest Hermes CI + pinned Git relative-worktree + Tirith routed-profile compatibility contract verified.")
     return 0
 
 
