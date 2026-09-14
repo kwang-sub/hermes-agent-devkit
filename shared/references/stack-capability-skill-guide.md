@@ -49,6 +49,8 @@ manifest evidence
 
 source 수정, architecture 선택, dependency 설치, runtime pin 결정, Kanban 생성은 하지 않는다. `Stack Detection != Skill Loading`이다.
 
+`dev-official-docs-context`는 stack이 존재한다는 이유로 자동 load하는 baseline이 아니다. 외부 API surface, version-sensitive 설정, dependency declaration compatibility처럼 **Task 책임이 실제로 공식 문서 evidence를 필요로 할 때** capability entry가 lazy-load한다.
+
 ## 4. Capability set
 
 ### Backend
@@ -79,6 +81,7 @@ dev-figma-design            # optional Figma provider
 ### Frontend / Node lazy capability
 
 ```text
+dev-official-docs-context   # version-first official docs/local type evidence
 dev-typescript-guidelines
 dev-frontend-guidelines
 dev-nextjs-feature
@@ -108,6 +111,7 @@ dev-db-performance
 ### Cross-stack
 
 ```text
+dev-official-docs-context
 dev-api-contract
 dev-api-docs
 dev-api-spec
@@ -117,16 +121,31 @@ dev-api-spec
 
 ```text
 1. stack/vendor/version evidence 탐색
-2. 기존 동일/유사 구현 검색
-3. 기존 convention 결정
-4. assumption/정책 충돌 확인
-5. implementation-decision-rules 필요성 사다리 적용
-6. 최소 변경 구현
-7. capability-specific verification
-8. reviewer handoff evidence
+2. 외부 기술의 API/config가 Task 책임이면 official-docs evidence 확보
+3. 기존 동일/유사 구현 검색
+4. 기존 convention 결정
+5. assumption/정책 충돌 확인
+6. implementation-decision-rules 필요성 사다리 적용
+7. 최소 변경 구현
+8. capability-specific verification
+9. reviewer handoff evidence
 ```
 
 새 dependency/framework/language/DB migration tool을 기본값으로 추가하지 않는다.
+
+### Official docs evidence boundary
+
+외부 library/framework/SDK/API를 구현할 때는 다음 우선순위를 사용한다.
+
+```text
+실제 installed/resolved version
+→ Context7 version-matched official docs
+→ vendor 공식 문서/공식 upstream repository
+→ 설치된 local source/type/JAR signature
+→ compiler/typecheck/test/build
+```
+
+Context7는 provider이며 correctness 판정자가 아니다. `LATEST_ONLY` 문서를 현재 설치 버전의 API로 간주하지 않고, provider 장애가 있으면 공식 upstream/local evidence로 fallback한다. 문서 조회를 위해 `npx`, global package, 임시 dependency를 설치하지 않는다.
 
 ## 6. Java / Kotlin / Spring
 
@@ -137,6 +156,7 @@ Spring common → dev-spring-guidelines
 Controller/Service/DTO/Validation/Exception → dev-spring-feature
 JPA/Repository/QueryDSL/Converter/Paging → dev-spring-data
 Spring/JPA test → dev-spring-test
+외부 SDK/API/version-sensitive client → dev-official-docs-context
 ```
 
 Java/Kotlin은 first-class language capability다. Java-only project는 `dev-java-guidelines`, Kotlin-only project는 `dev-kotlin-guidelines`, Java + Kotlin mixed project에서는 실제 changed source 언어에 적용한다.
@@ -148,6 +168,7 @@ JPA Query 정책은 Method Query → QueryDSL → 근거 있는 Native Query 순
 실제 frontend Task는 `dev-frontend-feature`를 runtime entry로 한다.
 
 ```text
+외부 SDK/API/version-sensitive config/type error → dev-official-docs-context
 Design Reference IMAGE/Figma → dev-design-reference
 TypeScript → dev-typescript-guidelines
 React/component/state/form/browser → dev-frontend-guidelines
@@ -159,7 +180,7 @@ visual/interaction/responsive/accessibility/chart → dev-ui-ux
 API integration → dev-api-contract
 ```
 
-repository가 React/Next.js를 포함한다는 이유만으로 frontend skill을 로드하지 않는다. package dependency mutation이 없는 Task에 `dev-node-dependencies`를 자동 적용하지 않는다.
+repository가 React/Next.js를 포함한다는 이유만으로 frontend skill을 로드하지 않는다. package dependency mutation이 없는 Task에 `dev-node-dependencies`를 자동 적용하지 않는다. 외부 기술을 사용하지 않는 순수 UI/domain 작업에 `dev-official-docs-context`를 기계적으로 적용하지 않는다.
 
 ### Node dependency mutation boundary
 
@@ -179,6 +200,8 @@ package.json / canonical lockfile
 `node_modules`는 source of truth가 아니다. package가 물리적으로 존재해도 manifest/lockfile에 없으면 `EXTRANEOUS_PRESENT`다.
 
 Tirith의 `analysis_incomplete`는 positive security finding과 구분한다. dependency helper는 Tirith daemon을 준비한 뒤 동일 command를 정확히 1회 재검사할 수 있지만, incomplete를 allow로 재분류하거나 approval을 끄지 않는다. 재검사 후에도 warn/block이면 headless worker는 반복 실행하지 않고 BLOCK한다.
+
+외부 `.d.ts`와 compiler/platform declaration 충돌은 앱 source 오류와 분리해 `DEPENDENCY_DECLARATION_COMPATIBILITY`로 evidence화한다. 이를 감추기 위한 `skipLibCheck=true`, strictness 완화, 임의 버전 downgrade/upgrade는 자동 적용하지 않는다.
 
 ## 8. REFERENCE_DRIVEN / CODE_DRIVEN
 
@@ -331,7 +354,8 @@ enum/paging/auth
 Frontend/Node는 기존 package manager/test runner를 사용한다. dependency 변경이면 package manager compatibility와 canonical lockfile 검증을 먼저 통과해야 한다.
 
 ```text
-Node dependency preflight (해당 시)
+Official docs/version evidence (외부 기술 변경 시)
+→ Node dependency preflight (해당 시)
 → Tirith package preflight (해당 시)
 → affected functional/component test
 → typecheck
@@ -359,6 +383,8 @@ performance → execution plan + before/after evidence
 Skill / Applied Capability Skills
 Detected stack/vendor/version
 Pattern References
+Documentation Required / Ready / Version Match (외부 기술 변경 시)
+Context7/Official upstream/Local type evidence (해당 시)
 Frontend Mode / Design Source / Status / Fidelity (해당 시)
 Reference / Screen Spec (해당 시)
 Observed / Inferred / Unknown (해당 시)

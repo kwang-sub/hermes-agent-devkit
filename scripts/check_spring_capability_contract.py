@@ -19,6 +19,7 @@ def main() -> int:
     guidelines = ROOT / "custom-skills/shared/dev-spring-guidelines/SKILL.md"
     reference = ROOT / "custom-skills/shared/dev-spring-guidelines/references/official-spring-practices.md"
     feature = ROOT / "custom-skills/shared/dev-spring-feature/SKILL.md"
+    official_docs = ROOT / "custom-skills/shared/dev-official-docs-context/SKILL.md"
     data = ROOT / "custom-skills/shared/dev-spring-data/SKILL.md"
     tests = ROOT / "custom-skills/shared/dev-spring-test/SKILL.md"
     review = ROOT / "custom-skills/reviewer/dev-code-review/SKILL.md"
@@ -59,7 +60,12 @@ def main() -> int:
         "Project Convention First",
     ), failures)
     require(feature, (
-        "version: 0.2.0",
+        "version: 0.2.1",
+        "dev-official-docs-context",
+        'skill_view("dev-official-docs-context")',
+        "External SDK / API Documentation Gate",
+        "actual Gradle/Maven resolved dependency version",
+        "Context7 version-matched official docs",
         "Validation",
         "MethodArgumentNotValidException",
         "HandlerMethodValidationException",
@@ -67,6 +73,14 @@ def main() -> int:
         "self-invocation",
         "ProblemDetail",
         "Validation Mode: OBJECT | METHOD | BOTH | NONE",
+        "Compile Evidence",
+    ), failures)
+    require(official_docs, (
+        "version: 0.1.0",
+        "Version First",
+        "Context7 Provider",
+        "DEPENDENCY_DECLARATION_COMPATIBILITY",
+        "compiler/typecheck/test/build",
     ), failures)
     # Existing user-specific persistence and test policy must remain intact.
     require(data, (
@@ -100,7 +114,7 @@ def main() -> int:
         for failure in failures:
             print(f"[FAIL] {failure}")
         return 1
-    print("[PASS] Spring official-practice capability contract")
+    print("[PASS] Spring official-practice + external-docs capability contract")
     return 0
 
 

@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 required_skills = (
-    "dev-frontend-feature", "dev-design-reference", "dev-typescript-guidelines", "dev-frontend-guidelines",
+    "dev-frontend-feature", "dev-design-reference", "dev-official-docs-context", "dev-typescript-guidelines", "dev-frontend-guidelines",
     "dev-nextjs-feature", "dev-frontend-test", "dev-node-dependencies", "dev-api-contract", "dev-figma-design", "dev-ui-ux",
 )
 for name in required_skills:
@@ -15,6 +15,7 @@ for name in required_skills:
 pattern = (ROOT / "custom-skills/orchestrator/dev-project-pattern/SKILL.md").read_text(encoding="utf-8")
 breakdown = (ROOT / "custom-skills/orchestrator/dev-breakdown/SKILL.md").read_text(encoding="utf-8")
 frontend = (ROOT / "custom-skills/shared/dev-frontend-feature/SKILL.md").read_text(encoding="utf-8")
+official_docs = (ROOT / "custom-skills/shared/dev-official-docs-context/SKILL.md").read_text(encoding="utf-8")
 node_dependencies = (ROOT / "custom-skills/shared/dev-node-dependencies/SKILL.md").read_text(encoding="utf-8")
 node_preflight = (ROOT / "custom-skills/shared/dev-node-dependencies/scripts/node_dependency_preflight.py").read_text(encoding="utf-8")
 tirith_preflight = (ROOT / "custom-skills/shared/dev-node-dependencies/scripts/tirith_package_preflight.py").read_text(encoding="utf-8")
@@ -57,12 +58,18 @@ checks = {
         "Regression Baseline: APPROVED_BROWSER_SCREENSHOT",
     )),
     "frontend entry": (frontend, (
-        "version: 0.3.1", "canonical entry", "REFERENCE_DRIVEN", "CODE_DRIVEN",
+        "version: 0.3.2", "canonical entry", "REFERENCE_DRIVEN", "CODE_DRIVEN",
         "Design Source", "IMAGE", "FIGMA", "EXISTING_CODE", "dev-design-reference",
         "OBSERVED", "INFERRED", "UNKNOWN", "Storybook Catalog",
         "DESIGN_CONFORMANCE", "VISUAL_REGRESSION", "dev-ui-ux", "dev-figma-design", "lazy-load",
+        "dev-official-docs-context", 'skill_view("dev-official-docs-context")', "External Technology Documentation Gate",
         "dev-typescript-guidelines", "dev-frontend-guidelines", "dev-nextjs-feature", "dev-node-dependencies",
+        "DEPENDENCY_DECLARATION_COMPATIBILITY", "Documentation Version Match",
         "EXTRANEOUS", "analysis_incomplete", "Tirith Package Preflight",
+    )),
+    "official docs skill": (official_docs, (
+        "version: 0.1.0", "Version First", "Context7 Provider", "EXACT", "COMPATIBLE", "LATEST_ONLY", "LOCAL_ONLY",
+        "DEPENDENCY_DECLARATION_COMPATIBILITY", "compiler/typecheck/test/build",
     )),
     "node dependency skill": (node_dependencies, (
         "version: 0.1.2", "node_modules", "EXTRANEOUS_PRESENT", "packageManager", "canonical lockfile",
@@ -170,7 +177,7 @@ for raw in (ROOT / "sample.env").read_text(encoding="utf-8").splitlines():
     key, value = line.split("=", 1)
     sample_values[key] = value
 compose = (ROOT / "compose.yml").read_text(encoding="utf-8")
-for key in ("FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN"):
+for key in ("FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN", "CONTEXT7_API_KEY"):
     if key not in sample_values:
         raise SystemExit(f"sample.env missing {key}")
     if sample_values[key]:
@@ -178,4 +185,4 @@ for key in ("FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN"):
     if f"{key}: ${{{key}:-}}" not in compose:
         raise SystemExit(f"compose.yml missing {key}")
 
-print("[PASS] Frontend reference-driven/Node dependency/Image/Figma/Storybook/Playwright capability contract")
+print("[PASS] Frontend reference-driven/official-docs/Node dependency/Image/Figma/Storybook/Playwright capability contract")

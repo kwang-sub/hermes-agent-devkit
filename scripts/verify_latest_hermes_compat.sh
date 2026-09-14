@@ -74,6 +74,9 @@ PY
         test -f /opt/custom-skills/shared/dev-api-spec/SKILL.md
         test -f /opt/custom-skills/shared/dev-api-contract/SKILL.md
         test -f /opt/custom-skills/shared/dev-api-docs/SKILL.md
+        test -f /opt/custom-skills/shared/dev-official-docs-context/SKILL.md
+        test -f /opt/custom-skills/shared/dev-official-docs-context/scripts/context7_docs.py
+        test -f /opt/custom-skills/shared/dev-official-docs-context/scripts/detect_dependency_versions.py
         test -f /opt/custom-skills/shared/dev-java-guidelines/SKILL.md
         test -f /opt/custom-skills/shared/dev-java-guidelines/references/official-java-practices.md
         test -f /opt/custom-skills/shared/dev-kotlin-guidelines/SKILL.md

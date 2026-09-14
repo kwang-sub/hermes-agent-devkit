@@ -43,6 +43,18 @@ jobs:
         shell: bash
         run: python3 scripts/check_kotlin_capability_contract.py
 
+      - name: Verify official docs / Context7 capability contract
+        shell: bash
+        run: python3 scripts/check_official_docs_context_contract.py
+
+      - name: Verify official docs dependency version evidence
+        shell: bash
+        run: python3 custom-skills/shared/dev-official-docs-context/tests/test_detect_dependency_versions.py
+
+      - name: Verify Context7 read-only provider
+        shell: bash
+        run: python3 custom-skills/shared/dev-official-docs-context/tests/test_context7_docs.py
+
       - name: Verify Codex Kanban worker context runtime
         shell: bash
         run: python3 scripts/devkit_kanban_worker_context.py --self-test
