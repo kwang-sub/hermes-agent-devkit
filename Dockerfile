@@ -131,7 +131,6 @@ RUN apt-get update && \
     && git --version \
     && mkdir -p /tmp/git-worktree-check \
     && git -C /tmp/git-worktree-check init -q \
-    && (cd /tmp/git-worktree-check && git worktree repair -h 2>&1 | grep -q -- '--relative-paths') \
     && git -C /tmp/git-worktree-check worktree repair --relative-paths \
     && git config --system worktree.useRelativePaths true \
     && test "$(git config --system --bool --get worktree.useRelativePaths)" = "true" \
