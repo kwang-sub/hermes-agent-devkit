@@ -30,16 +30,22 @@ pattern = (ROOT / "custom-skills/orchestrator/dev-project-pattern/SKILL.md").rea
 breakdown = (ROOT / "custom-skills/orchestrator/dev-breakdown/SKILL.md").read_text(encoding="utf-8")
 data_entry = (ROOT / "custom-skills/shared/dev-data-feature/SKILL.md").read_text(encoding="utf-8")
 data_modeling = (ROOT / "custom-skills/shared/dev-data-modeling/SKILL.md").read_text(encoding="utf-8")
+db_schema = (ROOT / "custom-skills/shared/dev-db-schema/SKILL.md").read_text(encoding="utf-8")
 stack_guide = (ROOT / "shared/references/stack-capability-skill-guide.md").read_text(encoding="utf-8")
 detector = (ROOT / "custom-skills/orchestrator/dev-tech-dispatch/scripts/detect_capabilities.py").read_text(encoding="utf-8")
 cache = (ROOT / "custom-skills/orchestrator/dev-project-bootstrap/scripts/stack_cache.py").read_text(encoding="utf-8")
 documentation = (ROOT / "custom-skills/shared/dev-data-feature/references/documentation-contract.md").read_text(encoding="utf-8")
+example_dbml = (ROOT / "custom-skills/shared/dev-data-modeling/examples/schema.dbml").read_text(encoding="utf-8")
 foundation = foundation_path.read_text(encoding="utf-8")
 
 checks = {
     "data foundation": (foundation, (
         "Current State", "History / Ledger", "Snapshot", "Derived Data",
         "docs/data/schema.dbml", "LOGICAL_RELATIONAL", "PHYSICAL", "Design-Time DBA",
+        "PROJECT_EXISTING", "PROJECT_INFERRED", "DEVKIT_DEFAULT",
+        "public_id", "external_id", "UUIDv7",
+        "created_at", "created_by", "updated_at", "updated_by",
+        "deleted_at", "deleted_by", "is_deleted",
     )),
     "project pattern": (pattern, (
         "dev-data-feature", "Data Capability Hints", "Database Vendor Candidates",
@@ -53,10 +59,18 @@ checks = {
     "data entry": (data_entry, (
         "canonical runtime entry", "Data Task Class", "Database Vendor", "DBML Mode",
         "Data Model Gate", "DBML Canvas", "Design-Time DBA", "lazy-load",
+        "Data Naming Source", "Identifier / Naming Convention", "Audit Convention",
+        "Soft Delete Strategy", "DEVKIT_DEFAULT", "deleted_at/deleted_by",
     )),
     "data modeling": (data_modeling, (
         "책임", "cardinality", "Current / History / Snapshot / Derived",
         "docs/data/schema.dbml", "dbml_guard.py", "full DBML parser",
+    )),
+    "db schema": (db_schema, (
+        "Data Naming Source", "PROJECT_EXISTING", "PROJECT_INFERRED", "DEVKIT_DEFAULT",
+        "Internal PK", "Internal FK", "public_id", "external_id", "UUIDv7",
+        "created_at", "created_by", "updated_at", "updated_by",
+        "deleted_at", "deleted_by", "is_deleted",
     )),
     "stack guide": (stack_guide, (
         "Data canonical entry", "dev-data-feature", "dev-data-modeling", "dev-db-schema",
@@ -73,11 +87,20 @@ checks = {
         "schema.dbml", "DBML Canvas", "canonical relational model", "QUERY_ONLY",
         "MODEL_CHANGE", "SCHEMA_CHANGE", "MIGRATION", "PERFORMANCE",
     )),
+    "default dbml example": (example_dbml, (
+        "Table account", "id bigint [pk]", "Table account_transaction",
+        "account_id bigint [not null]", "Ref: account_transaction.account_id > account.id",
+    )),
 }
 for label, (text, terms) in checks.items():
     missing = [term for term in terms if term not in text]
     if missing:
         raise SystemExit(f"{label} missing terms: {', '.join(missing)}")
+
+# The default DBML example must not reintroduce entity-prefixed primary keys.
+for legacy_pk in ("account_id bigint [pk]", "transaction_id bigint [pk]"):
+    if legacy_pk in example_dbml:
+        raise SystemExit(f"default DBML example uses legacy default PK naming: {legacy_pk}")
 
 # Design-time data capability must not claim direct operational authority.
 for name in required_skills:

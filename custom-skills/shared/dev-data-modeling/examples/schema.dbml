@@ -1,10 +1,10 @@
 Table account {
-  account_id bigint [pk]
+  id bigint [pk]
   name varchar(100) [not null]
 }
 
-Table transaction {
-  transaction_id bigint [pk]
+Table account_transaction {
+  id bigint [pk]
   account_id bigint [not null]
   amount decimal(19,4) [not null]
   occurred_at timestamp [not null]
@@ -14,4 +14,4 @@ Table transaction {
   }
 }
 
-Ref: transaction.account_id > account.account_id
+Ref: account_transaction.account_id > account.id
