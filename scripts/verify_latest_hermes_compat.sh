@@ -77,6 +77,7 @@ PY
         test -f /opt/custom-skills/shared/dev-official-docs-context/SKILL.md
         test -f /opt/custom-skills/shared/dev-official-docs-context/scripts/context7_docs.py
         test -f /opt/custom-skills/shared/dev-official-docs-context/scripts/detect_dependency_versions.py
+        /opt/hermes/.venv/bin/python /opt/custom-skills/shared/dev-official-docs-context/scripts/context7_docs.py --self-test
         test -f /opt/custom-skills/shared/dev-java-guidelines/SKILL.md
         test -f /opt/custom-skills/shared/dev-java-guidelines/references/official-java-practices.md
         test -f /opt/custom-skills/shared/dev-kotlin-guidelines/SKILL.md
