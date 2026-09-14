@@ -9,8 +9,8 @@ from pathlib import Path
 
 PATCH_MARKER = "from hermes_cli.devkit_session_affinity import choose_worker_session"
 CONTEXT_MARKER = 'env["HERMES_KANBAN_CONTEXT_VERSION"] = "1"'
-SINGLE_WORKER_HELPER_MARKER = "def _devkit_live_prior_worker("
-SINGLE_WORKER_CALL_MARKER = 'result.respawn_guarded.append((task_id, "live_prior_worker"))'
+SINGLE_WORKER_HELPER_MARKER = "def _devkit_find_live_task_process("
+SINGLE_WORKER_CALL_MARKER = 'result.respawn_guarded.append((task_id, "live_task_process"))'
 
 LEGACY_ANCHOR = '''    worker_toolsets = _resolve_worker_cli_toolsets(env.get("HERMES_HOME"))
     if worker_toolsets:
@@ -86,94 +86,75 @@ CURRENT_CONTEXT = (
     "profile_arg",
 )
 
-# The kernel already serializes ready->running claims. This guard handles the
-# narrower handoff window where an older run has been terminally closed or
-# explicitly reclaimed while its host-local process is still alive. The next
-# run stays queued until that exact task process exits, so two workers can never
-# edit the same task workspace concurrently.
+# Hermes already serializes ready->running with an atomic claim. The remaining
+# overlap window is a terminal/reclaim handoff: the task can become runnable
+# again while the old host process is still alive. Scan the host process table
+# for the dispatcher's task+board-DB environment before taking a new claim.
+# Session affinity then decides RESUME vs NEW only after that process is gone.
 SINGLE_WORKER_FUNCTION_ANCHOR = "def _dispatch_lane_task("
 SINGLE_WORKER_CLAIM_ANCHOR = '''    claim = _kb.claim_review_task if lane == "review" else _kb.claim_task
 '''
-SINGLE_WORKER_HELPER_SOURCE = '''def _devkit_live_prior_worker(
-    conn, task_id, *, pid_alive, host_prefix, process_task_match=None,
-    now=None, unknown_grace_seconds=120,
-):
-    import sqlite3 as _devkit_sqlite3
-    import time as _devkit_time
+SINGLE_WORKER_HELPER_SOURCE = '''def _devkit_find_live_task_process(conn, task_id, *, proc_root="/proc", current_pid=None):
+    import os as _devkit_os
 
     _task_id = str(task_id or "").strip()
-    _host_prefix_value = str(host_prefix or "").strip()
-    if not _task_id or not _host_prefix_value:
+    if not _task_id:
         return None
-    _now = int(_devkit_time.time()) if now is None else int(now)
     try:
-        _rows = conn.execute(
-            """
-            SELECT id, worker_pid, claim_lock, ended_at
-              FROM task_runs
-             WHERE task_id = ?
-               AND worker_pid IS NOT NULL
-               AND ended_at IS NOT NULL
-             ORDER BY id DESC
-             LIMIT 8
-            """,
-            (_task_id,),
-        ).fetchall()
-    except _devkit_sqlite3.Error:
-        # Older upstream schemas must remain bootable; claim CAS still protects
-        # the normal ready->running race when run history is unavailable.
+        _db_rows = conn.execute("PRAGMA database_list").fetchall()
+        _db_path = ""
+        for _db_row in _db_rows:
+            if str(_db_row[1]) == "main":
+                _db_path = str(_db_row[2] or "").strip()
+                break
+        if _db_path:
+            _db_path = _devkit_os.path.realpath(_db_path)
+    except Exception:
+        _db_path = ""
+
+    _expected_task = f"HERMES_KANBAN_TASK={_task_id}".encode()
+    _expected_db = f"HERMES_KANBAN_DB={_db_path}".encode() if _db_path else None
+    _self_pid = _devkit_os.getpid() if current_pid is None else int(current_pid)
+    try:
+        _entries = list(_devkit_os.scandir(proc_root))
+    except (FileNotFoundError, PermissionError, OSError):
         return None
 
-    for _row in _rows:
-        try:
-            _run_id = int(_row["id"])
-            _pid = int(_row["worker_pid"])
-            _ended_at = int(_row["ended_at"])
-        except (KeyError, TypeError, ValueError, IndexError):
+    for _entry in _entries:
+        if not _entry.name.isdigit():
             continue
-        _claim_lock = str(_row["claim_lock"] or "")
-        if _pid <= 0 or not _claim_lock.startswith(_host_prefix_value):
+        _pid = int(_entry.name)
+        if _pid <= 0 or _pid == _self_pid:
             continue
         try:
-            if not pid_alive(_pid):
+            with open(_devkit_os.path.join(proc_root, _entry.name, "environ"), "rb") as _env_file:
+                _env_parts = _env_file.read().split(b"\\0")
+        except (FileNotFoundError, PermissionError, ProcessLookupError, OSError):
+            continue
+        if _expected_task not in _env_parts:
+            continue
+        if _expected_db is not None:
+            _db_values = [
+                _part.split(b"=", 1)[1]
+                for _part in _env_parts
+                if _part.startswith(b"HERMES_KANBAN_DB=")
+            ]
+            if not _db_values:
                 continue
-        except Exception:
-            continue
-
-        if process_task_match is not None:
             try:
-                _identity = process_task_match(_pid, _task_id)
-            except Exception:
-                _identity = None
-        else:
-            try:
-                with open(f"/proc/{_pid}/environ", "rb") as _env_file:
-                    _env = _env_file.read()
-                _expected = f"HERMES_KANBAN_TASK={_task_id}".encode()
-                _identity = _expected in _env.split(b"\\0")
-            except (FileNotFoundError, PermissionError, ProcessLookupError, OSError):
-                _identity = None
-
-        if _identity is False:
-            # The PID is alive but no longer belongs to this task: PID reuse.
-            continue
-        if _identity is None and _now - _ended_at > max(0, int(unknown_grace_seconds)):
-            # When process identity cannot be inspected, be conservative only
-            # during the short process-shutdown handoff window.
-            continue
-        return (_run_id, _pid)
+                _process_db = _devkit_os.path.realpath(_db_values[-1].decode())
+            except (UnicodeDecodeError, OSError):
+                continue
+            if _process_db != _db_path:
+                continue
+        return _pid
     return None
 '''
-SINGLE_WORKER_CLAIM_REPLACEMENT = '''    _devkit_prior_worker = _devkit_live_prior_worker(
-        conn,
-        task_id,
-        pid_alive=_kb._pid_alive,
-        host_prefix=_kb._host_prefix(),
-    )
-    if _devkit_prior_worker is not None:
-        # A previous run is terminal in Kanban but its process still owns the
-        # workspace. Keep this card queued until that process is really gone.
-        result.respawn_guarded.append((task_id, "live_prior_worker"))
+SINGLE_WORKER_CLAIM_REPLACEMENT = '''    _devkit_live_pid = _devkit_find_live_task_process(conn, task_id)
+    if _devkit_live_pid is not None:
+        # The Kanban row is runnable, but an older process still owns this exact
+        # task/board workspace. Do not create a second worker beside it.
+        result.respawn_guarded.append((task_id, "live_task_process"))
         return False
     claim = _kb.claim_review_task if lane == "review" else _kb.claim_task
 '''
@@ -263,7 +244,7 @@ def patch_source(path: Path) -> str:
 
 
 def _dispatch_sample() -> str:
-    return '''\nclass _KB:\n    @staticmethod\n    def claim_review_task(*a, **k): return "review"\n    @staticmethod\n    def claim_task(*a, **k): return "worker"\n    @staticmethod\n    def _pid_alive(pid): return True\n    @staticmethod\n    def _host_prefix(): return "host-a:"\n_kb = _KB()\nclass _Result:\n    def __init__(self): self.respawn_guarded = []\ndef _dispatch_lane_task(conn, task_id, lane, result, ttl_seconds=60):\n    claim = _kb.claim_review_task if lane == "review" else _kb.claim_task\n    claimed = claim(conn, task_id, ttl_seconds=ttl_seconds)\n    if claimed is None:\n        return False\n    return True\n'''
+    return '''\nclass _KB:\n    @staticmethod\n    def claim_review_task(*a, **k): return "review"\n    @staticmethod\n    def claim_task(*a, **k): return "worker"\n_kb = _KB()\nclass _Result:\n    def __init__(self): self.respawn_guarded = []\ndef _dispatch_lane_task(conn, task_id, lane, result, ttl_seconds=60):\n    claim = _kb.claim_review_task if lane == "review" else _kb.claim_task\n    claimed = claim(conn, task_id, ttl_seconds=ttl_seconds)\n    if claimed is None:\n        return False\n    return True\n'''
 
 
 def _legacy_sample() -> str:
@@ -277,62 +258,45 @@ def _current_sample() -> str:
 def _assert_single_worker_runtime() -> None:
     namespace: dict[str, object] = {}
     exec(SINGLE_WORKER_HELPER_SOURCE, namespace)
-    guard = namespace["_devkit_live_prior_worker"]
+    guard = namespace["_devkit_find_live_task_process"]
 
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        "CREATE TABLE task_runs(id INTEGER PRIMARY KEY, task_id TEXT, worker_pid INTEGER, claim_lock TEXT, ended_at INTEGER)"
-    )
-    conn.executemany(
-        "INSERT INTO task_runs VALUES (?, ?, ?, ?, ?)",
-        [
-            (1, "t_demo", 101, "host-a:old", 100),
-            (2, "t_demo", 102, "host-b:other", 995),
-            (3, "t_demo", 103, "host-a:latest", 997),
-        ],
-    )
+    with tempfile.TemporaryDirectory(prefix="hermes-kanban-proc-selftest-") as directory:
+        root = Path(directory)
+        db_path = root / "kanban.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
 
-    found = guard(
-        conn,
-        "t_demo",
-        pid_alive=lambda pid: pid in {101, 102, 103},
-        host_prefix="host-a:",
-        process_task_match=lambda pid, task: pid == 103 and task == "t_demo",
-        now=1000,
-    )
-    assert found == (3, 103)
+        def proc(pid: int, *env: str) -> None:
+            path = root / str(pid)
+            path.mkdir()
+            (path / "environ").write_bytes(b"\0".join(v.encode() for v in env) + b"\0")
 
-    # PID reuse must not block a new run.
-    assert guard(
-        conn,
-        "t_demo",
-        pid_alive=lambda _pid: True,
-        host_prefix="host-a:",
-        process_task_match=lambda _pid, _task: False,
-        now=1000,
-    ) is None
+        proc(
+            101,
+            "HERMES_KANBAN_TASK=t_demo",
+            f"HERMES_KANBAN_DB={db_path}",
+            "HERMES_PROFILE=coder",
+        )
+        proc(
+            102,
+            "HERMES_KANBAN_TASK=t_other",
+            f"HERMES_KANBAN_DB={db_path}",
+        )
+        other_db = root / "other.db"
+        proc(
+            103,
+            "HERMES_KANBAN_TASK=t_demo",
+            f"HERMES_KANBAN_DB={other_db}",
+        )
 
-    # Unknown process identity is held only in the immediate shutdown window.
-    assert guard(
-        conn,
-        "t_demo",
-        pid_alive=lambda pid: pid == 103,
-        host_prefix="host-a:",
-        process_task_match=lambda _pid, _task: None,
-        now=1000,
-        unknown_grace_seconds=10,
-    ) == (3, 103)
-    assert guard(
-        conn,
-        "t_demo",
-        pid_alive=lambda pid: pid == 101,
-        host_prefix="host-a:",
-        process_task_match=lambda _pid, _task: None,
-        now=1000,
-        unknown_grace_seconds=10,
-    ) is None
-    conn.close()
+        assert guard(conn, "t_demo", proc_root=str(root), current_pid=999) == 101
+        assert guard(conn, "t_other", proc_root=str(root), current_pid=999) == 102
+        assert guard(conn, "t_missing", proc_root=str(root), current_pid=999) is None
+
+        # A matching pid from another board DB must not block this board.
+        (root / "101" / "environ").unlink()
+        assert guard(conn, "t_demo", proc_root=str(root), current_pid=999) is None
+        conn.close()
 
 
 def self_test() -> None:
