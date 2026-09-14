@@ -62,13 +62,13 @@ def make_repo(root: Path) -> Path:
     return repo
 
 
-def invoke(repo: Path, title: str = "small fix", goal: str = "Small fix.", verification_mode: str = "TARGETED_TEST", model_tier: str = "DEFAULT", model_env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def invoke(repo: Path, title: str = "작은 수정", goal: str = "요청한 작은 수정을 적용한다.", verification_mode: str = "TARGETED_TEST", model_tier: str = "DEFAULT", model_env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env.update(MODEL_ENV if model_env is None else model_env)
     return run([
         "python3", str(SCRIPT), "--workspace", str(repo), "--title", title,
-        "--goal", goal, "--acceptance", "Requested behavior works.",
-        "--implementation", "Apply minimum fix.", "--test", "Run focused test.",
+        "--goal", goal, "--acceptance", "요청한 동작이 정상 동작한다.",
+        "--implementation", "최소 범위로 수정한다.", "--test", "관련 테스트를 실행한다.",
         "--verification-mode", verification_mode, "--model-tier", model_tier, "--dry-run",
     ], env=env)
 
@@ -83,7 +83,7 @@ def extract(stdout: str, key: str) -> str:
 def test_clean_repo_dry_run() -> None:
     with tempfile.TemporaryDirectory(prefix="fast-flow-test-") as temp_dir:
         repo = make_repo(Path(temp_dir))
-        result = invoke(repo, "fix null handling")
+        result = invoke(repo, "null 처리 수정")
         if result.returncode != 0:
             raise AssertionError(result.stderr or result.stdout)
         required = (
@@ -93,13 +93,23 @@ def test_clean_repo_dry_run() -> None:
             "CODER=coder", "REVIEWER=reviewer", "Flow: FAST", "Review Policy: RISK_BASED",
             "MODEL_TIER=DEFAULT", "MODEL=gpt-5.6-terra", "PROVIDER=openai-codex",
             "Coder Model Tier: DEFAULT", "Coder Model: gpt-5.6-terra", "Reviewer Model: DEFAULT",
-            "Model Escalation: REQUIRE_REAPPROVAL", "Workspace dirty at dispatch: false",
-            "Pre-existing effective changes at dispatch:", "- none", "LOW -> coder",
-            "REVIEW_REQUIRED -> coder", "FAST_FLOW_ESCALATION_REQUIRED", "STATUS=dry-run",
+            "Model Escalation: REQUIRE_REAPPROVAL", "작업 키:", "목표:", "승인 기준:",
+            "구현 작업:", "테스트 계획:", "의존성:", "위험:", "FAST Flow 확장 규칙:",
+            "리뷰 정책 계약:", "작업 공간 계약:", "dispatch 시점 Workspace dirty: false",
+            "dispatch 시점 기존 유효 변경:", "- 없음", "`LOW`이면", "`REVIEW_REQUIRED`이면",
+            "FAST_FLOW_ESCALATION_REQUIRED", "STATUS=dry-run",
         )
         for term in required:
             if term not in result.stdout:
                 raise AssertionError(f"missing dry-run contract term: {term}\n{result.stdout}")
+        forbidden = (
+            "Task Key:", "Goal:\n", "Acceptance Criteria:", "Implementation Tasks:",
+            "Test Plan:", "Dependencies:\n", "Known Risks:", "Fast Flow Escalation:",
+            "Review Policy Contract:", "Workspace Contract:",
+        )
+        for term in forbidden:
+            if term in result.stdout:
+                raise AssertionError(f"user-visible Fast Flow plan must use Korean headings: {term}\n{result.stdout}")
 
 
 def test_dirty_repo_is_accepted_and_recorded() -> None:
@@ -109,7 +119,7 @@ def test_dirty_repo_is_accepted_and_recorded() -> None:
         result = invoke(repo)
         if result.returncode != 0:
             raise AssertionError(result.stderr or result.stdout)
-        for term in ("WORKSPACE_DIRTY=true", "EFFECTIVE_CHANGE_COUNT=1", "M app.txt", "must preserve pre-existing user changes"):
+        for term in ("WORKSPACE_DIRTY=true", "EFFECTIVE_CHANGE_COUNT=1", "M app.txt", "기존 사용자 변경을 보존"):
             if term not in result.stdout:
                 raise AssertionError(f"missing dirty-workspace contract term: {term}\n{result.stdout}")
 
@@ -122,7 +132,7 @@ def test_crlf_only_tracked_change_is_not_dirty() -> None:
         ignored = run(["git", "diff", "--name-only", "--ignore-cr-at-eol"], repo)
         if "app.txt" not in normal.stdout or ignored.stdout.strip():
             raise AssertionError("test fixture did not create an EOL-only tracked change")
-        result = invoke(repo, "ignore eol noise")
+        result = invoke(repo, "EOL 노이즈 무시")
         if result.returncode != 0:
             raise AssertionError(result.stderr or result.stdout)
         for term in ("WORKSPACE_DIRTY=false", "EFFECTIVE_CHANGE_COUNT=0", "EOL_ONLY_CHANGE_COUNT=1"):
@@ -133,9 +143,9 @@ def test_crlf_only_tracked_change_is_not_dirty() -> None:
 def test_same_request_is_stable_and_follow_up_is_distinct() -> None:
     with tempfile.TemporaryDirectory(prefix="fast-flow-key-test-") as temp_dir:
         repo = make_repo(Path(temp_dir))
-        first = invoke(repo, "NodeSpecificConfigService 문서 및 주석 보강", "Analyze and comment helpers.")
-        retry = invoke(repo, "NodeSpecificConfigService 문서 및 주석 보강", "Analyze and comment helpers.")
-        follow_up = invoke(repo, "NodeSpecificConfigService 문서 및 주석 보강", "Add a separate single-node behavior analysis.")
+        first = invoke(repo, "NodeSpecificConfigService 문서 및 주석 보강", "helper를 분석하고 주석을 보강한다.")
+        retry = invoke(repo, "NodeSpecificConfigService 문서 및 주석 보강", "helper를 분석하고 주석을 보강한다.")
+        follow_up = invoke(repo, "NodeSpecificConfigService 문서 및 주석 보강", "단일 노드 동작 분석을 별도로 추가한다.")
         for result in (first, retry, follow_up):
             if result.returncode != 0:
                 raise AssertionError(result.stderr or result.stdout)
