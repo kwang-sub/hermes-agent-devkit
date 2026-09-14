@@ -35,9 +35,19 @@ gradle_distribution_root="${HERMES_GRADLE_DIST_ROOT:-$gradle_root/distributions}
 gradle_download_root="${HERMES_GRADLE_DOWNLOAD_ROOT:-$gradle_root/downloads}"
 gradle_lock_root="${HERMES_GRADLE_LOCK_ROOT:-$gradle_root/locks}"
 gradle_project_cache_root="${HERMES_GRADLE_PROJECT_CACHE_ROOT:-$gradle_root/project-cache}"
+gradle_build_root="${HERMES_GRADLE_BUILD_ROOT:-$gradle_root/builds}"
+gradle_init_root="${HERMES_GRADLE_INIT_ROOT:-$gradle_root/init}"
 gradle_session_guard_root="${HERMES_GRADLE_SESSION_GUARD_ROOT:-$gradle_root/session-blocks}"
 
-mkdir -p "$GRADLE_USER_HOME" "$gradle_distribution_root" "$gradle_download_root" "$gradle_lock_root" "$gradle_project_cache_root" "$gradle_session_guard_root"
+mkdir -p \
+  "$GRADLE_USER_HOME" \
+  "$gradle_distribution_root" \
+  "$gradle_download_root" \
+  "$gradle_lock_root" \
+  "$gradle_project_cache_root" \
+  "$gradle_build_root" \
+  "$gradle_init_root" \
+  "$gradle_session_guard_root"
 
 sanitize_guard_value() {
   printf '%s' "$1" | sed 's/[^[:alnum:]_.-]/_/g'
@@ -69,6 +79,21 @@ read_gradle_property() {
 
 normalize_distribution_url() {
   printf '%s' "$1" | sed 's#\\:#:#g'
+}
+
+ensure_internal_build_init_script() {
+  local init_script="$1"
+  local temp_script="${init_script}.tmp.$$"
+  cat > "$temp_script" <<'GRADLE'
+gradle.beforeProject { project ->
+    def hermesBuildRoot = System.getenv('HERMES_GRADLE_BUILD_DIR')
+    if (hermesBuildRoot) {
+        def projectKey = project.path == ':' ? 'root' : project.path.substring(1).replace(':', '/')
+        project.buildDir = new File(hermesBuildRoot, projectKey)
+    }
+}
+GRADLE
+  mv "$temp_script" "$init_script"
 }
 
 resolve_managed_gradle() {
@@ -110,7 +135,7 @@ resolve_managed_gradle() {
     return 0
   fi
 
-  lock_file="$gradle_lock_root/$distribution_name.lock"
+  lock_file="$gradle_lock_root/distribution-${distribution_name}.lock"
   exec 9>"$lock_file"
   if ! flock -w "${HERMES_GRADLE_LOCK_TIMEOUT_SECONDS:-300}" 9; then
     echo "hermes-java: timed out waiting for Gradle distribution lock: $lock_file" >&2
@@ -180,18 +205,32 @@ if [ "$command_name" = "gradlew" ]; then
     esac
   done
 
+  repo_name="$(printf '%s' "$(basename "$repo_root")" | tr -c '[:alnum:]._-' '_')"
+  repo_hash="$(printf '%s' "$repo_root" | git hash-object --stdin | cut -c1-12)"
+  workspace_key="${repo_name}-${repo_hash}"
+
   gradle_extra_args=()
   if [ "$has_project_cache_dir" = false ]; then
-    repo_name="$(printf '%s' "$(basename "$repo_root")" | tr -c '[:alnum:]._-' '_')"
-    repo_hash="$(printf '%s' "$repo_root" | git hash-object --stdin | cut -c1-12)"
-    project_cache_dir="$gradle_project_cache_root/${repo_name}-${repo_hash}"
+    project_cache_dir="$gradle_project_cache_root/$workspace_key"
     mkdir -p "$project_cache_dir"
     if [ ! -w "$project_cache_dir" ]; then
       echo "hermes-java: Gradle project cache is not writable: $project_cache_dir" >&2
       exit 2
     fi
-    gradle_extra_args=(--project-cache-dir "$project_cache_dir")
+    gradle_extra_args+=(--project-cache-dir "$project_cache_dir")
   fi
+
+  build_dir="$gradle_build_root/$workspace_key"
+  mkdir -p "$build_dir"
+  if [ ! -w "$build_dir" ]; then
+    echo "hermes-java: Gradle internal build directory is not writable: $build_dir" >&2
+    exit 2
+  fi
+  export HERMES_GRADLE_BUILD_DIR="$build_dir"
+
+  build_init_script="$gradle_init_root/hermes-build-output.gradle"
+  ensure_internal_build_init_script "$build_init_script"
+  gradle_extra_args+=(--init-script "$build_init_script")
 
   wrapper_root="$(cd "$(dirname "$command_path")" && pwd -P)"
   wrapper_properties="$wrapper_root/gradle/wrapper/gradle-wrapper.properties"
@@ -200,8 +239,22 @@ if [ "$command_name" = "gradlew" ]; then
   if ! managed_gradle="$(resolve_managed_gradle "$wrapper_properties")"; then
     exit 2
   fi
+
+  workspace_lock_file="$gradle_lock_root/workspace-${workspace_key}.lock"
   echo "hermes-java: using managed Gradle distribution: $managed_gradle" >&2
-  exec "$managed_gradle" "${gradle_extra_args[@]}" "$@"
+  echo "hermes-java: internal build output: $build_dir" >&2
+  echo "hermes-java: workspace lock: $workspace_lock_file" >&2
+  set +e
+  flock -E 73 -w "${HERMES_GRADLE_WORKSPACE_LOCK_TIMEOUT_SECONDS:-600}" \
+    "$workspace_lock_file" \
+    "$managed_gradle" "${gradle_extra_args[@]}" "$@"
+  status=$?
+  set -e
+  if [ "$status" -eq 73 ]; then
+    echo "hermes-java: timed out waiting for Gradle workspace lock: $workspace_lock_file" >&2
+    exit 2
+  fi
+  exit "$status"
 fi
 
 exec "$@"
