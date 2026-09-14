@@ -20,6 +20,9 @@ class GradleVerificationCachedTests(unittest.TestCase):
         self.repo.mkdir()
         (self.repo / "gradlew").write_text("#!/bin/sh\n", encoding="utf-8")
         (self.repo / "build.gradle").write_text("plugins {}\n", encoding="utf-8")
+        self.main_source = self.repo / "src/main/java/com/example/Target.java"
+        self.main_source.parent.mkdir(parents=True)
+        self.main_source.write_text("class Target {}\n", encoding="utf-8")
         self.source = self.repo / "src/test/java/com/example/TargetTest.java"
         self.source.parent.mkdir(parents=True)
         self.source.write_text("class TargetTest {}\n", encoding="utf-8")
@@ -36,7 +39,8 @@ class GradleVerificationCachedTests(unittest.TestCase):
                 Path(os.environ["CACHE_TEST_CALLS"]).open("a", encoding="utf-8").write(" ".join(args) + "\\n")
                 is_preflight = "compileTestJava" in args or "compileJava" in args
                 if is_preflight and os.environ.get("CACHE_PREFLIGHT_FAIL") == "1":
-                    print("> Task :compileTestJava FAILED")
+                    task = ":compileJava" if "compileJava" in args else ":compileTestJava"
+                    print(f"> Task {task} FAILED")
                     print("PRIMARY_RESULT=FAIL")
                     print("PRIMARY_DURATION_SECONDS=2.0")
                     print("GRADLE_STATUS=FAIL")
@@ -56,23 +60,32 @@ class GradleVerificationCachedTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def run_helper(self, *, timeout: int = 600, preflight_fail: bool = False) -> subprocess.CompletedProcess[str]:
+    def run_helper(
+        self,
+        *,
+        timeout: int = 600,
+        preflight_fail: bool = False,
+        scope_paths: list[Path] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
         env["CACHE_TEST_CALLS"] = str(self.calls)
         if preflight_fail:
             env["CACHE_PREFLIGHT_FAIL"] = "1"
-        return subprocess.run(
+        selected_scope = scope_paths or [self.source]
+        cmd = [
+            sys.executable,
+            str(SCRIPT),
+            "--workspace",
+            str(self.repo),
+            "--mode",
+            "TARGETED_TEST",
+            "--test",
+            "com.example.TargetTest",
+        ]
+        for path in selected_scope:
+            cmd.extend(["--scope-path", str(path.relative_to(self.repo))])
+        cmd.extend(
             [
-                sys.executable,
-                str(SCRIPT),
-                "--workspace",
-                str(self.repo),
-                "--mode",
-                "TARGETED_TEST",
-                "--test",
-                "com.example.TargetTest",
-                "--scope-path",
-                str(self.source.relative_to(self.repo)),
                 "--verification-timeout",
                 str(timeout),
                 "--compile-preflight-timeout",
@@ -81,7 +94,10 @@ class GradleVerificationCachedTests(unittest.TestCase):
                 str(self.engine),
                 "--evidence-root",
                 str(self.evidence),
-            ],
+            ]
+        )
+        return subprocess.run(
+            cmd,
             text=True,
             capture_output=True,
             env=env,
@@ -132,6 +148,34 @@ class GradleVerificationCachedTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertIn("compileTestJava", calls[0])
         self.assertFalse(any("--test com.example.TargetTest" in call or "--tests com.example.TargetTest" in call for call in calls))
+
+    def test_test_only_scope_preflight_uses_compile_test_java(self) -> None:
+        proc = self.run_helper(scope_paths=[self.source])
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("VERIFICATION_PHASE_START=COMPILE_TEST", proc.stdout)
+        self.assertIn("VERIFICATION_PHASE_TASK=compileTestJava", proc.stdout)
+        calls = self.calls_list()
+        self.assertIn("--task compileTestJava", calls[0])
+        self.assertNotIn("--task compileJava", calls[0])
+
+    def test_main_only_scope_preflight_uses_compile_java(self) -> None:
+        proc = self.run_helper(scope_paths=[self.main_source])
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("VERIFICATION_PHASE_START=COMPILE_PRODUCTION", proc.stdout)
+        self.assertIn("VERIFICATION_PHASE_TASK=compileJava", proc.stdout)
+        calls = self.calls_list()
+        self.assertIn("--task compileJava", calls[0])
+        self.assertNotIn("--task compileTestJava", calls[0])
+
+    def test_mixed_main_and_test_scope_preflight_prefers_compile_java(self) -> None:
+        proc = self.run_helper(scope_paths=[self.main_source, self.source])
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("VERIFICATION_PHASE_START=COMPILE_PRODUCTION", proc.stdout)
+        self.assertIn("VERIFICATION_PHASE_TASK=compileJava", proc.stdout)
+        calls = self.calls_list()
+        self.assertIn("--task compileJava", calls[0])
+        self.assertNotIn("--task compileTestJava", calls[0])
+        self.assertIn("--mode TARGETED_TEST", calls[1])
 
     def test_timeout_is_capped_at_ten_minutes(self) -> None:
         proc = self.run_helper(timeout=601)

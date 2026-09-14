@@ -289,10 +289,14 @@ def java_compile_preflight(scope: list[tuple[str, Path]]) -> tuple[str, str] | N
     java_paths = [relative for relative, _ in scope if relative.endswith(".java")]
     if not java_paths:
         return None
-    if any(relative.startswith("src/test/") for relative in java_paths):
-        return "COMPILE_TEST", "compileTestJava"
+    # When production and test Java are both in scope, compile production first.
+    # compileTestJava pulls processResources/test-class dependencies into the
+    # bounded preflight and can consume the entire preflight budget before the
+    # real targeted-test phase. Test compilation remains covered by that phase.
     if any(relative.startswith("src/main/") for relative in java_paths):
         return "COMPILE_PRODUCTION", "compileJava"
+    if any(relative.startswith("src/test/") for relative in java_paths):
+        return "COMPILE_TEST", "compileTestJava"
     return None
 
 
