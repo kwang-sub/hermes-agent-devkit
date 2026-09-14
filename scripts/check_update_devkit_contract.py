@@ -180,7 +180,9 @@ def main() -> int:
             'FROM ${HERMES_BASE_IMAGE} AS hermes-upstream-patched',
             'FROM hermes-upstream-patched AS hermes-devkit-runtime',
             'ARG GIT_VERSION=2.55.0',
-            "git worktree repair -h 2>&1 | grep -q -- '--relative-paths'",
+            'mkdir -p /tmp/git-worktree-check',
+            'git -C /tmp/git-worktree-check init -q',
+            'git -C /tmp/git-worktree-check worktree repair --relative-paths',
             'git config --system worktree.useRelativePaths true',
             'git config --system --bool --get worktree.useRelativePaths',
             'patch_hermes_tirith_profile_guard.py --self-test',
@@ -194,13 +196,21 @@ def main() -> int:
         "Dockerfile latest-Hermes/Git compatibility stage",
     )
 
+    if "git worktree repair -h 2>&1 | grep -q -- '--relative-paths'" in dockerfile:
+        raise SystemExit(
+            "Dockerfile must verify relative-worktree support by executing repair --relative-paths, not by grepping short help"
+        )
+
     compat_script = read_required(LATEST_COMPAT_SCRIPT, "latest Hermes compatibility script")
     require(
         compat_script,
         (
             'nousresearch/hermes-agent:latest',
             '--target hermes-upstream-patched',
+            '--target hermes-devkit-runtime',
             '--pull',
+            '/usr/local/bin/git --version',
+            'worktree.useRelativePaths',
             'def _devkit_run_flow_model_transition',
             'MODEL_POLICY_SNAPSHOT_V1',
             'DEVKIT_TIRITH_PROFILE_GUARD_V1',

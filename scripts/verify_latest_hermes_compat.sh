@@ -22,6 +22,13 @@ docker build \
     --tag "$IMAGE_NAME" \
     .
 
+printf '[RUN ] Pinned Git/runtime compatibility build\n'
+docker build \
+    --build-arg "HERMES_BASE_IMAGE=$BASE_IMAGE" \
+    --target hermes-devkit-runtime \
+    --tag "$IMAGE_NAME" \
+    .
+
 printf '[RUN ] Latest Hermes patched runtime smoke\n'
 docker run --rm \
     --entrypoint /bin/sh \
@@ -31,6 +38,9 @@ docker run --rm \
     -ceu '
         test -x /opt/hermes/.venv/bin/hermes
         /opt/hermes/.venv/bin/hermes --help >/dev/null
+
+        test "$(/usr/local/bin/git --version)" = "git version 2.55.0"
+        test "$(/usr/local/bin/git config --system --bool --get worktree.useRelativePaths)" = "true"
 
         test -f /opt/hermes/hermes_cli/devkit_session_affinity.py
         test -f /opt/hermes/tools/kanban_tools.py
@@ -97,4 +107,4 @@ PY
         test -f /opt/data/shared/scripts/flow_model_policy.py
     '
 
-printf '[PASS] Latest Hermes base image is compatible with the DevKit upstream patch stage.\n'
+printf '[PASS] Latest Hermes base image, pinned Git runtime, and DevKit patches are compatible.\n'
