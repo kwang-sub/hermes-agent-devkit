@@ -21,6 +21,25 @@ function Invoke-DockerCheck {
     Write-Host "[OK] $Label"
 }
 
+function Invoke-DockerExactOutputCheck {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Label,
+        [Parameter(Mandatory = $true)]
+        [string[]]$DockerArgs,
+        [Parameter(Mandatory = $true)]
+        [string]$Expected
+    )
+
+    $Output = & docker @DockerArgs
+    $ExitCode = $LASTEXITCODE
+    $Actual = (($Output | ForEach-Object { [string]$_ }) -join [Environment]::NewLine).Trim()
+    if ($ExitCode -ne 0 -or $Actual -ne $Expected) {
+        throw "[FAIL] $Label. Expected='$Expected', Actual='$Actual', ExitCode=$ExitCode. The running container does not match the current DevKit image/profile contract. Re-run .\update-devkit.ps1 or rebuild/recreate the container."
+    }
+    Write-Host "[OK] $Label -> $Actual"
+}
+
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker CLI was not found."
 }
@@ -66,14 +85,15 @@ if ($ContainerEnv -notcontains $ExpectedJavaHomeEntry) {
 }
 Write-Host "[OK] JAVA_HOME -> /opt/jdks/temurin-17"
 
-Invoke-DockerCheck -Label "Pinned Git 2.55.0 runtime" -DockerArgs @(
-    "exec", "--user", "hermes", $Container, "sh", "-lc",
-    'test "$(/usr/local/bin/git --version)" = "git version 2.55.0"'
-)
-Invoke-DockerCheck -Label "Relative Git worktree paths" -DockerArgs @(
-    "exec", "--user", "hermes", $Container, "sh", "-lc",
-    'test "$(/usr/local/bin/git config --system --bool --get worktree.useRelativePaths)" = "true"'
-)
+# Keep these checks shell-free. Windows PowerShell 5.1 native argument marshalling can
+# split a `sh -lc` command containing nested quotes / $() before it reaches the container.
+Invoke-DockerExactOutputCheck -Label "Pinned Git 2.55.0 runtime" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "/usr/local/bin/git", "--version"
+) -Expected "git version 2.55.0"
+Invoke-DockerExactOutputCheck -Label "Relative Git worktree paths" -DockerArgs @(
+    "exec", "--user", "hermes", $Container,
+    "/usr/local/bin/git", "config", "--system", "--bool", "--get", "worktree.useRelativePaths"
+) -Expected "true"
 Invoke-DockerCheck -Label "Default Java 17 command" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "/usr/local/bin/java", "-version"
 )

@@ -143,10 +143,13 @@ def main() -> int:
     require(
         runtime_verifier,
         (
+            'function Invoke-DockerExactOutputCheck',
             'Pinned Git 2.55.0 runtime',
-            '/usr/local/bin/git --version',
+            '"/usr/local/bin/git", "--version"',
+            '-Expected "git version 2.55.0"',
             'Relative Git worktree paths',
-            'worktree.useRelativePaths',
+            '"/usr/local/bin/git", "config", "--system", "--bool", "--get", "worktree.useRelativePaths"',
+            '-Expected "true"',
             'Tirith routed-profile guard patch',
             'DEVKIT_TIRITH_PROFILE_GUARD_V1',
             '_devkit_tirith_subprocess_env',
@@ -155,6 +158,15 @@ def main() -> int:
             'Shared Node dependency capability',
         ),
         "update-devkit runtime Git/Tirith verification",
+    )
+
+    forbid(
+        runtime_verifier,
+        (
+            '$(/usr/local/bin/git --version)',
+            '$(/usr/local/bin/git config --system --bool --get worktree.useRelativePaths)',
+        ),
+        "Windows PowerShell-safe runtime Git verification",
     )
 
     tirith_patch = read_required(TIRITH_PATCH, "Hermes Tirith routed-profile patch")
