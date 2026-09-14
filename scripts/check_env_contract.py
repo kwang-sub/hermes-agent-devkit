@@ -19,6 +19,8 @@ DEFAULTS = {
     "HERMES_BASE_IMAGE": "nousresearch/hermes-agent:v2026.8.16.2",
     "HERMES_HOST_WORKSPACE_PATH": "D:/workspace",
     "HERMES_CONTAINER_WORKSPACE_PATH": "/workspace",
+    "HERMES_GRADLE_PROJECT_CACHE_ROOT": "/opt/data/gradle/project-cache",
+    "HERMES_GRADLE_COMPILE_PREFLIGHT_TIMEOUT_SECONDS": "300",
     "HERMES_HOST_CUSTOM_SKILLS_PATH": "./custom-skills",
     "HERMES_CONTAINER_CUSTOM_SKILLS_PATH": "/opt/custom-skills",
     "HERMES_HOST_SHARED_PATH": "./shared",
@@ -133,6 +135,14 @@ def main() -> int:
         raise SystemExit("unsupported container data path must not be public configuration")
     if not re.search(r"^\s*target:\s*/opt/data\s*$", compose, re.MULTILINE):
         raise SystemExit("compose.yml must keep the official image data target /opt/data")
+
+    gradle_launcher = (ROOT / "scripts/hermes-java").read_text(encoding="utf-8")
+    for required in (
+        'gradle_project_cache_root="${HERMES_GRADLE_PROJECT_CACHE_ROOT:-$gradle_root/project-cache}"',
+        'gradle_extra_args=(--project-cache-dir "$project_cache_dir")',
+    ):
+        if required not in gradle_launcher:
+            raise SystemExit(f"hermes-java missing shared-workspace Gradle cache isolation: {required}")
 
     for required in (
         "${HERMES_DASHBOARD_USERNAME:?Set HERMES_DASHBOARD_USERNAME in .env}",
