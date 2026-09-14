@@ -160,7 +160,7 @@ checks = {
     "stack guide": (stack, (
         "dev-frontend-feature", "dev-design-reference", "dev-official-docs-context", "dev-typescript-guidelines", "dev-frontend-guidelines",
         "dev-nextjs-feature", "dev-node-dependencies", "dev-figma-design", "REFERENCE_DRIVEN", "CODE_DRIVEN",
-        "actual resolved version", "DEPENDENCY_DECLARATION_COMPATIBILITY", "EXTRANEOUS", "analysis_incomplete", "Tirith",
+        "실제 installed/resolved version", "DEPENDENCY_DECLARATION_COMPATIBILITY", "EXTRANEOUS", "analysis_incomplete", "Tirith",
         "DESIGN_CONFORMANCE", "VISUAL_REGRESSION", "Storybook", "Stack Detection != Skill Loading",
     )),
 }
