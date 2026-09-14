@@ -1,7 +1,7 @@
 ---
 name: dev-data-feature
 description: 데이터/DB 작업의 canonical entry로 모델링·스키마·SQL·migration·성능 capability와 DBML 문서 계약을 task evidence에 따라 조합하는 DBMS 중립 shared skill.
-version: 0.1.0
+version: 0.2.0
 author: local
 platforms: [linux]
 metadata:
@@ -43,15 +43,18 @@ Data Task Class: MODEL_CHANGE | SCHEMA_CHANGE | QUERY_ONLY | MIGRATION | PERFORM
 Database Vendor: generic | mssql | mysql | mariadb | postgresql | oracle | unknown
 Data Model Mode: LOGICAL_RELATIONAL | PHYSICAL
 DBML Mode: CANONICAL | PROJECT_EXISTING | NOT_REQUIRED
+Data Naming Source: PROJECT_EXISTING | PROJECT_INFERRED | DEVKIT_DEFAULT | NOT_REQUIRED
 ```
 
 Vendor가 `unknown`인데 vendor-specific DDL/type/index가 필요한 경우 추측하지 않는다.
+
+Data Naming Source는 DBML 존재 여부만으로 결정하지 않는다. 기존 schema 문서, migration/DDL, JPA Entity 같은 persistence model, 실제 schema evidence를 확인한 뒤 유효한 convention이 없을 때만 `DEVKIT_DEFAULT`를 사용한다.
 
 ## 하위 Capability lazy-load
 
 ```text
 도메인/관계/lifecycle/cardinality/DBML → dev-data-modeling
-PK/FK/constraint/index/type/nullability/default → dev-db-schema
+PK/FK/constraint/index/type/nullability/default/naming/audit → dev-db-schema
 SQL/query semantics/dialect → dev-db-query
 DDL/backfill/compatibility/deployment → dev-db-migration
 execution plan/index tuning/locking/statistics → dev-db-performance
@@ -93,6 +96,8 @@ DBML Canvas는 IntelliJ에서 이 파일을 사람이 시각적으로 검토하�
 relationship/cardinality 변경
 PK/FK/UNIQUE 의미 변경
 nullable 의미 변경
+identifier strategy 변경
+audit/soft delete 의미 변경
 Current/History/Snapshot 책임 변경
 data ownership/lifecycle 변경
 ```
@@ -113,13 +118,16 @@ DBML Path: <path | none>
 ```text
 1. Task/Project Pattern/Data Model Status 재사용
 2. DBMS vendor/version evidence 확인
-3. 기존 schema/migration/query/documentation pattern 확인
-4. 필요한 하위 capability만 lazy-load
-5. DBML/schema/query/migration 최소 scope 확정
-6. 구현
-7. DBML guard / project parser / SQL test / migration test 등 가능한 검증
-8. handoff evidence 기록
+3. 기존 schema/migration/Entity/query/documentation pattern 확인
+4. Data Naming Source 확정
+5. 필요한 하위 capability만 lazy-load
+6. DBML/schema/query/migration 최소 scope 확정
+7. 구현
+8. DBML guard / project parser / SQL test / migration test 등 가능한 검증
+9. handoff evidence 기록
 ```
+
+`DEVKIT_DEFAULT`를 선택한 경우 `/opt/data/shared/references/data-design-rules.md`의 identifier/naming/audit/soft delete fallback을 적용한다. 기존 convention evidence가 있으면 신규 fallback으로 기존 schema를 자동 rename하지 않는다.
 
 DBML 변경 후 IntelliJ DBML Canvas rendering은 권장 Human Verification이지만 자동 PASS라고 주장하지 않는다.
 
@@ -130,7 +138,12 @@ Reviewer가 이 Skill을 runtime context로 받으면 기존 `dev-code-review`�
 - Data Task Class와 실제 diff가 일치하는가.
 - table 분리가 책임/lifecycle/cardinality 근거를 갖는가.
 - DBML, migration, Entity/Repository가 서로 의미상 drift하지 않는가.
+- Data Naming Source가 실제 project evidence와 일치하는가.
+- `DEVKIT_DEFAULT`가 기존 project convention 위에 덮어쓰이지 않았는가.
 - PK/FK/UNIQUE/nullability/default/index가 업무 불변식과 맞는가.
+- internal/public/external identifier의 책임이 섞이지 않았는가.
+- audit column과 Actor 의미가 table lifecycle에 맞는가.
+- Soft Delete가 필요한 use case에만 적용되고 `deleted_at/deleted_by` 또는 기존 project convention의 source of truth가 명확한가.
 - migration이 기존 데이터/구버전 application과 호환되는가.
 - query/performance finding이 실제 evidence에 기반하는가.
 - vendor-specific 선택이 target DBMS/version 근거를 갖는가.
@@ -145,6 +158,10 @@ Database Vendor / Version:
 Data Model Mode:
 DBML Mode / Path:
 Data Model Status:
+Data Naming Source:
+Identifier / Naming Convention:
+Audit Convention:
+Soft Delete Strategy:
 Applied Data Capabilities:
 Pattern References:
 Schema / Query / Migration Changes:
