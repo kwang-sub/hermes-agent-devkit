@@ -58,6 +58,14 @@ services:
       HERMES_HOST_WORKSPACE_PATH: ${HERMES_HOST_WORKSPACE_PATH:-D:/workspace}
       HERMES_CONTAINER_WORKSPACE_PATH: ${HERMES_CONTAINER_WORKSPACE_PATH:-/workspace}
 
+      # Git publish identity is declared in local .env and re-applied by update-devkit.ps1
+      # after the final container recreate. GitHub CLI auth is kept on the persistent
+      # hermes-data volume so `gh auth login` survives normal DevKit updates.
+      HERMES_GIT_USER_NAME: ${HERMES_GIT_USER_NAME:-}
+      HERMES_GIT_USER_EMAIL: ${HERMES_GIT_USER_EMAIL:-}
+      HERMES_GH_CONFIG_DIR: ${HERMES_GH_CONFIG_DIR:-/opt/data/gh}
+      GH_CONFIG_DIR: ${HERMES_GH_CONFIG_DIR:-/opt/data/gh}
+
       # Keep Gradle project state on the Linux named volume instead of the Windows
       # bind-mounted workspace. hermes-java injects this as --project-cache-dir.
       HERMES_GRADLE_PROJECT_CACHE_ROOT: ${HERMES_GRADLE_PROJECT_CACHE_ROOT:-/opt/data/gradle/project-cache}
