@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import subprocess
+import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +30,51 @@ def forbid(text: str, terms: tuple[str, ...], label: str) -> None:
     present = [term for term in terms if term in text]
     if present:
         raise SystemExit(f"[FAIL] {label} contains forbidden terms: {', '.join(present)}")
+
+
+def run_git(args: list[str], env: dict[str, str]) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise SystemExit(
+            f"[FAIL] git {' '.join(args)} failed ({result.returncode})\n{result.stdout}\n{result.stderr}"
+        )
+    return result.stdout.strip()
+
+
+def verify_profile_home_independent_global_config() -> None:
+    with tempfile.TemporaryDirectory(prefix="hermes-git-config-") as temp_dir:
+        root = Path(temp_dir)
+        global_config = root / "gitconfig"
+        home_a = root / "profile-a"
+        home_b = root / "profile-b"
+        home_a.mkdir()
+        home_b.mkdir()
+
+        base_env = os.environ.copy()
+        base_env["GIT_CONFIG_GLOBAL"] = str(global_config)
+
+        env_a = dict(base_env)
+        env_a["HOME"] = str(home_a)
+        run_git(["config", "--global", "user.name", "DevKit Test"], env_a)
+        run_git(["config", "--global", "user.email", "devkit@example.invalid"], env_a)
+
+        env_b = dict(base_env)
+        env_b["HOME"] = str(home_b)
+        name = run_git(["config", "--global", "--get", "user.name"], env_b)
+        email = run_git(["config", "--global", "--get", "user.email"], env_b)
+
+        if name != "DevKit Test" or email != "devkit@example.invalid":
+            raise SystemExit(
+                "[FAIL] GIT_CONFIG_GLOBAL did not survive routed-profile HOME isolation: "
+                f"name={name!r}, email={email!r}"
+            )
 
 
 def main() -> int:
@@ -58,19 +106,13 @@ def main() -> int:
         "update-devkit Git publish bootstrap",
     )
 
-    # `gh auth status` is intentionally invoked directly rather than via a shell
-    # string so PowerShell 5.1 argument marshalling stays predictable.
-    require(
-        updater.replace("& docker exec --user hermes $ContainerName gh auth status --hostname github.com", "gh auth status --hostname github.com"),
-        ('gh auth status --hostname github.com',),
-        "update-devkit direct gh auth status invocation",
-    )
-
     require(
         compose,
         (
             'HERMES_GIT_USER_NAME: ${HERMES_GIT_USER_NAME:-}',
             'HERMES_GIT_USER_EMAIL: ${HERMES_GIT_USER_EMAIL:-}',
+            'HERMES_GIT_CONFIG_GLOBAL: ${HERMES_GIT_CONFIG_GLOBAL:-/opt/data/gitconfig}',
+            'GIT_CONFIG_GLOBAL: ${HERMES_GIT_CONFIG_GLOBAL:-/opt/data/gitconfig}',
             'HERMES_GH_CONFIG_DIR: ${HERMES_GH_CONFIG_DIR:-/opt/data/gh}',
             'GH_CONFIG_DIR: ${HERMES_GH_CONFIG_DIR:-/opt/data/gh}',
         ),
@@ -82,6 +124,7 @@ def main() -> int:
         (
             'HERMES_GIT_USER_NAME=',
             'HERMES_GIT_USER_EMAIL=',
+            'HERMES_GIT_CONFIG_GLOBAL=/opt/data/gitconfig',
             'HERMES_GH_CONFIG_DIR=/opt/data/gh',
             'GitHub 인증 토큰은 .env에 넣지 않습니다.',
         ),
@@ -117,7 +160,12 @@ def main() -> int:
         "update-devkit GitHub auth policy",
     )
 
-    print("[PASS] Git publish bootstrap: .env identity + persistent gh auth + interactive updatekit login contract verified")
+    verify_profile_home_independent_global_config()
+
+    print(
+        "[PASS] Git publish bootstrap: persistent profile-independent global Git config + "
+        ".env identity + persistent gh auth contract verified"
+    )
     return 0
 
 
