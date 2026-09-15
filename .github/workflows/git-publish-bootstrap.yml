@@ -1,0 +1,50 @@
+name: Verify Git Publish Bootstrap
+
+on:
+  push:
+    branches:
+      - dev
+      - "fix/**"
+      - "feat/**"
+      - "feature/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-git-publish-bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify Git publish bootstrap contract
+        shell: bash
+        run: python3 scripts/check_git_publish_bootstrap_contract.py
+
+      - name: Verify update-devkit compatibility contract
+        shell: bash
+        run: python3 scripts/check_update_devkit_contract.py
+
+      - name: Validate updater PowerShell syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "update-devkit.ps1"),
+            [ref]$tokens,
+            [ref]$errors
+          )
+          if ($errors.Count -ne 0) {
+            $errors | ForEach-Object { [Console]::Error.WriteLine($_.Message) }
+            exit 1
+          }
