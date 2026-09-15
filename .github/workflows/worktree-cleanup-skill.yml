@@ -1,4 +1,4 @@
-name: Verify Worktree Cleanup Skill
+name: Verify Workspace Cleanup Skill
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  verify-worktree-cleanup:
+  verify-workspace-cleanup:
     runs-on: ubuntu-latest
     timeout-minutes: 8
 
@@ -27,13 +27,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Verify Worktree cleanup regression tests
+      - name: Verify Workspace cleanup regression tests
         shell: bash
-        run: python3 custom-skills/orchestrator/dev-worktree-cleanup/tests/test_worktree_cleanup.py
+        run: python3 custom-skills/orchestrator/dev-workspace-cleanup/tests/test_workspace_cleanup.py
 
-      - name: Verify Worktree cleanup safety contract
+      - name: Verify Workspace cleanup safety contract
         shell: bash
-        run: python3 scripts/check_worktree_cleanup_contract.py
+        run: python3 scripts/check_workspace_cleanup_contract.py
 
       - name: Verify custom skill contract
         shell: bash
