@@ -23,6 +23,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify Hermes TUI startup patch contract
+        shell: bash
+        run: python3 scripts/check_hermes_tui_startup_contract.py
+
       - name: Verify latest Hermes upstream patch compatibility
         shell: bash
         run: HERMES_BASE_IMAGE=nousresearch/hermes-agent:latest bash scripts/verify_latest_hermes_compat.sh
