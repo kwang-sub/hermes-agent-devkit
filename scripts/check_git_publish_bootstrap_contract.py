@@ -58,6 +58,14 @@ def main() -> int:
         "update-devkit Git publish bootstrap",
     )
 
+    # `gh auth status` is intentionally invoked directly rather than via a shell
+    # string so PowerShell 5.1 argument marshalling stays predictable.
+    require(
+        updater.replace("& docker exec --user hermes $ContainerName gh auth status --hostname github.com", "gh auth status --hostname github.com"),
+        ('gh auth status --hostname github.com',),
+        "update-devkit direct gh auth status invocation",
+    )
+
     require(
         compose,
         (
