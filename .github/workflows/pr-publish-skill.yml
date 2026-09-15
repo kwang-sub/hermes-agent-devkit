@@ -1,0 +1,40 @@
+name: Verify PR Publish Skill
+
+on:
+  push:
+    branches:
+      - dev
+      - "fix/**"
+      - "feat/**"
+      - "feature/**"
+      - "perf/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-pr-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify PR publish regression tests
+        shell: bash
+        run: python3 custom-skills/orchestrator/dev-pr-publish/tests/test_pr_publish.py
+
+      - name: Verify custom skill contract
+        shell: bash
+        run: python3 scripts/check_skill_contract.py
+
+      - name: Verify update-devkit contract remains compatible
+        shell: bash
+        run: python3 scripts/check_update_devkit_contract.py

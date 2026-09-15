@@ -120,6 +120,7 @@ RUN apt-get update && \
         zip \
         less \
         util-linux \
+        gh \
     && curl -fsSL \
         "https://www.kernel.org/pub/software/scm/git/git-${GIT_VERSION}.tar.xz" \
         -o /tmp/git.tar.xz \
@@ -129,6 +130,7 @@ RUN apt-get update && \
     && make NO_RUST=1 prefix=/usr/local all \
     && make NO_RUST=1 prefix=/usr/local install \
     && git --version \
+    && gh --version \
     && mkdir -p /tmp/git-worktree-check \
     && git -C /tmp/git-worktree-check init -q \
     && git -C /tmp/git-worktree-check worktree repair --relative-paths \
