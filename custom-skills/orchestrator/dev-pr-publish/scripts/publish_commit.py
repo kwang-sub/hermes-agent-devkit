@@ -8,8 +8,10 @@ from pr_publish_lib import (
     PublishError,
     current_branch,
     emit,
+    ensure_gh,
     head_sha,
     publish_fingerprint,
+    remote_url,
     repo_root,
     resolve_workspace,
     run,
@@ -50,6 +52,27 @@ def path_is_in_scope(path: str, includes: list[str]) -> bool:
     return False
 
 
+def push_command(root, remote: str, branch: str) -> list[str]:
+    url = remote_url(root, remote)
+    if url.startswith("https://") or url.startswith("http://"):
+        # Use gh as a one-command credential helper instead of mutating global Git config.
+        # This preserves the user's repository configuration and lets the same gh auth
+        # used for PR creation authenticate the approved HTTPS push.
+        ensure_gh(root)
+        return [
+            "git",
+            "-c",
+            "credential.helper=",
+            "-c",
+            "credential.helper=!gh auth git-credential",
+            "push",
+            "--set-upstream",
+            remote,
+            branch,
+        ]
+    return ["git", "push", "--set-upstream", remote, branch]
+
+
 def main() -> int:
     args = parser().parse_args()
     commit_sha = None
@@ -84,11 +107,7 @@ def main() -> int:
         run(["git", "commit", "-m", args.message], cwd=root)
         commit_sha = head_sha(root)
 
-        push = run(
-            ["git", "push", "--set-upstream", args.remote, args.branch],
-            cwd=root,
-            check=False,
-        )
+        push = run(push_command(root, args.remote, args.branch), cwd=root, check=False)
         if push.returncode != 0:
             detail = (push.stdout + "\n" + push.stderr).strip()
             emit("STATUS", "push-failed")
