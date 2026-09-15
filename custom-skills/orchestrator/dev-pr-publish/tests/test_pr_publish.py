@@ -12,11 +12,14 @@ import unittest
 
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = SKILL_ROOT.parents[2]
 SCRIPTS = SKILL_ROOT / "scripts"
 PREPARE = SCRIPTS / "prepare_publish.py"
 PUBLISH = SCRIPTS / "publish_commit.py"
 PREPARE_PR = SCRIPTS / "prepare_pr.py"
 CREATE_PR = SCRIPTS / "create_pr.py"
+LIB = SCRIPTS / "pr_publish_lib.py"
+DOCKERFILE = REPO_ROOT / "Dockerfile"
 
 
 def run(args, *, cwd: Path, env=None, check=True):
@@ -99,6 +102,8 @@ raise SystemExit(9)
         self.env = os.environ.copy()
         self.env["PATH"] = str(self.fake_bin) + os.pathsep + self.env.get("PATH", "")
         self.env["GH_FAKE_STATE"] = str(self.gh_state)
+        self.env.pop("GH_CONFIG_DIR", None)
+        self.env.pop("HERMES_GH_CONFIG_DIR", None)
 
     def tearDown(self):
         shutil.rmtree(self.temp, ignore_errors=True)
@@ -254,6 +259,16 @@ raise SystemExit(9)
         )
         self.assertEqual(result.returncode, 2)
         self.assertIn("Conventional Commits", result.stderr)
+
+    def test_github_cli_runtime_and_auth_contract(self):
+        dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+        library = LIB.read_text(encoding="utf-8")
+        publisher = PUBLISH.read_text(encoding="utf-8")
+        self.assertIn("        gh \\", dockerfile)
+        self.assertIn("&& gh --version \\", dockerfile)
+        self.assertIn('"/opt/data/gh"', library)
+        self.assertIn("HERMES_GH_CONFIG_DIR", library)
+        self.assertIn("credential.helper=!gh auth git-credential", publisher)
 
     def test_forbidden_publish_mutations_are_not_in_scripts(self):
         combined = "\n".join(
