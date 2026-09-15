@@ -31,6 +31,10 @@ jobs:
         shell: bash
         run: python3 custom-skills/orchestrator/dev-worktree-cleanup/tests/test_worktree_cleanup.py
 
+      - name: Verify Worktree cleanup safety contract
+        shell: bash
+        run: python3 scripts/check_worktree_cleanup_contract.py
+
       - name: Verify custom skill contract
         shell: bash
         run: python3 scripts/check_skill_contract.py
