@@ -39,6 +39,14 @@ def repo_root(workspace: Path) -> Path:
     return root
 
 
+def git_identity(root: Path) -> tuple[str, str]:
+    branch = run(["git", "-C", str(root), "branch", "--show-current"]).stdout.strip()
+    if not branch:
+        branch = "DETACHED"
+    head_sha = run(["git", "-C", str(root), "rev-parse", "--verify", "HEAD^{commit}"]).stdout.strip()
+    return branch, head_sha
+
+
 def normalize_includes(root: Path, values: list[str]) -> list[str]:
     normalized: list[str] = []
     for raw in values:
@@ -128,17 +136,49 @@ def clear_handoff_state(root: Path) -> None:
         pass
 
 
-def write_handoff_state(root: Path, includes: list[str], effective_paths: list[str], fingerprint: str) -> None:
+def write_handoff_state(
+    root: Path,
+    *,
+    branch: str,
+    head_sha: str,
+    includes: list[str],
+    effective_paths: list[str],
+    fingerprint: str,
+) -> None:
     path = handoff_state_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"workspace": str(root), "scope": includes, "effective_paths": effective_paths, "effective_scope_sha256": fingerprint, "status": "valid"}
+    payload = {
+        "schema_version": 2,
+        "workspace": str(root),
+        "branch": branch,
+        "head_sha": head_sha,
+        "scope": includes,
+        "effective_paths": effective_paths,
+        "effective_scope_sha256": fingerprint,
+        "status": "valid",
+    }
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
     tmp.replace(path)
 
 
-def print_summary(*, root: Path, includes: list[str], scan_mode: str, tracked: list[str], eol_only: list[str], untracked: list[str], fingerprint: str, whitespace_errors: list[str], compact: bool) -> None:
+def print_summary(
+    *,
+    root: Path,
+    branch: str,
+    head_sha: str,
+    includes: list[str],
+    scan_mode: str,
+    tracked: list[str],
+    eol_only: list[str],
+    untracked: list[str],
+    fingerprint: str,
+    whitespace_errors: list[str],
+    compact: bool,
+) -> None:
     print(f"WORKSPACE={root}")
+    print(f"BRANCH={branch}")
+    print(f"HEAD_SHA={head_sha}")
     print(f"SCOPE={','.join(includes) if includes else 'ALL'}")
     print(f"SCAN_MODE={scan_mode}")
     print(f"TRACKED_CHANGED_COUNT={len(tracked)}")
@@ -163,6 +203,7 @@ def print_summary(*, root: Path, includes: list[str], scan_mode: str, tracked: l
 def main() -> int:
     args = parse_args()
     root = repo_root(Path(args.workspace))
+    branch, head_sha = git_identity(root)
     clear_handoff_state(root)
     includes = normalize_includes(root, args.include)
     if not includes and not args.allow_full_scan:
@@ -175,10 +216,29 @@ def main() -> int:
     effective_paths = sorted(set(tracked) | set(untracked))
     fingerprint = effective_scope_sha256(root, effective_paths)
 
-    print_summary(root=root, includes=includes, scan_mode=scan_mode, tracked=tracked, eol_only=eol_only, untracked=untracked, fingerprint=fingerprint, whitespace_errors=whitespace_errors, compact=args.compact)
+    print_summary(
+        root=root,
+        branch=branch,
+        head_sha=head_sha,
+        includes=includes,
+        scan_mode=scan_mode,
+        tracked=tracked,
+        eol_only=eol_only,
+        untracked=untracked,
+        fingerprint=fingerprint,
+        whitespace_errors=whitespace_errors,
+        compact=args.compact,
+    )
     if whitespace_errors:
         return 1
-    write_handoff_state(root, includes, effective_paths, fingerprint)
+    write_handoff_state(
+        root,
+        branch=branch,
+        head_sha=head_sha,
+        includes=includes,
+        effective_paths=effective_paths,
+        fingerprint=fingerprint,
+    )
     return 0
 
 

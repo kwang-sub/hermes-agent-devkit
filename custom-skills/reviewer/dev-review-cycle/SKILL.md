@@ -1,7 +1,7 @@
 ---
 name: dev-review-cycle
 description: 동일 Kanban card/workspace에서 coder와 reviewer가 risk 기반 Fast Flow와 필수 Standard review loop를 수행하며 승인된 모델 전이를 보존하는 프로토콜.
-version: 0.6.0
+version: 0.7.0
 author: local
 platforms: [linux]
 metadata:
@@ -32,6 +32,13 @@ coder approved model
 - Coder/Reviewer가 표시하는 `Resume this session with: hermes --resume ...` 명령은 일반 대화 재개용이며 Kanban lifecycle 재개 경로로 사용하지 않는다.
 - 서버 재시작 또는 worker crash 뒤 작업을 이어갈 때는 동일 Card를 requeue/unblock하고 dispatcher가 다시 spawn하게 한다. Session affinity가 유효하면 RESUME, 없거나 session DB가 유실되었으면 NEW로 안전하게 시작한다.
 - Task prompt를 알고 있더라도 worker context가 누락된 direct chat/manual resume에서는 모델 전이·review handoff를 수행하지 않는다.
+
+## Handoff 효율성 불변식
+- 하나의 작업이 코드 repo와 문서 repo처럼 여러 Git workspace를 변경하면 Coder는 **각 Git workspace에서 `change_summary.py`를 한 번씩** 실행한다. 각 `.git/hermes/review-handoff.json`의 branch/HEAD/effective scope fingerprint가 해당 repo의 handoff identity다.
+- Reviewer worker의 canonical Workspace는 기존처럼 하나로 유지한다. `review_context.py --include`에는 Coder `Changed Files`를 그대로 전달하며, 상대/절대 sibling Git 경로는 스크립트가 secondary workspace로 분리해 handoff identity를 검증한다. 이를 확인하려고 별도 `git status`/`git branch`/`git rev-parse` probe를 먼저 실행하지 않는다.
+- Primary executable verification reuse 여부는 primary workspace fingerprint로만 판단한다. secondary docs/repo handoff는 `SECONDARY_*_CODER_HANDOFF_GATE`와 `ALL_REVIEW_SCOPE_HANDOFFS_MATCH`로 독립 확인하며 primary Gradle PASS를 불필요하게 무효화하지 않는다.
+- Gradle PASS 뒤 테스트 건수/실패 수 요약이 필요하면 `gradle_test_summary.py --workspace "<Workspace>"`를 **한 번만** 사용한다. 같은 정보를 얻기 위한 ad-hoc `python3 -c`, arbitrary `execute_code`, JUnit XML `grep` 반복은 하지 않는다.
+- Task/Pattern References와 이미 읽은 target 범위로 `Open Questions: NONE`이 되면 같은 목적의 find/grep/read를 반복하지 않는다. 새 failure/finding이 생긴 경우에만 필요한 symbol 범위를 추가로 읽는다.
 
 ## 모델 전이 불변식
 - Coder는 Task body의 승인된 `Coder Model Tier / Model / Provider` snapshot으로 실행한다.

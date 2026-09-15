@@ -10,6 +10,13 @@ import unittest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "review_context.py"
 DIFF_CHECK = Path(__file__).resolve().parents[4] / "scripts" / "hermes-diff-check.py"
+CHANGE_SUMMARY = (
+    Path(__file__).resolve().parents[3]
+    / "coder"
+    / "dev-implement-plan"
+    / "scripts"
+    / "change_summary.py"
+)
 
 
 def git(repo: Path, *args: str) -> str:
@@ -78,6 +85,35 @@ class ReviewContextTests(unittest.TestCase):
             "status": "valid",
         }) + "\n", encoding="utf-8")
 
+    def create_secondary_handoff(self) -> tuple[Path, str]:
+        secondary = Path(self.tmp.name) / "docs"
+        subprocess.run(["git", "init", "-b", "main", str(secondary)], capture_output=True, check=True)
+        git(secondary, "config", "user.name", "Hermes Test")
+        git(secondary, "config", "user.email", "hermes-test@example.invalid")
+        git(secondary, "config", "core.autocrlf", "false")
+        (secondary / "doc.md").write_text("# base\n", encoding="utf-8")
+        git(secondary, "add", ".")
+        git(secondary, "commit", "-m", "base")
+        (secondary / "doc.md").write_text("# changed\n", encoding="utf-8")
+        env = os.environ.copy()
+        env["HERMES_DIFF_CHECK"] = str(DIFF_CHECK)
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(CHANGE_SUMMARY),
+                "--workspace",
+                str(secondary),
+                "--include",
+                "doc.md",
+            ],
+            text=True,
+            capture_output=True,
+            env=env,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        relative = os.path.relpath(secondary / "doc.md", self.repo)
+        return secondary, relative
+
     def test_matching_gate_reuses_verification(self):
         first = self.run_helper("change.txt")
         self.assertEqual(first.returncode, 0, first.stderr)
@@ -124,6 +160,41 @@ class ReviewContextTests(unittest.TestCase):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn('return git_paths(root, ["ls-files", "--others", "--exclude-standard"], includes)', source)
         self.assertNotIn("all_paths = git_paths", source)
+
+    def test_relative_sibling_repo_include_uses_secondary_handoff(self):
+        secondary, relative = self.create_secondary_handoff()
+        first = self.run_helper("change.txt")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.write_gate(["change.txt"], field(first.stdout, "CURRENT_SCOPE_SHA256"))
+
+        proc = self.run_helper("change.txt", relative)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("SECONDARY_WORKSPACE_COUNT=1", proc.stdout)
+        self.assertIn(f"SECONDARY_1_WORKSPACE={secondary.resolve()}", proc.stdout)
+        self.assertIn("SECONDARY_1_BRANCH=main", proc.stdout)
+        self.assertIn("SECONDARY_1_CODER_HANDOFF_GATE=PASS", proc.stdout)
+        self.assertIn("SECONDARY_1_CODER_HANDOFF_GATE_REASON=matched", proc.stdout)
+        self.assertIn("ALL_REVIEW_SCOPE_HANDOFFS_MATCH=true", proc.stdout)
+        self.assertIn("VERIFICATION_REUSE_ELIGIBLE=true", proc.stdout)
+
+    def test_secondary_handoff_detects_content_changed_after_coder_summary(self):
+        secondary, relative = self.create_secondary_handoff()
+        (secondary / "doc.md").write_text("# changed again\n", encoding="utf-8")
+
+        proc = self.run_helper("change.txt", relative)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("SECONDARY_1_CODER_HANDOFF_GATE=FAIL", proc.stdout)
+        self.assertIn("SECONDARY_1_CODER_HANDOFF_GATE_REASON=stale", proc.stdout)
+        self.assertIn("ALL_REVIEW_SCOPE_HANDOFFS_MATCH=false", proc.stdout)
+
+    def test_secondary_handoff_detects_branch_change(self):
+        secondary, relative = self.create_secondary_handoff()
+        git(secondary, "switch", "-c", "other")
+
+        proc = self.run_helper("change.txt", relative)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("SECONDARY_1_CODER_HANDOFF_GATE=FAIL", proc.stdout)
+        self.assertIn("SECONDARY_1_CODER_HANDOFF_GATE_REASON=branch_mismatch", proc.stdout)
 
 
 if __name__ == "__main__":

@@ -39,6 +39,14 @@ def resolve_commit(root: Path, value: str, label: str) -> str:
     return resolved.stdout.strip()
 
 
+def git_identity(root: Path) -> tuple[str, str]:
+    branch = run(["git", "-C", str(root), "branch", "--show-current"]).stdout.strip()
+    if not branch:
+        branch = "DETACHED"
+    head_sha = resolve_commit(root, "HEAD", "HEAD")
+    return branch, head_sha
+
+
 def split_includes(root: Path, values: list[str]) -> tuple[list[str], list[str]]:
     local: list[str] = []
     external: list[str] = []
@@ -47,8 +55,6 @@ def split_includes(root: Path, values: list[str]) -> tuple[list[str], list[str]]
         try:
             rel = candidate.relative_to(root)
         except ValueError:
-            if not Path(raw).is_absolute():
-                raise ReviewError(f"included path escapes workspace: {raw}")
             external.append(candidate.as_posix())
             continue
         local.append(rel.as_posix())
@@ -173,7 +179,15 @@ def load_handoff_state(root: Path) -> dict[str, object] | None:
     return data
 
 
-def handoff_gate(root: Path, current_paths: list[str], current_hash: str) -> tuple[bool, str]:
+def handoff_gate(
+    root: Path,
+    current_paths: list[str],
+    current_hash: str,
+    *,
+    branch: str | None = None,
+    head_sha: str | None = None,
+    require_identity: bool = False,
+) -> tuple[bool, str]:
     state = load_handoff_state(root)
     if not state:
         return False, "missing"
@@ -181,11 +195,83 @@ def handoff_gate(root: Path, current_paths: list[str], current_hash: str) -> tup
     state_hash = str(state["effective_scope_sha256"])
     if scope_sha256(root, state_paths) != state_hash:
         return False, "stale"
+    state_branch = state.get("branch")
+    state_head_sha = state.get("head_sha")
+    if require_identity and (not isinstance(state_branch, str) or not isinstance(state_head_sha, str)):
+        return False, "identity_missing"
+    if branch is not None and isinstance(state_branch, str) and state_branch != branch:
+        return False, "branch_mismatch"
+    if head_sha is not None and isinstance(state_head_sha, str) and state_head_sha != head_sha:
+        return False, "head_mismatch"
     if sorted(state_paths) != sorted(current_paths):
         return False, "scope_mismatch"
     if state_hash != current_hash:
         return False, "fingerprint_mismatch"
     return True, "matched"
+
+
+def filesystem_repo_root(path: Path) -> Path | None:
+    candidate = path if path.is_dir() else path.parent
+    candidate = candidate.resolve()
+    while not candidate.exists() and candidate != candidate.parent:
+        candidate = candidate.parent
+    for probe in (candidate, *candidate.parents):
+        if (probe / ".git").exists():
+            return probe.resolve()
+    return None
+
+
+def group_secondary_includes(paths: list[str]) -> tuple[dict[Path, list[str]], list[str]]:
+    grouped: dict[Path, list[str]] = {}
+    nongit: list[str] = []
+    for raw in paths:
+        path = Path(raw).resolve()
+        repo = filesystem_repo_root(path)
+        if repo is None:
+            nongit.append(path.as_posix())
+            continue
+        try:
+            relative = path.relative_to(repo).as_posix()
+        except ValueError:
+            nongit.append(path.as_posix())
+            continue
+        grouped.setdefault(repo, []).append(relative)
+    return {repo: sorted(dict.fromkeys(items)) for repo, items in grouped.items()}, sorted(dict.fromkeys(nongit))
+
+
+def secondary_context(root: Path, includes: list[str]) -> dict[str, object]:
+    ensure_safe_directory(root)
+    top = Path(run(["git", "-C", str(root), "rev-parse", "--show-toplevel"]).stdout.strip()).resolve()
+    if top != root:
+        raise ReviewError(f"secondary review scope must resolve to repository root: workspace={root}, root={top}")
+    branch, head_sha = git_identity(root)
+    raw_tracked = git_paths(root, ["diff", "--name-only", "HEAD"], includes)
+    effective_tracked, eol_only = classify_tracked(root, "HEAD", raw_tracked)
+    untracked = untracked_paths(root, includes)
+    effective_paths = sorted(set(effective_tracked) | set(untracked))
+    current_hash = scope_sha256(root, effective_paths)
+    gate_ok, gate_reason = handoff_gate(
+        root,
+        effective_paths,
+        current_hash,
+        branch=branch,
+        head_sha=head_sha,
+        require_identity=True,
+    )
+    check_whitespace(root, "HEAD", effective_tracked, untracked)
+    return {
+        "workspace": root,
+        "branch": branch,
+        "head_sha": head_sha,
+        "scope": includes,
+        "tracked": effective_tracked,
+        "eol_only": eol_only,
+        "untracked": untracked,
+        "effective_paths": effective_paths,
+        "scope_sha256": current_hash,
+        "gate_ok": gate_ok,
+        "gate_reason": gate_reason,
+    }
 
 
 def main() -> int:
@@ -211,7 +297,7 @@ def main() -> int:
     if args.expected_workspace and root != Path(args.expected_workspace).resolve():
         raise ReviewError(f"workspace mismatch: expected={Path(args.expected_workspace).resolve()}, actual={root}")
 
-    branch = run(["git", "-C", str(root), "branch", "--show-current"]).stdout.strip()
+    branch, head_sha = git_identity(root)
     if branch != args.expected_branch:
         raise ReviewError(f"branch mismatch: expected={args.expected_branch}, actual={branch}")
     if not re.fullmatch(r"[0-9a-fA-F]{40}", args.base_sha):
@@ -226,30 +312,50 @@ def main() -> int:
         raise ReviewError((ancestor.stderr or ancestor.stdout).strip() or "cannot compare base SHA to HEAD")
 
     includes, external = split_includes(root, args.include)
-    if not includes and not args.allow_full_scan:
+    if not includes and not external and not args.allow_full_scan:
         raise ReviewError(
             "scoped --include paths from the coder handoff are required for Standard Flow; "
             "use --allow-full-scan only for explicit diagnostics"
         )
 
-    raw_tracked = git_paths(root, ["diff", "--name-only", base_sha], includes)
-    effective_tracked, eol_only = classify_tracked(root, base_sha, raw_tracked)
-    untracked = untracked_paths(root, includes)
-    effective_paths = sorted(set(effective_tracked) | set(untracked))
-    current_hash = scope_sha256(root, effective_paths)
-    gate_ok, gate_reason = handoff_gate(root, effective_paths, current_hash)
+    primary_full_scan = args.allow_full_scan and not includes and not external
+    if includes or primary_full_scan:
+        raw_tracked = git_paths(root, ["diff", "--name-only", base_sha], includes)
+        effective_tracked, eol_only = classify_tracked(root, base_sha, raw_tracked)
+        untracked = untracked_paths(root, includes)
+        effective_paths = sorted(set(effective_tracked) | set(untracked))
+        current_hash = scope_sha256(root, effective_paths)
+        gate_ok, gate_reason = handoff_gate(
+            root,
+            effective_paths,
+            current_hash,
+            branch=branch,
+            head_sha=head_sha,
+        )
+        check_whitespace(root, base_sha, effective_tracked, untracked)
+    else:
+        effective_tracked = []
+        eol_only = []
+        untracked = []
+        effective_paths = []
+        current_hash = scope_sha256(root, effective_paths)
+        gate_ok, gate_reason = True, "no_primary_scope"
 
-    check_whitespace(root, base_sha, effective_tracked, untracked)
+    secondary_groups, nongit_external = group_secondary_includes(external)
+    secondary = [secondary_context(repo, scoped) for repo, scoped in sorted(secondary_groups.items(), key=lambda item: str(item[0]))]
+    secondary_gate_ok = all(bool(item["gate_ok"]) for item in secondary)
+    all_handoffs_match = gate_ok and secondary_gate_ok
 
     print(f"WORKSPACE={root}")
     print(f"BRANCH={branch}")
+    print(f"HEAD_SHA={head_sha}")
     print(f"BASE_BRANCH={args.base_branch}")
     print(f"BASE_BRANCH_SHA={base_branch_sha}")
     print(f"BASE_SHA={base_sha}")
     print(f"BASE_BRANCH_DRIFTED={'true' if base_branch_sha != base_sha else 'false'}")
-    print(f"SCAN_MODE={'scoped' if includes else 'full-diagnostic'}")
+    print(f"SCAN_MODE={'scoped' if includes or external else 'full-diagnostic'}")
     print(f"SCOPE={','.join(args.include) if args.include else 'ALL'}")
-    print(f"PRIMARY_SCOPE={','.join(includes) if includes else 'ALL'}")
+    print(f"PRIMARY_SCOPE={','.join(includes) if includes else 'NONE'}")
     print(f"TRACKED_CHANGED_COUNT={len(effective_tracked)}")
     for index, path in enumerate(effective_tracked, 1):
         print(f"TRACKED_{index}={path}")
@@ -266,12 +372,31 @@ def main() -> int:
     print(f"REVIEWER_TEST_RERUN_REQUIRED={'false' if gate_ok else 'true'}")
     if gate_ok:
         print(f"EFFECTIVE_SCOPE_SHA256={current_hash}")
+
+    print(f"SECONDARY_WORKSPACE_COUNT={len(secondary)}")
+    for index, item in enumerate(secondary, 1):
+        print(f"SECONDARY_{index}_WORKSPACE={item['workspace']}")
+        print(f"SECONDARY_{index}_BRANCH={item['branch']}")
+        print(f"SECONDARY_{index}_HEAD_SHA={item['head_sha']}")
+        print(f"SECONDARY_{index}_SCOPE={','.join(item['scope'])}")
+        print(f"SECONDARY_{index}_TRACKED_CHANGED_COUNT={len(item['tracked'])}")
+        print(f"SECONDARY_{index}_EOL_ONLY_COUNT={len(item['eol_only'])}")
+        print(f"SECONDARY_{index}_UNTRACKED_COUNT={len(item['untracked'])}")
+        print(f"SECONDARY_{index}_EFFECTIVE_PATHS={','.join(item['effective_paths'])}")
+        print(f"SECONDARY_{index}_CURRENT_SCOPE_SHA256={item['scope_sha256']}")
+        print(f"SECONDARY_{index}_CODER_HANDOFF_GATE={'PASS' if item['gate_ok'] else 'FAIL'}")
+        print(f"SECONDARY_{index}_CODER_HANDOFF_GATE_REASON={item['gate_reason']}")
+
+    print(f"ALL_REVIEW_SCOPE_HANDOFFS_MATCH={'true' if all_handoffs_match else 'false'}")
     print(f"EXTERNAL_INCLUDE_COUNT={len(external)}")
     for index, path in enumerate(external, 1):
         print(f"EXTERNAL_INCLUDE_{index}={path}")
     if external:
         print(f"EXTERNAL_SCOPE_SHA256={external_sha256(external)}")
-        print("EXTERNAL_SCOPE_POLICY=docs-or-secondary-workspace;do-not-invalidate-primary-executable-verification")
+        print("EXTERNAL_SCOPE_POLICY=secondary-git-handoff-or-docs;do-not-invalidate-primary-executable-verification")
+    print(f"NON_GIT_EXTERNAL_COUNT={len(nongit_external)}")
+    for index, path in enumerate(nongit_external, 1):
+        print(f"NON_GIT_EXTERNAL_{index}={path}")
     print("RERUN_POLICY=minimal-once;no-rerun-tasks-for-confidence")
     print("DIFF_CHECK=PASS")
     print("GIT_SAFE_DIRECTORY=true")

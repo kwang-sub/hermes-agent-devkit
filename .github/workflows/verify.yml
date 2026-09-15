@@ -145,6 +145,14 @@ jobs:
         shell: bash
         run: python3 custom-skills/coder/dev-implement-plan/tests/test_gradle_verification_cached.py
 
+      - name: Verify scoped change-summary handoff
+        shell: bash
+        run: python3 custom-skills/coder/dev-implement-plan/tests/test_change_summary.py
+
+      - name: Verify Gradle JUnit summary helper
+        shell: bash
+        run: python3 custom-skills/coder/dev-implement-plan/tests/test_gradle_test_summary.py
+
       - name: Verify hermes-java Gradle cache fallback
         shell: bash
         run: python3 scripts/test_hermes_java.py
