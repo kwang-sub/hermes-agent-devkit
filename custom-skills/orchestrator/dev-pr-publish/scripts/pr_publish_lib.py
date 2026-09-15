@@ -173,10 +173,20 @@ def publish_fingerprint(root: Path, includes: Iterable[str]) -> str:
 def ensure_gh(root: Path) -> None:
     if shutil.which("gh") is None:
         raise PublishError("gh CLI is required for PR publishing but was not found")
+
+    # The DevKit container is recreated during normal updates, while /opt/data is a
+    # persistent named volume. Keep GitHub CLI auth there unless the operator explicitly
+    # supplied another GH_CONFIG_DIR. HERMES_GH_CONFIG_DIR is an optional DevKit override.
+    if not os.environ.get("GH_CONFIG_DIR"):
+        os.environ["GH_CONFIG_DIR"] = os.environ.get("HERMES_GH_CONFIG_DIR", "/opt/data/gh")
+
     result = run(["gh", "auth", "status"], cwd=root, check=False)
     if result.returncode != 0:
         detail = (result.stdout + "\n" + result.stderr).strip()
-        raise PublishError(f"gh authentication is not ready\n{detail}")
+        raise PublishError(
+            "gh authentication is not ready; authenticate once with the same "
+            f"GH_CONFIG_DIR={os.environ['GH_CONFIG_DIR']}\n{detail}"
+        )
 
 
 def list_open_prs(root: Path, *, base: str, head: str) -> list[dict]:
@@ -225,7 +235,7 @@ def validate_conventional_commit(message: str) -> None:
     import re
 
     pattern = re.compile(
-        r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]+\))?!?:\s+\S.+$"
+        r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]+\))?!?:\s+\S.*$"
     )
     if not pattern.match(message.strip()):
         raise PublishError(
