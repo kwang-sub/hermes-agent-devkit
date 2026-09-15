@@ -1,0 +1,44 @@
+name: Verify Worktree Cleanup Skill
+
+on:
+  push:
+    branches:
+      - dev
+      - "fix/**"
+      - "feat/**"
+      - "feature/**"
+      - "perf/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-worktree-cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify Worktree cleanup regression tests
+        shell: bash
+        run: python3 custom-skills/orchestrator/dev-worktree-cleanup/tests/test_worktree_cleanup.py
+
+      - name: Verify custom skill contract
+        shell: bash
+        run: python3 scripts/check_skill_contract.py
+
+      - name: Verify update-devkit compatibility contract
+        shell: bash
+        run: python3 scripts/check_update_devkit_contract.py
+
+      - name: Verify Git publish bootstrap contract
+        shell: bash
+        run: python3 scripts/check_git_publish_bootstrap_contract.py
