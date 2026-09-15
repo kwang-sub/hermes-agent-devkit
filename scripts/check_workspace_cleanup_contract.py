@@ -62,17 +62,19 @@ def main() -> int:
     require(
         listing,
         (
-            '"worktree", "list", "--porcelain"',
+            "worktree_snapshot(root)",
+            "parse_worktrees(",
             'emit("LINKED_WORKTREES"',
             'emit("SELECTABLE_WORKTREES"',
             'emit("WORKTREES_JSON"',
-            'remote_branch_sha',
+            "remote_branch_sha",
         ),
         "worktree selection helper",
     )
     require(
         library,
         (
+            '["git", "worktree", "list", "--porcelain"]',
             "the primary worktree cannot be removed by dev-workspace-cleanup",
             "worktree contains modified or untracked files",
             "branch still has an open pull request",
@@ -100,8 +102,8 @@ def main() -> int:
             '"worktree", "remove"',
             '"update-ref", "-d"',
             '"worktree", "prune"',
-            'remote branch moved after cleanup approval',
-            'cleanup fingerprint changed after approval',
+            "remote branch moved after cleanup approval",
+            "cleanup fingerprint changed after approval",
             'emit("STATUS", "partial")',
         ),
         "cleanup mutation helper",
