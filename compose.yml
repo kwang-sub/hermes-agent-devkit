@@ -58,11 +58,13 @@ services:
       HERMES_HOST_WORKSPACE_PATH: ${HERMES_HOST_WORKSPACE_PATH:-D:/workspace}
       HERMES_CONTAINER_WORKSPACE_PATH: ${HERMES_CONTAINER_WORKSPACE_PATH:-/workspace}
 
-      # Git publish identity is declared in local .env and re-applied by update-devkit.ps1
-      # after the final container recreate. GitHub CLI auth is kept on the persistent
-      # hermes-data volume so `gh auth login` survives normal DevKit updates.
+      # Git publish identity is declared in local .env and re-applied by update-devkit.ps1.
+      # GIT_CONFIG_GLOBAL points at the persistent volume so routed Hermes profiles with a
+      # profile-specific HOME still resolve the exact same global user.name/user.email.
       HERMES_GIT_USER_NAME: ${HERMES_GIT_USER_NAME:-}
       HERMES_GIT_USER_EMAIL: ${HERMES_GIT_USER_EMAIL:-}
+      HERMES_GIT_CONFIG_GLOBAL: ${HERMES_GIT_CONFIG_GLOBAL:-/opt/data/gitconfig}
+      GIT_CONFIG_GLOBAL: ${HERMES_GIT_CONFIG_GLOBAL:-/opt/data/gitconfig}
       HERMES_GH_CONFIG_DIR: ${HERMES_GH_CONFIG_DIR:-/opt/data/gh}
       GH_CONFIG_DIR: ${HERMES_GH_CONFIG_DIR:-/opt/data/gh}
 
@@ -87,13 +89,11 @@ services:
       HERMES_DASHBOARD_BASIC_AUTH_SECRET: ${HERMES_DASHBOARD_SECRET:?Set HERMES_DASHBOARD_SECRET in .env}
       HERMES_DASHBOARD_PORT: ${HERMES_DASHBOARD_CONTAINER_PORT:-9119}
 
-      # Optional OpenAI-compatible API server. Disabled by default.
       API_SERVER_ENABLED: ${HERMES_API_SERVER_ENABLED:-false}
       API_SERVER_HOST: ${HERMES_API_SERVER_HOST:-0.0.0.0}
       API_SERVER_PORT: ${HERMES_API_SERVER_CONTAINER_PORT:-8642}
       API_SERVER_KEY: ${HERMES_API_SERVER_KEY:-}
 
-      # Jira Cloud
       JIRA_BASE_URL: ${JIRA_BASE_URL:-}
       JIRA_EMAIL: ${JIRA_EMAIL:-}
       JIRA_API_TOKEN: ${JIRA_API_TOKEN:-}
@@ -102,22 +102,15 @@ services:
       JIRA_INCLUDE_FIELD_NAMES: ${JIRA_INCLUDE_FIELD_NAMES:-}
       JIRA_VERIFY_SSL: ${JIRA_VERIFY_SSL:-true}
 
-      # Optional Figma read-only design context. Tokens stay in local .env.
       FIGMA_ACCESS_TOKEN: ${FIGMA_ACCESS_TOKEN:-}
       FIGMA_OAUTH_TOKEN: ${FIGMA_OAUTH_TOKEN:-}
-
-      # Optional Context7 API key. The official-doc skill remains read-only and
-      # falls back to official upstream/local types when the provider is unavailable.
       CONTEXT7_API_KEY: ${CONTEXT7_API_KEY:-}
 
-      # Flow execution model policy. Actual values are resolved at approval time
-      # and pinned onto the Kanban task; changing env affects only new approvals.
       HERMES_FLOW_MODEL_DEFAULT_PROVIDER: ${HERMES_FLOW_MODEL_DEFAULT_PROVIDER:-openai-codex}
       HERMES_FLOW_MODEL_DEFAULT: ${HERMES_FLOW_MODEL_DEFAULT:-gpt-5.6-terra}
       HERMES_FLOW_MODEL_PREMIUM_PROVIDER: ${HERMES_FLOW_MODEL_PREMIUM_PROVIDER:-openai-codex}
       HERMES_FLOW_MODEL_PREMIUM: ${HERMES_FLOW_MODEL_PREMIUM:-gpt-6-astra}
 
-      # Optional Kanban terminal-event notifications. Platform switching is env-only.
       HERMES_KANBAN_NOTIFY_ENABLED: ${HERMES_KANBAN_NOTIFY_ENABLED:-false}
       HERMES_KANBAN_NOTIFY_PLATFORM: ${HERMES_KANBAN_NOTIFY_PLATFORM:-discord}
       HERMES_KANBAN_NOTIFY_TARGET: ${HERMES_KANBAN_NOTIFY_TARGET:-}
@@ -125,10 +118,8 @@ services:
       HERMES_KANBAN_NOTIFY_CHAT_TYPE: ${HERMES_KANBAN_NOTIFY_CHAT_TYPE:-channel}
       HERMES_KANBAN_NOTIFY_PROFILE: ${HERMES_KANBAN_NOTIFY_PROFILE:-default}
 
-      # Discord gateway credentials. Keep the token only in local .env.
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       DISCORD_HOME_CHANNEL: ${HERMES_KANBAN_NOTIFY_TARGET:-}
-
       HERMES_WORK_ITEM_DIR: ${HERMES_WORK_ITEM_DIR:-/opt/data/work-items}
 
     ports:
