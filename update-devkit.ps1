@@ -23,6 +23,7 @@ Default behavior:
 10. Verify the running container contract.
 11. If verification fails, perform one normal cached rebuild + recreate repair,
     reconcile profiles again, and verify once more unless -NoRepair is specified.
+12. Re-apply Git commit identity from .env and ensure persistent GitHub CLI auth.
 
 The process-local overrides are restored before the script exits.
 #>
@@ -36,7 +37,8 @@ param(
     [switch]$ForceRebuild,
     [switch]$NoRepair,
     [switch]$SkipVerify,
-    [switch]$SkipProfileInit
+    [switch]$SkipProfileInit,
+    [switch]$SkipGitHubAuth
 )
 
 Set-StrictMode -Version 2.0
@@ -139,6 +141,128 @@ function Test-ContainerRunning {
     return (Get-CapturedText -Output $Output).ToLowerInvariant() -eq "true"
 }
 
+function Get-ContainerEnvValue {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ContainerName,
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $PreviousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $Output = & docker exec --user hermes $ContainerName printenv $Name 2>$null
+        $ExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $PreviousPreference
+    }
+
+    if ($ExitCode -ne 0) {
+        return ""
+    }
+    return Get-CapturedText -Output $Output
+}
+
+function Test-GitHubAuthentication {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ContainerName
+    )
+
+    $PreviousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $Output = & docker exec --user hermes $ContainerName gh auth status --hostname github.com 2>&1
+        $ExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $PreviousPreference
+    }
+
+    return [pscustomobject]@{
+        Ready = ($ExitCode -eq 0)
+        Detail = Get-CapturedText -Output $Output
+    }
+}
+
+function Initialize-GitPublishing {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ContainerName,
+        [switch]$SkipAuthentication
+    )
+
+    $GitUserName = Get-ContainerEnvValue -ContainerName $ContainerName -Name "HERMES_GIT_USER_NAME"
+    $GitUserEmail = Get-ContainerEnvValue -ContainerName $ContainerName -Name "HERMES_GIT_USER_EMAIL"
+    $GhConfigDir = Get-ContainerEnvValue -ContainerName $ContainerName -Name "GH_CONFIG_DIR"
+
+    if ([string]::IsNullOrWhiteSpace($GitUserName) -or [string]::IsNullOrWhiteSpace($GitUserEmail)) {
+        throw "Git publish identity is not configured. Set HERMES_GIT_USER_NAME and HERMES_GIT_USER_EMAIL in .env, then re-run .\update-devkit.ps1."
+    }
+    if ([string]::IsNullOrWhiteSpace($GhConfigDir)) {
+        throw "GH_CONFIG_DIR is not configured in the running container. Rebuild from the current compose.yml."
+    }
+
+    Invoke-Native -FilePath "docker" -Arguments @(
+        "exec", "--user", "hermes", $ContainerName,
+        "/usr/local/bin/git", "config", "--global", "user.name", $GitUserName
+    )
+    Invoke-Native -FilePath "docker" -Arguments @(
+        "exec", "--user", "hermes", $ContainerName,
+        "/usr/local/bin/git", "config", "--global", "user.email", $GitUserEmail
+    )
+
+    $ResolvedName = Get-CapturedText -Output (Invoke-NativeCapture -FilePath "docker" -Arguments @(
+        "exec", "--user", "hermes", $ContainerName,
+        "/usr/local/bin/git", "config", "--global", "--get", "user.name"
+    ))
+    $ResolvedEmail = Get-CapturedText -Output (Invoke-NativeCapture -FilePath "docker" -Arguments @(
+        "exec", "--user", "hermes", $ContainerName,
+        "/usr/local/bin/git", "config", "--global", "--get", "user.email"
+    ))
+
+    if ($ResolvedName -ne $GitUserName -or $ResolvedEmail -ne $GitUserEmail) {
+        throw "Git publish identity verification failed after applying .env values."
+    }
+
+    Write-Host "[OK] Git commit identity -> $ResolvedName <$ResolvedEmail>"
+    Write-Host "[OK] GitHub CLI config -> $GhConfigDir"
+
+    if ($SkipAuthentication) {
+        Write-Host "[SKIP] GitHub CLI authentication check disabled by -SkipGitHubAuth."
+        return [pscustomobject]@{
+            IdentityConfigured = $true
+            GitHubAuthReady = $false
+        }
+    }
+
+    $Auth = Test-GitHubAuthentication -ContainerName $ContainerName
+    if (-not $Auth.Ready) {
+        Write-Host "[AUTH] GitHub CLI authentication is missing. Starting interactive device login."
+        Write-Host "[AUTH] Credentials will be stored under $GhConfigDir on the persistent hermes-data volume."
+        Invoke-Native -FilePath "docker" -Arguments @(
+            "exec", "-it", "--user", "hermes", $ContainerName,
+            "gh", "auth", "login",
+            "--hostname", "github.com",
+            "--git-protocol", "https",
+            "--web"
+        )
+
+        $Auth = Test-GitHubAuthentication -ContainerName $ContainerName
+        if (-not $Auth.Ready) {
+            throw "GitHub CLI authentication is still unavailable after interactive login.`n$($Auth.Detail)"
+        }
+    }
+
+    Write-Host "[OK] GitHub CLI authentication -> github.com"
+    return [pscustomobject]@{
+        IdentityConfigured = $true
+        GitHubAuthReady = $true
+    }
+}
+
 function Invoke-RuntimeVerification {
     param(
         [Parameter(Mandatory = $true)]
@@ -190,6 +314,8 @@ $ImageRebuilt = $false
 $ContainerRecreated = $false
 $ProfilesReconciled = $false
 $AutomaticRepairUsed = $false
+$GitIdentityConfigured = $false
+$GitHubAuthReady = $false
 $PreviousHermesBaseImageExists = Test-Path Env:HERMES_BASE_IMAGE
 $PreviousHermesBaseImage = if ($PreviousHermesBaseImageExists) { $env:HERMES_BASE_IMAGE } else { $null }
 $PreviousWindowsTempPathExists = Test-Path Env:HERMES_WINDOWS_TEMP_CONTAINER_PATH
@@ -364,6 +490,11 @@ try {
         }
     }
 
+    Write-Host "[RUN ] Git publish identity/auth bootstrap"
+    $GitPublishState = Initialize-GitPublishing -ContainerName $Container -SkipAuthentication:$SkipGitHubAuth
+    $GitIdentityConfigured = [bool]$GitPublishState.IdentityConfigured
+    $GitHubAuthReady = [bool]$GitPublishState.GitHubAuthReady
+
     Write-Host ""
     Write-Host "[PASS] DevKit update completed."
     Write-Host "UPDATED_FROM=$BeforeSha"
@@ -374,6 +505,8 @@ try {
     Write-Host "CONTAINER_RECREATED=$($ContainerRecreated.ToString().ToLowerInvariant())"
     Write-Host "PROFILES_RECONCILED=$($ProfilesReconciled.ToString().ToLowerInvariant())"
     Write-Host "AUTOMATIC_REPAIR_USED=$($AutomaticRepairUsed.ToString().ToLowerInvariant())"
+    Write-Host "GIT_IDENTITY_CONFIGURED=$($GitIdentityConfigured.ToString().ToLowerInvariant())"
+    Write-Host "GITHUB_AUTH_READY=$($GitHubAuthReady.ToString().ToLowerInvariant())"
 }
 finally {
     if ($PreviousHermesBaseImageExists) {
