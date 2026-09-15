@@ -1,0 +1,48 @@
+name: Verify Workspace Cleanup Skill
+
+on:
+  push:
+    branches:
+      - dev
+      - "fix/**"
+      - "feat/**"
+      - "feature/**"
+      - "perf/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-workspace-cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify Workspace cleanup regression tests
+        shell: bash
+        run: python3 custom-skills/orchestrator/dev-workspace-cleanup/tests/test_workspace_cleanup.py
+
+      - name: Verify Workspace cleanup safety contract
+        shell: bash
+        run: python3 scripts/check_workspace_cleanup_contract.py
+
+      - name: Verify custom skill contract
+        shell: bash
+        run: python3 scripts/check_skill_contract.py
+
+      - name: Verify update-devkit compatibility contract
+        shell: bash
+        run: python3 scripts/check_update_devkit_contract.py
+
+      - name: Verify Git publish bootstrap contract
+        shell: bash
+        run: python3 scripts/check_git_publish_bootstrap_contract.py
