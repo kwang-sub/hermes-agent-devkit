@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import os
 import subprocess
 import sys
 import tempfile
@@ -72,7 +73,14 @@ class PrepareDispatchTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tempdir.cleanup()
 
-    def run_helper(self, task_key: str, mode: str, *extra: str) -> subprocess.CompletedProcess[str]:
+    def run_helper(
+        self,
+        task_key: str,
+        mode: str,
+        *extra: str,
+        workspace: Path | None = None,
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
                 sys.executable,
@@ -80,7 +88,7 @@ class PrepareDispatchTests(unittest.TestCase):
                 "--task-key",
                 task_key,
                 "--workspace",
-                str(self.repo),
+                str(workspace or self.repo),
                 "--branch-mode",
                 mode,
                 *extra,
@@ -88,7 +96,14 @@ class PrepareDispatchTests(unittest.TestCase):
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=env,
         )
+
+    def create_linked_worktree(self, branch: str = "feature/follow-up") -> Path:
+        worktree = Path(self.tempdir.name) / "linked-worktree"
+        git(self.repo, "branch", branch)
+        git(self.repo, "worktree", "add", str(worktree), branch)
+        return worktree
 
     def assert_timing_output(self, text: str) -> None:
         self.assertIn("GIT_TRACKED_SCAN_SECONDS=", text)
@@ -101,6 +116,8 @@ class PrepareDispatchTests(unittest.TestCase):
         proc = self.run_helper("CALC-001", "current")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("BOARD=test-project", proc.stdout)
+        self.assertIn("PROJECT_CONTEXT_SOURCE=primary-worktree", proc.stdout)
+        self.assertIn(f"PROJECT_REPOSITORY={self.repo.resolve()}", proc.stdout)
         self.assertIn("BRANCH_MODE=current", proc.stdout)
         self.assertIn("BRANCH=main", proc.stdout)
         self.assertIn("CREATED_BRANCH=false", proc.stdout)
@@ -125,6 +142,76 @@ class PrepareDispatchTests(unittest.TestCase):
             git(self.repo, "branch", "--show-current").stdout.strip(),
             "feature/CALC-002",
         )
+
+    def test_linked_worktree_uses_primary_repository_metadata_without_local_metadata(self) -> None:
+        worktree = self.create_linked_worktree()
+        # Model the DevKit's ignored/local .hermes metadata contract: the linked
+        # worktree does not need its own project.yaml even though the primary does.
+        (worktree / ".hermes" / "project.yaml").unlink()
+
+        proc = self.run_helper(
+            "FOLLOW-UP-001",
+            "current",
+            "--confirmed-dirty",
+            workspace=worktree,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("PROJECT_ID=test-project", proc.stdout)
+        self.assertIn("BOARD=test-project", proc.stdout)
+        self.assertIn("BASE_BRANCH=main", proc.stdout)
+        self.assertIn(f"PROJECT_REPOSITORY={self.repo.resolve()}", proc.stdout)
+        self.assertIn(f"PROJECT_METADATA_FILE={(self.repo / '.hermes' / 'project.yaml').resolve()}", proc.stdout)
+        self.assertIn(f"WORKSPACE_PATH={worktree.resolve()}", proc.stdout)
+        self.assertIn("LINKED_WORKTREE=true", proc.stdout)
+        self.assertIn("BRANCH=feature/follow-up", proc.stdout)
+        self.assertIn("STATUS=prepared", proc.stdout)
+
+    def test_linked_worktree_ignores_stale_workspace_project_metadata(self) -> None:
+        worktree = self.create_linked_worktree("feature/stale-metadata")
+        workspace_metadata = worktree / ".hermes" / "project.yaml"
+        workspace_metadata.write_text(
+            """# managed-by: dev-project-bootstrap
+version: 2
+project:
+  id: wrong-project
+  name: wrong-project
+  repository: /tmp/wrong
+kanban:
+  board: wrong-board
+git:
+  default_base_branch: wrong-base
+profiles:
+  coder: coder
+  reviewer: reviewer
+""",
+            encoding="utf-8",
+        )
+        proc = self.run_helper(
+            "FOLLOW-UP-002",
+            "current",
+            "--confirmed-dirty",
+            workspace=worktree,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("PROJECT_ID=test-project", proc.stdout)
+        self.assertIn("BOARD=test-project", proc.stdout)
+        self.assertNotIn("BOARD=wrong-board", proc.stdout)
+        self.assertIn(f"WORKSPACE_METADATA_IGNORED={workspace_metadata.resolve()}", proc.stdout)
+
+    def test_process_local_safe_directory_supports_dubious_owner_simulation(self) -> None:
+        worktree = self.create_linked_worktree("feature/safe-directory")
+        env = os.environ.copy()
+        env["GIT_TEST_ASSUME_DIFFERENT_OWNER"] = "1"
+        proc = self.run_helper(
+            "FOLLOW-UP-003",
+            "current",
+            "--confirmed-dirty",
+            workspace=worktree,
+            env=env,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("PROJECT_CONTEXT_SOURCE=primary-worktree", proc.stdout)
+        self.assertIn("STATUS=prepared", proc.stdout)
 
     def test_effective_dirty_workspace_requires_confirmation(self) -> None:
         (self.repo / "README.md").write_text("dirty\n", encoding="utf-8")
@@ -194,6 +281,8 @@ class PrepareDispatchTests(unittest.TestCase):
         self.assertNotIn('"diff", "--quiet", "--ignore-cr-at-eol"', source)
         self.assertIn('if args.confirmed_dirty:', source)
         self.assertIn('scan_mode = "skipped-approved-preservation"', source)
+        self.assertIn("add_process_safe_directory", source)
+        self.assertNotIn("git config --global", source)
 
     def test_unsafe_task_key_is_rejected(self) -> None:
         proc = self.run_helper("unsafe/key", "current")
