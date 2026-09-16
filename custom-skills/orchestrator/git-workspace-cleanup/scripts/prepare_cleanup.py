@@ -44,9 +44,12 @@ def main() -> int:
             explicit_base=args.base_branch,
         )
         if worktree_only is not None:
+            tracked_allowed = worktree_only.tracked_previous_cleanup_allowed
+            scope = "worktree-and-tracked-branch" if tracked_allowed else "worktree-only"
             emit("STATUS", "ready")
-            emit("CLEANUP_SCOPE", "worktree-only")
+            emit("CLEANUP_SCOPE", scope)
             emit("BRANCH_CLEANUP_ALLOWED", "false")
+            emit("TRACKED_BRANCH_CLEANUP_ALLOWED", str(tracked_allowed).lower())
             emit("REPO_ROOT", worktree_only.repo_root)
             emit("PRIMARY_WORKTREE", worktree_only.main_worktree)
             emit("WORKTREE", worktree_only.worktree)
@@ -54,19 +57,34 @@ def main() -> int:
             emit("BRANCH", worktree_only.branch)
             emit("HEAD_SHA", worktree_only.head_sha)
             emit("BASE_BRANCH", worktree_only.base_branch)
-            emit("BASE_REF", "")
-            emit("BASE_SHA", "")
+            emit("BASE_REF", worktree_only.base_ref)
+            emit("BASE_SHA", worktree_only.base_sha)
             emit("REMOTE", worktree_only.remote)
             emit("REMOTE_URL", worktree_only.remote_url)
             emit("REMOTE_BRANCH", f"{worktree_only.remote}/{worktree_only.branch}")
             emit("REMOTE_BRANCH_EXISTS", str(bool(worktree_only.remote_branch_sha)).lower())
             emit("REMOTE_BRANCH_SHA", worktree_only.remote_branch_sha)
-            emit("GITHUB_STATUS", "not-required")
+            emit("GITHUB_STATUS", worktree_only.github_status)
             emit("MERGE_EVIDENCE", "base-branch-worktree")
             emit("PR_NUMBER", "")
             emit("PR_URL", "")
             emit("PR_MERGED_AT", "")
             emit("REMOTE_DELETE_AVAILABLE", "false")
+            emit("TRACKED_PREVIOUS_BRANCH", worktree_only.tracked_previous_branch)
+            emit("TRACKED_PREVIOUS_HEAD_SHA", worktree_only.tracked_previous_head_sha)
+            emit(
+                "TRACKED_PREVIOUS_REMOTE_BRANCH",
+                f"{worktree_only.remote}/{worktree_only.tracked_previous_branch}"
+                if worktree_only.tracked_previous_branch else "",
+            )
+            emit("TRACKED_PREVIOUS_REMOTE_EXISTS", str(bool(worktree_only.tracked_previous_remote_sha)).lower())
+            emit("TRACKED_PREVIOUS_REMOTE_SHA", worktree_only.tracked_previous_remote_sha)
+            emit("TRACKED_PREVIOUS_MERGE_EVIDENCE", worktree_only.tracked_previous_merge_evidence)
+            emit("TRACKED_PREVIOUS_PR_NUMBER", worktree_only.tracked_previous_pr.number if worktree_only.tracked_previous_pr else "")
+            emit("TRACKED_PREVIOUS_PR_URL", worktree_only.tracked_previous_pr.url if worktree_only.tracked_previous_pr else "")
+            emit("TRACKED_PREVIOUS_REMOTE_DELETE_AVAILABLE", str(worktree_only.tracked_previous_remote_delete_available).lower())
+            emit("TRACKED_PREVIOUS_REASON", worktree_only.tracked_previous_reason)
+            emit("TRACKED_REFLOG_MESSAGE", worktree_only.tracked_reflog_message)
             emit("CLEANUP_FINGERPRINT", worktree_only.fingerprint)
             return 0
 
@@ -78,6 +96,7 @@ def main() -> int:
         emit("STATUS", "ready")
         emit("CLEANUP_SCOPE", "worktree-and-branch")
         emit("BRANCH_CLEANUP_ALLOWED", "true")
+        emit("TRACKED_BRANCH_CLEANUP_ALLOWED", "false")
         emit("REPO_ROOT", state.repo_root)
         emit("COMMON_GIT_DIR", state.common_git_dir)
         emit("PRIMARY_WORKTREE", state.main_worktree)
@@ -99,6 +118,7 @@ def main() -> int:
         emit("PR_URL", state.pr.url if state.pr else "")
         emit("PR_MERGED_AT", state.pr.merged_at if state.pr else "")
         emit("REMOTE_DELETE_AVAILABLE", str(state.remote_delete_available).lower())
+        emit("TRACKED_PREVIOUS_BRANCH", "")
         emit("CLEANUP_FINGERPRINT", state.fingerprint)
         return 0
     except CleanupError as exc:
