@@ -50,7 +50,7 @@ JPA physical mapping
 
 ### Coder physical phase
 
-승인된 logical model이 실제 schema 변경으로 이어지면 Coder의 role-specific `dev-db-migration`이 다음을 담당한다.
+승인된 logical model이 실제 schema 변경으로 이어지면 Coder는 shared/pinnable `dev-db-migration` capability를 실행 책임으로 사용해 다음을 담당한다.
 
 ```text
 Target DBMS/version 확인
@@ -61,7 +61,7 @@ project-controlled local/test/CI migration 검증
 JPA physical mapping 영향 반영
 ```
 
-`dev-db-schema`는 Coder/Reviewer가 physical schema 판단에 사용하는 shared support capability이며 DBA logical output의 범위를 확장하지 않는다.
+`dev-db-schema`는 Coder/Reviewer가 physical schema 판단에 사용하는 shared support capability이며 DBA logical output의 범위를 확장하지 않는다. `dev-db-migration`도 dispatch에서 Coder/Reviewer가 동일 계약을 볼 수 있도록 shared에 두되, **migration 파일 작성·변경의 실행 권한은 Coder에만 있다.**
 
 ## Task Classification
 
@@ -97,7 +97,7 @@ Vendor가 `unknown`인데 vendor-specific DDL/type/index가 필요한 경우 DBA
 SQL/query semantics/dialect → dev-db-query
 execution plan/query tuning/locking/statistics → dev-db-performance
 승인 logical model의 physical schema 판단 → Coder가 dev-db-schema lazy-load
-DDL/backfill/Flyway/Liquibase/deployment → Coder role의 dev-db-migration
+DDL/backfill/Flyway/Liquibase/deployment → Coder가 shared dev-db-migration 실행
 JPA/Repository/QueryDSL/Converter/Paging → dev-spring-data
 ```
 
@@ -181,11 +181,11 @@ Target DBMS / Version: <evidence or to-be-detected>
 Physicalization Required: YES
 ```
 
-이후 Coder가 `dev-db-migration`을 로드한다.
+이후 Coder가 `dev-db-migration`을 실행한다.
 
 ## Reviewer 실행
 
-Reviewer는 diff-first 계약을 유지하면서 다음을 확인한다.
+Reviewer는 shared `dev-db-migration` 계약을 read-only 검토 기준으로 볼 수 있지만 migration 파일을 수정하지 않는다. 기존 diff-first 계약을 유지하면서 다음을 확인한다.
 
 - Subject Area와 logical table 책임이 Use Case 근거를 갖는가.
 - logical DBML에 `tbl_`/vendor DDL/migration 구현이 섞이지 않았는가.
@@ -219,4 +219,4 @@ Residual Risk:
 
 ## 운영 경계
 
-이 Skill의 DBA responsibility는 Design-Time logical modeling이다. 운영 DB에 직접 DDL/DML을 실행하거나 backup/restore/session kill/index maintenance를 수행하지 않는다. Coder migration skill도 승인 없는 운영 DB 직접 변경 권한을 부여하지 않는다.
+이 Skill의 DBA responsibility는 Design-Time logical modeling이다. 운영 DB에 직접 DDL/DML을 실행하거나 backup/restore/session kill/index maintenance를 수행하지 않는다. Coder migration execution도 승인 없는 운영 DB 직접 변경 권한을 부여하지 않는다.

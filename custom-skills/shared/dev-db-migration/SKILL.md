@@ -1,35 +1,59 @@
 ---
 name: dev-db-migration
-description: Coder가 승인된 DBA logical model을 target DBMS 물리 schema로 변환하고 기존 migration convention을 존중해 Flyway-first/Liquibase-compatible migration을 작성·검증하는 implementation skill.
+description: 승인된 DBA logical model을 target DBMS 물리 schema로 변환하고 기존 migration convention을 존중해 Flyway-first/Liquibase-compatible migration을 작성·검증할 때 Coder가 실행하고 Reviewer가 read-only 기준으로 공유하는 DB migration capability.
 version: 0.2.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, coder, database, physicalization, migration, flyway, liquibase, ddl, compatibility]
+    tags: [dev, database, physicalization, migration, flyway, liquibase, ddl, compatibility]
     related_skills: [dev-data-feature, dev-data-modeling, dev-db-schema, dev-spring-data]
     requires_tools: [terminal, skill_view]
 ---
 
 # dev-db-migration
 
-Coder 전용 DB physicalization / migration implementation skill이다.
+shared/pinnable DB physicalization / migration capability다. **migration 파일 작성·변경의 실행 책임은 Coder**, Reviewer는 동일 계약을 read-only 검토 기준으로 사용한다.
 
 ```text
 APPROVED DBA Logical Model
         ↓
-Physicalization
+Coder Physicalization
         ↓
 Flyway / Liquibase Migration
         ↓
 Migration Verification
         ↓
 JPA / Application Mapping
+        ↓
+Reviewer read-only verification
 ```
+
+## Role Boundary
+
+### Coder
+
+```text
+physical schema 결정
+migration/changelog 작성·수정
+project-controlled local/test/CI migration 검증
+JPA physical mapping 반영
+```
+
+### Reviewer
+
+```text
+logical ↔ physical mapping 검토
+migration naming/version/order/compatibility 검토
+검증 evidence 재사용 또는 필요한 read-only verification
+application/migration source 수정 금지
+```
+
+운영 DB에 직접 ad-hoc DDL을 실행하는 권한을 의미하지 않는다. Production 적용은 프로젝트의 승인된 deployment/migration pipeline을 따른다.
 
 ## Preconditions
 
-새 table 또는 의미 있는 schema 변경은 구현 전에 다음 evidence를 요구한다.
+새 table 또는 의미 있는 schema 변경은 Coder 구현 전에 다음 evidence를 요구한다.
 
 ```text
 Data Model Status: APPROVED
@@ -57,8 +81,6 @@ project-controlled local/test/CI migration 실행·검증
 JPA @Table/@Column 등 persistence mapping 영향 반영
 ```
 
-운영 DB에 직접 ad-hoc DDL을 실행하는 권한을 의미하지 않는다. Production 적용은 프로젝트의 승인된 deployment/migration pipeline을 따른다.
-
 ## Migration Tool Resolution
 
 항상 기존 프로젝트 evidence를 먼저 본다.
@@ -77,7 +99,7 @@ Flyway + Liquibase      → CONFLICT / BLOCK
 먼저 bounded helper를 실행할 수 있다.
 
 ```bash
-python3 /opt/custom-skills/coder/dev-db-migration/scripts/migration_guard.py \
+python3 /opt/custom-skills/shared/dev-db-migration/scripts/migration_guard.py \
   --root "<module-or-project-root>" \
   --json
 ```
@@ -117,7 +139,7 @@ Legacy Logical Table: investment_account
 helper로 deterministic mapping을 확인할 수 있다.
 
 ```bash
-python3 /opt/custom-skills/coder/dev-db-migration/scripts/migration_guard.py \
+python3 /opt/custom-skills/shared/dev-db-migration/scripts/migration_guard.py \
   --root "<root>" \
   --subject-area investment \
   --logical-table investment_account
@@ -125,7 +147,7 @@ python3 /opt/custom-skills/coder/dev-db-migration/scripts/migration_guard.py \
 
 ## Physical Schema Decision
 
-필요할 때 `skill_view("dev-db-schema")`를 로드한다.
+Coder가 실제 물리 판단이 필요할 때 `skill_view("dev-db-schema")`를 로드한다.
 
 ```text
 Approved logical intent
@@ -170,7 +192,7 @@ V20260918142351__add_holding_account_fk.sql
 새 version 발급:
 
 ```bash
-python3 /opt/custom-skills/coder/dev-db-migration/scripts/migration_guard.py \
+python3 /opt/custom-skills/shared/dev-db-migration/scripts/migration_guard.py \
   --root "<root>" \
   --allocate-flyway-version
 ```
@@ -268,7 +290,7 @@ Flyway/Liquibase + schema.sql 이중 schema ownership
 
 ## Verification Gate
 
-가능한 범위에서 다음을 수행한다.
+Coder는 가능한 범위에서 다음을 수행하고 Reviewer는 그 evidence와 실제 diff를 대조한다.
 
 ```text
 1. migration tool/convention detection
