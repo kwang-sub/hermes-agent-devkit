@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SKILL_ROOT = ROOT / "custom-skills" / "orchestrator" / "git-workspace-cleanup"
 SKILL = SKILL_ROOT / "SKILL.md"
@@ -46,13 +45,13 @@ def main() -> int:
     tracked_tests = read(TRACKED_TESTS)
 
     require(skill, (
-        "name: git-workspace-cleanup", "/git-workspace-cleanup", "[Worktree 목록]",
+        "name: git-workspace-cleanup", "/git-workspace-cleanup", "linked worktree 목록",
         "[Worktree 선택]", "[Worktree 정리 Preview]", "[Worktree 정리 승인]",
         "Tracked Previous Branch", "삭제 Branch:", "worktree-and-tracked-branch",
         "TRACKED_BRANCH_CLEANUP_ALLOWED=true", "TRACKED_PREVIOUS_BRANCH",
-        "HEAD reflog", "git-ancestor", "github-pr-merged", "--delete-tracked-branch",
-        "--delete-remote", "git update-ref -d", "git-pr-publish",
-        "Preview에 이름을 표시하지 않은 branch 삭제",
+        "HEAD reflog", "GitHub merged PR + exact PR head SHA", "git-ancestor",
+        "--delete-tracked-branch", "--delete-remote", "git update-ref -d",
+        "git-pr-publish", "Preview에 이름을 표시하지 않은 branch 삭제",
     ), "git-workspace-cleanup skill")
 
     require(listing, (
