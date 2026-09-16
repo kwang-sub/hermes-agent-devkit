@@ -1,4 +1,4 @@
-name: Verify Workspace Cleanup Skill
+name: Verify Git Workspace Cleanup Skill
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
       - "fix/**"
       - "feat/**"
       - "feature/**"
+      - "refactor/**"
       - "perf/**"
   pull_request:
 
@@ -29,7 +30,9 @@ jobs:
 
       - name: Verify Workspace cleanup regression tests
         shell: bash
-        run: python3 custom-skills/orchestrator/dev-workspace-cleanup/tests/test_workspace_cleanup.py
+        run: |
+          python3 custom-skills/orchestrator/git-workspace-cleanup/tests/test_workspace_cleanup.py
+          python3 custom-skills/orchestrator/git-workspace-cleanup/tests/test_tracked_branch_cleanup.py
 
       - name: Verify Workspace cleanup safety contract
         shell: bash
