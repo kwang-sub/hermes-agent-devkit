@@ -1,4 +1,4 @@
-name: Verify PR Publish Skill
+name: Verify Git PR Publish Skill
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
       - "fix/**"
       - "feat/**"
       - "feature/**"
+      - "refactor/**"
       - "perf/**"
   pull_request:
 
@@ -27,9 +28,9 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Verify PR publish regression tests
+      - name: Verify Git PR publish regression tests
         shell: bash
-        run: python3 custom-skills/orchestrator/dev-pr-publish/tests/test_pr_publish.py
+        run: python3 custom-skills/orchestrator/git-pr-publish/tests/test_pr_publish.py
 
       - name: Verify custom skill contract
         shell: bash
@@ -38,3 +39,7 @@ jobs:
       - name: Verify update-devkit contract remains compatible
         shell: bash
         run: python3 scripts/check_update_devkit_contract.py
+
+      - name: Verify Git publish bootstrap contract
+        shell: bash
+        run: python3 scripts/check_git_publish_bootstrap_contract.py
