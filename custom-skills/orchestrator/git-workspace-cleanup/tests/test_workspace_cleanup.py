@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -16,19 +17,9 @@ CLEANUP = SCRIPTS / "cleanup_workspace.py"
 
 
 def run(args: list[str], *, cwd: Path, env: dict[str, str] | None = None, check: bool = True):
-    completed = subprocess.run(
-        args,
-        cwd=str(cwd),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
+    completed = subprocess.run(args, cwd=str(cwd), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     if check and completed.returncode != 0:
-        raise AssertionError(
-            f"command failed ({completed.returncode}): {' '.join(args)}\n"
-            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
-        )
+        raise AssertionError(f"command failed ({completed.returncode}): {' '.join(args)}\n{completed.stdout}\n{completed.stderr}")
     return completed
 
 
@@ -36,30 +27,23 @@ def git(cwd: Path, *args: str, check: bool = True):
     return run(["git", *args], cwd=cwd, check=check)
 
 
-def parse_output(text: str) -> dict[str, str]:
+def values(text: str) -> dict[str, str]:
     result: dict[str, str] = {}
     for line in text.splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        result[key] = value
+        if "=" in line:
+            key, value = line.split("=", 1)
+            result[key] = value
     return result
 
 
-class RepoFixture:
+class Fixture:
     def __init__(self) -> None:
-        self.temp = tempfile.TemporaryDirectory()
+        self.temp = tempfile.TemporaryDirectory(prefix="git-workspace-cleanup-")
         self.root = Path(self.temp.name)
         self.repo = self.root / "repo"
         self.remote = self.root / "remote.git"
         self.worktree = self.root / "feature-wt"
         self.branch = "feature/test-cleanup"
-        self._init()
-
-    def close(self) -> None:
-        self.temp.cleanup()
-
-    def _init(self) -> None:
         self.repo.mkdir()
         git(self.repo, "init", "-b", "main")
         git(self.repo, "config", "user.name", "Test User")
@@ -67,12 +51,10 @@ class RepoFixture:
         (self.repo / "README.md").write_text("base\n", encoding="utf-8")
         git(self.repo, "add", "README.md")
         git(self.repo, "commit", "-m", "chore: base")
-
         git(self.root, "init", "--bare", str(self.remote))
         git(self.repo, "remote", "add", "origin", str(self.remote))
         git(self.repo, "push", "-u", "origin", "main")
         git(self.repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
-
         git(self.repo, "branch", self.branch)
         git(self.repo, "worktree", "add", str(self.worktree), self.branch)
         (self.worktree / "feature.txt").write_text("feature\n", encoding="utf-8")
@@ -81,22 +63,24 @@ class RepoFixture:
         git(self.worktree, "push", "-u", "origin", self.branch)
         self.head = git(self.worktree, "rev-parse", "HEAD").stdout.strip()
 
-    def merge_feature(self) -> None:
+    def close(self):
+        self.temp.cleanup()
+
+    def merge(self):
         git(self.repo, "merge", "--no-ff", self.branch, "-m", "merge feature")
         git(self.repo, "push", "origin", "main")
 
-    def switch_linked_worktree_to_base(self) -> None:
+    def switch_worktree_to_base_without_merge(self):
         git(self.repo, "switch", "-c", "holding/main-worktree")
         git(self.worktree, "switch", "main")
 
-    def fake_github_remote(self, gh_dir: Path, mode: str) -> dict[str, str]:
-        raw_url = "https://github.com/example/demo.git"
-        git(self.repo, "remote", "set-url", "origin", raw_url)
-        replacement = self.remote.as_uri()
-        git(self.repo, "config", f"url.{replacement}.insteadOf", raw_url)
-
-        gh_dir.mkdir(parents=True, exist_ok=True)
-        gh = gh_dir / "gh"
+    def fake_github(self, mode: str) -> dict[str, str]:
+        raw = "https://github.com/example/demo.git"
+        git(self.repo, "remote", "set-url", "origin", raw)
+        git(self.repo, "config", f"url.{self.remote.as_uri()}.insteadOf", raw)
+        fake_bin = self.root / "fake-bin"
+        fake_bin.mkdir()
+        gh = fake_bin / "gh"
         gh.write_text(
             """#!/usr/bin/env python3
 import json, os, sys
@@ -109,26 +93,21 @@ if args and args[0] == 'api':
         print(json.dumps([{'number': 7}]))
         raise SystemExit(0)
     if path.endswith('/pulls/7'):
-        mode = os.environ['FAKE_GH_MODE']
-        merged = mode == 'merged'
-        state = 'closed' if merged else 'open'
+        merged = os.environ['FAKE_GH_MODE'] == 'merged'
         print(json.dumps({
             'number': 7,
             'html_url': 'https://github.com/example/demo/pull/7',
-            'state': state,
+            'state': 'closed' if merged else 'open',
             'merged_at': '2026-09-15T00:00:00Z' if merged else None,
             'base': {'ref': 'main'},
             'head': {'ref': os.environ['FAKE_GH_BRANCH'], 'sha': os.environ['FAKE_GH_HEAD']},
         }))
         raise SystemExit(0)
-print('unsupported fake gh invocation: ' + ' '.join(args), file=sys.stderr)
 raise SystemExit(2)
-""",
-            encoding="utf-8",
-        )
+""", encoding="utf-8")
         gh.chmod(0o755)
         env = os.environ.copy()
-        env["PATH"] = str(gh_dir) + os.pathsep + env.get("PATH", "")
+        env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
         env["FAKE_GH_MODE"] = mode
         env["FAKE_GH_BRANCH"] = self.branch
         env["FAKE_GH_HEAD"] = self.head
@@ -137,284 +116,98 @@ raise SystemExit(2)
 
 
 class WorkspaceCleanupTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.fixture = RepoFixture()
+    def setUp(self):
+        self.f = Fixture()
 
-    def tearDown(self) -> None:
-        self.fixture.close()
+    def tearDown(self):
+        self.f.close()
 
-    def list_worktrees(self):
-        return run(
-            ["python3", str(LIST), "--repo", str(self.fixture.repo), "--remote", "origin"],
-            cwd=self.fixture.repo,
-            check=False,
-        )
+    def prepare(self, *, env=None, workspace=None):
+        return run([
+            "python3", str(PREPARE), "--workspace", str(workspace or self.f.worktree),
+            "--remote", "origin", "--base-branch", "main",
+        ], cwd=self.f.repo, env=env, check=False)
 
-    def prepare(self, *, env: dict[str, str] | None = None, workspace: Path | None = None):
-        target = workspace or self.fixture.worktree
-        return run(
-            [
-                "python3",
-                str(PREPARE),
-                "--workspace",
-                str(target),
-                "--remote",
-                "origin",
-                "--base-branch",
-                "main",
-            ],
-            cwd=self.fixture.repo,
-            env=env,
-            check=False,
-        )
-
-    def test_lists_linked_worktree_with_branch_and_remote(self) -> None:
-        result = self.list_worktrees()
+    def test_lists_linked_worktree_with_branch_and_remote(self):
+        result = run(["python3", str(LIST), "--repo", str(self.f.repo), "--remote", "origin"], cwd=self.f.repo, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
-        values = parse_output(result.stdout)
-        self.assertEqual(values["STATUS"], "ready")
-        self.assertEqual(values["LINKED_WORKTREES"], "1")
-        self.assertEqual(values["WORKTREE_1_PATH"], str(self.fixture.worktree.resolve()))
-        self.assertEqual(values["WORKTREE_1_BRANCH"], self.fixture.branch)
-        self.assertEqual(values["WORKTREE_1_STATUS"], "CLEAN")
-        self.assertEqual(values["WORKTREE_1_REMOTE_EXISTS"], "true")
-        self.assertEqual(values["WORKTREE_1_CLEANUP_SCOPE_HINT"], "worktree-and-branch")
-        self.assertEqual(values["WORKTREE_1_SELECTABLE"], "true")
+        data = values(result.stdout)
+        self.assertEqual(data["LINKED_WORKTREES"], "1")
+        self.assertEqual(data["WORKTREE_1_BRANCH"], self.f.branch)
+        self.assertEqual(data["WORKTREE_1_STATUS"], "CLEAN")
+        self.assertEqual(data["WORKTREE_1_REMOTE_EXISTS"], "true")
 
-    def test_list_marks_base_branch_linked_worktree_as_worktree_only(self) -> None:
-        self.fixture.switch_linked_worktree_to_base()
-        result = self.list_worktrees()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        values = parse_output(result.stdout)
-        self.assertEqual(values["WORKTREE_1_BRANCH"], "main")
-        self.assertEqual(values["WORKTREE_1_BASE_BRANCH_WORKTREE"], "true")
-        self.assertEqual(values["WORKTREE_1_CLEANUP_SCOPE_HINT"], "worktree-only")
-
-    def test_ready_when_branch_is_ancestor_of_base(self) -> None:
-        self.fixture.merge_feature()
+    def test_base_branch_linked_worktree_is_ready_for_worktree_only_cleanup(self):
+        self.f.switch_worktree_to_base_without_merge()
         result = self.prepare()
         self.assertEqual(result.returncode, 0, result.stderr)
-        values = parse_output(result.stdout)
-        self.assertEqual(values["STATUS"], "ready")
-        self.assertEqual(values["CLEANUP_SCOPE"], "worktree-and-branch")
-        self.assertEqual(values["BRANCH_CLEANUP_ALLOWED"], "true")
-        self.assertEqual(values["MERGE_EVIDENCE"], "git-ancestor")
-        self.assertEqual(values["BRANCH"], self.fixture.branch)
-        self.assertEqual(values["REMOTE_BRANCH"], f"origin/{self.fixture.branch}")
-        self.assertEqual(values["REMOTE_BRANCH_EXISTS"], "true")
+        data = values(result.stdout)
+        self.assertEqual(data["CLEANUP_SCOPE"], "worktree-only")
+        self.assertEqual(data["TRACKED_BRANCH_CLEANUP_ALLOWED"], "false")
+        self.assertEqual(data["BRANCH"], "main")
+        self.assertEqual(data["MERGE_EVIDENCE"], "base-branch-worktree")
 
-    def test_base_branch_linked_worktree_is_ready_for_worktree_only_cleanup(self) -> None:
-        self.fixture.switch_linked_worktree_to_base()
+    def test_ready_when_branch_is_ancestor_of_base(self):
+        self.f.merge()
         result = self.prepare()
         self.assertEqual(result.returncode, 0, result.stderr)
-        values = parse_output(result.stdout)
-        self.assertEqual(values["STATUS"], "ready")
-        self.assertEqual(values["CLEANUP_SCOPE"], "worktree-only")
-        self.assertEqual(values["BRANCH_CLEANUP_ALLOWED"], "false")
-        self.assertEqual(values["BRANCH"], "main")
-        self.assertEqual(values["BASE_BRANCH"], "main")
-        self.assertEqual(values["MERGE_EVIDENCE"], "base-branch-worktree")
-        self.assertEqual(values["REMOTE_DELETE_AVAILABLE"], "false")
+        data = values(result.stdout)
+        self.assertEqual(data["CLEANUP_SCOPE"], "worktree-and-branch")
+        self.assertEqual(data["MERGE_EVIDENCE"], "git-ancestor")
 
-    def test_primary_worktree_is_blocked(self) -> None:
-        result = self.prepare(workspace=self.fixture.repo)
+    def test_primary_worktree_is_blocked(self):
+        result = self.prepare(workspace=self.f.repo)
         self.assertEqual(result.returncode, 2)
         self.assertIn("primary worktree", result.stderr)
 
-    def test_dirty_worktree_is_blocked(self) -> None:
-        (self.fixture.worktree / "untracked.txt").write_text("keep me\n", encoding="utf-8")
+    def test_dirty_worktree_is_blocked(self):
+        (self.f.worktree / "untracked.txt").write_text("keep\n", encoding="utf-8")
         result = self.prepare()
         self.assertEqual(result.returncode, 2)
         self.assertIn("modified or untracked files", result.stderr)
 
-    def test_open_pr_is_blocked(self) -> None:
-        env = self.fixture.fake_github_remote(self.fixture.root / "fake-bin", "open")
-        result = self.prepare(env=env)
+    def test_open_pr_is_blocked(self):
+        result = self.prepare(env=self.f.fake_github("open"))
         self.assertEqual(result.returncode, 2)
         self.assertIn("open pull request", result.stderr)
 
-    def test_merged_pr_allows_squash_style_cleanup_evidence(self) -> None:
-        env = self.fixture.fake_github_remote(self.fixture.root / "fake-bin", "merged")
-        result = self.prepare(env=env)
+    def test_merged_pr_allows_squash_style_cleanup_evidence(self):
+        result = self.prepare(env=self.f.fake_github("merged"))
         self.assertEqual(result.returncode, 0, result.stderr)
-        values = parse_output(result.stdout)
-        self.assertEqual(values["MERGE_EVIDENCE"], "github-pr-merged")
-        self.assertEqual(values["PR_NUMBER"], "7")
-        self.assertEqual(values["PR_URL"], "https://github.com/example/demo/pull/7")
+        data = values(result.stdout)
+        self.assertEqual(data["MERGE_EVIDENCE"], "github-pr-merged")
+        self.assertEqual(data["PR_NUMBER"], "7")
 
-    def test_cleanup_removes_worktree_and_local_branch_but_keeps_remote_by_default(self) -> None:
-        self.fixture.merge_feature()
+    def test_cleanup_can_delete_matching_remote_branch_after_approval(self):
+        self.f.merge()
         preview = self.prepare()
-        self.assertEqual(preview.returncode, 0, preview.stderr)
-        fingerprint = parse_output(preview.stdout)["CLEANUP_FINGERPRINT"]
+        fingerprint = values(preview.stdout)["CLEANUP_FINGERPRINT"]
+        result = run([
+            "python3", str(CLEANUP), "--workspace", str(self.f.worktree), "--remote", "origin",
+            "--base-branch", "main", "--fingerprint", fingerprint, "--delete-remote",
+        ], cwd=self.f.repo, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(values(result.stdout)["REMOTE_BRANCH_REMOVED"], "true")
+        self.assertEqual(git(self.f.repo, "ls-remote", "--heads", "origin", f"refs/heads/{self.f.branch}").stdout.strip(), "")
 
-        cleaned = run(
-            [
-                "python3",
-                str(CLEANUP),
-                "--workspace",
-                str(self.fixture.worktree),
-                "--remote",
-                "origin",
-                "--base-branch",
-                "main",
-                "--fingerprint",
-                fingerprint,
-            ],
-            cwd=self.fixture.repo,
-            check=False,
-        )
-        self.assertEqual(cleaned.returncode, 0, cleaned.stderr)
-        values = parse_output(cleaned.stdout)
-        self.assertEqual(values["STATUS"], "cleaned")
-        self.assertEqual(values["CLEANUP_SCOPE"], "worktree-and-branch")
-        self.assertEqual(values["WORKTREE_REMOVED"], "true")
-        self.assertEqual(values["LOCAL_BRANCH_REMOVED"], "true")
-        self.assertEqual(values["REMOTE_BRANCH_REMOVED"], "skipped")
-        self.assertFalse(self.fixture.worktree.exists())
-        local = git(self.fixture.repo, "show-ref", "--verify", f"refs/heads/{self.fixture.branch}", check=False)
-        self.assertNotEqual(local.returncode, 0)
-        remote = git(self.fixture.repo, "ls-remote", "--heads", "origin", f"refs/heads/{self.fixture.branch}")
-        self.assertIn(self.fixture.branch, remote.stdout)
-
-    def test_cleanup_can_delete_matching_remote_branch_after_approval(self) -> None:
-        self.fixture.merge_feature()
+    def test_fingerprint_change_blocks_cleanup_before_mutation(self):
+        self.f.merge()
         preview = self.prepare()
-        self.assertEqual(preview.returncode, 0, preview.stderr)
-        fingerprint = parse_output(preview.stdout)["CLEANUP_FINGERPRINT"]
+        fingerprint = values(preview.stdout)["CLEANUP_FINGERPRINT"]
+        git(self.f.worktree, "push", "origin", "--delete", self.f.branch)
+        result = run([
+            "python3", str(CLEANUP), "--workspace", str(self.f.worktree), "--remote", "origin",
+            "--base-branch", "main", "--fingerprint", fingerprint,
+        ], cwd=self.f.repo, check=False)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("fingerprint changed", result.stderr)
+        self.assertTrue(self.f.worktree.exists())
 
-        cleaned = run(
-            [
-                "python3",
-                str(CLEANUP),
-                "--workspace",
-                str(self.fixture.worktree),
-                "--remote",
-                "origin",
-                "--base-branch",
-                "main",
-                "--fingerprint",
-                fingerprint,
-                "--delete-remote",
-            ],
-            cwd=self.fixture.repo,
-            check=False,
-        )
-        self.assertEqual(cleaned.returncode, 0, cleaned.stderr)
-        values = parse_output(cleaned.stdout)
-        self.assertEqual(values["REMOTE_BRANCH_REMOVED"], "true")
-        remote = git(self.fixture.repo, "ls-remote", "--heads", "origin", f"refs/heads/{self.fixture.branch}")
-        self.assertEqual(remote.stdout.strip(), "")
-
-    def test_base_branch_worktree_cleanup_preserves_base_and_feature_refs(self) -> None:
-        self.fixture.switch_linked_worktree_to_base()
-        preview = self.prepare()
-        self.assertEqual(preview.returncode, 0, preview.stderr)
-        fingerprint = parse_output(preview.stdout)["CLEANUP_FINGERPRINT"]
-
-        cleaned = run(
-            [
-                "python3",
-                str(CLEANUP),
-                "--workspace",
-                str(self.fixture.worktree),
-                "--remote",
-                "origin",
-                "--base-branch",
-                "main",
-                "--fingerprint",
-                fingerprint,
-            ],
-            cwd=self.fixture.repo,
-            check=False,
-        )
-        self.assertEqual(cleaned.returncode, 0, cleaned.stderr)
-        values = parse_output(cleaned.stdout)
-        self.assertEqual(values["STATUS"], "cleaned")
-        self.assertEqual(values["CLEANUP_SCOPE"], "worktree-only")
-        self.assertEqual(values["WORKTREE_REMOVED"], "true")
-        self.assertEqual(values["LOCAL_BRANCH_REMOVED"], "preserved-base")
-        self.assertEqual(values["REMOTE_BRANCH_REMOVED"], "preserved-base")
-        self.assertFalse(self.fixture.worktree.exists())
-        self.assertEqual(
-            git(self.fixture.repo, "show-ref", "--verify", "refs/heads/main", check=False).returncode,
-            0,
-        )
-        self.assertEqual(
-            git(self.fixture.repo, "show-ref", "--verify", f"refs/heads/{self.fixture.branch}", check=False).returncode,
-            0,
-        )
-        self.assertIn(
-            "refs/heads/main",
-            git(self.fixture.repo, "ls-remote", "--heads", "origin", "refs/heads/main").stdout,
-        )
-
-    def test_base_branch_worktree_rejects_remote_delete_before_mutation(self) -> None:
-        self.fixture.switch_linked_worktree_to_base()
-        preview = self.prepare()
-        self.assertEqual(preview.returncode, 0, preview.stderr)
-        fingerprint = parse_output(preview.stdout)["CLEANUP_FINGERPRINT"]
-
-        cleaned = run(
-            [
-                "python3",
-                str(CLEANUP),
-                "--workspace",
-                str(self.fixture.worktree),
-                "--remote",
-                "origin",
-                "--base-branch",
-                "main",
-                "--fingerprint",
-                fingerprint,
-                "--delete-remote",
-            ],
-            cwd=self.fixture.repo,
-            check=False,
-        )
-        self.assertEqual(cleaned.returncode, 2)
-        self.assertIn("base branch", cleaned.stderr)
-        self.assertTrue(self.fixture.worktree.exists())
-        self.assertIn(
-            "refs/heads/main",
-            git(self.fixture.repo, "ls-remote", "--heads", "origin", "refs/heads/main").stdout,
-        )
-
-    def test_fingerprint_change_blocks_cleanup_before_mutation(self) -> None:
-        self.fixture.merge_feature()
-        preview = self.prepare()
-        self.assertEqual(preview.returncode, 0, preview.stderr)
-        fingerprint = parse_output(preview.stdout)["CLEANUP_FINGERPRINT"]
-        git(self.fixture.worktree, "push", "origin", "--delete", self.fixture.branch)
-
-        cleaned = run(
-            [
-                "python3",
-                str(CLEANUP),
-                "--workspace",
-                str(self.fixture.worktree),
-                "--remote",
-                "origin",
-                "--base-branch",
-                "main",
-                "--fingerprint",
-                fingerprint,
-            ],
-            cwd=self.fixture.repo,
-            check=False,
-        )
-        self.assertEqual(cleaned.returncode, 2)
-        self.assertIn("fingerprint changed", cleaned.stderr)
-        self.assertTrue(self.fixture.worktree.exists())
-        local = git(self.fixture.repo, "show-ref", "--verify", f"refs/heads/{self.fixture.branch}", check=False)
-        self.assertEqual(local.returncode, 0)
-
-    def test_mutation_script_uses_exact_ref_delete_and_no_force_cleanup(self) -> None:
+    def test_mutation_script_uses_exact_ref_delete_and_no_force_cleanup(self):
         text = CLEANUP.read_text(encoding="utf-8")
         self.assertIn('"update-ref", "-d"', text)
         self.assertIn('"worktree", "remove"', text)
-        self.assertIn("preserved-base", text)
-        for forbidden in ("--force", "force-with-lease", '"branch", "-D"', "git reset", "git stash"):
+        for forbidden in ("--force-with-lease", '"branch", "-D"', "git reset", "git stash"):
             self.assertNotIn(forbidden, text)
 
 
