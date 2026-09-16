@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -13,6 +14,17 @@ SPEC = importlib.util.spec_from_file_location("bootstrap_launcher", SCRIPT)
 assert SPEC and SPEC.loader
 bootstrap = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(bootstrap)
+
+
+def git(repo: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    return result.stdout.strip()
 
 
 class BootstrapLauncherTest(unittest.TestCase):
@@ -107,6 +119,51 @@ class BootstrapLauncherTest(unittest.TestCase):
             ["--repo", "/workspace/product/oc/oc-dml", "--board", "oc-dml"],
             bootstrap.rewrite_repo_arg(args, "/workspace/product/oc/oc-dml"),
         )
+
+    def test_linked_worktree_resolves_to_primary_repository(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            worktree = root / "linked"
+            subprocess.run(["git", "init", "-b", "main", str(repo)], check=True, capture_output=True, text=True)
+            git(repo, "config", "user.name", "DevKit Test")
+            git(repo, "config", "user.email", "devkit@example.invalid")
+            (repo / "README.md").write_text("base\n", encoding="utf-8")
+            git(repo, "add", "README.md")
+            git(repo, "commit", "-m", "chore: base")
+            git(repo, "branch", "feature/follow-up")
+            git(repo, "worktree", "add", str(worktree), "feature/follow-up")
+
+            env = os.environ.copy()
+            primary = bootstrap.resolve_primary_repository(str(worktree), env=env)
+            self.assertEqual(primary, repo.resolve())
+            self.assertGreaterEqual(int(env.get("GIT_CONFIG_COUNT", "0")), 2)
+
+    def test_linked_worktree_resolution_uses_process_local_safe_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            worktree = root / "linked"
+            subprocess.run(["git", "init", "-b", "main", str(repo)], check=True, capture_output=True, text=True)
+            git(repo, "config", "user.name", "DevKit Test")
+            git(repo, "config", "user.email", "devkit@example.invalid")
+            (repo / "README.md").write_text("base\n", encoding="utf-8")
+            git(repo, "add", "README.md")
+            git(repo, "commit", "-m", "chore: base")
+            git(repo, "branch", "feature/safe")
+            git(repo, "worktree", "add", str(worktree), "feature/safe")
+
+            env = os.environ.copy()
+            env["GIT_TEST_ASSUME_DIFFERENT_OWNER"] = "1"
+            primary = bootstrap.resolve_primary_repository(str(worktree), env=env)
+            self.assertEqual(primary, repo.resolve())
+            safe_values = {
+                env.get(f"GIT_CONFIG_VALUE_{index}")
+                for index in range(int(env.get("GIT_CONFIG_COUNT", "0")))
+                if env.get(f"GIT_CONFIG_KEY_{index}") == "safe.directory"
+            }
+            self.assertIn(str(worktree.resolve()), safe_values)
+            self.assertIn(str(repo.resolve()), safe_values)
 
 
 if __name__ == "__main__":
