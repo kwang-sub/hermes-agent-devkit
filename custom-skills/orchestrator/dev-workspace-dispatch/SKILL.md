@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 구현 계획·API 규격·workspace·branch·Coder 모델과 project pattern/capability 계약을 최초 등록 알림과 함께 Kanban으로 인계한다.
-version: 0.12.0
+version: 0.13.0
 author: local
 platforms: [linux]
 metadata:
@@ -24,9 +24,41 @@ metadata:
 - 기존 변경이 있을 수 있는 workspace라면 reset/restore/stash 없이 전부 보존할지 승인 완료
 - Coder Model Tier(DEFAULT|PREMIUM) 승인 완료
 - 승인 Tier를 `flow_model_policy.py resolve`로 해석한 `MODEL/PROVIDER` snapshot 확보
-- `.hermes/project.yaml` managed metadata 존재
+- **Primary Repository**의 `.hermes/project.yaml` managed metadata 존재
 
 Reviewer는 별도 모델 승인을 받지 않고 항상 Reviewer profile DEFAULT를 사용한다.
+
+### Project / Workspace 분리 계약
+
+Project metadata와 실제 작업 Workspace를 동일 경로로 취급하지 않는다.
+
+```text
+Project = Primary Repository
+  /workspace/chagok
+  └─ .hermes/project.yaml  ← canonical metadata
+
+Workspace = Primary 또는 linked worktree
+  /workspace/chagok
+  /workspace/.worktrees/chagok/investment-data-model
+```
+
+`prepare_dispatch.py`는 승인된 Workspace에서 `git worktree list --porcelain`로 Primary Worktree를 해석하고 **Primary Repository의 `.hermes/project.yaml`만** 읽는다. linked worktree마다 별도 Project/Board metadata를 생성하거나 요구하지 않는다.
+
+Helper가 반환하는 경계는 다음과 같다.
+
+```text
+PROJECT_REPOSITORY=<primary worktree>
+PROJECT_METADATA_FILE=<primary>/.hermes/project.yaml
+PROJECT_CONTEXT_SOURCE=primary-worktree
+WORKSPACE_PATH=<approved primary or linked worktree>
+LINKED_WORKTREE=true | false
+```
+
+linked worktree에 과거 bootstrap으로 생성된 `.hermes/project.yaml`이 남아 있어도 `WORKSPACE_METADATA_IGNORED`로 보고하고 Project/Board/Base source로 사용하지 않는다.
+
+Git ownership이 달라도 사용자가 승인한 Workspace와 해석된 Primary Repository만 helper process-local `safe.directory`로 신뢰한다. `git config --global safe.directory` 변경은 금지한다.
+
+Primary metadata가 실제로 없을 때만 `dev-project-bootstrap`을 사용한다. linked worktree path를 bootstrap 입력으로 전달할 수는 있지만 launcher가 반드시 Primary Repository로 정규화해야 하며 linked worktree용 새 Project/Board를 만들면 안 된다.
 
 ## 2. 대형 Workspace Fast Path
 
@@ -73,7 +105,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/prepare_dispatch.py" \
   [--confirmed-dirty]
 ```
 
-Helper 출력의 `BOARD`는 `.hermes/project.yaml`의 `kanban.board`이며 유일한 board source다. `HERMES_KANBAN_BOARD`나 current/default board fallback은 사용하지 않는다.
+Helper 출력의 `BOARD`는 **Primary Repository** `.hermes/project.yaml`의 `kanban.board`이며 유일한 board source다. `HERMES_KANBAN_BOARD`나 current/default board fallback은 사용하지 않는다.
 
 모델은 승인 직후 정확히 1회 해석한다.
 
