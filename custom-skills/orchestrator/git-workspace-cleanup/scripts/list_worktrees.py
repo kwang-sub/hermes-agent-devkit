@@ -85,7 +85,11 @@ def main() -> int:
                     remote_error = str(exc).splitlines()[0]
 
             base_branch_worktree = bool(entry.branch and default_base and entry.branch == default_base)
-            cleanup_scope_hint = "worktree-only" if base_branch_worktree else "worktree-and-branch"
+            cleanup_scope_hint = (
+                "worktree-and-tracked-branch-check"
+                if base_branch_worktree
+                else "worktree-and-branch"
+            )
             row = {
                 "index": linked_index if not is_primary else 0,
                 "path": str(entry.path),
