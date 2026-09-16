@@ -145,6 +145,71 @@ def child_env(hermes_cli: Path) -> dict[str, str]:
     return env
 
 
+def add_process_safe_directory(env: dict[str, str], path: str | Path) -> None:
+    """Add safe.directory only to child-process Git config, never global config."""
+    resolved = str(Path(path).expanduser().resolve())
+    count = int(env.get("GIT_CONFIG_COUNT", "0") or "0")
+    existing = {
+        env.get(f"GIT_CONFIG_VALUE_{index}")
+        for index in range(count)
+        if env.get(f"GIT_CONFIG_KEY_{index}") == "safe.directory"
+    }
+    if resolved in existing:
+        return
+    env[f"GIT_CONFIG_KEY_{count}"] = "safe.directory"
+    env[f"GIT_CONFIG_VALUE_{count}"] = resolved
+    env["GIT_CONFIG_COUNT"] = str(count + 1)
+
+
+def run_capture(cmd: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, text=True, capture_output=True, env=env)
+
+
+def resolve_primary_repository(requested: str, *, env: dict[str, str]) -> Path:
+    requested_path = Path(requested).expanduser().resolve()
+    if not requested_path.is_dir():
+        raise BootstrapLauncherError(f"repository path does not exist: {requested_path}")
+
+    add_process_safe_directory(env, requested_path)
+    root_result = run_capture(
+        ["git", "-C", str(requested_path), "rev-parse", "--show-toplevel"],
+        env=env,
+    )
+    if root_result.returncode != 0:
+        detail = (root_result.stderr or root_result.stdout).strip()
+        raise BootstrapLauncherError(
+            f"cannot resolve Git repository from --repo: {requested_path}\n{detail}"
+        )
+    workspace_root = Path(root_result.stdout.strip()).resolve()
+    add_process_safe_directory(env, workspace_root)
+
+    listing = run_capture(
+        ["git", "-C", str(workspace_root), "worktree", "list", "--porcelain"],
+        env=env,
+    )
+    if listing.returncode != 0:
+        detail = (listing.stderr or listing.stdout).strip()
+        raise BootstrapLauncherError(
+            f"cannot list Git worktrees for repository: {workspace_root}\n{detail}"
+        )
+
+    paths = [
+        Path(line[len("worktree "):]).resolve()
+        for line in listing.stdout.splitlines()
+        if line.startswith("worktree ")
+    ]
+    if not paths:
+        raise BootstrapLauncherError(
+            f"git worktree list returned no registered worktrees: {workspace_root}"
+        )
+
+    primary = paths[0]
+    if not primary.is_dir():
+        raise BootstrapLauncherError(f"primary worktree path does not exist: {primary}")
+    add_process_safe_directory(env, primary)
+    return primary
+
+
 def run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
     result = subprocess.run(cmd, env=env)
     if result.returncode != 0:
@@ -192,17 +257,29 @@ def main() -> int:
     scripts = Path(__file__).resolve().parent
     launcher_args = sys.argv[1:]
     requested_repo = repo_arg(launcher_args)
-    repo = canonical_repo_path(requested_repo)
+    mapped_repo = canonical_repo_path(requested_repo)
     full_preflight = FULL_PREFLIGHT_FLAG in launcher_args
     refresh_stack = REFRESH_STACK_FLAG in launcher_args
-    forwarded_args = rewrite_repo_arg(project_args(launcher_args), repo)
     hermes_cli = resolve_hermes_cli()
     env = child_env(hermes_cli)
+    primary_repo = resolve_primary_repository(mapped_repo, env=env)
+    repo = str(primary_repo)
+    forwarded_args = rewrite_repo_arg(project_args(launcher_args), repo)
 
     print(f"[OK] Hermes CLI: {hermes_cli}", flush=True)
-    if repo != requested_repo:
+    if mapped_repo != requested_repo:
         print(
-            f"[INFO] Repository path mapped: {requested_repo} -> {repo}",
+            f"[INFO] Repository path mapped: {requested_repo} -> {mapped_repo}",
+            flush=True,
+        )
+    if Path(mapped_repo).expanduser().resolve() != primary_repo:
+        print(
+            f"[INFO] Linked worktree resolved to primary repository: {mapped_repo} -> {primary_repo}",
+            flush=True,
+        )
+        print(
+            "[INFO] Project metadata/board are managed only by the primary repository; "
+            "no linked-worktree project metadata will be created.",
             flush=True,
         )
 
