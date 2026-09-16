@@ -1,190 +1,102 @@
 ---
-name: dev-workspace-cleanup
-description: Git worktree 목록을 보여주고 사용자가 선택한 linked worktree의 상태를 검증한 뒤 승인 범위에 따라 worktree와 안전한 로컬/원격 브랜치를 정리한다.
-version: 0.3.0
+name: git-workspace-cleanup
+description: Git worktree 목록을 보여주고 선택한 linked worktree와 안전하게 증명된 작업 브랜치를 Preview/승인 후 정리한다.
+version: 0.4.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, git, workspace, worktree, cleanup, branch, pull-request, github, approval]
-    related_skills: [dev-pr-publish, dev-workspace-dispatch]
+    tags: [git, workspace, worktree, cleanup, branch, pull-request, github, approval]
+    related_skills: [git-pr-publish, dev-workspace-dispatch]
     requires_tools: [terminal, clarify]
 ---
 
-# dev-workspace-cleanup
+# git-workspace-cleanup
 
-PR/branch 작업이 끝난 linked Git worktree를 **목록에서 선택**한 뒤, clean/merge 상태를 확인하고 사용자 승인 범위만 정리하는 post-merge Skill이다.
-
-`dev-worktree-cleanup`은 과거 deprecated 이름이므로 사용하지 않는다. 신규 cleanup 표준은 `dev-workspace-cleanup`이다.
-
-표준 흐름:
+PR/branch 작업이 끝난 linked Git worktree를 목록에서 선택하고, clean/merge 상태와 삭제될 branch 이름을 확인한 뒤 사용자가 승인한 범위만 정리한다.
 
 ```text
 PR merge 완료
-→ /dev-workspace-cleanup
-→ linked worktree 목록 조회
+→ /git-workspace-cleanup
+→ linked worktree 목록
 → [Worktree 선택]
-→ 선택 대상 read-only cleanup preflight
+→ read-only preflight
 → [Worktree 정리 Preview]
+→ 삭제 예정 branch 이름 명시
 → [Worktree 정리 승인]
-→ worktree remove
-→ feature branch cleanup이 허용된 경우 exact local branch ref delete
-→ worktree prune
-→ 승인한 경우에만 feature remote branch delete
-→ 결과 보고
+→ 승인 범위만 cleanup
 ```
 
-## 0. 독립 실행 원칙
+## 독립 실행 원칙
 
-이 Skill은 Kanban Task context가 없어도 동작한다.
+- 명시적 Task id 또는 `HERMES_KANBAN_TASK`가 없으면 Kanban 조회를 호출하지 않는다.
+- helper `STATUS=blocked` 뒤 unrelated remediation을 하지 않는다.
+- `git config --global safe.directory` 자동 변경 금지. helper process-local 설정만 사용한다.
+- 한 실행에서 linked worktree 하나만 정리한다.
 
-- `HERMES_KANBAN_TASK` 또는 명시적 task id가 없으면 `kanban_show`, `kanban_sh` 등 Kanban 조회를 호출하지 않는다.
-- helper가 `STATUS=blocked`를 반환하면 해당 `ERROR`를 그대로 판단 근거로 사용한다.
-- helper 실패 후 `git config --global --add safe.directory ...` 같은 전역 Git 설정 변경을 자동 시도하지 않는다.
-- safe.directory는 helper 내부의 **process-local Git config**만 사용한다.
-- unrelated remediation을 수행한 뒤 helper를 재실행하지 않는다.
-
-## 1. Worktree 목록 조회
-
-현재 repository 또는 사용자가 지정한 repository에서 먼저 다음 helper를 실행한다.
+## 목록 / 선택
 
 ```bash
-python3 "${HERMES_SKILL_DIR}/scripts/list_worktrees.py" \
-  --repo "<REPOSITORY_OR_ANY_WORKTREE_PATH>" \
-  --remote "<REMOTE>"
+python3 "${HERMES_SKILL_DIR}/scripts/list_worktrees.py" --repo "<REPO>" --remote "<REMOTE>"
 ```
 
-helper는 **read-only**이며 `git worktree list --porcelain`을 기준으로 모든 worktree를 조회한다.
+Primary worktree는 표시만 하고 선택하지 않는다. Path, Branch, HEAD, CLEAN/DIRTY, remote 존재 여부, cleanup hint를 보여준 뒤 `[Worktree 선택]` clarify Gate에서 하나를 선택한다.
 
-목록에는 최소 다음을 표시한다.
+## 공통 안전 조건
+
+선택 대상은 primary가 아닌 linked worktree, non-detached, 정확히 등록된 worktree, unlocked/non-prunable, CLEAN 상태여야 한다. dirty/untracked가 있으면 force/reset/stash/clean으로 우회하지 않고 BLOCK한다.
+
+## 현재 Feature Branch Worktree
+
+`current branch != base branch`이면 기존 feature cleanup 경로다. 같은 branch가 다른 worktree에서 사용되지 않고, local/remote HEAD가 일치하며, open PR이 없고 다음 중 하나의 merge evidence가 있어야 한다.
 
 ```text
-Index
-Path
-Branch
-HEAD
-Primary 여부
-Clean / Dirty
-Remote Branch 존재 여부
-Cleanup Scope Hint
+GitHub merged PR + exact PR head SHA
+또는
+git merge-base --is-ancestor <branch-head> <base-ref>
 ```
-
-Primary worktree는 정보로는 표시할 수 있지만 선택지에는 넣지 않는다. linked worktree만 cleanup 선택 후보가 된다.
-
-일반 메시지 예시:
-
-```text
-[Worktree 목록]
-1. ui-dashboard-investment
-   Path: /workspace/.worktrees/chagok/ui-dashboard-investment
-   Branch: dev
-   Status: CLEAN
-   Remote: origin/dev
-   Cleanup: Worktree만 정리 (base branch 보존)
-
-2. investment-data-model
-   Path: /workspace/.worktrees/chagok/investment-data-model
-   Branch: feature/investment-data-model
-   Status: CLEAN
-   Remote: origin/feature/investment-data-model
-   Cleanup: Worktree + Branch 정리 가능 여부 검증
-```
-
-그 다음 **독립 clarify Gate**로 하나만 선택한다.
-
-```text
-question:
-  [Worktree 선택]
-  정리할 linked Worktree를 선택해 주세요.
-choices:
-  - <worktree-name> — <branch> (<scope hint>)
-  - <worktree-name> — <branch> (<scope hint>)
-  - 취소
-```
-
-여러 worktree를 한 번에 선택/삭제하지 않는다. 한 실행에서 정확히 하나만 정리한다.
-
-## 2. 선택 후 공통 진입 조건
-
-선택된 대상은 다음을 모두 만족해야 한다.
-
-- primary worktree가 아닌 linked worktree다.
-- detached HEAD가 아니다.
-- Git metadata에 정확히 1개로 등록되어 있다.
-- `locked` 또는 `prunable` 상태가 아니다.
-- tracked/untracked 변경이 전혀 없다.
-
-변경 파일이 하나라도 있으면 `--force`, reset, stash, clean으로 우회하지 않고 BLOCK한다.
-
-## 3. Cleanup Scope 결정
-
-### A. Feature/작업 Branch Worktree
-
-현재 branch와 base branch가 다르면 기존 feature branch cleanup 경로를 사용한다.
-
-추가 조건:
-
-- 같은 branch가 다른 worktree에도 연결되어 있지 않다.
-- local HEAD와 존재하는 remote branch HEAD가 동일하다.
-- open Pull Request가 남아 있지 않다.
-- 아래 Merge Evidence 중 하나가 존재한다.
-
-```text
-1. GitHub merged PR + PR head SHA == local HEAD
-2. local HEAD가 resolved base ref의 ancestor
-```
-
-Evidence 값:
-
-```text
-github-pr-merged
-git-ancestor
-```
-
-이 경우:
 
 ```text
 CLEANUP_SCOPE=worktree-and-branch
 BRANCH_CLEANUP_ALLOWED=true
 ```
 
-### B. Base Branch에 이미 전환된 linked Worktree
+Preview에 삭제될 current feature branch 이름을 정확히 표시한다.
 
-PR merge 이후 linked worktree가 `dev`, `main` 등 resolved base branch로 전환된 경우 **worktree 자체는 삭제할 수 있어야 한다.**
+## Base Branch로 전환된 Worktree의 이전 작업 Branch 추적
 
-이 상태에서 현재 branch를 cleanup branch로 해석하면 `dev/main` 로컬·원격 branch를 삭제할 위험이 있으므로 branch 삭제는 절대 수행하지 않는다.
+`current branch == resolved base branch`이면 `dev/main` 자체는 절대 삭제하지 않는다. 대신 선택 worktree의 **HEAD reflog**에서 최신 `checkout: moving from <source> to <base>` 전환을 읽어 이전 작업 branch 후보를 찾는다.
 
-```text
-current branch == resolved base branch
-→ CLEANUP_SCOPE=worktree-only
-→ BRANCH_CLEANUP_ALLOWED=false
-→ MERGE_EVIDENCE=base-branch-worktree
-→ linked worktree만 제거
-→ local base branch 보존
-→ remote base branch 보존
-```
+Worktree 디렉터리명과 branch 이름 유사성만으로 추측하지 않는다.
 
-이 경로에서는 `--delete-remote`를 전달하면 BLOCK한다. `origin/dev`, `origin/main` 같은 base branch를 삭제 대상으로 제시하지 않는다.
-
-Worktree 이름이 과거 feature branch 이름과 비슷하더라도 이름만으로 원래 branch를 추측하여 삭제하지 않는다. 원래 feature branch를 안전하게 증명할 수 없는 경우 branch는 보존한다.
-
-## 4. Base Branch 결정
-
-Base Branch 우선순위:
+추적 branch를 삭제 후보로 올리려면 모두 충족해야 한다.
 
 ```text
-1. 사용자가 명시한 base branch
-2. 현재 HEAD와 정확히 일치하는 merged PR의 base branch (feature cleanup 경로)
-3. refs/remotes/<remote>/HEAD
-4. 그래도 불명확하면 사용자에게 clarify
+1. refs/heads/<tracked branch> 실제 존재
+2. tracked branch != base branch
+3. 다른 worktree에서 checkout 중이지 않음
+4. GitHub remote라면 인증된 상태에서 open PR 없음 확인
+5. merged PR exact head SHA 또는 base ancestry로 merge 증명
+6. remote 삭제 선택지를 제공하려면 remote SHA == tracked local SHA
 ```
 
-Feature cleanup 경로에서는 Base Branch와 cleanup 대상 branch가 같으면 feature branch 삭제 경로로 진행하지 않는다.
-대신 선택 worktree가 실제 base branch를 checkout 중이면 **Worktree-only 경로**로 전환한다.
+안전하면:
 
-## 5. Read-only Cleanup Preflight
+```text
+CLEANUP_SCOPE=worktree-and-tracked-branch
+TRACKED_BRANCH_CLEANUP_ALLOWED=true
+```
 
-선택 후 다음 helper를 실행한다.
+증명되지 않으면:
+
+```text
+CLEANUP_SCOPE=worktree-only
+TRACKED_BRANCH_CLEANUP_ALLOWED=false
+```
+
+이때는 worktree만 제거하고 branch는 모두 보존한다.
+
+## Preflight
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/prepare_cleanup.py" \
@@ -193,199 +105,110 @@ python3 "${HERMES_SKILL_DIR}/scripts/prepare_cleanup.py" \
   [--base-branch "<BASE_BRANCH>"]
 ```
 
-helper는 mutation 없이 다음을 확정한다.
+Base worktree에서 이전 branch를 추적하면 다음을 포함해 반환한다.
 
 ```text
-Primary worktree
-Selected worktree
-Branch / HEAD SHA
-Base branch / base ref
-Cleanup Scope
-Branch Cleanup Allowed
-Remote URL
-Remote branch 존재 여부와 SHA
-GitHub auth 상태 (필요한 경우)
-Merged PR URL/번호 (feature cleanup일 때)
-Merge Evidence
-Remote branch 삭제 가능 여부
-Cleanup fingerprint
+CLEANUP_SCOPE
+TRACKED_PREVIOUS_BRANCH
+TRACKED_PREVIOUS_HEAD_SHA
+TRACKED_PREVIOUS_MERGE_EVIDENCE
+TRACKED_PREVIOUS_PR_URL
+TRACKED_PREVIOUS_REMOTE_EXISTS
+TRACKED_PREVIOUS_REMOTE_SHA
+TRACKED_PREVIOUS_REMOTE_DELETE_AVAILABLE
+TRACKED_PREVIOUS_REASON
+TRACKED_REFLOG_MESSAGE
+CLEANUP_FINGERPRINT
 ```
 
-`CLEANUP_FINGERPRINT`는 approval snapshot이다. 승인 후 다음 중 하나라도 바뀌면 이전 승인은 무효다.
+Fingerprint에는 worktree/HEAD/base/status/remote/PR/추적 branch/reflog evidence를 포함한다. 승인 뒤 상태가 바뀌면 Preview/Gate를 다시 수행한다.
 
-```text
-worktree registration
-branch / HEAD
-working tree status
-base branch/ref
-remote branch SHA
-merged PR evidence
-cleanup scope
-```
+## Preview
 
-변경되면 선택 대상 preflight부터 다시 수행하고 Preview/Gate를 다시 보여준다.
-
-## 6. Worktree 정리 Preview
-
-`clarify` 전에 일반 메시지로 다음을 보여준다.
-
-Feature branch 예시:
+삭제 branch가 있으면 **정확한 이름을 삭제 전에 반드시 사용자에게 보여준다.**
 
 ```text
 [Worktree 정리 Preview]
-Worktree: <path>
-Branch: <feature branch>
-HEAD: <sha>
-Base: <base>
-Cleanup Scope: worktree-and-branch
-Merge Evidence: <github-pr-merged | git-ancestor>
-PR: <url | none>
-Remote Branch: <remote>/<feature branch> <exists | already absent>
-
-정리 대상:
-- linked worktree 제거
-- local feature branch 제거
-- remote feature branch: <승인 시 삭제 가능 | 이미 없음 | 삭제 불가>
-```
-
-Base branch worktree 예시:
-
-```text
-[Worktree 정리 Preview]
-Worktree: <path>
-Branch: dev
+Worktree: /workspace/.worktrees/chagok/ui-dashboard-investment
+Current Branch: dev
 Base: dev
-Cleanup Scope: worktree-only
+Cleanup Scope: worktree-and-tracked-branch
 Merge Evidence: base-branch-worktree
 
-정리 대상:
-- linked worktree 제거
-- local dev 보존
-- origin/dev 보존
+Tracked Previous Branch: feature/ui-dashboard-investment
+Tracked HEAD: <sha>
+Tracked Merge Evidence: git-ancestor
+Remote Branch: origin/feature/ui-dashboard-investment <exists | already absent>
+
+삭제 예정:
+- Worktree: ui-dashboard-investment
+- Local Branch: feature/ui-dashboard-investment
+- Remote Branch: origin/feature/ui-dashboard-investment <승인 시 삭제 | 이미 없음 | 보존>
+
+보존:
+- local dev
+- origin/dev
 ```
 
-Windows/IntelliJ가 선택 Worktree를 열고 있으면 파일 lock으로 `git worktree remove`가 실패할 수 있으므로 가능하면 해당 프로젝트를 닫고 승인하도록 안내한다. 실패해도 force 삭제하지 않는다.
+추적 후보가 안전하지 않으면 `TRACKED_PREVIOUS_REASON`을 설명하고 삭제 대상으로 표시하지 않는다.
 
-## 7. Gate — Worktree 정리 승인
+## 승인 Gate
 
-### Feature branch cleanup
-
-Remote branch가 존재하고 삭제 가능한 경우:
+현재 feature branch:
 
 ```text
-question:
-  [Worktree 정리 승인]
-  선택한 Worktree와 연결 Branch를 정리할까요?
-choices:
-  - Worktree + 로컬/원격 Branch 정리
-  - Worktree + 로컬 Branch만 정리
-  - 취소
+[Worktree 정리 승인]
+삭제 Branch: <feature branch>
+- Worktree + 로컬/원격 Branch 정리
+- Worktree + 로컬 Branch만 정리
+- 취소
 ```
 
-`Worktree + 로컬/원격 Branch 정리`를 선택하면 다음을 모두 승인한 것으로 본다.
+Base worktree + 안전한 tracked branch:
 
 ```text
-selected linked worktree 삭제
-local refs/heads/<feature branch> 삭제
-remote refs/heads/<feature branch> 삭제
+[Worktree 정리 승인]
+삭제 Branch: <tracked previous branch>
+- Worktree + 추적 로컬/원격 Branch 정리
+- Worktree + 추적 로컬 Branch만 정리
+- Worktree만 정리
+- 취소
 ```
 
-### Base branch worktree cleanup
+삭제 가능한 tracked branch가 없으면 `Worktree만 정리 / 취소`만 제공한다.
 
-`CLEANUP_SCOPE=worktree-only`이면 branch 삭제 선택지를 보여주지 않는다.
+## Mutation
 
-```text
-question:
-  [Worktree 정리 승인]
-  선택한 linked Worktree만 제거할까요? Base Branch는 보존됩니다.
-choices:
-  - Worktree만 정리
-  - 취소
-```
-
-`Worktree만 정리` 승인에는 worktree remove + worktree prune만 포함한다.
-
-## 8. 승인 후 Mutation
-
-Feature branch에서 remote branch 유지:
+현재 feature branch cleanup:
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/cleanup_workspace.py" \
-  --workspace "<SELECTED_WORKTREE>" \
-  --remote "<REMOTE>" \
-  --base-branch "<BASE_BRANCH>" \
-  --fingerprint "<CLEANUP_FINGERPRINT>"
+  --workspace "<SELECTED_WORKTREE>" --remote "<REMOTE>" \
+  --base-branch "<BASE_BRANCH>" --fingerprint "<CLEANUP_FINGERPRINT>" \
+  [--delete-remote]
 ```
 
-Feature remote branch까지 삭제:
+Base worktree에서 추적 local branch 삭제 승인:
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/cleanup_workspace.py" \
-  --workspace "<SELECTED_WORKTREE>" \
-  --remote "<REMOTE>" \
-  --base-branch "<BASE_BRANCH>" \
-  --fingerprint "<CLEANUP_FINGERPRINT>" \
-  --delete-remote
+  --workspace "<SELECTED_WORKTREE>" --remote "<REMOTE>" \
+  --base-branch "<BASE_BRANCH>" --fingerprint "<CLEANUP_FINGERPRINT>" \
+  --delete-tracked-branch
 ```
 
-Base branch worktree는 첫 번째 명령과 동일하게 실행하되 helper가 자동으로 `worktree-only` 경로를 선택한다. `--delete-remote`는 사용하지 않는다.
+추적 local + remote 삭제 승인 시 `--delete-tracked-branch --delete-remote`를 함께 전달한다.
 
-Feature helper 순서:
+Base branch local/remote는 항상 보존한다. local feature/tracked branch 삭제는 승인된 exact SHA를 old SHA로 지정한 `git update-ref -d`만 사용한다. remote 삭제 직전 `git ls-remote` SHA를 다시 확인한다.
 
-```text
-fingerprint + merge evidence 재검증
-→ git worktree remove <worktree>
-→ target worktree 미등록 확인
-→ git update-ref -d refs/heads/<feature branch> <expected HEAD>
-→ git worktree prune
-→ remote 삭제 승인 시 remote SHA 재확인
-→ git push <remote> --delete <feature branch>
-```
+## Partial Failure
 
-Base worktree helper 순서:
+- worktree remove 실패: branch refs 건드리지 않고 BLOCK
+- worktree 제거 후 local ref 실패: partial + 남은 branch명 보고
+- local cleanup 후 remote SHA 변경/삭제 실패: partial + remote 보존
+- 자동 rollback/force 재시도 없음
 
-```text
-fingerprint + worktree-only scope 재검증
-→ git worktree remove <worktree>
-→ target worktree 미등록 확인
-→ git worktree prune
-→ base local/remote branch 보존
-```
-
-Local feature branch는 `git branch -D`를 사용하지 않는다. squash/rebase merge도 지원하면서 잘못 이동한 branch를 삭제하지 않기 위해 **승인된 exact HEAD를 old SHA로 지정한 `git update-ref -d`**만 사용한다.
-
-## 9. Remote Branch 삭제 규칙
-
-Remote branch 삭제는 `CLEANUP_SCOPE=worktree-and-branch`이고 `Worktree + 로컬/원격 Branch 정리` choice를 명시적으로 승인했을 때만 수행한다.
-
-삭제 직전에 `git ls-remote`로 remote branch SHA를 다시 읽고 승인 시점 SHA와 다르면 remote branch를 보존하고 `partial`로 종료한다.
-
-HTTPS GitHub remote에서는 `dev-pr-publish`와 같은 persistent `gh` 인증을 one-command credential helper로 사용한다. GitHub 인증이 준비되지 않으면 remote 삭제 option을 제공하지 않는다.
-
-GitHub에서 PR merge 후 feature branch를 자동 삭제해 remote ref가 이미 없으면 성공 상태로 간주하고 local cleanup만 수행한다.
-
-`CLEANUP_SCOPE=worktree-only`에서는 remote branch deletion 자체가 금지다.
-
-## 10. Partial Failure
-
-Mutation은 rollback을 시도하지 않는다.
-
-```text
-worktree remove 실패
-→ branch refs는 건드리지 않고 BLOCK
-
-worktree remove 성공 + local feature ref delete 실패
-→ STATUS=partial
-→ worktree 제거 상태와 남은 local branch를 보고
-
-local cleanup 성공 + remote feature delete 실패
-→ STATUS=partial
-→ local cleanup 완료 상태와 남은 remote branch를 보고
-```
-
-Partial 상태에서는 자동 재시도하지 않는다. 현재 repository에서 worktree 목록/preflight를 다시 읽어 다음 조치를 결정한다.
-
-## 11. 절대 금지
+## 절대 금지
 
 ```text
 git worktree remove --force
@@ -398,23 +221,25 @@ git clean
 git stash
 rm -rf
 primary worktree 삭제
-open PR feature branch 삭제
-merge evidence 없는 feature branch 삭제
+open PR branch 삭제
+merge evidence 없는 branch 삭제
 base branch local/remote 삭제
-승인되지 않은 remote branch 삭제
+Preview에 이름을 표시하지 않은 branch 삭제
 git config --global safe.directory 자동 변경
 ```
 
-## 12. dev-pr-publish와 역할 분리
+## 역할 분리
 
 ```text
-dev-pr-publish
-  commit + push + PR create까지만 담당
-  PR merge는 사용자가 GitHub에서 수행
-
-dev-workspace-cleanup
-  merge 완료 후 목록 선택 + worktree cleanup
-  안전하게 증명된 feature branch만 local/remote cleanup
+git-pr-publish: commit + push + PR create
+git-workspace-cleanup: merge 후 worktree/승인된 branch cleanup
 ```
 
-PR 생성 직후 자동 cleanup하지 않는다. 사용자가 GitHub에서 merge를 완료한 뒤 별도 요청으로 실행한다.
+## 회귀 검증
+
+```bash
+python3 custom-skills/orchestrator/git-workspace-cleanup/tests/test_workspace_cleanup.py
+python3 scripts/check_workspace_cleanup_contract.py
+python3 scripts/check_skill_contract.py
+python3 scripts/check_update_devkit_contract.py
+```
