@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import os
+from pathlib import Path
 import sys
 
 from cleanup_lib import CleanupError, emit, inspect_cleanup
+from worktree_only import try_inspect_base_worktree
 
 
 def parser() -> argparse.ArgumentParser:
@@ -15,15 +18,66 @@ def parser() -> argparse.ArgumentParser:
     return value
 
 
+def add_process_safe_directory(path: str | Path) -> None:
+    """Trust only this process' selected worktree; never mutate global Git config."""
+    resolved = str(Path(path).expanduser().resolve())
+    count = int(os.environ.get("GIT_CONFIG_COUNT", "0") or "0")
+    existing = {
+        os.environ.get(f"GIT_CONFIG_VALUE_{index}")
+        for index in range(count)
+        if os.environ.get(f"GIT_CONFIG_KEY_{index}") == "safe.directory"
+    }
+    if resolved in existing:
+        return
+    os.environ[f"GIT_CONFIG_KEY_{count}"] = "safe.directory"
+    os.environ[f"GIT_CONFIG_VALUE_{count}"] = resolved
+    os.environ["GIT_CONFIG_COUNT"] = str(count + 1)
+
+
 def main() -> int:
     args = parser().parse_args()
+    add_process_safe_directory(args.workspace)
     try:
+        worktree_only = try_inspect_base_worktree(
+            args.workspace,
+            remote=args.remote,
+            explicit_base=args.base_branch,
+        )
+        if worktree_only is not None:
+            emit("STATUS", "ready")
+            emit("CLEANUP_SCOPE", "worktree-only")
+            emit("BRANCH_CLEANUP_ALLOWED", "false")
+            emit("REPO_ROOT", worktree_only.repo_root)
+            emit("PRIMARY_WORKTREE", worktree_only.main_worktree)
+            emit("WORKTREE", worktree_only.worktree)
+            emit("WORKTREE_NAME", worktree_only.worktree.name)
+            emit("BRANCH", worktree_only.branch)
+            emit("HEAD_SHA", worktree_only.head_sha)
+            emit("BASE_BRANCH", worktree_only.base_branch)
+            emit("BASE_REF", "")
+            emit("BASE_SHA", "")
+            emit("REMOTE", worktree_only.remote)
+            emit("REMOTE_URL", worktree_only.remote_url)
+            emit("REMOTE_BRANCH", f"{worktree_only.remote}/{worktree_only.branch}")
+            emit("REMOTE_BRANCH_EXISTS", str(bool(worktree_only.remote_branch_sha)).lower())
+            emit("REMOTE_BRANCH_SHA", worktree_only.remote_branch_sha)
+            emit("GITHUB_STATUS", "not-required")
+            emit("MERGE_EVIDENCE", "base-branch-worktree")
+            emit("PR_NUMBER", "")
+            emit("PR_URL", "")
+            emit("PR_MERGED_AT", "")
+            emit("REMOTE_DELETE_AVAILABLE", "false")
+            emit("CLEANUP_FINGERPRINT", worktree_only.fingerprint)
+            return 0
+
         state = inspect_cleanup(
             args.workspace,
             remote=args.remote,
             explicit_base=args.base_branch,
         )
         emit("STATUS", "ready")
+        emit("CLEANUP_SCOPE", "worktree-and-branch")
+        emit("BRANCH_CLEANUP_ALLOWED", "true")
         emit("REPO_ROOT", state.repo_root)
         emit("COMMON_GIT_DIR", state.common_git_dir)
         emit("PRIMARY_WORKTREE", state.main_worktree)
