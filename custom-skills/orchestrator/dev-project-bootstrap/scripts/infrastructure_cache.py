@@ -8,6 +8,12 @@ from pathlib import Path
 import re
 
 MANAGED_MARKER = "# managed-by: dev-project-bootstrap"
+DESIRED_KEYS = (
+    "application_runtime",
+    "database_runtime",
+    "database_platform",
+    "database_vendor",
+)
 
 
 class InfrastructureCacheError(RuntimeError):
@@ -36,8 +42,52 @@ def metadata_path(repo: Path) -> Path:
     return repo / ".hermes" / "project.yaml"
 
 
+def section_body(text: str, key: str) -> str | None:
+    match = re.search(
+        rf"(?ms)^{re.escape(key)}:\s*(?:#.*)?\n(?P<body>.*?)(?=^[A-Za-z0-9_.-]+:\s*(?:#.*)?$|\Z)",
+        text,
+    )
+    return match.group("body") if match else None
+
+
 def has_section(text: str, key: str) -> bool:
-    return re.search(rf"(?m)^{re.escape(key)}:\s*(?:#.*)?$", text) is not None
+    return section_body(text, key) is not None
+
+
+def parse_scalar(value: str) -> str:
+    raw = value.strip()
+    try:
+        decoded = json.loads(raw)
+        if isinstance(decoded, str):
+            return decoded
+    except Exception:
+        pass
+    return raw.strip("'\"")
+
+
+def existing_desired(text: str) -> dict[str, str] | None:
+    body = section_body(text, "infrastructure")
+    if body is None:
+        return None
+
+    desired_match = re.search(
+        r"(?ms)^\s{2}desired:\s*\n(?P<body>(?:\s{4}[^\n]*\n?)*)",
+        body,
+    )
+    if desired_match is None:
+        return None
+
+    desired_body = desired_match.group("body")
+    result: dict[str, str] = {}
+    for key in DESIRED_KEYS:
+        match = re.search(
+            rf"(?m)^\s{{4}}{re.escape(key)}:\s*(.+?)\s*$",
+            desired_body,
+        )
+        if match is not None:
+            result[key] = parse_scalar(match.group(1))
+
+    return result if len(result) == len(DESIRED_KEYS) else None
 
 
 def technology_vendor(text: str) -> str:
@@ -86,7 +136,7 @@ def render(desired: dict[str, str]) -> str:
         '    database_runtime: "CONTAINER"',
         "  desired:",
     ]
-    for key in ("application_runtime", "database_runtime", "database_platform", "database_vendor"):
+    for key in DESIRED_KEYS:
         lines.append(f"    {key}: {json.dumps(desired[key], ensure_ascii=False)}")
     return "\n".join(lines) + "\n"
 
@@ -99,12 +149,17 @@ def initialize(repo: Path) -> tuple[str, dict[str, str]]:
     if MANAGED_MARKER not in text.splitlines()[:5]:
         raise InfrastructureCacheError(f"metadata is not managed by dev-project-bootstrap: {path}")
 
+    preserved = existing_desired(text)
+    if has_section(text, "infrastructure"):
+        if preserved is None:
+            raise InfrastructureCacheError(
+                "existing infrastructure section is incomplete; refusing to infer over explicit desired state"
+            )
+        return "reused", preserved
+
     detector = load_detector()
     observed = detector.detect(repo)
     desired = desired_from_observed(observed, text)
-
-    if has_section(text, "infrastructure"):
-        return "reused", desired
 
     updated = text.rstrip() + "\n\n" + render(desired)
     path.write_text(updated, encoding="utf-8")
