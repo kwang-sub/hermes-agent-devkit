@@ -22,6 +22,7 @@ Capability Entry
 - Backend dev-*
 - Frontend dev-frontend-feature
 - Data dev-data-feature
+- Infrastructure dev-infrastructure
         ↓
 Lazy Sub-capability
         ↓
@@ -50,6 +51,8 @@ manifest evidence
 source 수정, architecture 선택, dependency 설치, runtime pin 결정, Kanban 생성은 하지 않는다. `Stack Detection != Skill Loading`이다.
 
 `dev-official-docs-context`는 stack이 존재한다는 이유로 자동 load하는 baseline이 아니다. 외부 API surface, version-sensitive 설정, dependency declaration compatibility처럼 **Task 책임이 실제로 공식 문서 evidence를 필요로 할 때** capability entry가 lazy-load한다.
+
+Infrastructure runtime topology는 technology stack fingerprint와 분리한다. Dockerfile/Compose/Application·DB runtime/DB hosting/Supabase가 실제 Task affected area일 때만 `dev-infrastructure`를 선택한다.
 
 ## 4. Capability set
 
@@ -108,6 +111,23 @@ dev-db-migration
 dev-db-performance
 ```
 
+### Infrastructure canonical entry
+
+```text
+dev-infrastructure
+```
+
+현재 1차 Infrastructure 상태 축:
+
+```text
+Application Runtime = LOCAL_HOST | NETWORK_HOST | CONTAINER
+Database Runtime    = LOCAL_HOST | NETWORK_HOST | CONTAINER
+Database Platform   = NATIVE | SUPABASE
+Database Vendor     = postgresql | mysql | mariadb | mssql | oracle | UNKNOWN
+```
+
+신규/미설정 Desired State는 명확한 기존 runtime evidence가 없을 때 Application/Database runtime `CONTAINER`를 기본값으로 사용한다. 기존 명확한 Local/Network/Supabase DB evidence는 이 default보다 우선한다.
+
 ### Cross-stack
 
 ```text
@@ -120,7 +140,7 @@ dev-api-spec
 ## 5. Capability 공통 실행 순서
 
 ```text
-1. stack/vendor/version evidence 탐색
+1. stack/vendor/version/effective runtime evidence 탐색
 2. 외부 기술의 API/config가 Task 책임이면 official-docs evidence 확보
 3. 기존 동일/유사 구현 검색
 4. 기존 convention 결정
@@ -131,7 +151,7 @@ dev-api-spec
 9. reviewer handoff evidence
 ```
 
-새 dependency/framework/language/DB migration tool을 기본값으로 추가하지 않는다.
+새 dependency/framework/language/DB migration tool/deployment platform을 기본값으로 추가하지 않는다.
 
 ### Official docs evidence boundary
 
@@ -257,7 +277,84 @@ GET /v1/images/:key
 
 Personal/Plan REST token은 `X-Figma-Token`, OAuth는 Bearer를 사용한다. token은 환경변수에서만 읽는다. Provider 구현이 바뀌어도 `dev-design-reference`의 Normalized Design Evidence 계약은 유지한다.
 
-## 9. Storybook / Visual Verification
+## 9. Infrastructure entry와 Runtime Reconciliation
+
+Infrastructure Task는 `dev-infrastructure`를 canonical entry로 한다.
+
+```text
+Dockerfile / Compose 생성·수정
+Application runtime 전환
+Database runtime/hosting 전환
+NATIVE ↔ SUPABASE platform 전환
+DB vendor 전환
+runtime connection/env/network/volume/health 변경
+```
+
+Repository에 Dockerfile이나 DB driver가 있다는 이유만으로 모든 Task에 Infrastructure를 적용하지 않는다. 실제 Task가 runtime/topology를 변경하거나 검토할 때만 lazy-load한다.
+
+### Desired / Observed ownership
+
+```text
+Primary Repository .hermes/project.yaml infrastructure:
+→ Project-wide Desired State
+
+Approved implementation Workspace:
+→ Repository bounded Observed State
+```
+
+linked worktree에서는 Coder가 Primary metadata를 직접 수정하지 않는다. Plan Approval 이후 `dev-workspace-dispatch`가 승인된 4축 Desired State를 Primary metadata에 atomic하게 기록하고, Coder는 Workspace에서 Observed State를 계산해 reconciliation한다.
+
+```text
+OBSERVE
+→ COMPARE
+→ PLAN
+→ APPLY
+→ VERIFY
+```
+
+Observed evidence가 없으면 default Desired State를 Observed State로 복사하지 않고 `UNKNOWN`으로 유지한다.
+
+### Runtime / platform / vendor transition
+
+```text
+PostgreSQL CONTAINER → PostgreSQL LOCAL_HOST
+→ RUNTIME_CHANGE
+→ dev-infrastructure
+→ vendor migration 아님
+
+PostgreSQL NATIVE → Supabase PostgreSQL
+→ PLATFORM_CHANGE 또는 runtime 포함 COMBINED_CHANGE
+→ vendor migration 아님
+
+PostgreSQL → MySQL
+→ VENDOR_CHANGE
+→ dev-infrastructure + dev-data-feature + dev-db-migration
+```
+
+Supabase는 vendor가 아니다.
+
+```text
+Supabase Cloud
+= NETWORK_HOST + SUPABASE + postgresql
+
+Supabase Local
+= CONTAINER + SUPABASE + postgresql
+```
+
+일반 Supabase Auth/SDK/Project URL 사용만으로 Database Platform을 `SUPABASE`로 추측하지 않는다. Supabase DB connection host 또는 `supabase/config.toml` 같은 DB runtime evidence가 필요하다.
+
+### Safe reconciliation
+
+```text
+Desired State 변경 != resource 삭제
+Detach != Destroy
+```
+
+Container DB를 Local/Network DB로 전환하면 old DB service는 `Detached`, persistent volume/data는 `Preserved`가 기본이다. `docker compose down -v`, volume/data 삭제와 같은 destructive cleanup은 명시적 범위/승인 없이는 실행하지 않는다.
+
+Kubernetes, Terraform/Ansible, systemd/Windows Service, reverse proxy, deployment automation, observability, backup automation은 현재 자동 구현 범위가 아니며 향후 Infrastructure 하위 capability로 확장한다.
+
+## 10. Storybook / Visual Verification
 
 Storybook이 기존 프로젝트에 있으면 실제 UI Catalog로 사용한다.
 
@@ -282,7 +379,7 @@ Approved browser screenshot golden ↔ 이후 rendering
 
 Design Reference PNG를 장기 Visual Regression golden과 동일시하지 않는다. Playwright/Storybook이 이미 있으면 기존 config/threshold/fixture를 재사용한다. 없으면 이번 작업만을 위해 자동 dependency 추가하지 않는다.
 
-## 10. Data entry와 lazy-load
+## 11. Data entry와 lazy-load
 
 Data/DB Task는 다음 두 경로를 구분한다.
 
@@ -306,7 +403,9 @@ execution plan/index/locking/statistics → dev-db-performance
 
 공통 data 판단은 DBMS 중립으로 수행하고, 실제 physical 차이가 필요한 경우에만 MSSQL/MySQL/MariaDB/PostgreSQL/Oracle vendor reference를 읽는다. DB driver가 Repository에 있다는 이유만으로 Data entry를 자동 적용하지 않는다.
 
-## 11. DBML / Human ERD Review
+Infrastructure가 DB runtime/vendor를 소유하더라도 table/schema/SQL/Flyway/Liquibase/data migration 자체는 Data capability 소유다.
+
+## 12. DBML / Human ERD Review
 
 기존 프로젝트 표준이 없으면 `docs/data/schema.dbml`을 canonical relational model 기본값으로 사용한다.
 
@@ -322,7 +421,7 @@ DBML Canvas는 IntelliJ에서 `schema.dbml`을 시각화하는 Human View로 사
 
 의미 있는 model 변경은 기존 Plan Approval에서 proposed DBML/table/relationship을 명시적으로 보여 `Data Model Gate`를 함께 충족할 수 있다.
 
-## 12. UI/UX adapter
+## 13. UI/UX adapter
 
 `dev-ui-ux`는 Design Source의 IMAGE/Figma 차이를 소유하지 않고 정규화된 Design Evidence와 실제 UI 품질에 집중한다.
 
@@ -334,7 +433,7 @@ Approved Design Reference / project Design System
 
 accessibility, interaction, responsive, typography/color, reduced motion, form feedback, navigation, chart semantics를 보호한다.
 
-## 13. API Contract
+## 14. API Contract
 
 `dev-api-contract`는 framework 독립 capability다.
 
@@ -349,7 +448,7 @@ enum/paging/auth
 
 기존 OpenAPI-generated client가 있으면 재사용하고 code generation을 자동 도입하지 않는다.
 
-## 14. Verification
+## 15. Verification
 
 Frontend/Node는 기존 package manager/test runner를 사용한다. dependency 변경이면 package manager compatibility와 canonical lockfile 검증을 먼저 통과해야 한다.
 
@@ -375,9 +474,20 @@ migration → clean/upgrade/backfill/compatibility test
 performance → execution plan + before/after evidence
 ```
 
-새 runner/library를 검증 편의로 추가하지 않고 실행하지 않은 검증을 PASS라고 보고하지 않는다.
+Infrastructure는 transition 성격에 따라 다음을 사용한다.
 
-## 15. Reviewer evidence
+```text
+static bounded detector
+→ Desired/Observed transition planner
+→ Docker/Compose config/build (해당 시)
+→ target runtime/listener/DB connection/health
+→ application integration
+→ post-change detector/planner convergence
+```
+
+새 runner/library/deployment platform을 검증 편의로 추가하지 않고 실행하지 않은 검증을 PASS라고 보고하지 않는다.
+
+## 16. Reviewer evidence
 
 ```text
 Skill / Applied Capability Skills
@@ -393,6 +503,9 @@ Tirith package preflight / retry evidence (dependency 변경 시)
 Component/Token Reuse (해당 시)
 Storybook Catalog / Design Conformance / Visual Regression (해당 시)
 Data Task Class / Data Model Status / DBML Path (해당 시)
+Infrastructure Desired / Observed / Drift / Transition (해당 시)
+Infrastructure Resources Added / Updated / Detached / Preserved / Removed (해당 시)
+Data Migration / Destructive Operations (Infrastructure vendor/runtime 변경 시)
 Schema/Query/Migration/API/UI strategy
 Verification
 Intentional Deviations
@@ -402,15 +515,16 @@ Residual Risk
 
 Reviewer는 실제 diff 판단에 필요한 capability만 읽는다.
 
-## 16. Skill 추가 체크리스트
+## 17. Skill 추가 체크리스트
 
 ```text
 [ ] Foundation만으로 해결할 수 없는 전문 기능인가
 [ ] 반복 가능한 작업인가
 [ ] 기존 Skill과 역할이 겹치지 않는가
-[ ] stack/vendor/task detection이 정의됐는가
-[ ] dependency/migration tool 정책이 정의됐는가
+[ ] stack/vendor/task/runtime detection이 정의됐는가
+[ ] dependency/migration/deployment tool 정책이 정의됐는가
 [ ] verification/evidence가 정의됐는가
+[ ] destructive resource lifecycle 경계가 정의됐는가 (Infrastructure 해당 시)
 [ ] Public Skill/provider/tool source/version/security를 검토했는가
 [ ] runtime pin 대신 lazy-load가 적합한지 검토했는가
 ```
