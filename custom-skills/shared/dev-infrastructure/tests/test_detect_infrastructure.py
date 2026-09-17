@@ -74,25 +74,41 @@ def test_container_to_host_alias_is_local_db() -> None:
         assert state["database_runtime"] == "LOCAL_HOST", state
 
 
-def test_supabase_cloud() -> None:
+def test_supabase_cloud_database_endpoint() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        write(
+            repo,
+            ".env.example",
+            "DATABASE_URL=postgresql://postgres:placeholder@db.sample.supabase.co:5432/postgres\n",
+        )
+        state = module.infer_state(repo)
+        assert state["database_runtime"] == "NETWORK_HOST", state
+        assert state["database_platform"] == "SUPABASE", state
+        assert state["database_vendor"] == "postgresql", state
+        assert state["supabase_database_hosts"] == ["db.sample.supabase.co"], state
+
+
+def test_supabase_auth_sdk_does_not_imply_supabase_database() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp)
         write(repo, ".env.example", "SUPABASE_URL=https://sample.supabase.co\n")
         write(repo, "package.json", '{"dependencies":{"@supabase/supabase-js":"^2.0.0"}}')
         state = module.infer_state(repo)
-        assert state["database_runtime"] == "NETWORK_HOST", state
-        assert state["database_platform"] == "SUPABASE", state
-        assert state["database_vendor"] == "postgresql", state
+        assert state["database_runtime"] == "UNKNOWN", state
+        assert state["database_platform"] == "UNKNOWN", state
+        assert state["database_vendor"] == "UNKNOWN", state
+        assert state["supabase_database_hosts"] == [], state
 
 
-def test_supabase_key_without_endpoint_keeps_runtime_unknown() -> None:
+def test_supabase_key_without_database_endpoint_keeps_database_unknown() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp)
         write(repo, ".env.example", "SUPABASE_URL=\n")
         state = module.infer_state(repo)
         assert state["database_runtime"] == "UNKNOWN", state
-        assert state["database_platform"] == "SUPABASE", state
-        assert state["database_vendor"] == "postgresql", state
+        assert state["database_platform"] == "UNKNOWN", state
+        assert state["database_vendor"] == "UNKNOWN", state
 
 
 def test_supabase_local() -> None:
@@ -134,8 +150,9 @@ if __name__ == "__main__":
     test_nested_spring_resources_local_db()
     test_placeholder_db_host_remains_unknown()
     test_container_to_host_alias_is_local_db()
-    test_supabase_cloud()
-    test_supabase_key_without_endpoint_keeps_runtime_unknown()
+    test_supabase_cloud_database_endpoint()
+    test_supabase_auth_sdk_does_not_imply_supabase_database()
+    test_supabase_key_without_database_endpoint_keeps_database_unknown()
     test_supabase_local()
     test_conflicting_runtime_evidence_is_unknown()
     test_unknown_is_not_defaulted()
