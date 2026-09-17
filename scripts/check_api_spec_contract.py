@@ -32,6 +32,7 @@ def main() -> int:
         "SOURCE_ONLY", "SPEC_ONLY", "CONTRACT_MISMATCH", "API_SPEC_MISMATCH",
         "API_SPEC_GATE=REQUIRED", "API_SPEC_APPROVED=true",
         "SOURCE_SYNC 결과 자동 `APPROVED`", "Repository 전체를 자동으로 훑지 않는다",
+        "Coder는 production API를 변경하기 전에 승인 snapshot을 대상 Markdown 파일에 동일 의미로 materialize/update",
     ), failures)
     require(template, (
         "Status", "Documentation Source", "Method", "Path", "Request",
@@ -54,8 +55,7 @@ def main() -> int:
     require(dispatch, (
         "API Spec Gate: REQUIRED | NOT_REQUIRED", "API Spec Status: APPROVED | DRAFT | NOT_REQUIRED",
         "API Spec Path:", "API Spec Mode:", "dev-api-spec",
-        "Coder/Reviewer가 동일 Markdown contract",
-        "production API를 변경하기 전에 승인 snapshot을 repository Markdown에 materialize/update",
+        "approved API Spec contract 확인",
     ), failures)
     require(contract, (
         "APPROVED Markdown API Specification", "DESIGN_FIRST", "SOURCE_SYNC",
