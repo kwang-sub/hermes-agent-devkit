@@ -33,6 +33,7 @@ def main() -> int:
     reviewer_cycle = ROOT / "custom-skills/reviewer/dev-review-cycle/SKILL.md"
     common = ROOT / "shared/AGENTS.common.md"
     root_agents = ROOT / "AGENTS.md"
+    readme = ROOT / "README.md"
 
     for removed in (
         ROOT / "custom-skills/coder/dev-fast-flow",
@@ -135,6 +136,26 @@ def main() -> int:
             failures,
         )
         forbid(text, str(path.relative_to(ROOT)), ("DIRECT | FAST | STANDARD_REQUIRED", "Fast worker는", "Fast Flow에는 `Flow: FAST`"), failures)
+
+    readme_text = require(
+        readme,
+        (
+            "모든 새 mutation request의 실행 진입점은 Orchestrator",
+            "Orchestrator가 요청을 `DIRECT | STANDARD`로 분류",
+            "## 9.1 Direct Flow",
+            "DIRECT_SCOPE_EXCEEDED",
+            "## 9.2 Standard Flow",
+            "Direct와 Standard 모두 동일 Review loop",
+            "개발 작업 요청은 Orchestrator에 입력",
+        ),
+        failures,
+    )
+    forbid(
+        readme_text,
+        "README.md",
+        ("dev-fast-flow", "Flow: FAST", "FAST_FLOW_ESCALATION_REQUIRED", "Fast Flow / Coder 직접 요청", "Coder에게 직접 요청"),
+        failures,
+    )
 
     if failures:
         for failure in failures:
