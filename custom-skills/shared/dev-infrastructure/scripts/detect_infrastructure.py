@@ -23,6 +23,7 @@ LOCAL_DATABASE_HOSTS = {
     "host.docker.internal",
     "gateway.docker.internal",
 }
+SUPABASE_DATABASE_HOST_SUFFIXES = (".supabase.co", ".supabase.com")
 
 
 class InfrastructureDetectionError(RuntimeError):
@@ -72,7 +73,7 @@ def safe_read(path: Path) -> str:
 def detect_vendor(text: str) -> set[str]:
     lower = text.lower()
     found: set[str] = set()
-    if any(token in lower for token in ("postgresql", "postgres:", "r2dbc:postgres", "jdbc:postgresql", "org.postgresql", "@supabase/")):
+    if any(token in lower for token in ("postgresql", "postgres:", "r2dbc:postgres", "jdbc:postgresql", "org.postgresql")):
         found.add("postgresql")
     if any(token in lower for token in ("mariadb", "jdbc:mariadb", "org.mariadb")):
         found.add("mariadb")
@@ -131,19 +132,9 @@ def database_endpoint_hosts(text: str) -> set[str]:
     return hosts
 
 
-def has_supabase_platform(text: str) -> bool:
-    lower = text.lower()
-    return (
-        "@supabase/" in lower
-        or "supabase.co" in lower
-        or "supabase.com" in lower
-        or bool(re.search(r"(?m)^\s*(?:next_public_)?supabase_url\s*[=:]", lower))
-    )
-
-
-def has_supabase_remote(text: str) -> bool:
-    lower = text.lower()
-    return "supabase.co" in lower or "supabase.com" in lower
+def is_supabase_database_host(host: str) -> bool:
+    lowered = host.lower().rstrip(".")
+    return lowered.endswith(SUPABASE_DATABASE_HOST_SUFFIXES)
 
 
 def database_runtime_candidates(
@@ -151,7 +142,6 @@ def database_runtime_candidates(
     services: set[str],
     db_hosts: set[str],
     supabase_configs: list[Path],
-    supabase_remote: bool,
 ) -> set[str]:
     candidates: set[str] = set()
     db_service_tokens = {"postgres", "postgresql", "db", "database", "mysql", "mariadb", "mssql", "sqlserver", "oracle"}
@@ -160,8 +150,6 @@ def database_runtime_candidates(
         candidates.add("CONTAINER")
     if supabase_configs:
         candidates.add("CONTAINER")
-    if supabase_remote:
-        candidates.add("NETWORK_HOST")
 
     for host in db_hosts:
         if host in services:
@@ -187,14 +175,14 @@ def infer_state(repo: Path) -> dict[str, Any]:
     services = compose_service_names(compose_text)
     vendors = detect_vendor(all_text)
     db_hosts = database_endpoint_hosts(all_text)
-    supabase_platform = has_supabase_platform(all_text) or bool(supabase_configs)
-    supabase_remote = has_supabase_remote(all_text)
+    supabase_db_hosts = {host for host in db_hosts if is_supabase_database_host(host)}
+    supabase_database_evidence = bool(supabase_configs or supabase_db_hosts)
 
     application_runtime = "UNKNOWN"
     if dockerfiles or any(name in services for name in ("app", "application", "backend", "frontend", "api", "web")):
         application_runtime = "CONTAINER"
 
-    if supabase_platform:
+    if supabase_database_evidence:
         database_platform = "SUPABASE"
         vendors.add("postgresql")
     elif vendors or db_hosts:
@@ -206,7 +194,6 @@ def infer_state(repo: Path) -> dict[str, Any]:
         services=services,
         db_hosts=db_hosts,
         supabase_configs=supabase_configs,
-        supabase_remote=supabase_remote,
     )
     database_runtime = next(iter(runtime_candidates)) if len(runtime_candidates) == 1 else "UNKNOWN"
 
@@ -227,6 +214,7 @@ def infer_state(repo: Path) -> dict[str, Any]:
         "database_vendor": database_vendor,
         "database_vendor_candidates": sorted(vendors),
         "database_endpoint_hosts": sorted(db_hosts),
+        "supabase_database_hosts": sorted(supabase_db_hosts),
         "inputs": inputs,
         "compose_services": sorted(services),
         "confidence": confidence,
@@ -256,6 +244,7 @@ def main() -> int:
     print(f"DATABASE_VENDOR={result['database_vendor']}")
     print(f"DATABASE_VENDOR_CANDIDATES={','.join(result['database_vendor_candidates'])}")
     print(f"DATABASE_ENDPOINT_HOSTS={','.join(result['database_endpoint_hosts'])}")
+    print(f"SUPABASE_DATABASE_HOSTS={','.join(result['supabase_database_hosts'])}")
     print(f"INFRA_INPUTS={','.join(result['inputs'])}")
     print(f"COMPOSE_SERVICES={','.join(result['compose_services'])}")
     print(f"CONFIDENCE={result['confidence']}")
