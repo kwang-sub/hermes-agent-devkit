@@ -74,6 +74,11 @@ def main() -> int:
     require(BREAKDOWN, (
         "Infrastructure Capability mapping",
         "Infrastructure Impact: YES",
+        "Application Host: ... | unknown",
+        "Database Host: ... | unknown",
+        "Database Port: ... | unknown",
+        "HOST_CHANGE",
+        "Supabase Auth/Client provider evidence",
         "dev-infrastructure: runtime/topology/configuration canonical entry",
         "기존 Repository의 하드코딩 설정",
         "dev-db-migration",
@@ -102,6 +107,8 @@ def main() -> int:
         "database_port",
         "database_platform",
         "database_vendor",
+        "VENDORS",
+        "normalize_port",
         "atomic_write",
         "os.replace",
     ))
