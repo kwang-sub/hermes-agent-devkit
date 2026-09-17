@@ -1,0 +1,41 @@
+name: capability-lifecycle
+
+on:
+  pull_request:
+    paths:
+      - 'custom-skills/shared/**'
+      - 'custom-skills/orchestrator/dev-breakdown/**'
+      - 'custom-skills/orchestrator/dev-workspace-dispatch/**'
+      - 'custom-skills/orchestrator/dev-skill-preflight/**'
+      - 'custom-skills/coder/dev-implement-plan/**'
+      - 'custom-skills/reviewer/dev-code-review/**'
+      - 'init-profiles.ps1'
+      - 'scripts/check_capability_lifecycle_contract.py'
+      - '.github/workflows/capability-lifecycle.yml'
+  push:
+    branches: [dev]
+    paths:
+      - 'custom-skills/shared/**'
+      - 'custom-skills/orchestrator/dev-breakdown/**'
+      - 'custom-skills/orchestrator/dev-workspace-dispatch/**'
+      - 'custom-skills/orchestrator/dev-skill-preflight/**'
+      - 'custom-skills/coder/dev-implement-plan/**'
+      - 'custom-skills/reviewer/dev-code-review/**'
+      - 'init-profiles.ps1'
+      - 'scripts/check_capability_lifecycle_contract.py'
+      - '.github/workflows/capability-lifecycle.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Capability lifecycle contract
+        run: python3 scripts/check_capability_lifecycle_contract.py
+      - name: Skill preflight regression
+        run: python3 custom-skills/orchestrator/dev-skill-preflight/tests/test_validate_skills.py
+      - name: Custom skill metadata contract
+        run: python3 scripts/check_skill_contract.py

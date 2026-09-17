@@ -1,12 +1,12 @@
 ---
 name: dev-skill-preflight
-description: Kanban dispatch 전에 대상 Hermes profile에 실제 존재하는 pinned skill만 선별해 unknown skill worker crash를 차단하는 orchestrator 공통 검증 skill.
-version: 1.0.0
+description: Kanban dispatch 전에 대상 Hermes profile에 실제 존재하는 pinned skill만 선별하고 capability lifecycle 등록부의 필수 skill을 strict 검증해 unknown skill worker crash와 역할별 계약 누락을 차단하는 orchestrator 공통 검증 skill.
+version: 1.1.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, orchestrator, kanban, dispatch, skill, preflight, validation]
+    tags: [dev, orchestrator, kanban, dispatch, skill, preflight, validation, capability, lifecycle]
     related_skills: [dev-workspace-dispatch, dev-workflow-orchestrate, dev-breakdown]
     requires_tools: [terminal]
 ---
@@ -24,6 +24,7 @@ Standard/Fast/Review Flow에서 Kanban Task에 `skills`를 pin하기 직전에 �
 3. 모든 대상 profile에서 존재하는 skill만 `VALIDATED_SKILLS`로 반환한다.
 4. 하나라도 누락된 skill은 `REJECTED_SKILLS`로 반환한다.
 5. profile/config 자체를 읽을 수 없으면 fail-closed로 종료한다.
+6. `/opt/custom-skills/shared/capability-lifecycle.json`에서 `strict_pin=true`인 capability가 Task `Applicable Skills`에 있으면 해당 capability를 **필수 pinned skill**로 취급한다.
 
 하지 않는 일:
 
@@ -46,9 +47,32 @@ profiles.reviewer
 
 Reviewer를 사용하지 않는 Flow라면 실제 dispatch 대상 profile만 지정할 수 있다.
 
-## 3. Helper 실행
+## 3. Capability Lifecycle Strict Gate
 
-예:
+Cross-flow capability의 source of truth는 다음 파일이다.
+
+```text
+/opt/custom-skills/shared/capability-lifecycle.json
+```
+
+Task의 `Applicable Skills`와 등록부를 교집합해 다음처럼 처리한다.
+
+```text
+strict_pin=true
+→ coder + reviewer profile 모두 exact skill 존재 확인
+→ validate_skills.py --strict 대상
+→ 하나라도 REJECTED면 dispatch BLOCK
+
+strict_pin=false
+→ 일반 capability hint/lazy-load
+→ 존재 검증은 할 수 있지만 pinned 누락 자체만으로 dispatch를 차단하지 않음
+```
+
+등록부에 없는 이름을 canonical cross-flow capability로 추측해 strict 대상에 추가하지 않는다. 새 canonical capability는 먼저 lifecycle 등록부와 전용 CI 계약을 갱신해야 한다.
+
+## 4. Helper 실행
+
+일반 예:
 
 ```bash
 python3 /opt/custom-skills/orchestrator/dev-skill-preflight/scripts/validate_skills.py \
@@ -57,6 +81,17 @@ python3 /opt/custom-skills/orchestrator/dev-skill-preflight/scripts/validate_ski
   --skill dev-spring-data \
   --skill dev-spring-test \
   --skill java-project-conventions
+```
+
+Lifecycle 필수 capability 예:
+
+```bash
+python3 /opt/custom-skills/orchestrator/dev-skill-preflight/scripts/validate_skills.py \
+  --profile coder \
+  --profile reviewer \
+  --skill dev-infrastructure \
+  --skill dev-data-feature \
+  --strict
 ```
 
 예상 출력:
@@ -71,20 +106,24 @@ MISSING_REVIEWER=java-project-conventions
 STATUS=pass
 ```
 
-`REJECTED_SKILLS`가 있어도 기본 모드는 성공 종료한다. 이는 capability 후보를 안전하게 제외하고 Flow를 계속하기 위한 동작이다. 해당 이름은 task body의 `Rejected Pinned Skills`에 근거와 함께 남기되 `task.skills`에는 절대 넣지 않는다.
+`REJECTED_SKILLS`가 있어도 일반 모드는 성공 종료한다. 이는 optional capability 후보를 안전하게 제외하고 Flow를 계속하기 위한 동작이다. 해당 이름은 task body의 `Rejected Pinned Skills`에 근거와 함께 남기되 `task.skills`에는 절대 넣지 않는다.
 
 profile config 누락, 파싱 불가 등 preflight 자체가 신뢰할 수 없는 상태이면 exit code 2로 종료하며 Kanban 생성/dispatch를 중단한다.
 
-필수 pinned skill처럼 누락을 즉시 차단해야 하는 호출자는 `--strict`를 사용할 수 있다. 이 경우 rejected skill이 하나라도 있으면 exit code 3이다.
+`--strict`에서는 rejected skill이 하나라도 있으면 exit code 3이며 dispatch를 중단한다. Lifecycle 등록부의 `strict_pin=true` applicable capability에는 반드시 이 모드를 사용한다.
 
-## 4. Dispatch 계약
+## 5. Dispatch 계약
 
 `dev-workspace-dispatch`는 다음 순서를 지켜야 한다.
 
 ```text
 Approved Applicable Skills
         ↓
+capability-lifecycle.json과 대조
+        ↓
 dev-skill-preflight
+        ↓
+strict_pin=true applicable skills → --strict
         ↓
 VALIDATED_SKILLS / REJECTED_SKILLS
         ↓
@@ -101,15 +140,17 @@ Dispatch
 - 배열의 첫 skill만 전달하지 않는다.
 - `REJECTED_SKILLS`를 임의 rename/대체하지 않는다.
 - `task.skills`는 `VALIDATED_SKILLS`와 정확히 같아야 한다.
+- `strict_pin=true` applicable capability가 rejected되면 dispatch하지 않는다.
 - post-create 검증이 다르면 dispatch하지 않는다.
-- validated skill이 0개면 `skills=[]`를 허용한다.
+- optional capability만 있고 validated skill이 0개면 `skills=[]`를 허용한다.
 
-`Applicable Skills`는 여전히 Coder가 작업 맥락에서 어떤 capability를 참고해야 하는지 설명하는 canonical handoff다. `task.skills`는 worker 시작 시 Hermes가 강제로 로드할 pinned skill만 의미하며 두 개념을 구분한다.
+`Applicable Skills`는 Coder가 작업 맥락에서 어떤 capability를 참고해야 하는지 설명하는 canonical handoff다. `task.skills`는 worker 시작 시 Hermes가 강제로 로드할 pinned skill만 의미하며 두 개념을 구분한다.
 
-## 5. 회귀 검증
+## 6. 회귀 검증
 
 ```bash
 python3 custom-skills/orchestrator/dev-skill-preflight/tests/test_validate_skills.py
+python3 scripts/check_capability_lifecycle_contract.py
 ```
 
 검증 범위:
@@ -118,5 +159,6 @@ python3 custom-skills/orchestrator/dev-skill-preflight/tests/test_validate_skill
 - 한쪽 profile에만 존재하는 skill 제외
 - 존재하지 않는 skill 제외
 - strict 모드 차단
+- lifecycle `strict_pin=true` 계약 존재
 - profile-local skill 인식
 - profile config 누락 시 fail-closed

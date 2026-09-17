@@ -10,6 +10,26 @@
 - Foundation 규칙은 `/opt/data/shared/references`에 두고 언어/프레임워크/기능 전문 지식만 capability Skill로 분리합니다.
 - Public Skill/외부 provider/IDE plugin은 직접 Workflow에 박지 않고 DevKit adapter/capability 뒤에 둡니다.
 
+## Capability Lifecycle Registry
+
+Standard Flow를 가로지르는 capability의 source of truth는 `capability-lifecycle.json`입니다.
+
+```text
+Planner(dev-breakdown)
+        ↓
+Coder(dev-implement-plan 또는 pinned capability)
+        ↓
+Reviewer(dev-code-review)
+        ↓
+Dispatch Preflight(coder + reviewer availability)
+```
+
+새 capability가 위 네 단계를 모두 사용해야 하는 경우 등록부에 추가합니다. 특히 shared Skill이 자신을 `canonical entry`로 선언하면 반드시 등록되어야 하며 `scripts/check_capability_lifecycle_contract.py`가 누락을 CI에서 차단합니다.
+
+`strict_pin=true`는 해당 capability가 Task의 `Applicable Skills`에 포함됐을 때 Coder/Reviewer 양쪽 profile에서 exact skill 존재를 `dev-skill-preflight --strict`로 확인해야 한다는 뜻입니다. 단순 support/hint capability는 필요할 때 lazy-load하며 모든 shared skill을 등록부에 넣지는 않습니다.
+
+현재 cross-flow 등록 범위는 Backend Spring feature/data, Frontend canonical entry, Data canonical entry/migration, Infrastructure canonical entry, API specification/contract입니다. Reviewer는 별도 하드코딩 목록을 source of truth로 유지하지 않고 이 등록부와 Task affected scope를 기준으로 필요한 capability만 읽습니다.
+
 ## Backend
 
 ```text

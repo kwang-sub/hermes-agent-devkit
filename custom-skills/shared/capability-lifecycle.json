@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "policy": {
+    "description": "Standard Flow에서 Planner → Coder → Reviewer → Preflight 연결을 유지해야 하는 cross-flow capability 등록부",
+    "canonical_description_marker": "canonical entry"
+  },
+  "capabilities": [
+    {
+      "name": "dev-spring-feature",
+      "domain": "backend",
+      "kind": "domain_entry",
+      "planner_required": true,
+      "coder_required": true,
+      "reviewer_required": true,
+      "strict_pin": true
+    },
+    {
+      "name": "dev-spring-data",
+      "domain": "backend-data",
+      "kind": "domain_entry",
+      "planner_required": true,
+      "coder_required": true,
+      "reviewer_required": true,
+      "strict_pin": true
+    },
+    {
+      "name": "dev-frontend-feature",
+      "domain": "frontend",
+      "kind": "canonical_entry",
+      "planner_required": true,
+      "coder_required": true,
+      "reviewer_required": true,
+      "strict_pin": true
+    },
+    {
+      "name": "dev-data-feature",
+      "domain": "data",
+      "kind": "canonical_entry",
+      "planner_required": true,
+      "coder_required": true,
+      "reviewer_required": true,
+      "strict_pin": true
+    },
+    {
+      "name": "dev-db-migration",
+      "domain": "data-migration",
+      "kind": "critical_companion",
+      "planner_required": true,
+      "coder_required": true,
+      "reviewer_required": true,
+      "strict_pin": true
+    },
+    {
+      "name": "dev-infrastructure",
+      "domain": "infrastructure",
+      "kind": "canonical_entry",
+      "planner_required": true,
+      "coder_required": true,
+      "reviewer_required": true,
+      "strict_pin": true
+    },
+    {
+      "name": "dev-api-spec",
+      "domain": "api-specification",
+      "kind": "contract_entry",
+      "planner_required": true,
+      "coder_required": true,
+      "reviewer_required": true,
+      "strict_pin": true
+    },
+    {
+      "name": "dev-api-contract",
+      "domain": "api-contract",
+      "kind": "cross_stack_companion",
+      "planner_required": true,
+      "coder_required": true,
+      "reviewer_required": true,
+      "strict_pin": false
+    }
+  ]
+}
