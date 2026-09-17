@@ -1,0 +1,47 @@
+name: bootstrap-config-security
+
+on:
+  pull_request:
+    paths:
+      - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/ensure_gitignore.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/ensure_config_security.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/bootstrap.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_ensure_gitignore.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_config_security.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_bootstrap_launcher.py'
+      - 'custom-skills/shared/references/application-configuration-security.md'
+      - 'custom-skills/shared/dev-infrastructure/SKILL.md'
+      - '.github/workflows/bootstrap-config-security.yml'
+  push:
+    branches: [dev]
+    paths:
+      - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/ensure_gitignore.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/ensure_config_security.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/bootstrap.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_ensure_gitignore.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_config_security.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_bootstrap_launcher.py'
+      - 'custom-skills/shared/references/application-configuration-security.md'
+      - 'custom-skills/shared/dev-infrastructure/SKILL.md'
+      - '.github/workflows/bootstrap-config-security.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile bootstrap security scripts
+        run: python3 -m compileall -q custom-skills/orchestrator/dev-project-bootstrap/scripts
+      - name: Git ignore security tests
+        run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_ensure_gitignore.py
+      - name: Application configuration security tests
+        run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_config_security.py
+      - name: Bootstrap launcher regression
+        run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_bootstrap_launcher.py
+      - name: Infrastructure regression
+        run: |
+          python3 custom-skills/shared/dev-infrastructure/tests/test_detect_infrastructure.py
+          python3 custom-skills/shared/dev-infrastructure/tests/test_plan_transition.py
