@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -14,42 +15,50 @@ PLATFORMS = {"NATIVE", "SUPABASE", "UNKNOWN"}
 VENDORS = {"postgresql", "mysql", "mariadb", "mssql", "oracle", "UNKNOWN"}
 COMPOSE_NAMES = ("compose.yml", "compose.yaml", "docker-compose.yml", "docker-compose.yaml")
 ENV_NAMES = (".env.example",)
-MAX_DEPTH = 3
+MAX_DIRECTORY_DEPTH = 5
+LOCAL_DATABASE_HOSTS = {
+    "localhost",
+    "127.0.0.1",
+    "::1",
+    "host.docker.internal",
+    "gateway.docker.internal",
+}
 
 
 class InfrastructureDetectionError(RuntimeError):
     pass
 
 
-def relative_depth(root: Path, path: Path) -> int:
-    return len(path.relative_to(root).parts)
+def is_relevant_file(path: Path, repo: Path) -> bool:
+    rel = path.relative_to(repo)
+    name = path.name
+    return (
+        name == "Dockerfile"
+        or name.endswith(".Dockerfile")
+        or name in COMPOSE_NAMES
+        or name in ENV_NAMES
+        or (name == "config.toml" and "supabase" in rel.parts)
+        or (name.startswith("application") and path.suffix in {".yml", ".yaml", ".properties"})
+        or name in {"build.gradle", "build.gradle.kts", "pom.xml", "package.json", "schema.prisma"}
+    )
 
 
 def bounded_files(repo: Path) -> list[Path]:
     files: list[Path] = []
-    ignored = {".git", "node_modules", "build", "target", ".next", "dist", "vendor"}
-    for path in repo.rglob("*"):
-        try:
-            rel = path.relative_to(repo)
-        except ValueError:
-            continue
-        if any(part in ignored for part in rel.parts):
-            continue
-        if path.is_dir():
-            continue
-        if relative_depth(repo, path) > MAX_DEPTH + 1:
-            continue
-        name = path.name
-        if (
-            name == "Dockerfile"
-            or name.endswith(".Dockerfile")
-            or name in COMPOSE_NAMES
-            or name in ENV_NAMES
-            or (name == "config.toml" and "supabase" in rel.parts)
-            or (name.startswith("application") and path.suffix in {".yml", ".yaml", ".properties"})
-            or name in {"build.gradle", "build.gradle.kts", "pom.xml", "package.json", "schema.prisma"}
-        ):
-            files.append(path)
+    ignored = {".git", "node_modules", "build", "target", ".next", "dist", "vendor", ".gradle"}
+
+    for root_text, dirs, names in os.walk(repo, topdown=True):
+        root = Path(root_text)
+        depth = len(root.relative_to(repo).parts)
+        dirs[:] = [name for name in dirs if name not in ignored]
+        if depth >= MAX_DIRECTORY_DEPTH:
+            dirs[:] = []
+
+        for name in names:
+            path = root / name
+            if is_relevant_file(path, repo):
+                files.append(path)
+
     return sorted(files)
 
 
@@ -79,35 +88,90 @@ def detect_vendor(text: str) -> set[str]:
 def compose_service_names(text: str) -> set[str]:
     names: set[str] = set()
     in_services = False
+    service_indent: int | None = None
+
     for line in text.splitlines():
-        if re.match(r"^services:\s*$", line):
+        if re.match(r"^services:\s*(?:#.*)?$", line):
             in_services = True
+            service_indent = None
             continue
-        if in_services and re.match(r"^[A-Za-z0-9_.-]+:\s*$", line):
+        if not in_services or not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line.startswith((" ", "\t")):
             break
-        match = re.match(r"^\s{2}([A-Za-z0-9_.-]+):\s*$", line) if in_services else None
-        if match:
-            names.add(match.group(1))
+
+        match = re.match(r"^(\s+)([A-Za-z0-9_.-]+):\s*(?:#.*)?$", line)
+        if not match:
+            continue
+        indent = len(match.group(1).replace("\t", "    "))
+        if service_indent is None:
+            service_indent = indent
+        if indent == service_indent:
+            names.add(match.group(2))
+
     return names
+
+
+def is_placeholder_host(host: str) -> bool:
+    return any(token in host for token in ("$", "{", "}", "%"))
 
 
 def database_endpoint_hosts(text: str) -> set[str]:
     lower = text.lower()
     patterns = (
-        r"(?:jdbc|r2dbc):[a-z0-9]+://([^/:;?\s]+)",
-        r"(?:postgres(?:ql)?|mysql|mariadb|mssql|sqlserver|oracle)(?:\+[a-z0-9]+)?://([^/:;?\s]+)",
+        r"(?:jdbc|r2dbc):[a-z0-9]+://(?:(?:[^@/\s]+)@)?([^/:;?\s]+)",
+        r"(?:postgres(?:ql)?|mysql|mariadb|mssql|sqlserver|oracle)(?:\+[a-z0-9]+)?://(?:(?:[^@/\s]+)@)?([^/:;?\s]+)",
     )
     hosts: set[str] = set()
     for pattern in patterns:
-        hosts.update(match.group(1) for match in re.finditer(pattern, lower))
+        for match in re.finditer(pattern, lower):
+            host = match.group(1).strip("[]")
+            if host and not is_placeholder_host(host):
+                hosts.add(host)
     return hosts
+
+
+def has_supabase_platform(text: str) -> bool:
+    lower = text.lower()
+    return (
+        "@supabase/" in lower
+        or "supabase.co" in lower
+        or "supabase.com" in lower
+        or bool(re.search(r"(?m)^\s*(?:next_public_)?supabase_url\s*[=:]", lower))
+    )
 
 
 def has_supabase_remote(text: str) -> bool:
     lower = text.lower()
-    return "supabase.co" in lower or "supabase.com" in lower or bool(
-        re.search(r"(?m)^\s*(?:next_public_)?supabase_url\s*[=:]", lower)
-    )
+    return "supabase.co" in lower or "supabase.com" in lower
+
+
+def database_runtime_candidates(
+    *,
+    services: set[str],
+    db_hosts: set[str],
+    supabase_configs: list[Path],
+    supabase_remote: bool,
+) -> set[str]:
+    candidates: set[str] = set()
+    db_service_tokens = {"postgres", "postgresql", "db", "database", "mysql", "mariadb", "mssql", "sqlserver", "oracle"}
+
+    if services.intersection(db_service_tokens):
+        candidates.add("CONTAINER")
+    if supabase_configs:
+        candidates.add("CONTAINER")
+    if supabase_remote:
+        candidates.add("NETWORK_HOST")
+
+    for host in db_hosts:
+        if host in services:
+            candidates.add("CONTAINER")
+        elif host in LOCAL_DATABASE_HOSTS:
+            candidates.add("LOCAL_HOST")
+        else:
+            candidates.add("NETWORK_HOST")
+
+    return candidates
 
 
 def infer_state(repo: Path) -> dict[str, Any]:
@@ -123,13 +187,14 @@ def infer_state(repo: Path) -> dict[str, Any]:
     services = compose_service_names(compose_text)
     vendors = detect_vendor(all_text)
     db_hosts = database_endpoint_hosts(all_text)
+    supabase_platform = has_supabase_platform(all_text) or bool(supabase_configs)
     supabase_remote = has_supabase_remote(all_text)
 
     application_runtime = "UNKNOWN"
     if dockerfiles or any(name in services for name in ("app", "application", "backend", "frontend", "api", "web")):
         application_runtime = "CONTAINER"
 
-    if supabase_configs or supabase_remote:
+    if supabase_platform:
         database_platform = "SUPABASE"
         vendors.add("postgresql")
     elif vendors or db_hosts:
@@ -137,18 +202,13 @@ def infer_state(repo: Path) -> dict[str, Any]:
     else:
         database_platform = "UNKNOWN"
 
-    database_runtime = "UNKNOWN"
-    db_service_tokens = {"postgres", "postgresql", "db", "database", "mysql", "mariadb", "mssql", "sqlserver", "oracle"}
-    if services.intersection(db_service_tokens) or db_hosts.intersection(services):
-        database_runtime = "CONTAINER"
-    elif database_platform == "SUPABASE" and supabase_configs:
-        database_runtime = "CONTAINER"
-    elif supabase_remote:
-        database_runtime = "NETWORK_HOST"
-    elif db_hosts.intersection({"localhost", "127.0.0.1", "::1"}):
-        database_runtime = "LOCAL_HOST"
-    elif db_hosts:
-        database_runtime = "NETWORK_HOST"
+    runtime_candidates = database_runtime_candidates(
+        services=services,
+        db_hosts=db_hosts,
+        supabase_configs=supabase_configs,
+        supabase_remote=supabase_remote,
+    )
+    database_runtime = next(iter(runtime_candidates)) if len(runtime_candidates) == 1 else "UNKNOWN"
 
     if len(vendors) == 1:
         database_vendor = next(iter(vendors))
@@ -156,12 +216,13 @@ def infer_state(repo: Path) -> dict[str, Any]:
         database_vendor = "UNKNOWN"
 
     confidence = "HIGH"
-    if application_runtime == "UNKNOWN" or database_runtime == "UNKNOWN":
+    if application_runtime == "UNKNOWN" or database_runtime == "UNKNOWN" or len(runtime_candidates) > 1:
         confidence = "PARTIAL"
 
     return {
         "application_runtime": application_runtime,
         "database_runtime": database_runtime,
+        "database_runtime_candidates": sorted(runtime_candidates),
         "database_platform": database_platform,
         "database_vendor": database_vendor,
         "database_vendor_candidates": sorted(vendors),
@@ -190,6 +251,7 @@ def main() -> int:
 
     print(f"APPLICATION_RUNTIME={result['application_runtime']}")
     print(f"DATABASE_RUNTIME={result['database_runtime']}")
+    print(f"DATABASE_RUNTIME_CANDIDATES={','.join(result['database_runtime_candidates'])}")
     print(f"DATABASE_PLATFORM={result['database_platform']}")
     print(f"DATABASE_VENDOR={result['database_vendor']}")
     print(f"DATABASE_VENDOR_CANDIDATES={','.join(result['database_vendor_candidates'])}")
