@@ -1,48 +1,31 @@
 # dev-review-cycle 상세 계약
 
-Coder와 Reviewer가 하나의 implementation Card와 동일 Workspace를 재사용한다. **Standard Flow는 항상 Reviewer**, Fast Flow는 구현 후 risk 판정에 따라 LOW self-complete 또는 Reviewer 인계다. 이 문서는 coder/reviewer profile에 동일하게 유지한다.
+Coder와 Reviewer는 하나의 implementation Card와 동일 Workspace를 재사용한다. **Direct와 Standard Flow는 모두 Reviewer 필수**다. 이 문서는 coder/reviewer profile에 동일하게 유지한다.
 
 ## 1. 상태 전이
 
 ```text
-Fast Flow
+Direct | Standard
 coder running
-  ├─ Review Risk LOW + verification PASS
-  │    └─ kanban_complete → done
-  └─ REVIEW_REQUIRED
-       └─ kanban_request_review → reviewer
-            ├─ APPROVED → kanban_complete → done
-            ├─ CHANGES_REQUESTED → original coder ready → fix → review
-            └─ BLOCKED → kanban_block
-
-Standard Flow
-coder running → kanban_request_review → reviewer
-  ├─ APPROVED → done
+→ kanban_request_review
+→ reviewer DEFAULT
+  ├─ APPROVED → kanban_complete → done
   ├─ CHANGES_REQUESTED → original coder ready → fix → review
-  └─ BLOCKED → human/external resolution
+  └─ BLOCKED → kanban_block
 ```
+
+`kanban_request_review`와 `kanban_request_changes` 내부의 trusted lifecycle handler가 승인 모델의 review-enter/changes-return 전이를 담당한다. Worker가 shell에서 model override를 직접 바꾸지 않는다.
 
 ## 2. Coder
 
-Coder는 `kanban_show`, 동일 Workspace/Branch, verification, change summary를 유지한다.
+Coder는 `kanban_show`, 동일 Workspace/Branch, Work Unit Boundary, verification, scoped change summary를 유지한다.
 
-Fast LOW self-complete는 다음 조건에서만 허용된다.
-- `Flow: FAST`
-- 최초 implementation round
-- `Review Risk: LOW` 근거 존재
-- public API/schema/entity relation/dependency/transaction/security/concurrency/complex query/common architecture 위험 없음
-- targeted verification PASS
-- residual risk가 낮음
-
-LOW completion metadata에는 `review_risk=LOW`, `review_skipped=true`, risk reasons, changed files, exact verification, residual risk, Base SHA를 남긴다.
-
-다음은 무조건 Reviewer에게 보낸다.
+다음은 모두 Reviewer에게 보낸다.
+- Direct Flow
 - Standard Flow
-- Fast `REVIEW_REQUIRED`
 - 한 번이라도 `CHANGES_REQUESTED`가 발생한 Card
-- LOW 여부가 불확실함
 
-Coder의 `kanban_block`은 workspace mismatch, 계약 누락, 필수 검증 불가, scope escalation 같은 genuine blocker에만 허용된다.
+Risk가 낮거나 변경 파일이 작아도 Coder self-complete는 허용하지 않는다. `kanban_block`은 workspace mismatch, 계약 누락, 필수 검증 불가, Direct/Work Unit scope escalation 같은 genuine blocker에만 사용한다.
 
 ## 3. Reviewer
 
@@ -53,11 +36,24 @@ Reviewer는 source를 수정하지 않고 read-only inspection/test 후 정확�
 
 CHANGES_REQUESTED는 terminal 상태가 아니다. original coder가 동일 Workspace에서 blocking finding만 수정하고 반드시 다시 review를 요청한다.
 
-## 4. 금지 전이
+## 4. 모델 전이
 
-- Standard Flow Coder self-complete
-- Fast Flow에서 LOW evidence 없이 `kanban_complete`
-- review가 시작된 Card의 Coder가 LOW로 재분류해 Reviewer 우회
+```text
+Coder approved model/provider
+→ kanban_request_review 내부 review-enter
+→ Reviewer profile DEFAULT
+→ kanban_request_changes 내부 changes-return
+→ approved Coder model/provider 복원
+```
+
+- Coder/Reviewer가 `flow_model_policy.py review-enter|changes-return` 또는 `hermes kanban set-model`을 shell에서 직접 호출하지 않는다.
+- lifecycle 실패 시 다음 lane으로 진행하지 않고 capability blocker로 종료한다.
+- retry 때 ENV를 재해석하지 않고 Task 승인 snapshot을 유지한다.
+
+## 5. 금지 전이
+
+- Direct/Standard Coder self-complete
+- LOW risk를 이유로 Reviewer 우회
 - Coder가 구현 완료 후 review 대신 `kanban_block`
 - 정상 correction을 위한 새 Review Card/Workspace
 - Reviewer의 application/test/config/workflow source 수정
@@ -65,11 +61,13 @@ CHANGES_REQUESTED는 terminal 상태가 아니다. original coder가 동일 Work
 - 수정 가능한 finding을 BLOCKED로 종료
 - commit, push, PR, cleanup, branch 전환, workspace 제거
 
-## 5. Retry / escalation
+## 6. Retry / escalation
 
 동일 중요 blocker가 3 review cycle 동안 해결되지 않으면 Reviewer는 `kanban_block(kind=needs_input)`하고 repeated finding, round evidence, 실패 이유, 필요한 human decision, 재개 조건을 남긴다.
 
-## 6. 완료 의미
+Direct Task가 승인 scope를 벗어나면 Coder가 `DIRECT_SCOPE_EXCEEDED`로 block하고 Orchestrator가 Standard Flow/Requirement Delta로 재분류한다.
+
+## 7. 완료 의미
 
 ```text
 Kanban status = done
@@ -78,4 +76,4 @@ working tree = uncommitted changes may remain
 publication = no commit/push/PR
 ```
 
-Fast LOW 완료도 Reviewer APPROVED 완료도 publication/cleanup 허가가 아니다.
+Reviewer APPROVED 완료는 publication/cleanup 허가가 아니다.
