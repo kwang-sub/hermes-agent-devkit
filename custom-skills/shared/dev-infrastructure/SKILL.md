@@ -1,13 +1,13 @@
 ---
 name: dev-infrastructure
 description: 애플리케이션과 데이터베이스의 실행 위치·플랫폼을 desired/observed state로 관리하고 Docker 중심 기본 구성을 안전하게 전환하는 Infrastructure canonical entry.
-version: 0.1.0
+version: 0.2.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, infrastructure, runtime, docker, compose, database, supabase, reconciliation]
-    related_skills: [dev-tech-dispatch, dev-project-bootstrap, dev-data-feature, dev-db-migration, dev-official-docs-context]
+    tags: [dev, infrastructure, runtime, docker, compose, database, supabase, reconciliation, worktree]
+    related_skills: [dev-tech-dispatch, dev-project-bootstrap, dev-workspace-dispatch, dev-data-feature, dev-db-migration, dev-official-docs-context]
     requires_tools: [terminal, skill_view]
 ---
 
@@ -48,11 +48,11 @@ Kubernetes, Terraform, Ansible, cloud provisioning, reverse proxy, CI/CD deploym
 Infrastructure는 최초 파일 생성기가 아니라 **Desired State reconciliation**을 수행한다.
 
 ```text
-Repository evidence
+Approved implementation Workspace evidence
 → Observed State
 
-.hermes/project.yaml infrastructure
-또는 Task의 명시적 요구
+Primary Repository .hermes/project.yaml infrastructure
++ approved Task snapshot
 → Desired State
 
 Observed + Desired
@@ -62,6 +62,27 @@ Observed + Desired
 ```
 
 `CONTAINER`는 **default desired policy**일 뿐 현재 상태를 추측하는 fallback이 아니다. 기존 repository에 명확한 runtime evidence가 있으면 이를 Observed State로 보존한다. evidence가 충분하지 않으면 `UNKNOWN`으로 남긴다.
+
+## Project / Workspace ownership
+
+Infrastructure Desired State와 구현 source의 소유 위치를 분리한다.
+
+```text
+Primary Repository
+/workspace/chagok
+└─ .hermes/project.yaml
+   └─ infrastructure:     # canonical Desired State
+
+Implementation Workspace
+/workspace/chagok
+또는
+/workspace/.worktrees/chagok/<task>
+└─ Dockerfile / compose / application config ...  # Observed State + implementation
+```
+
+linked worktree에 `.hermes/project.yaml`이 없더라도 정상이다. `plan_transition.py`는 Workspace의 `.git` worktree metadata로 Primary Repository를 자동 해석하고 그곳의 Desired State를 읽는다. 필요하면 `--project-repo`로 Primary Repository를 명시할 수 있다.
+
+Coder는 linked worktree 밖의 Primary metadata를 임의 수정하지 않는다. Infrastructure Task에서 Desired State가 바뀌면 **Plan Approval 이후 Orchestrator의 `dev-workspace-dispatch/prepare_dispatch.py`가 worker dispatch 전에 승인된 4축을 Primary metadata에 atomic하게 기록**한다. Coder는 Task snapshot과 persisted metadata가 일치하는지 확인한 뒤 이를 read-only desired contract로 사용한다.
 
 ## Desired State metadata
 
@@ -79,7 +100,8 @@ infrastructure:
 - 신규 bootstrap에서 application/database runtime 기본값은 `CONTAINER`다.
 - `database_vendor`는 기존 technology detector의 명확한 단일 vendor evidence가 있으면 재사용할 수 있다.
 - 기존 프로젝트의 명시적 runtime evidence를 기본값으로 덮어쓰지 않는다.
-- Task가 desired state를 바꾸면 해당 metadata를 함께 갱신한다.
+- Infrastructure Gate가 REQUIRED인 Task에서 desired state를 바꾸면 Plan 승인 후 dispatch 단계에서 4축을 함께 갱신한다.
+- 일부 축만 암묵적으로 merge하지 않는다.
 
 ## Runtime과 Platform은 독립 축
 
@@ -116,21 +138,24 @@ supabase/config.toml
 package/build manifest의 DB vendor evidence
 ```
 
-일반 source 전체를 scan하지 않는다.
+일반 source 전체를 scan하지 않는다. placeholder host나 서로 충돌하는 runtime evidence를 억지로 하나의 runtime으로 확정하지 않고 `UNKNOWN`으로 남긴다.
 
 정규 detector:
 
 ```bash
 python3 /opt/custom-skills/shared/dev-infrastructure/scripts/detect_infrastructure.py \
-  --repo "<repository>"
+  --repo "<approved Workspace>"
 ```
 
 Desired/Observed transition 계획:
 
 ```bash
 python3 /opt/custom-skills/shared/dev-infrastructure/scripts/plan_transition.py \
-  --repo "<repository>"
+  --repo "<approved Workspace>" \
+  [--project-repo "<Primary Repository>"]
 ```
+
+`--repo`는 Observed State source인 구현 Workspace다. `--project-repo`를 생략하면 linked worktree의 Git metadata로 Primary Repository를 자동 해석한다.
 
 ## Transition classification
 
@@ -141,9 +166,10 @@ HOST_CHANGE
 PLATFORM_CHANGE
 VENDOR_CHANGE
 COMBINED_CHANGE
+UNKNOWN
 ```
 
-두 축 이상 변경되면 `COMBINED_CHANGE`이며 세부 `changes`를 함께 기록한다.
+두 축 이상 변경되면 `COMBINED_CHANGE`이며 세부 `changes`를 함께 기록한다. Observed evidence 부족만으로 명확한 change라고 주장하지 않고 `UNKNOWN`과 `requires_observed_verification`으로 남긴다.
 
 예:
 
@@ -197,8 +223,8 @@ mssql → postgresql
 
 ```text
 dev-data-feature
-필요 시 dev-db-schema
 dev-db-migration
+필요 시 dev-db-schema / dev-db-query
 ```
 
 먼저 schema/type/constraint/query/migration compatibility를 검토하고 target DB 준비와 application connection 변경을 뒤에 수행한다.
@@ -254,20 +280,22 @@ DB container가 존재한다는 이유로 Infrastructure가 physical schema를 �
 - `UNKNOWN`을 편의상 `CONTAINER`/`LOCAL_HOST`로 추측하지 않는다.
 - 신규/미설정 desired state에만 `CONTAINER` default를 사용한다.
 - 전환 후 실제 connection/health/build/test 등 affected verification을 수행한다.
+- Coder가 Workspace 경계를 넘어 Primary metadata를 수정하지 않는다.
 
 ## Coder 실행 순서
 
 ```text
-1. dev-infrastructure detector로 Observed State 확보
-2. Task + infrastructure metadata로 Desired State 확보
-3. plan_transition.py로 Transition Plan 생성
-4. VENDOR_CHANGE 여부 확인
-5. vendor 변경이면 Data capability Gate
-6. destructive operation 후보를 제거하거나 별도 승인 대상으로 분리
-7. 최소 변경 적용
-8. Desired/Observed drift 재검사
-9. affected runtime/connection/test/build 검증
-10. handoff evidence 기록
+1. approved Workspace에서 detector로 Observed State 확보
+2. Primary infrastructure metadata + Task snapshot으로 Desired State 확보
+3. 두 Desired State가 불일치하면 구현 전에 BLOCK
+4. plan_transition.py로 Transition Plan 생성
+5. VENDOR_CHANGE 여부 확인
+6. vendor 변경이면 Data capability Gate
+7. destructive operation 후보를 제거하거나 별도 승인 대상으로 분리
+8. 최소 변경 적용
+9. Desired/Observed drift 재검사
+10. affected runtime/connection/test/build 검증
+11. handoff evidence 기록
 ```
 
 ## Reviewer hot spots
@@ -280,11 +308,14 @@ DB container가 존재한다는 이유로 Infrastructure가 physical schema를 �
 - volume/data를 명시적 승인 없이 제거했는가
 - metadata만 바꾸고 actual connection/config를 검증하지 않았는가
 - 기존 외부 DB evidence를 Docker 기본값으로 덮었는가
+- linked worktree의 stale/missing metadata를 Primary Desired State 대신 사용했는가
 
 ## Handoff
 
 ```text
 Skill: dev-infrastructure
+Project Repository: <Primary Repository>
+Workspace: <approved implementation Workspace>
 Desired State:
 - Application Runtime: LOCAL_HOST | NETWORK_HOST | CONTAINER
 - Database Runtime: LOCAL_HOST | NETWORK_HOST | CONTAINER
@@ -296,7 +327,7 @@ Observed State:
 - Database Platform: ... | UNKNOWN
 - Database Vendor: ... | UNKNOWN
 Drift: NONE | DETECTED | UNKNOWN
-Transition: NO_CHANGE | RUNTIME_CHANGE | HOST_CHANGE | PLATFORM_CHANGE | VENDOR_CHANGE | COMBINED_CHANGE
+Transition: NO_CHANGE | RUNTIME_CHANGE | HOST_CHANGE | PLATFORM_CHANGE | VENDOR_CHANGE | COMBINED_CHANGE | UNKNOWN
 Changes:
 - ...
 Required Capability Skills:
