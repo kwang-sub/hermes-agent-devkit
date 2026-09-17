@@ -11,7 +11,6 @@ DOCKERFILE = ROOT / "Dockerfile"
 
 PUBLIC_ENTRY_SKILLS = {
     "dev-direct-flow",
-    "dev-fast-flow",
     "dev-project-bootstrap",
     "dev-workflow-orchestrate",
     "dev-api-spec",
@@ -73,6 +72,13 @@ def main() -> int:
     if accidentally_hidden_public:
         raise SystemExit("public entry skills hidden from slash suggestions: " + ", ".join(accidentally_hidden_public))
 
+    missing_public = sorted(PUBLIC_ENTRY_SKILLS - existing)
+    if missing_public:
+        raise SystemExit("public entry skills missing: " + ", ".join(missing_public))
+
+    if "dev-fast-flow" in existing:
+        raise SystemExit("removed dev-fast-flow must not remain installed")
+
     unknown = sorted(hidden - existing)
     if unknown:
         raise SystemExit("slash policy references missing skills: " + ", ".join(unknown))
@@ -99,7 +105,7 @@ def main() -> int:
 
     print(
         f"[PASS] Slash suggestion policy: public={len(PUBLIC_ENTRY_SKILLS)} "
-        f"hidden={len(hidden)}; runtime/direct dispatch remains outside the filter contract"
+        f"hidden={len(hidden)}; Orchestrator Direct/Standard routing remains visible"
     )
     return 0
 
