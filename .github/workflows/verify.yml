@@ -91,6 +91,18 @@ jobs:
         shell: bash
         run: python3 custom-skills/shared/dev-data-modeling/tests/test_dbml_guard.py
 
+      - name: Verify Infrastructure capability contract
+        shell: bash
+        run: python3 scripts/check_infrastructure_capability_contract.py
+
+      - name: Verify Infrastructure runtime detector
+        shell: bash
+        run: python3 custom-skills/shared/dev-infrastructure/tests/test_detect_infrastructure.py
+
+      - name: Verify Infrastructure transition planner
+        shell: bash
+        run: python3 custom-skills/shared/dev-infrastructure/tests/test_plan_transition.py
+
       - name: Verify skill slash suggestion policy
         shell: bash
         run: |
@@ -101,9 +113,17 @@ jobs:
         shell: bash
         run: python3 custom-skills/orchestrator/dev-tech-dispatch/tests/test_detect_capabilities.py
 
+      - name: Verify bootstrap launcher
+        shell: bash
+        run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_bootstrap_launcher.py
+
       - name: Verify bootstrap technology cache
         shell: bash
         run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_stack_cache.py
+
+      - name: Verify bootstrap infrastructure desired state
+        shell: bash
+        run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_infrastructure_state.py
 
       - name: Verify bootstrap build project discovery
         shell: bash

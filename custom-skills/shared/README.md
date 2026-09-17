@@ -103,6 +103,46 @@ Oracle
 
 운영 DB 직접 DDL/DML, backup/restore, session kill, index maintenance 등은 현재 Data Skill의 책임이 아닙니다. 그런 권한이 실제 필요해질 때 별도 DBA profile/운영 Skill을 검토합니다.
 
+## Infrastructure
+
+```text
+dev-infrastructure          # canonical infrastructure entry
+```
+
+현재 1차 범위는 애플리케이션과 DB의 실행 위치 및 전환을 다룹니다.
+
+```text
+Application Runtime = LOCAL_HOST | NETWORK_HOST | CONTAINER
+Database Runtime    = LOCAL_HOST | NETWORK_HOST | CONTAINER
+Database Platform   = NATIVE | SUPABASE
+Database Vendor     = postgresql | mysql | mariadb | mssql | oracle | UNKNOWN
+```
+
+신규/미설정 프로젝트의 Desired Runtime 기본값은 Application/Database 모두 `CONTAINER`입니다. 기존 repository의 Observed State를 이 기본값으로 덮어쓰지 않으며 증거가 부족하면 `UNKNOWN`으로 유지합니다.
+
+Infrastructure는 최초 Docker 파일 생성기가 아니라 Desired/Observed reconciliation entry입니다.
+
+```text
+OBSERVE
+→ COMPARE
+→ PLAN
+→ APPLY
+→ VERIFY
+```
+
+동일 vendor의 `CONTAINER ↔ LOCAL_HOST ↔ NETWORK_HOST` 이동은 Infrastructure transition으로 처리합니다. DB vendor가 바뀌면 `dev-data-feature`와 `dev-db-migration`을 함께 적용합니다.
+
+Supabase는 별도 vendor가 아닙니다.
+
+```text
+Supabase Cloud = NETWORK_HOST + SUPABASE + postgresql
+Supabase Local = CONTAINER + SUPABASE + postgresql
+```
+
+Runtime 전환에서 기존 container/volume/data를 자동 삭제하지 않습니다. `Detach != Destroy`를 기본 불변식으로 사용하고 destructive cleanup은 명시적 범위/승인 없이 수행하지 않습니다.
+
+Kubernetes, Terraform/Ansible, systemd/Windows Service, reverse proxy, deployment automation, observability, backup automation은 현재 자동 구현 범위가 아니며 향후 `dev-infrastructure` 아래 하위 capability로 확장할 수 있습니다.
+
 ## Cross-stack
 
 ```text

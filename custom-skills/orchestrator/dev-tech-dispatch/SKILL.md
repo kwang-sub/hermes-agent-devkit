@@ -1,13 +1,13 @@
 ---
 name: dev-tech-dispatch
-description: managed Repository의 bounded build/dependency manifest에서 JVM/Frontend stack과 DBMS vendor candidate를 감지하고 backend/frontend/data capability entry 후보와 fingerprint를 반환하는 orchestrator 전용 resolver.
-version: 0.5.1
+description: managed Repository의 bounded build/dependency manifest에서 JVM/Frontend stack과 DBMS vendor candidate를 감지하고 backend/frontend/data capability entry 후보와 fingerprint를 반환하는 orchestrator 전용 resolver. Infrastructure runtime topology는 별도 dev-infrastructure detector로 분리한다.
+version: 0.5.2
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, orchestrator, stack, capability, java, kotlin, spring, typescript, react, nextjs, frontend, data, database, fingerprint, monorepo]
-    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-java-guidelines, dev-kotlin-guidelines, dev-spring-guidelines, dev-frontend-feature, dev-data-feature, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract, dev-figma-design, dev-ui-ux]
+    tags: [dev, orchestrator, stack, capability, java, kotlin, spring, typescript, react, nextjs, frontend, data, database, infrastructure, fingerprint, monorepo]
+    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-java-guidelines, dev-kotlin-guidelines, dev-spring-guidelines, dev-frontend-feature, dev-data-feature, dev-infrastructure, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract, dev-figma-design, dev-ui-ux]
     requires_tools: [terminal]
 ---
 
@@ -109,6 +109,33 @@ DATA_ENTRY_CANDIDATE=dev-data-feature
 
 Vendor가 둘 이상이면 monorepo/module affected area를 확인해 Task target vendor를 다시 특정한다. Driver만으로 target DB version을 추측하지 않는다.
 
+## Infrastructure capability boundary
+
+Infrastructure runtime topology는 technology stack fingerprint와 분리한다.
+
+```text
+technology:
+- language/framework/database vendor candidate
+- build/dependency manifest fingerprint
+
+infrastructure:
+- Application Runtime: LOCAL_HOST | NETWORK_HOST | CONTAINER
+- Database Runtime: LOCAL_HOST | NETWORK_HOST | CONTAINER
+- Database Platform: NATIVE | SUPABASE
+- Desired/Observed drift + transition
+```
+
+Dockerfile/Compose/runtime/DB hosting/Supabase가 실제 Task affected area면 Orchestrator가 `dev-infrastructure`를 선택한다.
+
+```bash
+python3 /opt/custom-skills/shared/dev-infrastructure/scripts/detect_infrastructure.py --repo "<repo>"
+python3 /opt/custom-skills/shared/dev-infrastructure/scripts/plan_transition.py --repo "<repo>"
+```
+
+Dockerfile/Compose 변경 때문에 language/framework stack fingerprint를 무효화하지 않는다. 반대로 Repository에 Dockerfile이 존재한다는 이유만으로 모든 Coder/Reviewer Task에 `dev-infrastructure`를 pin하지 않는다.
+
+DB vendor가 실제로 변경되는 Infrastructure transition이면 `dev-data-feature`와 `dev-db-migration` Gate를 함께 연다. 동일 vendor의 CONTAINER ↔ LOCAL_HOST ↔ NETWORK_HOST 변경은 vendor migration으로 오인하지 않는다.
+
 ## Stack Detection != Skill Loading
 
 ```text
@@ -129,6 +156,12 @@ Spring + MSSQL / Repository method only, 기존 schema 유지
 
 Schema/ERD/migration/SQL tuning
 → dev-data-feature
+
+Docker Compose / runtime hosting / Supabase 전환
+→ dev-infrastructure
+
+PostgreSQL → MySQL runtime/schema 전환
+→ dev-infrastructure + dev-data-feature + dev-db-migration
 ```
 
 ## 불변식
@@ -136,6 +169,7 @@ Schema/ERD/migration/SQL tuning
 - project source/SQL 전체 scan 금지.
 - dependency 설치/architecture 선택/DB version 추측 금지.
 - database vendor를 language/framework stack과 동일시하지 않는다.
+- Infrastructure runtime state를 technology fingerprint에 섞지 않는다.
 - `dev-tech-dispatch` 자체는 Coder/Reviewer runtime pinned skill이 아니다.
 - cache 정책은 `dev-project-bootstrap/scripts/stack_cache.py`가 소유한다.
 

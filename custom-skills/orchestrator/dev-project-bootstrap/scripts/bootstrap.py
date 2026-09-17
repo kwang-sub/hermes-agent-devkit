@@ -309,6 +309,10 @@ def main() -> int:
                 python_stage(scripts / "stack_cache.py", "--repo", repo, "--force"),
                 env=env,
             )
+            run(
+                python_stage(scripts / "infrastructure_state.py", "--repo", repo),
+                env=env,
+            )
             return 0
 
         preflight_args = ["--repo", repo]
@@ -328,6 +332,10 @@ def main() -> int:
         )
         run(
             python_stage(scripts / "stack_cache.py", "--repo", repo),
+            env=env,
+        )
+        run(
+            python_stage(scripts / "infrastructure_state.py", "--repo", repo),
             env=env,
         )
     return 0

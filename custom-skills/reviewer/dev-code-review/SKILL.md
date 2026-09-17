@@ -1,13 +1,13 @@
 ---
 name: dev-code-review
 description: 동일 Workspace의 미커밋 구현을 requirement/AC와 project pattern/capability/구조 품질 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
-version: 0.14.0
+version: 0.15.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, review, reviewer, kanban, quality, verification, capability, java, refactor, structural-quality, performance]
-    related_skills: [dev-implement-plan, dev-review-cycle, dev-workspace-dispatch, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-docs]
+    tags: [dev, review, reviewer, kanban, quality, verification, capability, java, infrastructure, docker, supabase, refactor, structural-quality, performance]
+    related_skills: [dev-implement-plan, dev-review-cycle, dev-workspace-dispatch, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-data-feature, dev-db-migration, dev-infrastructure, dev-api-docs]
     requires_tools: [terminal, kanban_show, kanban_request_changes, kanban_complete, kanban_block, kanban_heartbeat, skill_view]
 ---
 
@@ -22,9 +22,10 @@ Reviewer의 **compact 실행 계약**이다. 상세 severity/checklist/escalatio
 4. requirement/AC/correctness/compatibility/security/tests와 Coder verification claim을 대조한다.
 5. capability 문서는 실제 finding 판단에 필요한 것만 확인한다. 단순히 Coder가 여러 skill을 로드했다는 이유만으로 Reviewer가 모두 다시 읽지 않는다.
 6. Java source 변경에서는 필요할 때 `skill_view("dev-java-guidelines")`로 Java version/Lombok/type placement/JavaDoc convention을 확인한다. Spring source 변경에서는 Coder의 Structural Quality/Javadoc evidence를 실제 diff와 대조한다. 단순 파일 길이/클래스 수/개인적 선호만으로 finding을 만들지 않는다.
-7. Coder의 `Verification Final: true`, PASS command/result, `Verification Request SHA256`, `Verification Scope SHA256`, handoff `Effective Scope SHA256`가 있고 reviewer가 계산한 현재 scope와 일치하면 해당 PASS evidence를 재사용한다. 동일 Gradle command를 확신 확보 목적으로 다시 실행하지 않는다.
-8. Coder의 `Review Risk`와 구조화된 `Risk Reasons`를 **탐색 시작점**으로 재사용한다. 이를 그대로 신뢰하지는 않지만, 동일 영향 범위를 다시 찾기 위한 repository-wide 탐색은 하지 않는다. 실제 diff/context와 모순될 때만 추가 source를 본다.
-9. P0/P1이 있으면 `kanban_request_changes`; 없고 evidence가 충분하면 `kanban_complete`; 안전한 판단 불가·외부 결정 필요·반복 blocker면 `kanban_block` 중 정확히 하나만 실행한다.
+7. Infrastructure artifact/runtime/platform/vendor/hosting diff가 있거나 Coder handoff에 Infrastructure Transition Evidence가 있으면 `skill_view("dev-infrastructure")`를 적용하고 Desired/Observed/Transition/Data Migration/Preserved resource evidence를 실제 diff와 대조한다.
+8. Coder의 `Verification Final: true`, PASS command/result, `Verification Request SHA256`, `Verification Scope SHA256`, handoff `Effective Scope SHA256`가 있고 reviewer가 계산한 현재 scope와 일치하면 해당 PASS evidence를 재사용한다. 동일 Gradle command를 확신 확보 목적으로 다시 실행하지 않는다.
+9. Coder의 `Review Risk`와 구조화된 `Risk Reasons`를 **탐색 시작점**으로 재사용한다. 이를 그대로 신뢰하지는 않지만, 동일 영향 범위를 다시 찾기 위한 repository-wide 탐색은 하지 않는다. 실제 diff/context와 모순될 때만 추가 source를 본다.
+10. P0/P1이 있으면 `kanban_request_changes`; 없고 evidence가 충분하면 `kanban_complete`; 안전한 판단 불가·외부 결정 필요·반복 blocker면 `kanban_block` 중 정확히 하나만 실행한다.
 
 ## Canonical Review Context
 필수 인수를 생략한 probe나 별도 `git status` safe.directory probe를 먼저 수행하지 않는다.
@@ -139,8 +140,35 @@ Task와 직접 연결된 책임 혼재, raw payload parsing/persistence/external
 
 public API/schema/dependency/transaction/security/concurrency/architecture 의미 변경이 필요한 개선은 Coder에게 즉시 강제하지 않고 escalation/잔여 위험으로 분리한다.
 
+## Infrastructure Transition Review Gate
+Infrastructure diff 또는 handoff가 있으면 `dev-infrastructure`의 state axis와 safe reconciliation 계약을 확인한다.
+
+```text
+Desired State
+Observed State
+Drift
+Transition + changes
+Data Migration
+Resources Added/Updated/Detached/Preserved/Removed
+Destructive Operations
+Post-change verification
+```
+
+필수 확인:
+- 신규/미설정 Desired default `CONTAINER`를 기존 Observed State로 오인하지 않았는가.
+- `LOCAL_HOST | NETWORK_HOST | CONTAINER`와 `NATIVE | SUPABASE`와 DB vendor를 독립 축으로 유지했는가.
+- Supabase Cloud를 `NETWORK_HOST + SUPABASE + postgresql`, Supabase Local을 `CONTAINER + SUPABASE + postgresql`로 다뤘는가.
+- 동일 vendor runtime 이동을 불필요한 vendor migration으로 승격하지 않았는가.
+- DB vendor 변경에서 `dev-data-feature`/`dev-db-migration` 및 Data Migration evidence를 생략하지 않았는가.
+- Container → Local/Network 전환에서 old DB service detach와 persistent volume/data preserve를 구분했는가.
+- `docker compose down -v`, volume/data 삭제와 동등한 destructive cleanup이 명시적 범위/승인 없이 포함되지 않았는가.
+- metadata만 바꾼 것이 아니라 target connection/health/application integration을 실제로 검증했는가.
+- post-change detector/planner evidence가 remaining drift를 숨기지 않는가.
+
+Coder handoff와 diff가 충분하면 같은 detector/planner를 확신 확보 목적으로 반복 실행하지 않는다. Handoff가 누락되거나 actual config와 모순될 때만 bounded 재검증한다.
+
 ## Stack / Capability Review Gate
-현재 capability set은 `dev-java-guidelines`, `dev-spring-guidelines`, `dev-spring-feature`, `dev-spring-data`, `dev-spring-test`, `dev-spring-refactor`, `dev-api-docs`다. diff가 해당 영역이고 실제 review 판단에 필요한 계약만 읽는다. capability 재탐색을 위해 전체 repo를 다시 분석하지 않는다.
+현재 capability set은 `dev-java-guidelines`, `dev-spring-guidelines`, `dev-spring-feature`, `dev-spring-data`, `dev-spring-test`, `dev-spring-refactor`, `dev-data-feature`, `dev-db-migration`, `dev-infrastructure`, `dev-api-docs`다. diff가 해당 영역이고 실제 review 판단에 필요한 계약만 읽는다. capability 재탐색을 위해 전체 repo를 다시 분석하지 않는다.
 
 ## Java / Build Verification Gate
 - `.hermes/toolchain.env`가 있으면 Java target/runtime과 Coder evidence를 대조한다.
@@ -159,6 +187,7 @@ P0/P1 없음 + evidence 충분 → kanban_complete
 - secret/raw credential을 출력하지 않는다.
 - commit, push, PR, cleanup 금지.
 - EOL-only noise를 이유로 source line ending을 변경하지 않는다.
+- Infrastructure drift를 cleanup 권한으로 해석하거나 persistent data를 삭제하지 않는다.
 - finding은 file/symbol, evidence, required change, expected verification을 포함한다.
 - Fast Flow `Review Risk: LOW` Task는 Coder가 완료하므로 Reviewer가 호출되지 않는다. Reviewer가 받은 Task는 독립 review가 필요한 것으로 간주한다.
 - Coder의 Risk Reasons는 starting point이지 verdict가 아니다. 독립성 확보를 이유로 동일 영향 범위를 repository-wide 재탐색하지 않는다.

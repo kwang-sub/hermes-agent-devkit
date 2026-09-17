@@ -1,13 +1,13 @@
 ---
 name: dev-implement-plan
 description: 승인된 Kanban 작업을 할당 Workspace에서 최소 구현·구조 품질 점검·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.21.0
+version: 0.22.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, implementation, coder, kanban, workspace, review, fast-flow, capability, java, refactor, structural-quality, performance]
-    related_skills: [dev-fast-flow, dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-docs]
+    tags: [dev, implementation, coder, kanban, workspace, review, fast-flow, capability, java, infrastructure, docker, supabase, refactor, structural-quality, performance]
+    related_skills: [dev-fast-flow, dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-data-feature, dev-db-migration, dev-infrastructure, dev-api-docs]
     requires_tools: [terminal, kanban_show, kanban_request_review, kanban_complete, kanban_block, kanban_heartbeat, skill_view]
 ---
 
@@ -170,6 +170,61 @@ Java 프로젝트에서는 `dev-java-guidelines`가 Java version/build/Lombok/ty
 
 구조 점검 evidence는 `Structural quality check: PASS | REFACTORED | ESCALATED`로 남긴다.
 
+## Infrastructure capability lazy-load / reconciliation
+
+Task의 `Applicable Skills`에 `dev-infrastructure`가 있거나 Dockerfile/Compose/Application·DB runtime/DB hosting/Supabase 전환이 실제 변경 범위면 production config patch 전에 `skill_view("dev-infrastructure")`를 적용한다.
+
+```text
+Workspace verified
+→ dev-infrastructure load
+→ detect_infrastructure.py로 Observed State
+→ Task + .hermes/project.yaml로 Desired State
+→ plan_transition.py
+→ vendor migration gate
+→ 최소 변경
+→ target runtime/connection verification
+→ detector/planner 재실행
+→ desired/observed convergence evidence
+```
+
+정규 명령:
+
+```bash
+python3 /opt/custom-skills/shared/dev-infrastructure/scripts/detect_infrastructure.py \
+  --repo "<Workspace>"
+
+python3 /opt/custom-skills/shared/dev-infrastructure/scripts/plan_transition.py \
+  --repo "<Workspace>"
+```
+
+규칙:
+- `CONTAINER` default를 기존 Observed State로 추측하지 않는다. evidence가 없으면 `UNKNOWN`을 보존한다.
+- 동일 DB vendor의 `CONTAINER ↔ LOCAL_HOST ↔ NETWORK_HOST`는 Infrastructure transition이며 vendor migration으로 승격하지 않는다.
+- `NATIVE PostgreSQL ↔ SUPABASE PostgreSQL`은 platform/runtime transition이며 `SUPABASE`를 vendor로 만들지 않는다.
+- DB vendor가 바뀌면 `skill_view("dev-data-feature")`와 `skill_view("dev-db-migration")`을 적용하고 Data Migration Gate가 준비되기 전 application cutover를 하지 않는다.
+- Desired State 변경만으로 기존 container/volume/data를 삭제하지 않는다. `Detach != Destroy`다.
+- `docker compose down -v`, volume rm, host DB data 삭제와 동등한 destructive cleanup은 명시적 Task 범위/승인 없이는 실행하지 않는다.
+- 기존 DB container를 non-container runtime으로 전환하면 old service는 `Detached`, persistent volume/data는 `Preserved`로 기본 분류한다.
+- metadata만 변경하고 완료하지 않는다. 실제 runtime/config/connection을 affected verification으로 확인한다.
+- reconciliation 후 planner가 `DRIFT=DETECTED` 또는 `UNKNOWN`이면 원인을 해결하거나 residual risk/blocker로 남기며 `NO_CHANGE`로 위장하지 않는다.
+
+Infrastructure handoff evidence:
+
+```text
+Infrastructure Desired State: ...
+Infrastructure Observed State: ...
+Infrastructure Drift: NONE | DETECTED | UNKNOWN
+Infrastructure Transition: NO_CHANGE | RUNTIME_CHANGE | HOST_CHANGE | PLATFORM_CHANGE | VENDOR_CHANGE | COMBINED_CHANGE | UNKNOWN
+Infrastructure Changes:
+- ...
+Data Migration: NOT_REQUIRED | REQUIRED | COMPLETED | BLOCKED
+Resources Added/Updated/Detached/Preserved/Removed:
+- ...
+Destructive Operations: NONE | APPROVED:<evidence>
+Infrastructure Verification:
+- ...
+```
+
 ## Java / Gradle 검증
 
 Java/Gradle/Maven 프로젝트는 Bootstrap의 `.hermes/toolchain.env`를 사용한다. JDK/Gradle/Maven을 task-time에 설치하지 않는다.
@@ -283,6 +338,7 @@ Standard Flow에서 `--include` 없이 `change_summary.py`를 호출하지 않�
 다음은 `REVIEW_REQUIRED`다.
 - API/request/response 의미 변경
 - DB schema/data/query 의미 변경
+- Infrastructure runtime/platform/vendor/connection/persistence 의미 변경
 - transaction/security/concurrency 영향
 - shared/common behavior 변경
 - legacy/fallback/backward compatibility 변경
@@ -306,6 +362,9 @@ Full Test Failure Signature: <test/method/message | NONE>
 Verification Final: true
 Effective Scope SHA256: <EFFECTIVE_SCOPE_SHA256>
 Structural Quality Check: PASS | REFACTORED | ESCALATED
+Infrastructure Transition Evidence: <summary | NOT_REQUIRED>
+Data Migration: NOT_REQUIRED | REQUIRED | COMPLETED | BLOCKED
+Destructive Operations: NONE | APPROVED:<evidence> | NOT_REQUIRED
 Review Risk: REVIEW_REQUIRED
 Risk Reasons:
 - Impact Scope: ...
@@ -342,6 +401,7 @@ Residual Risk:
 - Workspace 밖 수정, branch 전환, 다른 worktree 생성, commit, push, PR, merge, reset, clean, stash 금지.
 - secret/raw credential 기록 금지.
 - behavior/API/schema 의미 변경을 refactor라는 이름으로 섞지 않는다.
+- 기존 persistent data/volume을 Infrastructure transition의 암묵적 cleanup으로 삭제하지 않는다.
 - existing preservation fast path를 이유로 repository-wide dirty/EOL/untracked scan을 재실행하지 않는다.
 
 retry/BLOCKED/검증/risk metadata의 추가 세부 형식이 필요할 때만 `references/implementation-details.md`를 읽는다.

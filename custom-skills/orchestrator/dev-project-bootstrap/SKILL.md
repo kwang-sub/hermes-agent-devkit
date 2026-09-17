@@ -1,12 +1,12 @@
 ---
 name: dev-project-bootstrap
-description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, Fast Preflight·기술 스택 fingerprint/cache·기존 저장소 refresh·Java toolchain·EOL·Git ignore·Kanban/Profile/Context/.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
-version: 0.5.1
+description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, Fast Preflight·기술 스택 fingerprint/cache·Infrastructure desired state·기존 저장소 refresh·Java toolchain·EOL·Git ignore·Kanban/Profile/Context/.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
+version: 0.5.2
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, project, bootstrap, kanban, context, orchestration, resolver, preflight, performance, stack, fingerprint, cache, monorepo, eol, java, toolchain, git]
+    tags: [dev, project, bootstrap, kanban, context, orchestration, resolver, preflight, performance, stack, fingerprint, cache, infrastructure, runtime, monorepo, eol, java, toolchain, git]
     requires_tools: [terminal]
 ---
 
@@ -27,6 +27,8 @@ metadata:
 - 독립 JVM build root가 여러 개이면 동일 Java target/runtime일 때 Repository toolchain을 공유하고, 서로 다른 Java toolchain이 필요하면 잘못된 JDK를 임의 선택하지 않고 Block한다.
 - Repository build/dependency manifest에서 기술 스택을 탐지하고 `.hermes/project.yaml technology:`에 fingerprint와 결과를 저장한다.
 - 일반 source 변경은 technology cache를 무효화하지 않고 manifest 또는 detector version 변경 때만 재탐지한다.
+- `.hermes/project.yaml infrastructure:`가 없으면 Application/Database desired runtime을 `CONTAINER`, DB platform을 `NATIVE`, vendor를 단일 technology evidence 또는 `UNKNOWN`으로 초기화한다.
+- 기존 `infrastructure:`가 있으면 사용자가 선택한 `LOCAL_HOST | NETWORK_HOST | CONTAINER`, platform/vendor desired state를 그대로 보존한다. Bootstrap 재실행으로 CONTAINER 기본값을 덮어쓰지 않는다.
 - `.gitattributes`와 `.gitignore`의 Hermes 관리 정책을 보장하되 기존 사용자 정책은 임의로 덮어쓰지 않는다.
 - 이미 유효한 Project/Board/Profile Binding은 재사용한다.
 - Resolver와 Legacy/Source-specific Metadata는 보존한다.
@@ -40,7 +42,8 @@ bootstrap.py
   │   └─ project_builds.py (bounded build-root discovery)
   ├─ ensure_gitignore.py
   ├─ bootstrap_project.py
-  └─ stack_cache.py
+  ├─ stack_cache.py
+  └─ infrastructure_state.py
 ```
 
 일반 실행:
@@ -50,13 +53,13 @@ python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
   --repo "/workspace/dashboard"
 ```
 
-최종 `.hermes/project.yaml`은 schema version 3 technology cache를 포함한다.
+최종 `.hermes/project.yaml`은 technology cache와 Infrastructure Desired State를 포함한다.
 
 예:
 
 ```yaml
 technology:
-  detector_version: "2"
+  detector_version: "4"
   fingerprint: "sha256:..."
   inputs:
     - "backend/build.gradle"
@@ -76,9 +79,21 @@ technology:
     - "dev-typescript-guidelines"
     - "dev-frontend-guidelines"
     - "dev-nextjs-feature"
+  database_vendors:
+    - "postgresql"
+  data_entry_candidate: "dev-data-feature"
+
+infrastructure:
+  version: "1"
+  application_runtime: "CONTAINER"
+  database_runtime: "CONTAINER"
+  database_platform: "NATIVE"
+  database_vendor: "postgresql"
 ```
 
-Repository stack은 Task 분류가 아니다. Standard Flow의 Orchestrator가 사용자 요구사항과 affected area를 함께 보고 Backend / Frontend / Full-stack을 판단한다.
+`technology:`는 repository stack evidence cache이고 `infrastructure:`는 project-wide Desired State다. Compose/runtime 변경을 technology fingerprint에 섞지 않는다.
+
+Repository stack은 Task 분류가 아니다. Standard Flow의 Orchestrator가 사용자 요구사항과 affected area를 함께 보고 Backend / Frontend / Data / Infrastructure / Full-stack을 판단한다.
 
 ## 2. Technology Stack Cache
 
@@ -121,9 +136,30 @@ manifest 또는 detector version 변화
 
 일반 `.java`, `.kt`, `.ts`, `.tsx`, CSS 등 source 변경은 fingerprint에 포함하지 않는다.
 
-## 3. 기존 Bootstrap Repository 갱신
+## 3. Infrastructure Desired State 초기화
 
-DevKit 업데이트 전에 이미 Bootstrap된 Repository는 Project/Board/Profile을 다시 만들 필요 없이 stack cache만 갱신할 수 있다.
+`stack_cache.py` 이후 `infrastructure_state.py`를 실행한다.
+
+```text
+infrastructure section 없음
+→ application_runtime=CONTAINER
+→ database_runtime=CONTAINER
+→ database_platform=NATIVE
+→ technology.database_vendors가 단일 값이면 database_vendor 재사용
+→ 아니면 database_vendor=UNKNOWN
+
+infrastructure section 있음
+→ byte-level desired state 보존
+→ bootstrap default 재적용 금지
+```
+
+이 단계는 Dockerfile/Compose를 생성하지 않는다. 실제 Docker/runtime 구성과 전환은 `dev-infrastructure`의 Desired/Observed reconciliation을 따른다.
+
+`CONTAINER`는 신규/미설정 Desired State 기본값이며 기존 repository의 Observed State를 추측하는 값이 아니다.
+
+## 4. 기존 Bootstrap Repository 갱신
+
+DevKit 업데이트 전에 이미 Bootstrap된 Repository는 Project/Board/Profile을 다시 만들 필요 없이 stack cache와 누락된 Infrastructure Desired State를 갱신할 수 있다.
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
@@ -137,9 +173,10 @@ python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
 repository lock
 → ensure_gitignore.py
 → stack_cache.py --force
+→ infrastructure_state.py
 ```
 
-Project/Board/Profile/Context를 다시 등록하거나 Full Git scan을 하지 않는다.
+기존 `infrastructure:` 선택이 있으면 보존한다. Project/Board/Profile/Context를 다시 등록하거나 Full Git scan을 하지 않는다.
 
 여러 Bootstrap-managed Repository는 일괄 갱신할 수 있다.
 
@@ -150,7 +187,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/refresh_stacks.py" \
 
 `# managed-by: dev-project-bootstrap` metadata와 Repository identity가 확인되는 경로만 대상으로 한다. Bootstrap되지 않은 Repository는 대상으로 삼지 않는다.
 
-## 4. Fast Preflight
+## 5. Fast Preflight
 
 일반 Bootstrap의 기본 모드다.
 
@@ -201,7 +238,7 @@ UNTRACKED_CHANGE_COUNT=-1
 
 `-1`은 0건이 아니라 Fast Path에서 전체 개수 산출을 생략했다는 뜻이다.
 
-## 5. Full Preflight
+## 6. Full Preflight
 
 정확한 untracked/EOL-only 진단이 필요한 경우에만 사용한다.
 
@@ -215,7 +252,7 @@ Full 모드는 Fast 검사에 normal tracked diff, untracked 전체 enumeration,
 
 대용량 설치 패키지 저장소나 Windows/Docker bind mount에서는 Full 모드를 일반 Bootstrap에서 자동 선택하지 않는다.
 
-## 6. Bootstrap 중복 실행 방지
+## 7. Bootstrap 중복 실행 방지
 
 `bootstrap.py`는 Repository 절대경로 SHA-256을 이용해 `/tmp/hermes-bootstrap-<hash>.lock`을 사용한다.
 
@@ -230,7 +267,7 @@ Bootstrap은 한 번만 시작한다.
 중복 실행 Block 메시지가 나오면 새 process를 만들지 않는다.
 ```
 
-## 7. Java 실행 계약
+## 8. Java 실행 계약
 
 Java 프로젝트에는 Repository 단위 `.hermes/toolchain.env`를 보장한다. Coder/Reviewer는 `hermes-java` launcher를 우선한다.
 
@@ -269,7 +306,7 @@ Gradle/Maven multi-module의 nested module manifest는 동일 ancestor build roo
 
 Frontend-only `package.json` 등은 Java build root로 취급하지 않는다.
 
-## 8. EOL 정책
+## 9. EOL 정책
 
 `.gitattributes`에 다음 규칙을 보장한다.
 
@@ -283,7 +320,7 @@ mvnw text eol=lf
 
 기존 충돌 규칙은 덮어쓰지 않고 Block한다. `git add --renormalize .`는 자동 실행하지 않는다.
 
-## 9. Git ignore 정책
+## 10. Git ignore 정책
 
 `.gitignore`에 다음 Hermes 관리 블록을 보장한다.
 
@@ -295,11 +332,11 @@ mvnw text eol=lf
 # <<< Hermes Agent managed <<<
 ```
 
-따라서 Bootstrap이 생성하는 `project.yaml`, `toolchain.env`, technology cache 등 `.hermes/` 하위 local metadata는 Git 변경으로 잡히지 않는다.
+따라서 Bootstrap이 생성하는 `project.yaml`, `toolchain.env`, technology cache, infrastructure desired state 등 `.hermes/` 하위 local metadata는 Git 변경으로 잡히지 않는다.
 
 `AGENTS.md`, `.gitattributes`, 소스/빌드 설정 등 프로젝트 공용 파일은 Hermes 관리 블록으로 ignore하지 않는다. 기존 사용자 규칙은 삭제하거나 재정렬하지 않는다.
 
-## 10. Block 조건
+## 11. Block 조건
 
 - 같은 Repository의 Bootstrap이 이미 실행 중
 - Repo Path/Git root 오류
@@ -319,13 +356,15 @@ mvnw text eol=lf
 - 필수 Profile 없음
 - Hermes CLI 실패
 
-## 11. 안전 규칙
+## 12. 안전 규칙
 
 절대 하지 않는다.
 
 - 오래 걸린다는 이유로 동일 Repository Bootstrap 재실행
 - Application build/dependency file을 stack cache 때문에 수정
 - technology/build-root detection을 위해 Repository 전체 source scan
+- 기존 `infrastructure:` desired state를 CONTAINER default로 덮어쓰기
+- Bootstrap 단계에서 Dockerfile/Compose/resource를 생성·삭제
 - 서로 다른 JVM toolchain 요구사항 중 하나를 임의 선택
 - `.gitattributes` 충돌 정책 자동 덮어쓰기
 - 기존 `.gitignore` 사용자 규칙 삭제/재정렬
@@ -338,7 +377,7 @@ mvnw text eol=lf
 - Git reset/clean/checkout/rebase/merge/commit
 - Unmanaged Metadata 덮어쓰기
 
-## 12. 권장 회귀 검증
+## 13. 권장 회귀 검증
 
 ```text
 Fast preflight skips repository-wide change scan
@@ -358,5 +397,9 @@ technology cache creates/reuses/refreshes correctly
 source-only change keeps stack fingerprint stable
 manifest change invalidates stack fingerprint
 backend/frontend monorepo detection works
+infrastructure state creates CONTAINER defaults when missing
+single detected DB vendor becomes infrastructure database_vendor
+existing LOCAL_HOST/NETWORK_HOST/SUPABASE desired state is preserved
+refresh-stack refreshes technology evidence without resetting infrastructure desired state
 refresh-stack does not redo Project/Board/Profile registration
 ```
