@@ -1,13 +1,13 @@
 ---
 name: dev-implement-plan
 description: 승인된 Kanban 단일 Work Unit을 할당 Workspace에서 최소 구현·구조 품질 점검·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.23.0
+version: 0.23.1
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, implementation, coder, kanban, workspace, review, fast-flow, work-unit, capability, java, refactor, structural-quality, performance, infrastructure, runtime, container, env]
-    related_skills: [dev-fast-flow, dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-docs, dev-frontend-feature, dev-infrastructure, dev-data-feature, dev-data-modeling, dev-db-migration]
+    related_skills: [dev-fast-flow, dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-spec, dev-api-contract, dev-api-docs, dev-frontend-feature, dev-infrastructure, dev-data-feature, dev-data-modeling, dev-db-migration]
     requires_tools: [terminal, kanban_show, kanban_request_review, kanban_complete, kanban_block, kanban_heartbeat, skill_view]
 ---
 
@@ -101,7 +101,7 @@ Existing changes preservation approved: true
 Workspace change scan mode: skipped-approved-preservation
 ```
 
-이 경우 Coder는 exact pre-existing file list/count를 복구하려고 repository-wide `git status`, `git diff`, `git ls-files --others`, EOL 분류를 다시 실행하지 않는다. 기존 변경 전체를 baseline으로 보존하고 자신의 실제 변경 path만 별도로 추적한다.
+이 경우 Coder는 exact pre-existing file list/count를 복구하려고 repository-wide `git status`, `git diff`, `git ls-files --others`, EOL 분류를 다시 실행하지 않는다. 기존 변경 전체를 baseline으로 보존하고 자신의 실제 변경 path만 별도로 추적한다. **기존 파일은 preserve-first**이며 Work Unit 경계 도입을 이유로 기존 사용자 변경이나 기존 설정을 자동 정리하지 않는다.
 
 ## Standard Work Unit Boundary Gate
 
@@ -272,6 +272,16 @@ DB Vendor 변경이 현재 MIGRATION Work Unit 범위
 - 테스트 작성/수정 → `skill_view("dev-spring-test")`
 - Spring source 구현 완료 후 구조 trigger가 실제로 있을 때만 → `skill_view("dev-spring-refactor")`
 - OpenAPI/Swagger/Postman → `skill_view("dev-api-docs")`
+
+### API / Cross-stack
+
+현재 Work Unit의 `Applicable Skills`에 `dev-api-spec` 또는 `dev-api-contract`가 있거나 Backend/Frontend가 동일 API contract를 함께 구현하면 필요한 계약만 lazy-load한다.
+
+- 승인된 Markdown API specification 구현/동기화 → `skill_view("dev-api-spec")`
+- Backend DTO/response/error와 Frontend type/client가 동일 계약을 공유 → `skill_view("dev-api-contract")`
+- OpenAPI/Swagger/Postman 산출물 → `skill_view("dev-api-docs")`
+
+API DESIGN Work Unit에서 후속 IMPLEMENTATION이 제외되어 있으면 contract artifact까지만 다루고 application source 구현으로 넘어가지 않는다.
 
 구조 점검 evidence는 `Structural quality check: PASS | REFACTORED | ESCALATED`로 남긴다.
 
