@@ -8,7 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_ROOT = REPO_ROOT / "custom-skills"
 REQUIRED_SKILLS = {"dev-project-pattern","dev-skill-preflight","dev-java-guidelines","dev-spring-guidelines","dev-spring-feature","dev-spring-data","dev-spring-test","dev-api-docs"}
 REQUIRED_REFERENCES = {("shared","dev-api-docs"):{"references/spring-openapi-reference.md","references/postman-reference.md"},("orchestrator","dev-workflow-orchestrate"):{"references/dispatch-efficiency.md"}}
-SHARED_REQUIRED_REFERENCES={"approval-gate-rules.md"}
+SHARED_REQUIRED_REFERENCES={"approval-gate-rules.md","standard-work-unit-rules.md"}
 
 def fail(message:str)->None: raise SystemExit(f"[FAIL] {message}")
 def parse_inline_list(value:str)->list[str]:
@@ -82,6 +82,7 @@ def main()->int:
     workflow_file=discovered[("orchestrator","dev-workflow-orchestrate")]; workflow=workflow_file.read_text(encoding="utf-8")
     reviewer=discovered[("reviewer","dev-code-review")].read_text(encoding="utf-8")
     approval=(shared_reference_root/"approval-gate-rules.md").read_text(encoding="utf-8")
+    work_unit=(shared_reference_root/"standard-work-unit-rules.md").read_text(encoding="utf-8")
 
     require_terms(breakdown,"dev-breakdown",('skill_view("dev-project-pattern")',"dev-java-guidelines"))
     require_terms(dispatch,"dev-workspace-dispatch preflight",('skill_view("dev-skill-preflight")',"VALIDATED_SKILLS","REJECTED_SKILLS","kanban_create.skills"))
@@ -130,7 +131,8 @@ def main()->int:
     require_terms(efficiency,"dispatch-efficiency reference",("skipped-approved-preservation","change_summary.py --include","review_context.py --include","큰 파일을 임의의 MB threshold로 제외하지 않는다","hermes project list","Kanban body 임시 파일","hermes project --help","CLI body-file capability probing","CLI fallback"))
     for cap in ("dev-java-guidelines","dev-spring-guidelines","dev-spring-feature","dev-spring-data","dev-spring-test","dev-api-docs"):
         if f'skill_view("{cap}")' not in implement: fail(f"dev-implement-plan must explicitly load {cap} via skill_view")
-    require_terms(implement,"dev-implement-plan scoped summary",("scoped change_summary.py","Standard Flow에서 `--include` 없이","--allow-full-scan","tracked와 untracked 모두 Git pathspec","Changed Files"))
+    require_terms(implement,"dev-implement-plan scoped summary",("/opt/data/shared/references/standard-work-unit-rules.md","scoped change_summary.py","Standard Flow에서 `--include` 없이","Changed Files"))
+    require_terms(work_unit,"standard work unit scoped summary",("change_summary.py --include","Standard Flow에서 `--include` 없이","--allow-full-scan","tracked와 untracked 모두 Git pathspec","Follow-up Work Unit의 파일"))
     require_terms(reviewer,"dev-code-review scoped review",("review_context.py --include","Standard Flow에서는 `--include`를 반드시 제공","--allow-full-scan","tracked와 untracked 모두 Git pathspec","Java Convention Review Gate"))
     print(f"[PASS] Custom skill contract: {len(discovered)} scoped skills ({len(paths_by_name)} unique names) validated")
     return 0
