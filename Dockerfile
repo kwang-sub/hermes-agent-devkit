@@ -21,6 +21,17 @@ RUN python3 /tmp/patch_hermes_tui_file_signature.py --self-test \
     && python3 /tmp/patch_hermes_tui_file_signature.py /opt/hermes/hermes_cli/cli_tui_mixin.py \
     && rm /tmp/patch_hermes_tui_file_signature.py
 
+# Keep reasoning dim while making user-input surfaces visually distinct: cyan for
+# Clarify interaction and green for the recommended choice / recommendation label.
+COPY scripts/patch_hermes_tui_semantic_input.py /tmp/patch_hermes_tui_semantic_input.py
+RUN python3 /tmp/patch_hermes_tui_semantic_input.py --self-test \
+    && python3 /tmp/patch_hermes_tui_semantic_input.py \
+       --tui-path /opt/hermes/hermes_cli/cli_tui_mixin.py \
+       --session-path /opt/hermes/hermes_cli/cli_session_mixin.py \
+    && grep -q 'DEVKIT_TUI_SEMANTIC_INPUT_V1' /opt/hermes/hermes_cli/cli_tui_mixin.py \
+    && grep -q 'DEVKIT_TUI_SEMANTIC_INPUT_V1' /opt/hermes/hermes_cli/cli_session_mixin.py \
+    && rm /tmp/patch_hermes_tui_semantic_input.py
+
 # Keep every skill directly invokable and visible to runtime/management, but allow
 # DevKit internal skills to opt out of user input slash suggestions.
 COPY scripts/patch_hermes_skill_slash_suggest.py /tmp/patch_hermes_skill_slash_suggest.py
@@ -95,11 +106,14 @@ RUN test -x /opt/hermes/.venv/bin/hermes \
     && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/hermes_cli/commands_completion.py \
     && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/tui_gateway/methods_tools.py \
     && grep -q 'DEVKIT_TIRITH_PROFILE_GUARD_V1' /opt/hermes/tools/tirith_security.py \
+    && grep -q 'DEVKIT_TUI_SEMANTIC_INPUT_V1' /opt/hermes/hermes_cli/cli_tui_mixin.py \
+    && grep -q 'DEVKIT_TUI_SEMANTIC_INPUT_V1' /opt/hermes/hermes_cli/cli_session_mixin.py \
     && /opt/hermes/.venv/bin/python -m py_compile \
        /opt/hermes/tools/tirith_security.py \
        /opt/hermes/tools/kanban_tools.py \
        /opt/hermes/hermes_cli/devkit_session_affinity.py \
        /opt/hermes/hermes_cli/cli_tui_mixin.py \
+       /opt/hermes/hermes_cli/cli_session_mixin.py \
        /opt/hermes/agent/skill_commands.py \
        /opt/hermes/hermes_cli/commands_completion.py \
        /opt/hermes/tui_gateway/methods_tools.py \
