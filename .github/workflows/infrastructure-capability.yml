@@ -9,6 +9,9 @@ on:
       - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_infrastructure_cache.py'
       - 'custom-skills/orchestrator/dev-tech-dispatch/SKILL.md'
       - 'custom-skills/orchestrator/dev-breakdown/SKILL.md'
+      - 'custom-skills/orchestrator/dev-workspace-dispatch/SKILL.md'
+      - 'custom-skills/orchestrator/dev-workspace-dispatch/scripts/persist_infrastructure_desired.py'
+      - 'custom-skills/orchestrator/dev-workspace-dispatch/tests/test_persist_infrastructure_desired.py'
       - 'custom-skills/coder/dev-implement-plan/SKILL.md'
       - 'scripts/check_infrastructure_capability_contract.py'
       - '.github/workflows/infrastructure-capability.yml'
@@ -21,6 +24,9 @@ on:
       - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_infrastructure_cache.py'
       - 'custom-skills/orchestrator/dev-tech-dispatch/SKILL.md'
       - 'custom-skills/orchestrator/dev-breakdown/SKILL.md'
+      - 'custom-skills/orchestrator/dev-workspace-dispatch/SKILL.md'
+      - 'custom-skills/orchestrator/dev-workspace-dispatch/scripts/persist_infrastructure_desired.py'
+      - 'custom-skills/orchestrator/dev-workspace-dispatch/tests/test_persist_infrastructure_desired.py'
       - 'custom-skills/coder/dev-implement-plan/SKILL.md'
       - 'scripts/check_infrastructure_capability_contract.py'
       - '.github/workflows/infrastructure-capability.yml'
@@ -41,6 +47,8 @@ jobs:
         run: python3 custom-skills/shared/dev-infrastructure/tests/test_plan_transition.py
       - name: Infrastructure bootstrap cache tests
         run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_infrastructure_cache.py
+      - name: Approved Infrastructure Desired State persistence tests
+        run: python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_persist_infrastructure_desired.py
       - name: Bootstrap launcher regression
         run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_bootstrap_launcher.py
       - name: Existing tech-dispatch regression
