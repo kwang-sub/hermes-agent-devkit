@@ -28,6 +28,64 @@ Ref: tx.account_id > account.id
     assert result["errors"] == []
 
 
+def test_subject_area_required_schema() -> None:
+    result = MODULE.analyze('''
+Table account {
+  id bigint [pk]
+}
+Table transaction {
+  id bigint [pk]
+  account_id bigint
+}
+TableGroup finance {
+  account
+  transaction
+}
+Ref: transaction.account_id > account.id
+''', require_subject_area=True)
+    assert result["status"] == "pass"
+    assert result["subject_area_count"] == 1
+
+
+def test_missing_subject_area_is_blocked() -> None:
+    result = MODULE.analyze('''
+Table account {
+  id bigint [pk]
+}
+''', require_subject_area=True)
+    assert result["status"] == "blocked"
+    assert any("subject area" in item for item in result["errors"])
+
+
+def test_physical_prefix_is_blocked_for_canonical_logical_model() -> None:
+    result = MODULE.analyze('''
+Table tbl_finance_account {
+  id bigint [pk]
+}
+TableGroup finance {
+  tbl_finance_account
+}
+''', require_subject_area=True)
+    assert result["status"] == "blocked"
+    assert any("physical table prefix" in item for item in result["errors"])
+
+
+def test_multiple_subject_areas_is_blocked() -> None:
+    result = MODULE.analyze('''
+Table account {
+  id bigint [pk]
+}
+TableGroup finance {
+  account
+}
+TableGroup investment {
+  account
+}
+''', require_subject_area=True)
+    assert result["status"] == "blocked"
+    assert any("multiple subject areas" in item for item in result["errors"])
+
+
 def test_duplicate_table_is_blocked() -> None:
     result = MODULE.analyze('''
 Table account { id bigint [pk] }
@@ -70,6 +128,10 @@ Table account {
 
 if __name__ == "__main__":
     test_valid_schema()
+    test_subject_area_required_schema()
+    test_missing_subject_area_is_blocked()
+    test_physical_prefix_is_blocked_for_canonical_logical_model()
+    test_multiple_subject_areas_is_blocked()
     test_duplicate_table_is_blocked()
     test_missing_ref_target_is_blocked()
     test_vendor_token_is_warning_in_logical_mode()

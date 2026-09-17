@@ -1,19 +1,19 @@
 ---
 name: dev-data-feature
-description: 데이터/DB 작업의 canonical entry로 모델링·스키마·SQL·migration·성능 capability와 DBML 문서 계약을 task evidence에 따라 조합하는 DBMS 중립 shared skill.
-version: 0.2.0
+description: 데이터 작업의 canonical entry로 DBA logical modeling과 SQL·성능 분석을 task evidence에 따라 조합하고, 승인된 논리 모델의 물리화는 Coder migration capability로 handoff하는 DBMS 중립 shared skill.
+version: 0.3.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, data, database, dba, dbml, schema, sql, migration, performance]
+    tags: [dev, data, database, dba, dbml, logical-model, subject-area, sql, performance]
     related_skills: [dev-data-modeling, dev-db-schema, dev-db-query, dev-db-migration, dev-db-performance, dev-spring-data, dev-api-contract]
     requires_tools: [terminal, skill_view]
 ---
 
 # dev-data-feature
 
-데이터 모델·관계형 schema·SQL·migration·DB 성능 작업의 canonical runtime entry다.
+데이터 affected area의 canonical runtime entry다. **DBA 모델링 단계와 Coder 물리 구현 단계를 분리**한다.
 
 공통 Foundation:
 
@@ -24,48 +24,88 @@ metadata:
 /opt/data/shared/references/data-design-rules.md
 ```
 
-## 적용 범위
+## 책임 분리
+
+### DBA logical phase
 
 ```text
-MODEL_CHANGE  - table/entity relation, ownership, lifecycle, cardinality 설계
-SCHEMA_CHANGE - PK/FK/UNIQUE/NOT NULL/index/type/default/constraint 변경
-QUERY_ONLY    - SQL/relational query 작성·수정·검토
-MIGRATION     - DDL/data backfill/compatibility/deployment order
-PERFORMANCE   - execution plan/index/query shape/locking/cardinality 분석
+Subject Area 정의
+Logical Entity / Table 구성
+책임 / ownership / lifecycle
+relationship / cardinality
+Current / History / Snapshot / Derived
+업무 불변식
+canonical logical DBML
 ```
 
-승인된 기존 schema에서 단순 JPA Repository/QueryDSL 구현만 바꾸는 작업은 기존 `dev-spring-data`만으로 충분할 수 있다. Schema/DBML/DDL/SQL vendor 의미까지 건드리면 `dev-data-feature`를 함께 적용한다.
+DBA logical phase에서는 다음을 생성하지 않는다.
+
+```text
+tbl_* physical table name
+vendor-specific DDL/type/index
+Flyway/Liquibase migration
+JPA physical mapping
+실제 DB schema mutation
+```
+
+### Coder physical phase
+
+승인된 logical model이 실제 schema 변경으로 이어지면 Coder는 shared/pinnable `dev-db-migration` capability를 실행 책임으로 사용해 다음을 담당한다.
+
+```text
+Target DBMS/version 확인
+기존 migration tool/convention 탐지
+Physical table/type/constraint/index 결정
+Flyway 또는 Liquibase migration 작성
+project-controlled local/test/CI migration 검증
+JPA physical mapping 영향 반영
+```
+
+`dev-db-schema`는 Coder/Reviewer가 physical schema 판단에 사용하는 shared support capability이며 DBA logical output의 범위를 확장하지 않는다. `dev-db-migration`도 dispatch에서 Coder/Reviewer가 동일 계약을 볼 수 있도록 shared에 두되, **migration 파일 작성·변경의 실행 권한은 Coder에만 있다.**
 
 ## Task Classification
 
 ```text
-Data Task Class: MODEL_CHANGE | SCHEMA_CHANGE | QUERY_ONLY | MIGRATION | PERFORMANCE
-Database Vendor: generic | mssql | mysql | mariadb | postgresql | oracle | unknown
-Data Model Mode: LOGICAL_RELATIONAL | PHYSICAL
-DBML Mode: CANONICAL | PROJECT_EXISTING | NOT_REQUIRED
-Data Naming Source: PROJECT_EXISTING | PROJECT_INFERRED | DEVKIT_DEFAULT | NOT_REQUIRED
+MODEL_CHANGE  - Subject Area/table relation/ownership/lifecycle/cardinality 논리 설계
+SCHEMA_CHANGE - 논리 의미 변경 + Coder physicalization 필요
+QUERY_ONLY    - SQL/relational query 작성·수정·검토
+MIGRATION     - 승인 logical/schema intent를 Coder migration으로 구현
+PERFORMANCE   - execution plan/index/query shape/locking/cardinality 분석
 ```
 
-Vendor가 `unknown`인데 vendor-specific DDL/type/index가 필요한 경우 추측하지 않는다.
+승인된 기존 schema에서 단순 JPA Repository/QueryDSL 구현만 바꾸는 작업은 기존 `dev-spring-data`만으로 충분할 수 있다.
 
-Data Naming Source는 DBML 존재 여부만으로 결정하지 않는다. 기존 schema 문서, migration/DDL, JPA Entity 같은 persistence model, 실제 schema evidence를 확인한 뒤 유효한 convention이 없을 때만 `DEVKIT_DEFAULT`를 사용한다.
-
-## 하위 Capability lazy-load
+## Model Contract
 
 ```text
-도메인/관계/lifecycle/cardinality/DBML → dev-data-modeling
-PK/FK/constraint/index/type/nullability/default/naming/audit → dev-db-schema
-SQL/query semantics/dialect → dev-db-query
-DDL/backfill/compatibility/deployment → dev-db-migration
-execution plan/index tuning/locking/statistics → dev-db-performance
-JPA/Repository/QueryDSL/Converter/Paging 구현 → dev-spring-data
+Database Vendor: generic | mssql | mysql | mariadb | postgresql | oracle | unknown
+Data Model Mode: LOGICAL_RELATIONAL
+DBML Mode: CANONICAL | PROJECT_EXISTING | NOT_REQUIRED
+Data Naming Source: PROJECT_EXISTING | PROJECT_INFERRED | DEVKIT_DEFAULT | NOT_REQUIRED
+Subject Areas: <approved list | NOT_REQUIRED>
+Physicalization Required: YES | NO
 ```
 
-모든 하위 Skill을 시작부터 읽지 않는다. 실제 Task affected area에 필요한 것만 `skill_view`한다.
+Canonical DBA output은 `LOGICAL_RELATIONAL`이다. 기존 프로젝트가 Physical DBML을 source of truth로 이미 사용하더라도 DBA가 신규 physical convention을 발명하지 않고 `PROJECT_EXISTING` evidence로 취급한다.
+
+Vendor가 `unknown`인데 vendor-specific DDL/type/index가 필요한 경우 DBA가 추측하지 않는다. Coder physicalization이 target DBMS/version evidence를 확보한다.
+
+## Capability routing
+
+```text
+주제영역/책임/관계/lifecycle/cardinality/DBML → dev-data-modeling
+SQL/query semantics/dialect → dev-db-query
+execution plan/query tuning/locking/statistics → dev-db-performance
+승인 logical model의 physical schema 판단 → Coder가 dev-db-schema lazy-load
+DDL/backfill/Flyway/Liquibase/deployment → Coder가 shared dev-db-migration 실행
+JPA/Repository/QueryDSL/Converter/Paging → dev-spring-data
+```
+
+모든 capability를 시작부터 읽지 않는다. 실제 Task affected area에 필요한 것만 `skill_view`한다.
 
 ## Vendor reference
 
-DBMS 공통 판단 후 물리 차이가 실제로 필요할 때만 다음을 읽는다.
+DBA logical modeling은 vendor-neutral을 유지한다. Query/performance 분석 또는 Coder physicalization에서 DBMS 차이가 실제로 필요할 때만 다음 reference를 읽는다.
 
 ```text
 /opt/custom-skills/shared/dev-data-feature/references/vendors/mssql.md
@@ -79,74 +119,81 @@ Vendor detection 기준은 `references/vendor-detection.md`를 따른다.
 
 ## DBML / Documentation
 
-프로젝트에 별도 표준이 없으면 `docs/data/schema.dbml`을 canonical relational model로 사용한다.
+프로젝트에 별도 표준이 없으면 `docs/data/schema.dbml`을 canonical logical relational model로 사용한다.
 
-DBML Canvas는 IntelliJ에서 이 파일을 사람이 시각적으로 검토하기 위한 View로 활용할 수 있지만 Plugin 설치 여부를 Agent runtime 전제조건으로 만들지 않는다.
+Canonical 모델의 Subject Area는 DBML `TableGroup`으로 표현한다. DBML Canvas는 사람이 시각적으로 검토하기 위한 View일 뿐 Agent runtime 전제조건이 아니다.
 
 상세 문서 계약은 `references/documentation-contract.md`를 따른다.
 
 ## Data Model Gate
 
-의미 있는 모델 변경은 구현 전에 설계가 명시돼야 한다.
-
 다음은 기본적으로 `Data Model Gate: REQUIRED`다.
 
 ```text
 새 table
+Subject Area 신규/변경
 relationship/cardinality 변경
-PK/FK/UNIQUE 의미 변경
+PK/FK/UNIQUE의 업무 의미 변경
 nullable 의미 변경
-identifier strategy 변경
+identifier 역할 변경
 audit/soft delete 의미 변경
 Current/History/Snapshot 책임 변경
 data ownership/lifecycle 변경
 ```
 
-기존 Standard Flow의 Plan Approval에서 proposed DBML/table/relationship diff가 명시적으로 제시되면 별도 중복 승인 질문 없이 Data Model Gate를 함께 충족할 수 있다.
+기존 Standard Flow Plan Approval에서 Subject Area + proposed logical DBML/table/relationship diff가 명시적으로 제시되면 별도 중복 승인 질문 없이 Data Model Gate를 함께 충족할 수 있다.
 
 ```text
 Data Design Mode: DESIGN_FIRST | SOURCE_SYNC | QUERY_ONLY | PERFORMANCE
 Data Model Gate: REQUIRED | NOT_REQUIRED
 Data Model Status: DRAFT | APPROVED | NOT_REQUIRED
 DBML Path: <path | none>
+Subject Areas: <list | none>
 ```
 
 `DRAFT`를 Coder가 임의로 `APPROVED`로 승격하지 않는다.
 
-## Coder 실행
+## DBA 실행
 
 ```text
 1. Task/Project Pattern/Data Model Status 재사용
-2. DBMS vendor/version evidence 확인
-3. 기존 schema/migration/Entity/query/documentation pattern 확인
-4. Data Naming Source 확정
-5. 필요한 하위 capability만 lazy-load
-6. DBML/schema/query/migration 최소 scope 확정
-7. 구현
-8. DBML guard / project parser / SQL test / migration test 등 가능한 검증
-9. handoff evidence 기록
+2. Use Case와 기존 domain/data model evidence 확인
+3. Subject Area 정의/재사용
+4. dev-data-modeling으로 logical model 작성
+5. canonical DBML이면 dbml_guard --require-subject-area 검증
+6. Use Case 재검증
+7. APPROVED 여부와 Coder handoff evidence 기록
 ```
 
-`DEVKIT_DEFAULT`를 선택한 경우 `/opt/data/shared/references/data-design-rules.md`의 identifier/naming/audit/soft delete fallback을 적용한다. 기존 convention evidence가 있으면 신규 fallback으로 기존 schema를 자동 rename하지 않는다.
+DBA logical phase는 migration 파일을 만들지 않는다.
 
-DBML 변경 후 IntelliJ DBML Canvas rendering은 권장 Human Verification이지만 자동 PASS라고 주장하지 않는다.
+## Coder Handoff Gate
+
+`MODEL_CHANGE`/`SCHEMA_CHANGE`가 실제 DB schema 변경을 요구하면 다음 evidence 없이 migration을 시작하지 않는다.
+
+```text
+Data Model Status: APPROVED
+DBML Path: <canonical/project path>
+Subject Areas: <approved mapping>
+Logical Tables / Relationships:
+Business Constraints:
+Target DBMS / Version: <evidence or to-be-detected>
+Physicalization Required: YES
+```
+
+이후 Coder가 `dev-db-migration`을 실행한다.
 
 ## Reviewer 실행
 
-Reviewer가 이 Skill을 runtime context로 받으면 기존 `dev-code-review`의 diff-first 계약을 유지하면서 다음을 추가 확인한다.
+Reviewer는 shared `dev-db-migration` 계약을 read-only 검토 기준으로 볼 수 있지만 migration 파일을 수정하지 않는다. 기존 diff-first 계약을 유지하면서 다음을 확인한다.
 
-- Data Task Class와 실제 diff가 일치하는가.
-- table 분리가 책임/lifecycle/cardinality 근거를 갖는가.
-- DBML, migration, Entity/Repository가 서로 의미상 drift하지 않는가.
-- Data Naming Source가 실제 project evidence와 일치하는가.
-- `DEVKIT_DEFAULT`가 기존 project convention 위에 덮어쓰이지 않았는가.
-- PK/FK/UNIQUE/nullability/default/index가 업무 불변식과 맞는가.
-- internal/public/external identifier의 책임이 섞이지 않았는가.
-- audit column과 Actor 의미가 table lifecycle에 맞는가.
-- Soft Delete가 필요한 use case에만 적용되고 `deleted_at/deleted_by` 또는 기존 project convention의 source of truth가 명확한가.
+- Subject Area와 logical table 책임이 Use Case 근거를 갖는가.
+- logical DBML에 `tbl_`/vendor DDL/migration 구현이 섞이지 않았는가.
+- Coder physical table mapping이 승인 Subject Area를 임의 변경하지 않았는가.
+- DBML, migration, Entity/Repository가 의미상 drift하지 않는가.
+- 기존 Data Naming Source와 migration framework를 존중했는가.
 - migration이 기존 데이터/구버전 application과 호환되는가.
 - query/performance finding이 실제 evidence에 기반하는가.
-- vendor-specific 선택이 target DBMS/version 근거를 갖는가.
 
 스타일 선호만으로 schema redesign을 요구하지 않는다.
 
@@ -154,19 +201,16 @@ Reviewer가 이 Skill을 runtime context로 받으면 기존 `dev-code-review`�
 
 ```text
 Data Task Class:
-Database Vendor / Version:
-Data Model Mode:
+Data Design Mode / Model Status:
 DBML Mode / Path:
-Data Model Status:
-Data Naming Source:
-Identifier / Naming Convention:
-Audit Convention:
-Soft Delete Strategy:
-Applied Data Capabilities:
-Pattern References:
-Schema / Query / Migration Changes:
-Integrity Constraints:
-Compatibility / Backfill:
+Subject Areas:
+Logical Tables / Relationships:
+Ownership / Lifecycle:
+Business Constraints:
+Physicalization Required:
+Target DBMS / Version Evidence:
+Coder Migration Skill Required: YES | NO
+Query / Performance Changes:
 Verification:
 DBML Canvas Manual Review: PASS | NOT_RUN | NOT_REQUIRED
 Intentional Deviations:
@@ -175,4 +219,4 @@ Residual Risk:
 
 ## 운영 경계
 
-이 Skill은 Design-Time DBA capability다. 운영 DB에 직접 DDL/DML을 실행하거나 backup/restore/session kill/index maintenance를 수행하지 않는다. 운영 실행 자동화가 필요하면 별도 프로필/권한/Skill을 설계한다.
+이 Skill의 DBA responsibility는 Design-Time logical modeling이다. 운영 DB에 직접 DDL/DML을 실행하거나 backup/restore/session kill/index maintenance를 수행하지 않는다. Coder migration execution도 승인 없는 운영 DB 직접 변경 권한을 부여하지 않는다.
