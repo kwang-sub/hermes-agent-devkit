@@ -109,7 +109,7 @@ def main() -> int:
     require(MIGRATION, (
         "Work Unit Class: MIGRATION",
         "Work Unit Boundary: SINGLE_UNIT",
-        "DESIGN Work Unit",
+        "`DESIGN` Work Unit",
         "새 `DESIGN` Work Unit",
         "APPROVED DBA Logical Model",
     ))
