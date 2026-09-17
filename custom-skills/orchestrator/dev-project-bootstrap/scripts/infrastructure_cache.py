@@ -8,9 +8,25 @@ from pathlib import Path
 import re
 
 MANAGED_MARKER = "# managed-by: dev-project-bootstrap"
-DESIRED_KEYS = (
+DESIRED_CORE_KEYS = (
     "application_runtime",
     "database_runtime",
+    "database_platform",
+    "database_vendor",
+)
+DESIRED_ENDPOINT_KEYS = (
+    "application_host",
+    "application_port",
+    "database_host",
+    "database_port",
+)
+DESIRED_KEYS = (
+    "application_runtime",
+    "application_host",
+    "application_port",
+    "database_runtime",
+    "database_host",
+    "database_port",
     "database_platform",
     "database_vendor",
 )
@@ -87,7 +103,11 @@ def existing_desired(text: str) -> dict[str, str] | None:
         if match is not None:
             result[key] = parse_scalar(match.group(1))
 
-    return result if len(result) == len(DESIRED_KEYS) else None
+    if any(key not in result for key in DESIRED_CORE_KEYS):
+        return None
+    for key in DESIRED_ENDPOINT_KEYS:
+        result.setdefault(key, "unknown")
+    return result
 
 
 def technology_vendor(text: str) -> str:
@@ -101,10 +121,15 @@ def technology_vendor(text: str) -> str:
     return values[0].lower() if len(values) == 1 else "unknown"
 
 
+def observed_endpoint(observed: dict[str, object], key: str) -> str:
+    value = str(observed.get(key, "unknown") or "unknown").strip()
+    return value if value and value.lower() != "unknown" else "unknown"
+
+
 def desired_from_observed(observed: dict[str, object], metadata_text: str) -> dict[str, str]:
     app = str(observed.get("application_runtime", "UNKNOWN"))
     db = str(observed.get("database_runtime", "UNKNOWN"))
-    platform = str(observed.get("database_platform", "NATIVE"))
+    platform = str(observed.get("database_platform", "UNKNOWN"))
     vendor = str(observed.get("database_vendor", "unknown"))
 
     if app == "UNKNOWN":
@@ -121,7 +146,11 @@ def desired_from_observed(observed: dict[str, object], metadata_text: str) -> di
 
     return {
         "application_runtime": app,
+        "application_host": observed_endpoint(observed, "application_host"),
+        "application_port": observed_endpoint(observed, "application_port"),
         "database_runtime": db,
+        "database_host": observed_endpoint(observed, "database_host"),
+        "database_port": observed_endpoint(observed, "database_port"),
         "database_platform": platform,
         "database_vendor": vendor,
     }
@@ -130,10 +159,11 @@ def desired_from_observed(observed: dict[str, object], metadata_text: str) -> di
 def render(desired: dict[str, str]) -> str:
     lines = [
         "infrastructure:",
-        '  version: "1"',
+        '  version: "2"',
         "  defaults:",
         '    application_runtime: "CONTAINER"',
         '    database_runtime: "CONTAINER"',
+        '    database_platform: "NATIVE"',
         "  desired:",
     ]
     for key in DESIRED_KEYS:
@@ -181,7 +211,11 @@ def main() -> int:
         return 2
     print(f"INFRASTRUCTURE_CACHE={status}")
     print(f"APPLICATION_RUNTIME={desired['application_runtime']}")
+    print(f"APPLICATION_HOST={desired['application_host']}")
+    print(f"APPLICATION_PORT={desired['application_port']}")
     print(f"DATABASE_RUNTIME={desired['database_runtime']}")
+    print(f"DATABASE_HOST={desired['database_host']}")
+    print(f"DATABASE_PORT={desired['database_port']}")
     print(f"DATABASE_PLATFORM={desired['database_platform']}")
     print(f"DATABASE_VENDOR={desired['database_vendor']}")
     print("INFRA_ENTRY_CANDIDATE=dev-infrastructure")
