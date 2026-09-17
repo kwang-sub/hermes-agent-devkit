@@ -65,6 +65,8 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/verify_worker_contex
 
 Worker Context Gate가 성공한 뒤 `verify_workspace.py`가 **첫 Git/workspace terminal command**다. 그 전에 workspace를 훑는 terminal probe는 실행하지 않는다.
 
+Workspace 검증 전에 다음 명령 또는 동등한 inline Python/subprocess 조합을 실행하지 않는다.
+
 ```text
 git status
 git diff
@@ -78,6 +80,8 @@ working-tree 파일 개수 계산
 Task body의 Workspace / Expected Branch / Base SHA는 Orchestrator가 이미 확정한 dispatch contract이므로 사전 재검증하지 않는다.
 
 ## Canonical Workspace Verification
+
+`verify_workspace.py`는 **Git/Workspace 전용 검증기**다. Workspace 검증은 아래 **독립 terminal command로 정확히 1회** 실행한다. 다른 명령을 `+`, `&&`, `;`, background process 또는 batch 형태로 붙이지 않는다.
 
 ```bash
 python3 /opt/custom-skills/coder/dev-implement-plan/scripts/verify_workspace.py \
@@ -307,7 +311,7 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification_
 - 한 stable verification cycle에서 full test는 기본 1회다.
 - 실제 BUILD_FAILURE는 source/test 수정 후 최소 재검증할 수 있다.
 - PASS evidence의 scope/request fingerprint가 동일하면 재사용하며 같은 Gradle command를 다시 실행하지 않는다.
-- PASS 이후 covered production/test/build/toolchain 파일이 바뀌면 fresh verification을 반드시 다시 실행한다.
+- PASS 이후 covered production/test/build/toolchain 파일이 바뀌면 **fresh Gradle verification을 반드시 다시 실행한다.**
 - `GRADLE_STATUS=BLOCKED`이면 direct Gradle 반복이나 우회 wrapper를 만들지 않고 `kanban_block`한다.
 
 ### Gradle PASS Evidence 재사용 계약
@@ -363,7 +367,9 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/change_summary.py \
   --include "<changed-path-2>"
 ```
 
-Standard Flow에서 `--include` 없이 호출하지 않는다. `EOL_ONLY_COUNT > 0` + `WHITESPACE_ERROR_COUNT=0`은 정상이다.
+Standard Flow에서 `--include` 없이 호출하지 않는다. `--allow-full-scan`은 명시적 진단 전용이다. tracked와 untracked 모두 Git pathspec으로 제한하며 unrelated repository 전체를 훑지 않는다. `EOL_ONLY_COUNT > 0` + `WHITESPACE_ERROR_COUNT=0`은 정상이다.
+
+`change_summary.py`가 DevKit runtime/capability 문제로 실패하면 **임시 wrapper/script 생성**, executable bit 변경, inline Python monkey-patch 등으로 우회하지 않고 `CAPABILITY` blocker로 종료한다.
 
 ## Review Risk / Handoff
 
