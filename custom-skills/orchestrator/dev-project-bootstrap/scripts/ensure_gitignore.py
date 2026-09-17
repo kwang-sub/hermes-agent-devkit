@@ -12,6 +12,24 @@ MANAGED_END = "# <<< Hermes Agent managed <<<"
 MANAGED_ENTRIES = (
     "/.hermes/",
     "/.worktrees/",
+    ".env",
+    ".env.*",
+    "!.env.example",
+    "application-local.yml",
+    "application-local.yaml",
+    "application-local.properties",
+    "application-secret.yml",
+    "application-secret.yaml",
+    "application-secret.properties",
+    "application-private.yml",
+    "application-private.yaml",
+    "application-private.properties",
+    "private.pem",
+    "*-private.pem",
+    "*.private.pem",
+    "*.p12",
+    "*.pfx",
+    "*.jks",
 )
 
 
@@ -31,7 +49,7 @@ def run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess[st
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Ensure repository-local Hermes workflow artifacts are ignored by Git."
+        description="Ensure repository-local Hermes workflow and application secret artifacts are ignored by Git."
     )
     parser.add_argument("--repo", required=True, help="Absolute path to a Git repository root")
     return parser.parse_args()
@@ -61,8 +79,33 @@ def resolve_repo(path_text: str) -> Path:
 def managed_block(newline: str) -> str:
     lines = [
         MANAGED_START,
-        "# Hermes 로컬 실행/상태 파일 (프로젝트 공용 파일은 Git 추적 유지)",
-        *MANAGED_ENTRIES,
+        "# Hermes 로컬 실행/상태 파일",
+        "/.hermes/",
+        "/.worktrees/",
+        "",
+        "# Application runtime environment / secrets",
+        ".env",
+        ".env.*",
+        "!.env.example",
+        "",
+        "# Spring local/private configuration",
+        "application-local.yml",
+        "application-local.yaml",
+        "application-local.properties",
+        "application-secret.yml",
+        "application-secret.yaml",
+        "application-secret.properties",
+        "application-private.yml",
+        "application-private.yaml",
+        "application-private.properties",
+        "",
+        "# Private key / keystore artifacts",
+        "private.pem",
+        "*-private.pem",
+        "*.private.pem",
+        "*.p12",
+        "*.pfx",
+        "*.jks",
         MANAGED_END,
     ]
     return newline.join(lines) + newline
@@ -114,15 +157,41 @@ def ensure_gitignore(repo: Path) -> str:
     return "updated" if existed else "created"
 
 
+def check_ignore(repo: Path, path: str) -> bool:
+    result = run(
+        ["git", "-C", str(repo), "check-ignore", "-q", "--no-index", "--", path],
+        check=False,
+    )
+    return result.returncode == 0
+
+
 def verify_managed_entries(repo: Path) -> None:
-    for path in (".hermes/project.yaml", ".worktrees/bootstrap-probe"):
-        result = run(
-            ["git", "-C", str(repo), "check-ignore", "-q", "--no-index", "--", path],
-            check=False,
-        )
-        if result.returncode != 0:
+    ignored = (
+        ".hermes/project.yaml",
+        ".worktrees/bootstrap-probe",
+        ".env",
+        "frontend/.env.local",
+        "backend/src/main/resources/application-local.yml",
+        "backend/src/main/resources/application-secret.properties",
+        "backend/src/main/resources/keys/jwt-private.pem",
+        "backend/src/main/resources/keys/keystore.p12",
+    )
+    tracked_candidates = (
+        ".env.example",
+        "frontend/.env.example",
+        "backend/src/main/resources/application.yml",
+        "backend/src/main/resources/keys/jwt-public.pem",
+    )
+
+    for path in ignored:
+        if not check_ignore(repo, path):
             raise GitIgnoreError(
-                f"required Hermes local path is not ignored after bootstrap: {path}"
+                f"required local/secret path is not ignored after bootstrap: {path}"
+            )
+    for path in tracked_candidates:
+        if check_ignore(repo, path):
+            raise GitIgnoreError(
+                f"public/example project file must remain Git-trackable: {path}"
             )
 
 
@@ -133,6 +202,8 @@ def main() -> int:
     verify_managed_entries(repo)
     print(f"GITIGNORE={status}")
     print("GITIGNORE_HERMES_LOCAL=ignored")
+    print("GITIGNORE_APP_SECRETS=ignored")
+    print("GITIGNORE_ENV_EXAMPLE=trackable")
     return 0
 
 
