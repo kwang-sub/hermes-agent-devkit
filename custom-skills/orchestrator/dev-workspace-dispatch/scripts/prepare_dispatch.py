@@ -416,8 +416,6 @@ def main() -> int:
     if common_git_dir(workspace) != common_git_dir(repo):
         raise DispatchError(f"approved workspace does not belong to the managed repository: workspace={workspace}, repo={repo}")
 
-    infrastructure_state_status = persist_infrastructure_state(metadata_path, desired_infrastructure)
-
     base = meta["base"]
     base_sha = rev_parse(repo, base)
     before_branch = current_branch(workspace)
@@ -460,6 +458,10 @@ def main() -> int:
     final_branch = current_branch(workspace)
     if final_branch != branch:
         raise DispatchError(f"branch verification failed: expected={branch}, actual={final_branch}")
+
+    # Persist approved project-wide desired state only after workspace/branch
+    # verification has succeeded. A blocked dispatch must not mutate metadata.
+    infrastructure_state_status = persist_infrastructure_state(metadata_path, desired_infrastructure)
 
     linked_worktree = workspace != repo
     workspace_metadata = workspace / ".hermes" / "project.yaml"
