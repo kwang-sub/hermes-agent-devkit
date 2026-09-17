@@ -1,7 +1,7 @@
 ---
 name: dev-project-bootstrap
 description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, Fast Preflight·기술 스택 fingerprint/cache·Infrastructure desired state·기존 저장소 refresh·Java toolchain·EOL·Git ignore·Kanban/Profile/Context/.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
-version: 0.5.2
+version: 0.5.3
 author: local
 platforms: [linux]
 metadata:
@@ -27,7 +27,8 @@ metadata:
 - 독립 JVM build root가 여러 개이면 동일 Java target/runtime일 때 Repository toolchain을 공유하고, 서로 다른 Java toolchain이 필요하면 잘못된 JDK를 임의 선택하지 않고 Block한다.
 - Repository build/dependency manifest에서 기술 스택을 탐지하고 `.hermes/project.yaml technology:`에 fingerprint와 결과를 저장한다.
 - 일반 source 변경은 technology cache를 무효화하지 않고 manifest 또는 detector version 변경 때만 재탐지한다.
-- `.hermes/project.yaml infrastructure:`가 없으면 Application/Database desired runtime을 `CONTAINER`, DB platform을 `NATIVE`, vendor를 단일 technology evidence 또는 `UNKNOWN`으로 초기화한다.
+- `.hermes/project.yaml infrastructure:`가 없으면 bounded Infrastructure detector의 **명확한 기존 runtime/platform/vendor evidence를 우선**하고, evidence가 없는 축에만 Application/Database runtime `CONTAINER`, DB platform `NATIVE`, vendor `UNKNOWN` 또는 단일 technology vendor 기본값을 적용한다.
+- 기존 runtime evidence가 서로 충돌하면 안전하지 않은 CONTAINER 기본화 대신 Bootstrap을 Block한다.
 - 기존 `infrastructure:`가 있으면 사용자가 선택한 `LOCAL_HOST | NETWORK_HOST | CONTAINER`, platform/vendor desired state를 그대로 보존한다. Bootstrap 재실행으로 CONTAINER 기본값을 덮어쓰지 않는다.
 - `.gitattributes`와 `.gitignore`의 Hermes 관리 정책을 보장하되 기존 사용자 정책은 임의로 덮어쓰지 않는다.
 - 이미 유효한 Project/Board/Profile Binding은 재사용한다.
@@ -44,6 +45,7 @@ bootstrap.py
   ├─ bootstrap_project.py
   ├─ stack_cache.py
   └─ infrastructure_state.py
+      └─ dev-infrastructure bounded detector
 ```
 
 일반 실행:
@@ -55,7 +57,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
 
 최종 `.hermes/project.yaml`은 technology cache와 Infrastructure Desired State를 포함한다.
 
-예:
+신규/증거 없는 프로젝트 예:
 
 ```yaml
 technology:
@@ -90,6 +92,8 @@ infrastructure:
   database_platform: "NATIVE"
   database_vendor: "postgresql"
 ```
+
+기존 Repository에 `jdbc:postgresql://localhost:...` 같은 명확한 DB evidence가 있다면 `database_runtime`은 `LOCAL_HOST`로 초기화된다. Supabase DB endpoint가 명확하면 `NETWORK_HOST + SUPABASE + postgresql`, `supabase/config.toml` 기반 local stack이면 `CONTAINER + SUPABASE + postgresql`로 초기화된다. 일반 Supabase Auth/SDK 사용만으로 DB platform을 SUPABASE라고 추측하지 않는다.
 
 `technology:`는 repository stack evidence cache이고 `infrastructure:`는 project-wide Desired State다. Compose/runtime 변경을 technology fingerprint에 섞지 않는다.
 
@@ -142,20 +146,26 @@ manifest 또는 detector version 변화
 
 ```text
 infrastructure section 없음
-→ application_runtime=CONTAINER
-→ database_runtime=CONTAINER
-→ database_platform=NATIVE
-→ technology.database_vendors가 단일 값이면 database_vendor 재사용
+→ bounded Infrastructure Observed State 검사
+→ 명확한 application runtime evidence가 있으면 재사용, 없으면 CONTAINER
+→ 명확한 database runtime evidence가 있으면 재사용, 없으면 CONTAINER
+→ 명확한 database platform evidence가 있으면 재사용, 없으면 NATIVE
+→ 명확한 observed vendor가 있으면 재사용
+→ 아니면 technology.database_vendors가 단일 값이면 vendor 재사용
 → 아니면 database_vendor=UNKNOWN
 
+명확한 DB runtime evidence가 둘 이상 충돌
+→ Bootstrap BLOCK
+→ 하나를 임의 선택하거나 CONTAINER default로 덮지 않음
+
 infrastructure section 있음
-→ byte-level desired state 보존
-→ bootstrap default 재적용 금지
+→ existing desired state 보존
+→ bootstrap default/evidence 재적용 금지
 ```
 
 이 단계는 Dockerfile/Compose를 생성하지 않는다. 실제 Docker/runtime 구성과 전환은 `dev-infrastructure`의 Desired/Observed reconciliation을 따른다.
 
-`CONTAINER`는 신규/미설정 Desired State 기본값이며 기존 repository의 Observed State를 추측하는 값이 아니다.
+`CONTAINER`는 **evidence가 없는 신규/미설정 Desired State의 기본값**이다. 기존 Repository의 명확한 Observed State보다 우선하지 않는다. Observed evidence 자체가 불명확하면 Coder의 reconciliation 단계에서 `UNKNOWN`/verification으로 처리하며 destructive 변경 근거로 사용하지 않는다.
 
 ## 4. 기존 Bootstrap Repository 갱신
 
@@ -176,7 +186,7 @@ repository lock
 → infrastructure_state.py
 ```
 
-기존 `infrastructure:` 선택이 있으면 보존한다. Project/Board/Profile/Context를 다시 등록하거나 Full Git scan을 하지 않는다.
+기존 `infrastructure:` 선택이 있으면 그대로 보존한다. 누락된 경우에만 bounded existing evidence → safe default 순으로 초기화한다. Project/Board/Profile/Context를 다시 등록하거나 Full Git scan을 하지 않는다.
 
 여러 Bootstrap-managed Repository는 일괄 갱신할 수 있다.
 
@@ -349,6 +359,7 @@ mvnw text eol=lf
 - 충돌하는 `.gitattributes` EOL 정책
 - 손상된 `.gitignore` Hermes marker
 - Hermes local path ignore 검증 실패
+- conflicting Infrastructure database runtime evidence during first initialization
 - Base ref resolve 실패
 - Common Context 없음
 - Metadata identity 충돌
@@ -362,8 +373,9 @@ mvnw text eol=lf
 
 - 오래 걸린다는 이유로 동일 Repository Bootstrap 재실행
 - Application build/dependency file을 stack cache 때문에 수정
-- technology/build-root detection을 위해 Repository 전체 source scan
-- 기존 `infrastructure:` desired state를 CONTAINER default로 덮어쓰기
+- technology/build-root/Infrastructure detection을 위해 Repository 전체 source scan
+- 기존 명확한 LOCAL_HOST/NETWORK_HOST/SUPABASE evidence를 CONTAINER/NATIVE default로 덮어쓰기
+- existing `infrastructure:` desired state를 Bootstrap evidence/default로 재작성
 - Bootstrap 단계에서 Dockerfile/Compose/resource를 생성·삭제
 - 서로 다른 JVM toolchain 요구사항 중 하나를 임의 선택
 - `.gitattributes` 충돌 정책 자동 덮어쓰기
@@ -397,9 +409,11 @@ technology cache creates/reuses/refreshes correctly
 source-only change keeps stack fingerprint stable
 manifest change invalidates stack fingerprint
 backend/frontend monorepo detection works
-infrastructure state creates CONTAINER defaults when missing
+infrastructure state uses clear existing LOCAL_HOST/NETWORK_HOST/SUPABASE evidence before defaults
+infrastructure state uses CONTAINER/NATIVE defaults when evidence is absent
+conflicting DB runtime evidence blocks first Infrastructure initialization
 single detected DB vendor becomes infrastructure database_vendor
-existing LOCAL_HOST/NETWORK_HOST/SUPABASE desired state is preserved
+existing Infrastructure Desired State is preserved on bootstrap/refresh
 refresh-stack refreshes technology evidence without resetting infrastructure desired state
 refresh-stack does not redo Project/Board/Profile registration
 ```
