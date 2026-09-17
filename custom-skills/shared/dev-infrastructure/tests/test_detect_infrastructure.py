@@ -32,6 +32,48 @@ def test_compose_postgres() -> None:
         assert state["database_vendor"] == "postgresql", state
 
 
+def test_nested_spring_resources_local_db() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        write(
+            repo,
+            "backend/src/main/resources/application.yml",
+            "spring:\n  datasource:\n    url: jdbc:postgresql://localhost:5432/app\n",
+        )
+        state = module.infer_state(repo)
+        assert "backend/src/main/resources/application.yml" in state["inputs"], state
+        assert state["database_runtime"] == "LOCAL_HOST", state
+        assert state["database_vendor"] == "postgresql", state
+
+
+def test_placeholder_db_host_remains_unknown() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        write(
+            repo,
+            "application.properties",
+            "spring.datasource.url=jdbc:postgresql://${DB_HOST}:${DB_PORT}/app\n",
+        )
+        state = module.infer_state(repo)
+        assert state["database_runtime"] == "UNKNOWN", state
+        assert state["database_endpoint_hosts"] == [], state
+        assert state["database_vendor"] == "postgresql", state
+
+
+def test_container_to_host_alias_is_local_db() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        write(repo, "Dockerfile", "FROM eclipse-temurin:17-jre\n")
+        write(
+            repo,
+            "application.properties",
+            "spring.datasource.url=jdbc:postgresql://host.docker.internal:5432/app\n",
+        )
+        state = module.infer_state(repo)
+        assert state["application_runtime"] == "CONTAINER", state
+        assert state["database_runtime"] == "LOCAL_HOST", state
+
+
 def test_supabase_cloud() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp)
@@ -39,6 +81,16 @@ def test_supabase_cloud() -> None:
         write(repo, "package.json", '{"dependencies":{"@supabase/supabase-js":"^2.0.0"}}')
         state = module.infer_state(repo)
         assert state["database_runtime"] == "NETWORK_HOST", state
+        assert state["database_platform"] == "SUPABASE", state
+        assert state["database_vendor"] == "postgresql", state
+
+
+def test_supabase_key_without_endpoint_keeps_runtime_unknown() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        write(repo, ".env.example", "SUPABASE_URL=\n")
+        state = module.infer_state(repo)
+        assert state["database_runtime"] == "UNKNOWN", state
         assert state["database_platform"] == "SUPABASE", state
         assert state["database_vendor"] == "postgresql", state
 
@@ -53,6 +105,20 @@ def test_supabase_local() -> None:
         assert state["database_vendor"] == "postgresql", state
 
 
+def test_conflicting_runtime_evidence_is_unknown() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        write(repo, "compose.yml", """services:\n  postgres:\n    image: postgres:17\n""")
+        write(
+            repo,
+            "application.properties",
+            "spring.datasource.url=jdbc:postgresql://db.example.com:5432/app\n",
+        )
+        state = module.infer_state(repo)
+        assert state["database_runtime"] == "UNKNOWN", state
+        assert state["database_runtime_candidates"] == ["CONTAINER", "NETWORK_HOST"], state
+
+
 def test_unknown_is_not_defaulted() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp)
@@ -60,11 +126,17 @@ def test_unknown_is_not_defaulted() -> None:
         state = module.infer_state(repo)
         assert state["application_runtime"] == "UNKNOWN", state
         assert state["database_runtime"] == "UNKNOWN", state
+        assert state["database_platform"] == "UNKNOWN", state
 
 
 if __name__ == "__main__":
     test_compose_postgres()
+    test_nested_spring_resources_local_db()
+    test_placeholder_db_host_remains_unknown()
+    test_container_to_host_alias_is_local_db()
     test_supabase_cloud()
+    test_supabase_key_without_endpoint_keeps_runtime_unknown()
     test_supabase_local()
+    test_conflicting_runtime_evidence_is_unknown()
     test_unknown_is_not_defaulted()
     print("PASS")
