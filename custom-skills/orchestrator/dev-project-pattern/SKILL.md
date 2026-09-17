@@ -1,13 +1,13 @@
 ---
 name: dev-project-pattern
-description: 개발 계획 전에 Bootstrap 기술 스택 캐시와 대상 Repository의 기존 구조·코드·UI·디자인 Reference·데이터·테스트 패턴을 근거로 유지할 convention과 적용할 capability skill을 식별한다.
-version: 0.7.0
+description: 개발 계획 전에 Bootstrap 기술 스택 캐시와 대상 Repository의 기존 구조·코드·UI·디자인 Reference·데이터·인프라·테스트 패턴을 근거로 유지할 convention과 적용할 capability skill을 식별한다.
+version: 0.8.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, orchestrator, pattern, convention, project-analysis, stack, java, kotlin, frontend, design-reference, image, figma, data, database, dbml, cache]
-    related_skills: [dev-project-bootstrap, dev-tech-dispatch, dev-breakdown, dev-java-guidelines, dev-kotlin-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-api-docs, dev-frontend-feature, dev-design-reference, dev-data-feature, dev-data-modeling, dev-db-schema, dev-db-query, dev-db-migration, dev-db-performance, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract, dev-figma-design, dev-ui-ux]
+    tags: [dev, orchestrator, pattern, convention, project-analysis, stack, java, kotlin, frontend, design-reference, image, figma, data, database, dbml, infrastructure, docker, supabase, cache]
+    related_skills: [dev-project-bootstrap, dev-tech-dispatch, dev-breakdown, dev-java-guidelines, dev-kotlin-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-api-docs, dev-frontend-feature, dev-design-reference, dev-data-feature, dev-data-modeling, dev-db-schema, dev-db-query, dev-db-migration, dev-db-performance, dev-infrastructure, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract, dev-figma-design, dev-ui-ux]
     requires_tools: [terminal, skill_view]
 ---
 
@@ -26,17 +26,18 @@ metadata:
 
 ## 실행 순서
 
-1. managed project repository/workspace identity와 `.hermes/project.yaml`을 확인한다.
+1. managed project Primary Repository / approved Workspace identity와 `.hermes/project.yaml`을 확인한다.
 2. instruction/AGENTS, 실제 Task와 관련된 source root를 읽는다.
 3. `stack_cache.py`를 한 번 실행해 Bootstrap 기술 스택 캐시를 검증한다.
 4. `STACK_CACHE=reused`면 저장된 technology metadata를 그대로 사용한다.
 5. manifest fingerprint가 달라 `created|updated`가 나오면 detector가 재실행한 최신 stack 결과를 사용한다.
 6. 요청과 가장 유사한 기존 구현을 1~3개 찾는다.
-7. backend/frontend/data/UI/test convention을 evidence와 함께 요약한다.
-8. 실제 Task affected area와 stack 결과를 합쳐 runtime entry capability와 lazy capability hint를 결정한다.
+7. backend/frontend/data/infrastructure/UI/test convention을 evidence와 함께 요약한다.
+8. 실제 Task affected area와 stack/runtime 결과를 합쳐 canonical capability entry와 lazy capability hint를 결정한다.
 9. Frontend Task면 Design Source를 `IMAGE | FIGMA | EXISTING_CODE`로 분류하고 Reference Package/Figma/current screen evidence를 bounded하게 확인한다.
 10. data affected area이면 기존 schema/migration/DBML/data docs convention과 DBMS vendor candidate를 확인한다.
-11. 기존 패턴과 사용자 정책 충돌은 조용히 덮지 않고 최소 변경 방향과 Improvement Candidate로 전달한다.
+11. infrastructure affected area이면 Primary Desired State와 approved Workspace의 bounded Observed State를 구분해 runtime/platform/vendor 후보와 drift 여부를 확인한다.
+12. 기존 패턴과 사용자 정책 충돌은 조용히 덮지 않고 최소 변경 방향과 Improvement Candidate로 전달한다.
 
 ## Technology cache
 
@@ -44,7 +45,7 @@ Bootstrap이 생성한 `.hermes/project.yaml`의 `technology:` section이 canoni
 
 ```bash
 python3 /opt/custom-skills/orchestrator/dev-project-bootstrap/scripts/stack_cache.py \
-  --repo "<managed repository>"
+  --repo "<managed Primary Repository>"
 ```
 
 예:
@@ -63,7 +64,7 @@ DATA_ENTRY_CANDIDATE=dev-data-feature
 STATUS=pass
 ```
 
-`STACK_CACHE=reused`에서는 full stack detector를 다시 실행하지 않는다. Fingerprint는 bounded build/dependency manifest와 `schema.prisma` 같은 schema manifest만 대상으로 하므로 일반 source/SQL 변경은 cache invalidation 원인이 아니다.
+`STACK_CACHE=reused`에서는 full stack detector를 다시 실행하지 않는다. Fingerprint는 bounded build/dependency manifest와 `schema.prisma` 같은 schema manifest만 대상으로 하므로 일반 source/SQL/Compose 변경은 cache invalidation 원인이 아니다.
 
 manifest 변경 또는 detector version 변경 시에만 stack을 다시 계산하고 Bootstrap-managed local metadata의 `technology:` section을 갱신한다. `.hermes/`는 Bootstrap `.gitignore` 정책으로 Git 추적에서 제외되므로 application source/config 변경으로 취급하지 않는다.
 
@@ -79,7 +80,7 @@ python3 /opt/custom-skills/orchestrator/dev-project-bootstrap/scripts/bootstrap.
 
 ## Stack Detection != Skill Loading
 
-Technology cache는 Repository가 사용할 수 있는 stack/vendor/capability 후보를 저장할 뿐 이번 Task가 Backend/Frontend/Data/Full-stack인지 결정하지 않는다.
+Technology cache는 Repository가 사용할 수 있는 stack/vendor/capability 후보를 저장할 뿐 이번 Task가 Backend/Frontend/Data/Infrastructure/Full-stack인지 결정하지 않는다.
 
 ```text
 Repository Capability Candidate
@@ -88,7 +89,7 @@ Repository Capability Candidate
 = Task Capability
 ```
 
-Repository에 Kotlin/Spring + Next.js + MSSQL이 함께 있어도 Service-only Task에는 frontend/data entry를 적용하지 않는다.
+Repository에 Kotlin/Spring + Next.js + MSSQL + Docker가 함께 있어도 Service-only Task에는 frontend/data/infrastructure entry를 적용하지 않는다.
 
 ## Backend capability
 
@@ -232,6 +233,51 @@ actual DB vendor/version 근거
 
 기존 표준이 없으면 `docs/data/schema.dbml`을 canonical relational model 기본값으로 추천한다. DBML Canvas는 Human View이며 runtime dependency가 아니다.
 
+## Infrastructure canonical entry
+
+실제 Task가 Application/DB runtime, Docker/Compose, DB hosting, Supabase DB platform 또는 DB vendor runtime 전환을 변경하면 canonical entry는:
+
+```text
+→ dev-infrastructure
+```
+
+하위 전문 Skill은 현재 별도 provider skill로 쪼개지 않고 `Infrastructure Capability Hints`에 영향 축을 기록한다.
+
+```text
+Application Runtime → LOCAL_HOST | NETWORK_HOST | CONTAINER
+Database Runtime → LOCAL_HOST | NETWORK_HOST | CONTAINER
+Database Platform → NATIVE | SUPABASE
+Database Vendor → mssql | mysql | mariadb | postgresql | oracle | UNKNOWN
+Vendor Change → dev-data-feature + dev-db-migration companion
+```
+
+### Desired / Observed pattern
+
+```text
+Primary Repository .hermes/project.yaml infrastructure:
+→ Desired State
+
+Approved implementation Workspace:
+→ Observed State
+```
+
+Infrastructure Task에서만 bounded evidence를 확인한다.
+
+```bash
+python3 /opt/custom-skills/shared/dev-infrastructure/scripts/detect_infrastructure.py \
+  --repo "<approved Workspace>"
+
+python3 /opt/custom-skills/shared/dev-infrastructure/scripts/plan_transition.py \
+  --repo "<approved Workspace>" \
+  [--project-repo "<Primary Repository>"]
+```
+
+Pattern 단계는 Desired metadata를 수정하지 않는다. 변경이 필요한 Desired State는 `dev-breakdown` Plan에서 제안/승인하고 `dev-workspace-dispatch`가 worker dispatch 전에 Primary metadata에 기록한다.
+
+`CONTAINER`는 missing Desired State 기본값일 뿐 existing Observed runtime으로 추측하지 않는다. Supabase Auth/SDK 사용만으로 Database Platform을 SUPABASE라고 판단하지 않으며 DB endpoint 또는 `supabase/config.toml` 같은 DB evidence를 요구한다.
+
+Runtime/platform/vendor 전환에서 persistent data 삭제는 project convention이 아니다. `Detach != Destroy`를 기본 안전 경계로 전달한다.
+
 ## 필수 출력
 
 ```text
@@ -246,6 +292,7 @@ Project Pattern Summary
 - Error / Validation Contract
 - Data Access Convention
 - Data Schema/Migration/DBML Convention (해당 시)
+- Infrastructure Desired State / Observed State / Drift (해당 시)
 - Kotlin Language/Compiler/Interop Convention (해당 시)
 - Frontend Component/State/Style Convention (해당 시)
 - Design System Reference (해당 시)
@@ -255,6 +302,7 @@ Project Pattern Summary
 - Applicable Skills
 - Frontend Capability Hints
 - Data Capability Hints
+- Infrastructure Capability Hints
 - Pattern Conflicts
 - Improvement Candidates (not auto-applied)
 ```
@@ -263,11 +311,14 @@ Project Pattern Summary
 
 - application source/build dependency를 수정하지 않는다.
 - `technology:` cache 갱신 외 project metadata를 planning 단계에서 변경하지 않는다.
-- 새 architecture/library/common contract를 제안 없이 확정하지 않는다.
-- 기존 패턴을 Public Skill/Design Reference/DBML 기본값으로 광범위하게 교체하지 않는다.
+- Infrastructure Desired State를 planning/pattern 단계에서 직접 변경하지 않는다.
+- 새 architecture/library/common contract/deployment platform을 제안 없이 확정하지 않는다.
+- 기존 패턴을 Public Skill/Design Reference/DBML/Container 기본값으로 광범위하게 교체하지 않는다.
 - Kotlin version/compiler plugin/KSP migration을 planning 근거 없이 자동 결정하지 않는다.
 - DB driver가 있다는 이유만으로 Data entry를 자동 적용하지 않는다.
+- Dockerfile/Compose가 있다는 이유만으로 Infrastructure entry를 자동 적용하지 않는다.
 - DBMS version/vendor-specific feature를 근거 없이 추측하지 않는다.
+- Supabase SDK/Auth 사용을 Supabase Database 사용으로 오인하지 않는다.
 - `dev-tech-dispatch`는 detector이며 runtime pinned skill이 아니다.
-- frontend/data 하위 capability를 전부 runtime pin하지 않고 canonical entry를 사용한다.
+- frontend/data/infrastructure 하위 capability를 전부 runtime pin하지 않고 canonical entry를 사용한다.
 - Figma를 Frontend implementation의 필수 단계로 만들지 않는다.
