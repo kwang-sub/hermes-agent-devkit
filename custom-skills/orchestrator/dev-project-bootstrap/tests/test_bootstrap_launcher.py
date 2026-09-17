@@ -43,6 +43,14 @@ class BootstrapLauncherTest(unittest.TestCase):
             bootstrap.project_args(args),
         )
 
+    def test_configuration_security_stage_is_in_normal_and_refresh_paths(self) -> None:
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertEqual(2, source.count('scripts / "ensure_config_security.py"'))
+        self.assertLess(
+            source.index('scripts / "ensure_gitignore.py"'),
+            source.index('scripts / "ensure_config_security.py"'),
+        )
+
     def test_repository_lock_blocks_duplicate_bootstrap(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repo"

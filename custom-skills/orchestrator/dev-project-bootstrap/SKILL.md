@@ -1,18 +1,20 @@
 ---
 name: dev-project-bootstrap
-description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, Fast Preflight·기술 스택 fingerprint/cache·기존 저장소 refresh·Java toolchain·EOL·Git ignore·Kanban/Profile/Context/.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
-version: 0.5.1
+description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, Fast Preflight·기술 스택/Infrastructure cache·Java toolchain·EOL·Git ignore·애플리케이션 환경설정 보안·Kanban/Profile/Context/.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
+version: 0.6.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, project, bootstrap, kanban, context, orchestration, resolver, preflight, performance, stack, fingerprint, cache, monorepo, eol, java, toolchain, git]
+    tags: [dev, project, bootstrap, kanban, context, orchestration, resolver, preflight, performance, stack, fingerprint, cache, monorepo, eol, java, toolchain, git, env, secret, security]
     requires_tools: [terminal]
 ---
 
 # dev-project-bootstrap
 
 기존 Git Repository를 Hermes 개발 Workflow에 사용할 수 있도록 idempotent하게 준비한다.
+
+애플리케이션 환경설정/Secret 정책은 `/opt/data/shared/references/application-configuration-security.md`를 따른다.
 
 핵심 원칙:
 - 일반 Bootstrap은 **Fast Preflight**를 사용한다.
@@ -28,6 +30,9 @@ metadata:
 - Repository build/dependency manifest에서 기술 스택을 탐지하고 `.hermes/project.yaml technology:`에 fingerprint와 결과를 저장한다.
 - 일반 source 변경은 technology cache를 무효화하지 않고 manifest 또는 detector version 변경 때만 재탐지한다.
 - `.gitattributes`와 `.gitignore`의 Hermes 관리 정책을 보장하되 기존 사용자 정책은 임의로 덮어쓰지 않는다.
+- `.env.example`을 환경변수 계약 파일의 기본 관행으로 사용하고 실제 `.env*` 값은 Git에서 분리한다.
+- Spring 공통 `application.yml|yaml|properties`는 Git 추적을 유지하되 credential/환경별 endpoint는 `${ENV_VAR}`로 외부화한다.
+- 이미 Git 추적 중인 local/secret 설정을 자동 untrack하지 않고 Block한다.
 - 이미 유효한 Project/Board/Profile Binding은 재사용한다.
 - Resolver와 Legacy/Source-specific Metadata는 보존한다.
 
@@ -39,8 +44,10 @@ bootstrap.py
   ├─ bootstrap_preflight.py (fast)
   │   └─ project_builds.py (bounded build-root discovery)
   ├─ ensure_gitignore.py
+  ├─ ensure_config_security.py
   ├─ bootstrap_project.py
-  └─ stack_cache.py
+  ├─ stack_cache.py
+  └─ infrastructure_cache.py
 ```
 
 일반 실행:
@@ -50,7 +57,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
   --repo "/workspace/dashboard"
 ```
 
-최종 `.hermes/project.yaml`은 schema version 3 technology cache를 포함한다.
+최종 `.hermes/project.yaml`은 technology cache와 Infrastructure Desired State를 포함할 수 있다.
 
 예:
 
@@ -76,6 +83,17 @@ technology:
     - "dev-typescript-guidelines"
     - "dev-frontend-guidelines"
     - "dev-nextjs-feature"
+
+infrastructure:
+  version: "1"
+  defaults:
+    application_runtime: "CONTAINER"
+    database_runtime: "CONTAINER"
+  desired:
+    application_runtime: "CONTAINER"
+    database_runtime: "CONTAINER"
+    database_platform: "NATIVE"
+    database_vendor: "postgresql"
 ```
 
 Repository stack은 Task 분류가 아니다. Standard Flow의 Orchestrator가 사용자 요구사항과 affected area를 함께 보고 Backend / Frontend / Full-stack을 판단한다.
@@ -123,7 +141,7 @@ manifest 또는 detector version 변화
 
 ## 3. 기존 Bootstrap Repository 갱신
 
-DevKit 업데이트 전에 이미 Bootstrap된 Repository는 Project/Board/Profile을 다시 만들 필요 없이 stack cache만 갱신할 수 있다.
+DevKit 업데이트 전에 이미 Bootstrap된 Repository는 Project/Board/Profile을 다시 만들 필요 없이 cache/security 계약만 갱신할 수 있다.
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
@@ -136,7 +154,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
 ```text
 repository lock
 → ensure_gitignore.py
+→ ensure_config_security.py
 → stack_cache.py --force
+→ infrastructure_cache.py
 ```
 
 Project/Board/Profile/Context를 다시 등록하거나 Full Git scan을 하지 않는다.
@@ -285,21 +305,146 @@ mvnw text eol=lf
 
 ## 9. Git ignore 정책
 
-`.gitignore`에 다음 Hermes 관리 블록을 보장한다.
+`.gitignore`의 Hermes 관리 블록에 workflow local state와 application runtime secret 파일을 보장한다.
 
 ```gitignore
 # >>> Hermes Agent managed >>>
-# Hermes 로컬 실행/상태 파일 (프로젝트 공용 파일은 Git 추적 유지)
+# Hermes 로컬 실행/상태 파일
 /.hermes/
 /.worktrees/
+
+# Application runtime environment / secrets
+.env
+.env.*
+!.env.example
+
+# Spring local/private configuration
+application-local.yml
+application-local.yaml
+application-local.properties
+application-secret.yml
+application-secret.yaml
+application-secret.properties
+application-private.yml
+application-private.yaml
+application-private.properties
+
+# Private key / keystore artifacts
+private.pem
+*-private.pem
+*.private.pem
+*.p12
+*.pfx
+*.jks
 # <<< Hermes Agent managed <<<
 ```
 
-따라서 Bootstrap이 생성하는 `project.yaml`, `toolchain.env`, technology cache 등 `.hermes/` 하위 local metadata는 Git 변경으로 잡히지 않는다.
+따라서 Bootstrap이 생성하는 `.hermes/` local metadata와 실제 runtime secret 파일은 Git 변경으로 잡히지 않는다.
 
-`AGENTS.md`, `.gitattributes`, 소스/빌드 설정 등 프로젝트 공용 파일은 Hermes 관리 블록으로 ignore하지 않는다. 기존 사용자 규칙은 삭제하거나 재정렬하지 않는다.
+다음은 Git 추적 가능 상태를 유지한다.
 
-## 10. Block 조건
+```text
+.env.example
+application.yml / application.yaml / application.properties
+*-public.pem
+AGENTS.md
+.gitattributes
+source/build configuration
+```
+
+기존 사용자 `.gitignore` 규칙은 삭제하거나 재정렬하지 않는다.
+
+## 10. Application Configuration Security
+
+Bootstrap은 root 및 bounded application root를 기준으로 Backend/Frontend 환경설정 계약을 점검한다.
+
+### Frontend / Next.js
+
+```text
+frontend/
+├─ .env.example   Git 추적
+└─ .env.local     Git ignore
+```
+
+`.env.example`이 없고 local env 파일이 있으면 **값은 복사하지 않고 key 이름만** 추출한다.
+
+예:
+
+```dotenv
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SECRET_KEY=
+```
+
+`NEXT_PUBLIC_*`는 browser-visible 값이므로 Secret으로 간주하지 않는다. 단 실제 Supabase URL/publishable key는 환경별 runtime configuration이므로 실제 값을 Git example/source에 하드코딩하지 않는다.
+
+### Spring Boot
+
+공통 `application.yml|yaml|properties`는 Git 추적을 유지한다.
+
+```yaml
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+supabase:
+  url: ${SUPABASE_URL}
+  secret-key: ${SUPABASE_SECRET_KEY}
+```
+
+Bootstrap은 `${ENV_VAR}` placeholder 이름을 Backend `.env.example` 계약에 반영한다.
+
+중요:
+
+```text
+Spring Boot 자체는 일반적인 .env 파일을 자동 로드하지 않는다.
+```
+
+실제 값 전달 경로는 Runtime에 따라 다르다.
+
+```text
+Application Runtime = LOCAL_HOST
+→ IntelliJ Run Configuration 또는 OS Environment
+→ Spring Environment
+→ ${DB_USERNAME} 등으로 해석
+
+Application Runtime = CONTAINER
+→ .env / deployment environment
+→ Compose env_file/environment
+→ Container Environment
+→ Spring Environment
+```
+
+`application-local.*`, `application-secret.*`, `application-private.*` 같은 기존 local 파일을 사용할 수는 있지만 Git ignore 대상이다. 신규 구성은 공통 `application.yml` + environment variable 방식을 우선한다.
+
+### 공개키 / 비밀키
+
+```text
+*-public.pem  → Git 추적 가능
+*-private.pem / private.pem → Git ignore
+*.p12 / *.pfx / *.jks → Git ignore 기본값
+```
+
+### 기존 Repository 안전 처리
+
+이미 Git에 추적된 `.env.local`, `application-local.*`, private key/keystore 등은 `.gitignore` 추가만으로 보호되지 않는다.
+
+따라서 Bootstrap은:
+
+```text
+tracked protected file 발견
+→ SECURITY BLOCK
+→ 경로만 보고
+→ git rm --cached 자동 실행 금지
+```
+
+공통 Spring 설정에 DB credential/secret/token/private key 또는 환경별 datasource/Supabase 값이 실제 값으로 하드코딩되어 있어도 placeholder 전환 전까지 Block한다.
+
+기존 `.env.example`은 사용자 계약으로 보고 자동 덮어쓰지 않는다.
+
+## 11. Block 조건
 
 - 같은 Repository의 Bootstrap이 이미 실행 중
 - Repo Path/Git root 오류
@@ -311,7 +456,9 @@ mvnw text eol=lf
 - unmanaged `.hermes/toolchain.env` 또는 `.hermes/project.yaml`
 - 충돌하는 `.gitattributes` EOL 정책
 - 손상된 `.gitignore` Hermes marker
-- Hermes local path ignore 검증 실패
+- Hermes local/application secret path ignore 검증 실패
+- protected local/secret 파일이 이미 Git tracked 상태
+- tracked Spring 공통 설정에 credential/환경별 runtime 값 하드코딩
 - Base ref resolve 실패
 - Common Context 없음
 - Metadata identity 충돌
@@ -319,7 +466,7 @@ mvnw text eol=lf
 - 필수 Profile 없음
 - Hermes CLI 실패
 
-## 11. 안전 규칙
+## 12. 안전 규칙
 
 절대 하지 않는다.
 
@@ -330,6 +477,9 @@ mvnw text eol=lf
 - `.gitattributes` 충돌 정책 자동 덮어쓰기
 - 기존 `.gitignore` 사용자 규칙 삭제/재정렬
 - `git rm --cached` 자동 실행
+- tracked secret 파일 삭제/untrack 자동화
+- `.env.example`에 실제 credential/token/환경별 key 값을 복사
+- Spring이 `.env`를 직접 자동 로드한다고 가정
 - 전체 Repository 자동 renormalize
 - EOL noise 제거 목적의 reset/restore/checkout
 - Task 중 JDK/Gradle/Maven/npm dependency 임의 설치
@@ -338,7 +488,7 @@ mvnw text eol=lf
 - Git reset/clean/checkout/rebase/merge/commit
 - Unmanaged Metadata 덮어쓰기
 
-## 12. 권장 회귀 검증
+## 13. 권장 회귀 검증
 
 ```text
 Fast preflight skips repository-wide change scan
@@ -353,10 +503,18 @@ sibling JVM build roots remain independent
 same-Java sibling JVM roots share repository toolchain
 different-Java sibling JVM roots fail closed
 .gitattributes/.gitignore policies are idempotent
+.env/.env.local/Spring private config/private key are ignored
+.env.example/application.yml/public key remain trackable
+.env.example generation copies keys only, never values
+Spring ${ENV_VAR} placeholders populate backend .env.example contract
+tracked protected config fails closed without git rm --cached
+hardcoded Spring credential/runtime values fail closed
 resolver/custom metadata is preserved
 technology cache creates/reuses/refreshes correctly
+infrastructure desired state creates/reuses correctly
 source-only change keeps stack fingerprint stable
 manifest change invalidates stack fingerprint
 backend/frontend monorepo detection works
 refresh-stack does not redo Project/Board/Profile registration
+Git CI and update-devkit contract remain valid
 ```

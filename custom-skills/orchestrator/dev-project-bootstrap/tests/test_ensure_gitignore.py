@@ -27,7 +27,7 @@ class HermesGitIgnoreTest(unittest.TestCase):
             raise RuntimeError(result.stderr or result.stdout)
         return repo
 
-    def test_creates_managed_block_and_ignores_only_local_flow_paths(self) -> None:
+    def test_creates_managed_block_and_protects_runtime_secrets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = self.make_repo(Path(tmp))
 
@@ -37,9 +37,34 @@ class HermesGitIgnoreTest(unittest.TestCase):
             self.assertIn(gitignore.MANAGED_START, text)
             self.assertIn("/.hermes/", text)
             self.assertIn("/.worktrees/", text)
+            self.assertIn(".env.*", text)
+            self.assertIn("!.env.example", text)
+            self.assertIn("application-local.yml", text)
+            self.assertIn("*-private.pem", text)
             self.assertNotIn("AGENTS.md", text)
             self.assertNotIn(".gitattributes", text)
             gitignore.verify_managed_entries(repo)
+
+    def test_env_example_and_public_application_files_remain_trackable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self.make_repo(Path(tmp))
+            gitignore.ensure_gitignore(repo)
+
+            for path in (
+                ".env.example",
+                "frontend/.env.example",
+                "backend/src/main/resources/application.yml",
+                "backend/src/main/resources/keys/jwt-public.pem",
+            ):
+                self.assertFalse(gitignore.check_ignore(repo, path), path)
+
+            for path in (
+                ".env",
+                "frontend/.env.local",
+                "backend/src/main/resources/application-local.yml",
+                "backend/src/main/resources/keys/jwt-private.pem",
+            ):
+                self.assertTrue(gitignore.check_ignore(repo, path), path)
 
     def test_preserves_existing_content_and_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -73,6 +98,7 @@ class HermesGitIgnoreTest(unittest.TestCase):
             self.assertIn("dist/", text)
             self.assertIn("keep-me/", text)
             self.assertIn("/.worktrees/", text)
+            self.assertIn(".env.*", text)
             self.assertEqual(1, text.count(gitignore.MANAGED_START))
             self.assertEqual(1, text.count(gitignore.MANAGED_END))
 
