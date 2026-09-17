@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 구현 계획·API 규격·Infrastructure Desired State·workspace·branch·Coder 모델을 Primary Project context와 함께 Kanban으로 인계한다.
-version: 0.14.2
+version: 0.14.3
 author: local
 platforms: [linux]
 metadata:
@@ -21,10 +21,11 @@ metadata:
 - Requirement Delta가 있으면 승인 완료
 - `API Spec Gate: REQUIRED`이면 `API Spec Status: APPROVED`
 - `Infrastructure Impact: YES`이면 승인된 Desired State snapshot 확보
-- Workspace / Branch / 기존 변경 보존 / Coder Model 승인 완료
+- Workspace / Branch / 기존 변경 보존 승인 완료
+- **Coder Model Tier(DEFAULT|PREMIUM) 승인 완료**
 - Primary Repository의 managed `.hermes/project.yaml` 존재
 
-Reviewer는 별도 모델 승인을 받지 않고 DEFAULT를 사용한다.
+**Reviewer profile DEFAULT**는 별도 모델 승인 없이 사용한다.
 
 ## Project / Workspace 경계
 
@@ -155,6 +156,8 @@ Approved Applicable Skills
 API Task의 `dev-api-spec`은 **Coder/Reviewer가 동일 Markdown contract**를 볼 수 있도록 공통 pin 대상으로 검증한다.
 
 ## Kanban 생성 / 알림 Gate
+
+Task는 worker가 가져가기 전에 blocked 상태로 생성하고 **최초 등록 알림** Gate까지 완료한 뒤 unblock한다.
 
 ```text
 prepare_dispatch.py 정확히 한 번
