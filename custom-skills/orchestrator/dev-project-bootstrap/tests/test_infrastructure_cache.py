@@ -58,13 +58,38 @@ def test_existing_infrastructure_is_not_overwritten() -> None:
         )
         path = project_yaml(root, existing)
         before = path.read_text(encoding="utf-8")
-        status, _ = cache.initialize(root)
+        status, desired = cache.initialize(root)
         after = path.read_text(encoding="utf-8")
         assert status == "reused"
         assert before == after
+        assert desired == {
+            "application_runtime": "LOCAL_HOST",
+            "database_runtime": "NETWORK_HOST",
+            "database_platform": "SUPABASE",
+            "database_vendor": "postgresql",
+        }
+
+
+def test_incomplete_existing_infrastructure_is_rejected() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        existing = (
+            "\ninfrastructure:\n"
+            "  version: \"1\"\n"
+            "  desired:\n"
+            "    application_runtime: \"LOCAL_HOST\"\n"
+        )
+        project_yaml(root, existing)
+        try:
+            cache.initialize(root)
+        except cache.InfrastructureCacheError as exc:
+            assert "incomplete" in str(exc)
+        else:
+            raise AssertionError("incomplete explicit infrastructure state must not be inferred over")
 
 
 if __name__ == "__main__":
     test_missing_infrastructure_defaults_to_container()
     test_existing_infrastructure_is_not_overwritten()
+    test_incomplete_existing_infrastructure_is_rejected()
     print("PASS")
