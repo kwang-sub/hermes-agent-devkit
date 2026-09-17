@@ -1,12 +1,12 @@
 ---
 name: dev-data-modeling
 description: Use Case에서 주제영역·데이터 책임·소유권·lifecycle·cardinality·Current/History/Snapshot/Derived를 정의하고 canonical logical DBML로 표현하는 DBMS 중립 DBA capability.
-version: 0.2.0
+version: 0.3.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, data, dba, modeling, subject-area, erd, dbml, relationship, cardinality]
+    tags: [dev, data, dba, modeling, subject-area, erd, dbml, relationship, cardinality, work-unit]
     related_skills: [dev-data-feature, dev-db-schema, dev-db-migration]
     requires_tools: [terminal]
 ---
@@ -14,6 +14,8 @@ metadata:
 # dev-data-modeling
 
 Design-Time DBA의 **논리 모델링** capability다. Use Case와 업무 의미를 기준으로 Subject Area와 logical relational model을 확정한다. 특정 DBMS DDL, 물리 table 이름, migration framework, ORM annotation을 먼저 선택하지 않는다.
+
+`/opt/data/shared/references/standard-work-unit-rules.md`를 적용한다. Data DESIGN_FIRST에서는 이 capability가 속한 현재 Standard Task의 `Work Unit Class`는 `DESIGN`이며, physicalization은 같은 Task에서 이어서 수행하지 않는다.
 
 ## 책임 경계
 
@@ -43,7 +45,28 @@ JPA @Table / @Column annotation
 실제 DB migration 실행
 ```
 
-위 물리화는 승인된 logical model을 입력으로 Coder의 `dev-db-migration`이 담당한다.
+위 물리화는 승인된 logical model을 입력으로 **별도 Standard MIGRATION Work Unit**에서 Coder의 `dev-db-migration`이 담당한다.
+
+## Work Unit Contract
+
+Data logical modeling Task의 기본 계약:
+
+```text
+Work Unit Class: DESIGN
+Current Deliverable: approved/materialized logical DBML
+```
+
+`Physicalization Required: YES`이면:
+
+```text
+Work Unit Boundary: SPLIT_REQUIRED
+Follow-up Required: YES
+Follow-up Work Unit: MIGRATION
+Follow-up Input: approved/materialized logical DBML
+Excluded Follow-up Scope: Flyway/Liquibase, DDL, physical schema, JPA physical mapping
+```
+
+현재 DESIGN Task에서 Coder는 승인된 logical DBML/documentation을 repository에 materialize할 수 있으나 physical schema나 application persistence mapping을 함께 구현하지 않는다.
 
 ## 실행 순서
 
@@ -58,6 +81,7 @@ JPA @Table / @Column annotation
 8. canonical DBML + TableGroup Subject Area 반영
 9. Use Case로 재검증
 10. Logical Model Handoff 생성
+11. 승인된 DBML materialization 후 DESIGN Task 종료
 ```
 
 ## Subject Area 규칙
@@ -197,5 +221,12 @@ Data Modeling:
 - DBML Path / Changes:
 - Use Cases Validated:
 - Data Model Status: DRAFT | APPROVED
+- Physicalization Required: YES | NO
+- Work Unit Class: DESIGN
+- Work Unit Boundary: SINGLE_UNIT | SPLIT_REQUIRED
+- Follow-up Required: YES | NO
+- Follow-up Work Unit: MIGRATION | NONE
+- Follow-up Input: approved/materialized logical DBML | NONE
+- Excluded Follow-up Scope:
 - Open Model Questions:
 ```
