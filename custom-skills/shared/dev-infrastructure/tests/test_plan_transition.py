@@ -55,6 +55,16 @@ def test_native_postgres_to_supabase_cloud_is_not_vendor_change() -> None:
     assert result["data_migration"] == "NOT_REQUIRED"
 
 
+def test_supabase_unknown_vendor_is_normalized_to_postgres() -> None:
+    result = module.plan(
+        state("CONTAINER", "CONTAINER", "NATIVE", "postgresql"),
+        state("CONTAINER", "NETWORK_HOST", "SUPABASE", "unknown"),
+    )
+    assert result["desired"]["database_vendor"] == "postgresql"
+    assert "VENDOR" not in result["changes"]
+    assert result["data_migration"] == "NOT_REQUIRED"
+
+
 def test_mysql_to_supabase_requires_vendor_migration() -> None:
     result = module.plan(
         state("CONTAINER", "NETWORK_HOST", "NATIVE", "mysql"),
@@ -69,5 +79,6 @@ if __name__ == "__main__":
     test_container_to_local_preserves_volume()
     test_postgres_to_mysql_requires_data_migration()
     test_native_postgres_to_supabase_cloud_is_not_vendor_change()
+    test_supabase_unknown_vendor_is_normalized_to_postgres()
     test_mysql_to_supabase_requires_vendor_migration()
     print("PASS")
