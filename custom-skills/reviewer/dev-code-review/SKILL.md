@@ -1,13 +1,13 @@
 ---
 name: dev-code-review
 description: 동일 Workspace의 미커밋 구현을 requirement/AC와 project pattern/capability/구조 품질 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
-version: 0.14.0
+version: 0.15.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, review, reviewer, kanban, quality, verification, capability, java, refactor, structural-quality, performance]
-    related_skills: [dev-implement-plan, dev-review-cycle, dev-workspace-dispatch, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-docs]
+    tags: [dev, review, reviewer, kanban, quality, verification, capability, lifecycle, java, refactor, structural-quality, performance]
+    related_skills: [dev-implement-plan, dev-review-cycle, dev-workspace-dispatch, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-frontend-feature, dev-data-feature, dev-db-migration, dev-infrastructure, dev-api-spec, dev-api-contract, dev-api-docs]
     requires_tools: [terminal, kanban_show, kanban_request_changes, kanban_complete, kanban_block, kanban_heartbeat, skill_view]
 ---
 
@@ -20,7 +20,7 @@ Reviewer의 **compact 실행 계약**이다. 상세 severity/checklist/escalatio
 2. 같은 Workspace에서 `scripts/review_context.py`를 canonical 형식으로 **한 번** 실행해 Base SHA/Expected Branch/safe.directory/scoped changed paths/EOL noise와 `EFFECTIVE_SCOPE_SHA256`를 검증한다.
 3. Review는 **diff-first**로 시작한다. 전체 프로젝트를 다시 분석하지 않고 changed hunk와 그 주변 코드부터 본다. Kanban의 Pattern References를 재사용하고 correctness 판단에 필요한 경우에만 범위를 넓힌다.
 4. requirement/AC/correctness/compatibility/security/tests와 Coder verification claim을 대조한다.
-5. capability 문서는 실제 finding 판단에 필요한 것만 확인한다. 단순히 Coder가 여러 skill을 로드했다는 이유만으로 Reviewer가 모두 다시 읽지 않는다.
+5. `/opt/custom-skills/shared/capability-lifecycle.json`의 `reviewer_required=true` 등록부와 Task의 `Applicable Skills`/`Applied Capability Skills`를 대조한다. 해당 capability 문서는 실제 finding 판단에 필요한 것만 `skill_view`하고, 단순히 Coder가 여러 skill을 로드했다는 이유만으로 모두 다시 읽지 않는다.
 6. Java source 변경에서는 필요할 때 `skill_view("dev-java-guidelines")`로 Java version/Lombok/type placement/JavaDoc convention을 확인한다. Spring source 변경에서는 Coder의 Structural Quality/Javadoc evidence를 실제 diff와 대조한다. 단순 파일 길이/클래스 수/개인적 선호만으로 finding을 만들지 않는다.
 7. Coder의 `Verification Final: true`, PASS command/result, `Verification Request SHA256`, `Verification Scope SHA256`, handoff `Effective Scope SHA256`가 있고 reviewer가 계산한 현재 scope와 일치하면 해당 PASS evidence를 재사용한다. 동일 Gradle command를 확신 확보 목적으로 다시 실행하지 않는다.
 8. Coder의 `Review Risk`와 구조화된 `Risk Reasons`를 **탐색 시작점**으로 재사용한다. 이를 그대로 신뢰하지는 않지만, 동일 영향 범위를 다시 찾기 위한 repository-wide 탐색은 하지 않는다. 실제 diff/context와 모순될 때만 추가 source를 본다.
@@ -126,6 +126,25 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification_
 - API는 기존 response/error contract, JPA는 Method Query → QueryDSL → 근거 있는 Native Query 정책을 확인한다.
 - 테스트는 변경 behavior와 risk를 실제로 증명하는지 본다.
 
+## Capability Lifecycle Review Gate
+
+현재 cross-flow 등록부의 Reviewer 대상은 다음 domain을 포함한다. 목록의 source of truth는 `capability-lifecycle.json`이며 여기의 예시는 설명용이다.
+
+```text
+Backend       → dev-spring-feature, dev-spring-data
+Frontend      → dev-frontend-feature
+Data          → dev-data-feature, dev-db-migration
+Infrastructure→ dev-infrastructure
+API           → dev-api-spec, dev-api-contract
+```
+
+규칙:
+- Task의 `Applicable Skills` 또는 실제 diff가 등록 capability 영역이면 해당 capability를 review 판단에 필요한 시점에 `skill_view("<capability>")`한다.
+- `strict_pin=true` capability가 `Applicable Skills`에 있는데 Task의 validated/pinned skill에서 누락됐다면 Dispatch Preflight 계약 위반으로 보고 evidence를 남긴다. 안전한 review contract를 복구할 수 없으면 BLOCK한다.
+- `strict_pin=false` companion은 Task hint/affected scope로 lazy-load할 수 있으며 pinned 누락 자체만으로 finding을 만들지 않는다.
+- 등록부에 없는 support capability(`dev-java-guidelines`, `dev-kotlin-guidelines`, `dev-spring-guidelines`, `dev-spring-test`, `dev-spring-refactor`, `dev-design-reference`, `dev-typescript-guidelines`, `dev-frontend-guidelines`, `dev-nextjs-feature`, `dev-frontend-test`, `dev-node-dependencies`, `dev-ui-ux`, `dev-api-docs`, `dev-official-docs-context` 등)는 diff와 Task evidence가 실제로 필요할 때만 읽는다.
+- capability 재탐색을 위해 repository-wide 분석을 다시 수행하지 않는다.
+
 ## Java Convention Review Gate
 Java diff에서 실제 판단에 필요할 때 `dev-java-guidelines`를 적용한다.
 
@@ -140,7 +159,7 @@ Task와 직접 연결된 책임 혼재, raw payload parsing/persistence/external
 public API/schema/dependency/transaction/security/concurrency/architecture 의미 변경이 필요한 개선은 Coder에게 즉시 강제하지 않고 escalation/잔여 위험으로 분리한다.
 
 ## Stack / Capability Review Gate
-현재 capability set은 `dev-java-guidelines`, `dev-spring-guidelines`, `dev-spring-feature`, `dev-spring-data`, `dev-spring-test`, `dev-spring-refactor`, `dev-api-docs`다. diff가 해당 영역이고 실제 review 판단에 필요한 계약만 읽는다. capability 재탐색을 위해 전체 repo를 다시 분석하지 않는다.
+`capability-lifecycle.json`을 cross-flow source of truth로 사용하고, Task/diff에 해당하는 등록 capability와 support capability만 확인한다. Reviewer가 자체적인 별도 capability 목록을 source of truth로 유지하지 않는다.
 
 ## Java / Build Verification Gate
 - `.hermes/toolchain.env`가 있으면 Java target/runtime과 Coder evidence를 대조한다.
