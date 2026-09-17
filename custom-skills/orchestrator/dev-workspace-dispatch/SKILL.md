@@ -1,13 +1,13 @@
 ---
 name: dev-workspace-dispatch
-description: 승인된 구현 계획·API 규격·workspace·branch·Coder 모델과 project pattern/capability 계약을 최초 등록 알림과 함께 Kanban으로 인계한다.
-version: 0.13.0
+description: 승인된 구현 계획·API 규격·Infrastructure Desired State·workspace·branch·Coder 모델과 project pattern/capability 계약을 최초 등록 알림과 함께 Kanban으로 인계한다.
+version: 0.14.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, capability, preflight, notification, registration, model, api, spec, performance]
-    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-api-spec, dev-skill-preflight, dev-workflow-orchestrate, dev-flow-model-policy]
+    tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, capability, preflight, notification, registration, model, api, spec, infrastructure, runtime, performance]
+    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-api-spec, dev-infrastructure, dev-skill-preflight, dev-workflow-orchestrate, dev-flow-model-policy]
     requires_tools: [terminal, skill_view, kanban_create, kanban_show, kanban_unblock, clarify]
 ---
 
@@ -20,6 +20,7 @@ metadata:
 - 승인 이후 요구사항 변경 작업이면 Requirement Delta 승인 완료
 - `API Spec Gate: REQUIRED`이면 `API Spec Status: APPROVED` 및 승인된 Markdown snapshot 확보
 - `API Spec Gate: NOT_REQUIRED`이면 Mode가 `SOURCE_SYNC | AUDIT | NOT_REQUIRED` 중 하나임을 확인
+- `Infrastructure Gate: REQUIRED`이면 승인 Plan의 Application Runtime / Database Runtime / Database Platform / Database Vendor Desired State가 모두 확정됨
 - workspace/current 또는 create branch 승인 완료
 - 기존 변경이 있을 수 있는 workspace라면 reset/restore/stash 없이 전부 보존할지 승인 완료
 - Coder Model Tier(DEFAULT|PREMIUM) 승인 완료
@@ -35,14 +36,14 @@ Project metadata와 실제 작업 Workspace를 동일 경로로 취급하지 않
 ```text
 Project = Primary Repository
   /workspace/chagok
-  └─ .hermes/project.yaml  ← canonical metadata
+  └─ .hermes/project.yaml  ← canonical metadata + Infrastructure Desired State
 
 Workspace = Primary 또는 linked worktree
   /workspace/chagok
   /workspace/.worktrees/chagok/investment-data-model
 ```
 
-`prepare_dispatch.py`는 승인된 Workspace에서 `git worktree list --porcelain`로 Primary Worktree를 해석하고 **Primary Repository의 `.hermes/project.yaml`만** 읽는다. linked worktree마다 별도 Project/Board metadata를 생성하거나 요구하지 않는다.
+`prepare_dispatch.py`는 승인된 Workspace에서 `git worktree list --porcelain`로 Primary Worktree를 해석하고 **Primary Repository의 `.hermes/project.yaml`만** 읽는다. linked worktree마다 별도 Project/Board/Infrastructure metadata를 생성하거나 요구하지 않는다.
 
 Helper가 반환하는 경계는 다음과 같다.
 
@@ -54,11 +55,45 @@ WORKSPACE_PATH=<approved primary or linked worktree>
 LINKED_WORKTREE=true | false
 ```
 
-linked worktree에 과거 bootstrap으로 생성된 `.hermes/project.yaml`이 남아 있어도 `WORKSPACE_METADATA_IGNORED`로 보고하고 Project/Board/Base source로 사용하지 않는다.
+linked worktree에 과거 bootstrap으로 생성된 `.hermes/project.yaml`이 남아 있어도 `WORKSPACE_METADATA_IGNORED`로 보고하고 Project/Board/Base/Infrastructure source로 사용하지 않는다.
 
 Git ownership이 달라도 사용자가 승인한 Workspace와 해석된 Primary Repository만 helper process-local `safe.directory`로 신뢰한다. `git config --global safe.directory` 변경은 금지한다.
 
 Primary metadata가 실제로 없을 때만 `dev-project-bootstrap`을 사용한다. linked worktree path를 bootstrap 입력으로 전달할 수는 있지만 launcher가 반드시 Primary Repository로 정규화해야 하며 linked worktree용 새 Project/Board를 만들면 안 된다.
+
+### Infrastructure Desired State persistence
+
+Infrastructure Task는 Plan Approval 이후, worker dispatch 전에 승인된 **완전한 Desired State 4축**을 `prepare_dispatch.py`에 전달한다.
+
+```text
+Application Runtime
+Database Runtime
+Database Platform
+Database Vendor
+```
+
+4축은 atomic contract다. 일부만 전달해서 기존 state와 암묵적으로 merge하지 않는다.
+
+```bash
+--desired-application-runtime "<LOCAL_HOST|NETWORK_HOST|CONTAINER>" \
+--desired-database-runtime "<LOCAL_HOST|NETWORK_HOST|CONTAINER>" \
+--desired-database-platform "<NATIVE|SUPABASE>" \
+--desired-database-vendor "<postgresql|mysql|mariadb|mssql|oracle|UNKNOWN>"
+```
+
+Helper는 이를 **Primary Repository `.hermes/project.yaml infrastructure:`**에 기록한다. 이 metadata는 `.hermes/` local state이므로 Coder linked worktree의 source diff에 포함하지 않는다.
+
+```text
+Plan/Infrastructure Gate 승인
+→ Orchestrator prepare_dispatch
+→ Primary infrastructure Desired State persist
+→ Kanban Task body snapshot
+→ Coder는 Workspace에서 Observed State를 읽고 Primary Desired State와 reconcile
+```
+
+`SUPABASE`는 canonical vendor `postgresql`로 정규화한다. `SUPABASE + mysql/mssql/...` 조합은 dispatch 전에 Block한다.
+
+Infrastructure Gate가 `NOT_REQUIRED`이면 `--desired-*` 인수를 전달하지 않으며 기존 project Desired State를 건드리지 않는다.
 
 ## 2. 대형 Workspace Fast Path
 
@@ -91,7 +126,8 @@ python3 "${HERMES_SKILL_DIR}/scripts/prepare_dispatch.py" \
   --task-key "<TASK-KEY>" \
   --workspace "<APPROVED_WORKSPACE>" \
   --branch-mode current \
-  [--confirmed-dirty]
+  [--confirmed-dirty] \
+  [<approved Infrastructure Desired State 4 args>]
 ```
 
 새 branch:
@@ -102,10 +138,27 @@ python3 "${HERMES_SKILL_DIR}/scripts/prepare_dispatch.py" \
   --workspace "<APPROVED_WORKSPACE>" \
   --branch-mode create \
   --branch "feature/<TASK-KEY>" \
-  [--confirmed-dirty]
+  [--confirmed-dirty] \
+  [<approved Infrastructure Desired State 4 args>]
 ```
 
 Helper 출력의 `BOARD`는 **Primary Repository** `.hermes/project.yaml`의 `kanban.board`이며 유일한 board source다. `HERMES_KANBAN_BOARD`나 current/default board fallback은 사용하지 않는다.
+
+Infrastructure args가 있으면 다음도 확인한다.
+
+```text
+INFRASTRUCTURE_STATE_STATUS=updated | unchanged
+INFRASTRUCTURE_DESIRED_STATE=application_runtime=...,database_runtime=...,database_platform=...,database_vendor=...
+```
+
+Infrastructure Gate가 없는 Task는:
+
+```text
+INFRASTRUCTURE_STATE_STATUS=not-requested
+INFRASTRUCTURE_DESIRED_STATE=not-requested
+```
+
+이어야 한다.
 
 모델은 승인 직후 정확히 1회 해석한다.
 
@@ -126,6 +179,8 @@ REJECTED_SKILLS → body 기록만 하고 pin 금지
 
 API Task의 `Applicable Skills`에 `dev-api-spec`이 있으면 Coder/Reviewer가 동일 Markdown contract를 볼 수 있도록 공통 pin 대상으로 검증한다. `dev-api-contract`, `dev-api-docs`도 계획에 필요한 경우 같은 방식으로 검증한다.
 
+Infrastructure Task의 `Applicable Skills`에 `dev-infrastructure`가 있으면 공통 pin 대상으로 검증한다. DB vendor change이면 계획에 포함된 `dev-data-feature`, `dev-db-migration`도 같은 방식으로 검증한다.
+
 `dev-flow-model-policy`는 runtime pin 필수다. preflight 실패 시 dispatch하지 않는다.
 
 ## 5. Kanban 생성·알림 Gate 단일 경로
@@ -136,6 +191,7 @@ Task는 알림 Gate가 완료되기 전 worker가 가져가지 못하도록 **�
 prepare_dispatch.py 정확히 한 번
 → dev-skill-preflight
 → approved API Spec contract 확인 (REQUIRED일 때)
+→ approved Infrastructure Desired State persist/read-back 확인 (REQUIRED일 때)
 → approved model snapshot 확인
 → kanban_create(
      board=BOARD,
@@ -209,6 +265,8 @@ default/current board fallback
 Coder 모델 승인 없이 create/unblock
 Requirement Delta가 필요한 작업을 승인 없이 create/unblock
 API Spec Gate가 REQUIRED인데 APPROVED 없이 create/unblock
+Infrastructure Gate가 REQUIRED인데 Desired State 4축 없이 create/unblock
+승인되지 않은 Infrastructure Desired State를 metadata에 기록
 승인 뒤 ENV를 다시 resolve하여 model 변경
 hermes kanban --board <board> create --help
 hermes project list / --help
@@ -243,13 +301,14 @@ Model Policy:
 
 하나라도 불일치하면 unblock 금지다.
 
-## 6. Workspace / Model / API Spec Contract
+## 6. Workspace / Model / API Spec / Infrastructure Contract
 
 Task body에는 다음을 남긴다.
 
 ```text
 - Kanban board: <BOARD>
 - Workspace: <WORKSPACE_PATH>
+- Project Repository: <PROJECT_REPOSITORY>
 - Branch mode: current | create
 - Expected branch: <BRANCH>
 - Base branch: <BASE_BRANCH>
@@ -268,6 +327,14 @@ API Specification:
 - API Spec Source: DESIGN | APPLICATION_SOURCE | MIGRATED_SPEC | none
 - API Spec Snapshot: <approved Markdown body or DRAFT/source-sync evidence when applicable>
 
+Infrastructure:
+- Infrastructure Gate: REQUIRED | NOT_REQUIRED
+- Desired Application Runtime: LOCAL_HOST | NETWORK_HOST | CONTAINER | NOT_REQUIRED
+- Desired Database Runtime: LOCAL_HOST | NETWORK_HOST | CONTAINER | NOT_REQUIRED
+- Desired Database Platform: NATIVE | SUPABASE | NOT_REQUIRED
+- Desired Database Vendor: postgresql | mysql | mariadb | mssql | oracle | UNKNOWN | NOT_REQUIRED
+- Infrastructure State Source: <PROJECT_REPOSITORY>/.hermes/project.yaml | NOT_REQUIRED
+
 Model Policy:
 - Coder Model Tier: <DEFAULT|PREMIUM>
 - Coder Model: <MODEL>
@@ -279,6 +346,8 @@ Model Policy:
 `DESIGN_FIRST`에서는 `API Spec Status: APPROVED`와 승인 snapshot이 Coder/Reviewer의 normative contract다. Coder는 production API를 변경하기 전에 승인 snapshot을 repository Markdown에 materialize/update하고 `dev-api-spec` 계약을 따른다.
 
 `SOURCE_SYNC`에서는 `API Spec Status: DRAFT`, `API Spec Source: APPLICATION_SOURCE`가 정상이며 Coder는 bounded source evidence로 Markdown을 생성/갱신한다. 자동 APPROVED 승격은 금지한다.
+
+Infrastructure Gate가 REQUIRED이면 Task body의 Desired State snapshot과 Primary metadata에 persisted state가 일치해야 한다. Coder는 Task snapshot을 요구사항 evidence로 사용하고 planner는 Primary metadata를 canonical machine-readable Desired State로 사용한다. 불일치하면 구현을 시작하지 않고 Block한다.
 
 Fast Path에서는 모든 기존 변경 보존 승인이 baseline 계약이다. Coder는 자신의 실제 변경 scope만 별도로 추적한다.
 
@@ -304,6 +373,7 @@ Reviewer CHANGES_REQUESTED
 - Workspace 승인 전 working-tree 전체 scan 금지.
 - `--confirmed-dirty` 이후 exact count 복구를 위한 재scan 금지.
 - API SOURCE_SYNC/AUDIT도 Task/도메인 범위의 bounded scan을 기본으로 함.
+- Infrastructure detector도 bounded config/manifest evidence만 사용하고 repository source 전체를 scan하지 않음.
 - Coder/Reviewer는 실제 changed scope만 검증.
 - large/binary file을 임의 MB 기준으로 제외하지 않음.
 - 모델 snapshot은 승인 시 1회 resolve.
@@ -314,17 +384,8 @@ Reviewer CHANGES_REQUESTED
 python3 scripts/check_skill_contract.py
 python3 scripts/check_api_spec_contract.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
+python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_infrastructure_dispatch.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py
 python3 shared/scripts/test_kanban_registration_event.py
 python3 shared/scripts/test_flow_model_policy.py
-```
-
-성능 관찰용 full scan 출력:
-
-```text
-GIT_TRACKED_SCAN_SECONDS
-GIT_EFFECTIVE_SCAN_SECONDS
-GIT_UNTRACKED_SCAN_SECONDS
-CLASSIFICATION_SECONDS
-WORKSPACE_CLASSIFICATION_TOTAL_SECONDS
 ```
