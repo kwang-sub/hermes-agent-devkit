@@ -22,6 +22,7 @@ OPTIONAL_KEYS = (
 )
 RUNTIMES = {"LOCAL_HOST", "NETWORK_HOST", "CONTAINER"}
 PLATFORMS = {"NATIVE", "SUPABASE"}
+VENDORS = {"postgresql", "mysql", "mariadb", "mssql", "oracle", "unknown"}
 
 
 class PersistError(RuntimeError):
@@ -37,8 +38,33 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--database-host")
     p.add_argument("--database-port")
     p.add_argument("--database-platform", required=True, choices=sorted(PLATFORMS))
-    p.add_argument("--database-vendor", required=True)
+    p.add_argument("--database-vendor", required=True, choices=sorted(VENDORS))
     return p.parse_args()
+
+
+def normalize_host(value: str | None, label: str) -> str | None:
+    if value is None:
+        return None
+    host = value.strip()
+    if not host or host.lower() == "unknown":
+        return None
+    if any(char.isspace() for char in host) or "/" in host or "@" in host:
+        raise PersistError(f"{label} must be a host/service name only, not a URL or credential-bearing value")
+    return host
+
+
+def normalize_port(value: str | None) -> str | None:
+    if value is None:
+        return None
+    raw = value.strip()
+    if not raw or raw.lower() == "unknown":
+        return None
+    if not raw.isdigit():
+        raise PersistError("database_port must be an integer between 1 and 65535")
+    port = int(raw)
+    if not 1 <= port <= 65535:
+        raise PersistError("database_port must be an integer between 1 and 65535")
+    return str(port)
 
 
 def normalize(args: argparse.Namespace) -> dict[str, str]:
@@ -48,13 +74,15 @@ def normalize(args: argparse.Namespace) -> dict[str, str]:
         "database_platform": args.database_platform,
         "database_vendor": args.database_vendor.strip().lower(),
     }
-    for key, value in (
-        ("application_host", args.application_host),
-        ("database_host", args.database_host),
-        ("database_port", args.database_port),
-    ):
-        if value is not None and value.strip() and value.strip().lower() != "unknown":
-            result[key] = value.strip()
+    application_host = normalize_host(args.application_host, "application_host")
+    database_host = normalize_host(args.database_host, "database_host")
+    database_port = normalize_port(args.database_port)
+    if application_host is not None:
+        result["application_host"] = application_host
+    if database_host is not None:
+        result["database_host"] = database_host
+    if database_port is not None:
+        result["database_port"] = database_port
     if result["database_platform"] == "SUPABASE":
         result["database_vendor"] = "postgresql"
     return result
@@ -84,9 +112,7 @@ def desired_block(desired: dict[str, str]) -> str:
 
 
 def replace_desired(text: str, desired: dict[str, str]) -> str:
-    pattern = re.compile(
-        r"(?ms)^  desired:\s*\n(?:    [^\n]*\n?)*"
-    )
+    pattern = re.compile(r"(?ms)^  desired:\s*\n(?:    [^\n]*\n?)*")
     match = pattern.search(text)
     if not match:
         raise PersistError("infrastructure.desired block is missing or malformed")
