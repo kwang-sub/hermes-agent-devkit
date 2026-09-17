@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 import re
@@ -14,6 +15,10 @@ MANAGED_MARKER = "# managed-by: dev-project-bootstrap"
 HERMES_MANAGED_PREFIX = ".hermes/"
 SKIPPED_COUNT = -1
 SKIPPED_SECONDS = -1.0
+INFRASTRUCTURE_VERSION = "1"
+INFRA_RUNTIMES = ("LOCAL_HOST", "NETWORK_HOST", "CONTAINER")
+INFRA_PLATFORMS = ("NATIVE", "SUPABASE")
+INFRA_VENDORS = ("postgresql", "mysql", "mariadb", "mssql", "oracle", "UNKNOWN")
 
 
 class DispatchError(RuntimeError):
@@ -54,6 +59,10 @@ def parse_args() -> argparse.Namespace:
             "Skips repository-wide dirty/EOL/untracked classification."
         ),
     )
+    p.add_argument("--desired-application-runtime", choices=INFRA_RUNTIMES)
+    p.add_argument("--desired-database-runtime", choices=INFRA_RUNTIMES)
+    p.add_argument("--desired-database-platform", choices=INFRA_PLATFORMS)
+    p.add_argument("--desired-database-vendor", choices=INFRA_VENDORS)
     return p.parse_args()
 
 
@@ -64,6 +73,95 @@ def validate_task_key(task_key: str) -> None:
         raise DispatchError("task key must not be '.', '..', or contain '..'")
     if task_key.startswith("-"):
         raise DispatchError("task key must not start with '-'")
+
+
+def infrastructure_args(args: argparse.Namespace) -> dict[str, str] | None:
+    values = {
+        "application_runtime": args.desired_application_runtime,
+        "database_runtime": args.desired_database_runtime,
+        "database_platform": args.desired_database_platform,
+        "database_vendor": args.desired_database_vendor,
+    }
+    supplied = [value is not None for value in values.values()]
+    if any(supplied) and not all(supplied):
+        raise DispatchError(
+            "infrastructure desired state is atomic; provide all four --desired-* arguments or none"
+        )
+    if not any(supplied):
+        return None
+
+    resolved = {key: str(value) for key, value in values.items()}
+    if resolved["database_platform"] == "SUPABASE":
+        if resolved["database_vendor"] not in {"postgresql", "UNKNOWN"}:
+            raise DispatchError(
+                "SUPABASE desired platform requires database vendor postgresql or UNKNOWN"
+            )
+        resolved["database_vendor"] = "postgresql"
+    return resolved
+
+
+def split_top_level_sections(text: str) -> tuple[str, list[tuple[str, str]]]:
+    lines = text.splitlines(keepends=True)
+    starts: list[tuple[int, str]] = []
+    for index, line in enumerate(lines):
+        if line.startswith((" ", "\t")):
+            continue
+        match = re.match(r"^([A-Za-z0-9_.-]+):(?:\s.*)?(?:\r?\n)?$", line)
+        if match:
+            starts.append((index, match.group(1)))
+    if not starts:
+        return text, []
+    header = "".join(lines[: starts[0][0]])
+    sections: list[tuple[str, str]] = []
+    for pos, (start, key) in enumerate(starts):
+        end = starts[pos + 1][0] if pos + 1 < len(starts) else len(lines)
+        sections.append((key, "".join(lines[start:end])))
+    return header, sections
+
+
+def infrastructure_section(state: dict[str, str]) -> str:
+    return "\n".join(
+        [
+            "infrastructure:",
+            f"  version: {json.dumps(INFRASTRUCTURE_VERSION)}",
+            f"  application_runtime: {json.dumps(state['application_runtime'])}",
+            f"  database_runtime: {json.dumps(state['database_runtime'])}",
+            f"  database_platform: {json.dumps(state['database_platform'])}",
+            f"  database_vendor: {json.dumps(state['database_vendor'])}",
+        ]
+    ) + "\n"
+
+
+def persist_infrastructure_state(path: Path, state: dict[str, str] | None) -> str:
+    if state is None:
+        return "not-requested"
+    if not path.is_file():
+        raise DispatchError(f"project metadata is missing from primary repository: {path}")
+    text = path.read_text(encoding="utf-8")
+    if MANAGED_MARKER not in text.splitlines()[:5]:
+        raise DispatchError(f"project metadata is not managed by dev-project-bootstrap: {path}")
+
+    header, sections = split_top_level_sections(text)
+    replacement = infrastructure_section(state)
+    output_sections: list[str] = []
+    replaced = False
+    for key, body in sections:
+        if key == "infrastructure":
+            output_sections.append(replacement.rstrip())
+            replaced = True
+        else:
+            output_sections.append(body.rstrip())
+    if not replaced:
+        output_sections.append(replacement.rstrip())
+
+    updated = header.rstrip("\r\n")
+    if updated:
+        updated += "\n"
+    updated += "\n\n".join(part for part in output_sections if part.strip()) + "\n"
+    if updated == text:
+        return "unchanged"
+    path.write_text(updated, encoding="utf-8")
+    return "updated"
 
 
 def add_process_safe_directory(path: str | Path) -> None:
@@ -298,6 +396,7 @@ def rev_parse(repo: Path, ref: str) -> str:
 def main() -> int:
     args = parse_args()
     validate_task_key(args.task_key)
+    desired_infrastructure = infrastructure_args(args)
 
     workspace_start = Path(args.workspace).expanduser().resolve() if args.workspace else Path.cwd().resolve()
     add_process_safe_directory(workspace_start)
@@ -316,6 +415,8 @@ def main() -> int:
 
     if common_git_dir(workspace) != common_git_dir(repo):
         raise DispatchError(f"approved workspace does not belong to the managed repository: workspace={workspace}, repo={repo}")
+
+    infrastructure_state_status = persist_infrastructure_state(metadata_path, desired_infrastructure)
 
     base = meta["base"]
     base_sha = rev_parse(repo, base)
@@ -373,6 +474,21 @@ def main() -> int:
         print(f"WORKSPACE_METADATA_IGNORED={workspace_metadata}")
     else:
         print("WORKSPACE_METADATA_IGNORED=")
+    print(f"INFRASTRUCTURE_STATE_STATUS={infrastructure_state_status}")
+    if desired_infrastructure is None:
+        print("INFRASTRUCTURE_DESIRED_STATE=not-requested")
+    else:
+        print(
+            "INFRASTRUCTURE_DESIRED_STATE="
+            + ",".join(
+                [
+                    f"application_runtime={desired_infrastructure['application_runtime']}",
+                    f"database_runtime={desired_infrastructure['database_runtime']}",
+                    f"database_platform={desired_infrastructure['database_platform']}",
+                    f"database_vendor={desired_infrastructure['database_vendor']}",
+                ]
+            )
+        )
     print(f"BOARD={meta['board']}")
     print(f"BASE_BRANCH={base}")
     print(f"BASE_SHA={base_sha}")
