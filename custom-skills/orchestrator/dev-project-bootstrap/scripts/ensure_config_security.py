@@ -82,7 +82,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Protect application runtime configuration, create conventional .env.example files, "
-            "and fail closed when secret-bearing local files are already tracked."
+            "and report existing tracked/hardcoded configuration without rewriting it."
         )
     )
     parser.add_argument("--repo", required=True, help="Absolute path to a Git repository root")
@@ -363,21 +363,11 @@ def hardcoded_spring_config(repo: Path) -> list[str]:
 
 
 def ensure_configuration_security(repo: Path) -> dict[str, object]:
+    # Existing projects are preserve-first. Security findings are reported, but
+    # bootstrap does not rewrite, untrack, or block legacy configuration solely
+    # because it is already committed.
     tracked_protected = protected_tracked_paths(repo)
-    if tracked_protected:
-        raise ConfigSecurityError(
-            "secret-bearing local configuration is already tracked by Git; "
-            "bootstrap will not run git rm --cached automatically. Untrack these paths explicitly: "
-            + ", ".join(tracked_protected)
-        )
-
     hardcoded = hardcoded_spring_config(repo)
-    if hardcoded:
-        raise ConfigSecurityError(
-            "tracked Spring configuration contains environment-specific or secret values; "
-            "replace them with ${ENV_VAR} placeholders before bootstrap: "
-            + ", ".join(hardcoded)
-        )
 
     frontend_roots, backend_roots = discover_manifest_roots(repo)
     created: list[str] = []
@@ -400,11 +390,19 @@ def ensure_configuration_security(repo: Path) -> dict[str, object]:
             relative = ENV_EXAMPLE
             (created if status == "created" else reused).append(relative)
 
+    warnings = [
+        *(f"tracked-protected:{path}" for path in tracked_protected),
+        *(f"hardcoded-spring:{item}" for item in hardcoded),
+    ]
+
     return {
         "frontend_roots": sorted(str(path.relative_to(repo) or Path(".")) for path in frontend_roots),
         "backend_roots": sorted(str(path.relative_to(repo) or Path(".")) for path in backend_roots),
         "created": created,
         "reused": reused,
+        "tracked_protected": tracked_protected,
+        "hardcoded_spring": hardcoded,
+        "warnings": warnings,
     }
 
 
@@ -412,13 +410,27 @@ def main() -> int:
     args = parse_args()
     repo = resolve_repo(args.repo)
     result = ensure_configuration_security(repo)
-    print("CONFIG_SECURITY=pass")
+
+    for path in result["tracked_protected"]:
+        print(
+            f"[WARN] Git already tracks protected local/runtime configuration: {path}; preserving existing project state.",
+            file=sys.stderr,
+        )
+    for finding in result["hardcoded_spring"]:
+        print(
+            f"[WARN] Spring tracked configuration contains a hardcoded runtime/security setting: {finding}; preserving existing value.",
+            file=sys.stderr,
+        )
+
+    warning_count = len(result["warnings"])
+    print(f"CONFIG_SECURITY={'warn' if warning_count else 'pass'}")
+    print(f"CONFIG_SECURITY_WARNING_COUNT={warning_count}")
     print(f"CONFIG_FRONTEND_ROOTS={len(result['frontend_roots'])}")
     print(f"CONFIG_BACKEND_ROOTS={len(result['backend_roots'])}")
     print(f"ENV_EXAMPLES_CREATED={len(result['created'])}")
     print(f"ENV_EXAMPLES_REUSED={len(result['reused'])}")
-    print("TRACKED_SECRET_FILES=0")
-    print("HARDCODED_SPRING_RUNTIME_VALUES=0")
+    print(f"TRACKED_SECRET_FILES={len(result['tracked_protected'])}")
+    print(f"HARDCODED_SPRING_RUNTIME_VALUES={len(result['hardcoded_spring'])}")
     return 0
 
 
