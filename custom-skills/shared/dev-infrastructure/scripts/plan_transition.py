@@ -14,6 +14,9 @@ DEFAULT_APPLICATION_RUNTIME = "CONTAINER"
 DEFAULT_DATABASE_RUNTIME = "CONTAINER"
 DEFAULT_DATABASE_PLATFORM = "NATIVE"
 DEFAULT_DATABASE_VENDOR = "UNKNOWN"
+VALID_RUNTIMES = {"LOCAL_HOST", "NETWORK_HOST", "CONTAINER"}
+VALID_PLATFORMS = {"NATIVE", "SUPABASE"}
+VALID_VENDORS = {"postgresql", "mysql", "mariadb", "mssql", "oracle", "UNKNOWN"}
 
 
 class TransitionPlanError(RuntimeError):
@@ -62,25 +65,76 @@ def top_level_section(text: str, key: str) -> str | None:
     return "\n".join(lines[start:end])
 
 
+def list_value(section: str, key: str) -> list[str]:
+    lines = section.splitlines()
+    start = None
+    values: list[str] = []
+    for index, line in enumerate(lines):
+        if re.fullmatch(rf"\s{{2}}{re.escape(key)}:\s*(?:\[\])?\s*", line):
+            if line.rstrip().endswith("[]"):
+                return []
+            start = index + 1
+            break
+    if start is None:
+        return []
+    for line in lines[start:]:
+        if re.match(r"^\s{2}\S", line):
+            break
+        match = re.match(r"^\s{4}-\s+(.+?)\s*$", line)
+        if not match:
+            continue
+        raw = match.group(1).strip()
+        try:
+            decoded = json.loads(raw)
+            values.append(str(decoded))
+        except Exception:
+            values.append(raw.strip("'\""))
+    return values
+
+
+def technology_vendor(text: str) -> str:
+    technology = top_level_section(text, "technology") or ""
+    candidates = [value for value in list_value(technology, "database_vendors") if value in VALID_VENDORS and value != "UNKNOWN"]
+    unique = list(dict.fromkeys(candidates))
+    return unique[0] if len(unique) == 1 else "UNKNOWN"
+
+
+def validate_desired(state: dict[str, str]) -> dict[str, str]:
+    if state["application_runtime"] not in VALID_RUNTIMES:
+        raise TransitionPlanError(f"invalid desired application_runtime: {state['application_runtime']}")
+    if state["database_runtime"] not in VALID_RUNTIMES:
+        raise TransitionPlanError(f"invalid desired database_runtime: {state['database_runtime']}")
+    if state["database_platform"] not in VALID_PLATFORMS:
+        raise TransitionPlanError(f"invalid desired database_platform: {state['database_platform']}")
+    if state["database_vendor"] not in VALID_VENDORS:
+        raise TransitionPlanError(f"invalid desired database_vendor: {state['database_vendor']}")
+
+    if state["database_platform"] == "SUPABASE":
+        if state["database_vendor"] not in {"UNKNOWN", "postgresql"}:
+            raise TransitionPlanError(
+                "SUPABASE desired platform requires database_vendor=postgresql or UNKNOWN"
+            )
+        state = {**state, "database_vendor": "postgresql"}
+    return state
+
+
 def desired_state(repo: Path) -> dict[str, str]:
     path = repo / ".hermes" / "project.yaml"
     text = path.read_text(encoding="utf-8") if path.is_file() else ""
     section = top_level_section(text, "infrastructure") or ""
 
-    vendor = parse_scalar(section, "database_vendor") or DEFAULT_DATABASE_VENDOR
+    vendor_raw = parse_scalar(section, "database_vendor") or DEFAULT_DATABASE_VENDOR
+    vendor = vendor_raw.lower() if vendor_raw.upper() != "UNKNOWN" else "UNKNOWN"
     if vendor == "UNKNOWN":
-        technology = top_level_section(text, "technology") or ""
-        candidates = re.findall(r"(?m)^\s{4}-\s+[\"']?([A-Za-z0-9_-]+)[\"']?\s*$", technology)
-        db_candidates = [v for v in candidates if v in {"postgresql", "mysql", "mariadb", "mssql", "oracle"}]
-        if len(set(db_candidates)) == 1:
-            vendor = db_candidates[0]
+        vendor = technology_vendor(text)
 
-    return {
+    state = {
         "application_runtime": (parse_scalar(section, "application_runtime") or DEFAULT_APPLICATION_RUNTIME).upper(),
         "database_runtime": (parse_scalar(section, "database_runtime") or DEFAULT_DATABASE_RUNTIME).upper(),
         "database_platform": (parse_scalar(section, "database_platform") or DEFAULT_DATABASE_PLATFORM).upper(),
-        "database_vendor": vendor.lower() if vendor != "UNKNOWN" else "UNKNOWN",
+        "database_vendor": vendor,
     }
+    return validate_desired(state)
 
 
 def normalize_supabase(state: dict[str, str]) -> dict[str, str]:
@@ -91,7 +145,7 @@ def normalize_supabase(state: dict[str, str]) -> dict[str, str]:
 
 
 def compare(observed: dict[str, Any], desired: dict[str, str]) -> dict[str, Any]:
-    desired = normalize_supabase(desired)
+    desired = validate_desired(normalize_supabase(desired))
     changes: list[dict[str, str]] = []
     unknown_observed: list[str] = []
 
@@ -144,9 +198,8 @@ def compare(observed: dict[str, Any], desired: dict[str, str]) -> dict[str, Any]
         required_skills.extend(["dev-data-feature", "dev-db-migration"])
         data_migration = "REQUIRED"
 
-    preserved = []
-    detached = []
-    destructive = "NONE"
+    preserved: list[str] = []
+    detached: list[str] = []
     for item in runtime_changes:
         if item["field"] == "DATABASE_RUNTIME" and item["from"] == "CONTAINER" and item["to"] != "CONTAINER":
             detached.append("database container service")
@@ -164,11 +217,12 @@ def compare(observed: dict[str, Any], desired: dict[str, str]) -> dict[str, Any]
         "transition": transition,
         "changes": changes,
         "unknown_observed": unknown_observed,
+        "requires_observed_verification": bool(unknown_observed),
         "required_skills": required_skills,
         "data_migration": data_migration,
         "resources_detached": detached,
         "resources_preserved": preserved,
-        "destructive_operations": destructive,
+        "destructive_operations": "NONE",
         "safe_to_auto_destroy": False,
         "platform_change": platform_change,
         "vendor_change": vendor_change,
@@ -208,6 +262,7 @@ def main() -> int:
     for item in result["changes"]:
         print(f"CHANGE={item['field']}:{item['from']}->{item['to']}")
     print(f"UNKNOWN_OBSERVED={','.join(result['unknown_observed'])}")
+    print(f"REQUIRES_OBSERVED_VERIFICATION={str(result['requires_observed_verification']).lower()}")
     print(f"REQUIRED_SKILLS={','.join(result['required_skills'])}")
     print(f"DATA_MIGRATION={result['data_migration']}")
     print(f"RESOURCES_DETACHED={','.join(result['resources_detached'])}")
