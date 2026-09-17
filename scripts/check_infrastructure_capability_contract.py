@@ -9,6 +9,8 @@ DETECTOR = ROOT / "custom-skills/shared/dev-infrastructure/scripts/detect_infras
 PLANNER = ROOT / "custom-skills/shared/dev-infrastructure/scripts/plan_transition.py"
 CACHE = ROOT / "custom-skills/orchestrator/dev-project-bootstrap/scripts/infrastructure_cache.py"
 BREAKDOWN = ROOT / "custom-skills/orchestrator/dev-breakdown/SKILL.md"
+DISPATCH = ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/SKILL.md"
+PERSIST = ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/scripts/persist_infrastructure_desired.py"
 IMPLEMENT = ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md"
 
 
@@ -29,21 +31,30 @@ def main() -> int:
         "SUPABASE",
         "Desired State",
         "Observed State",
+        "HOST_CHANGE",
         "VENDOR_CHANGE",
         "Detach != Destroy",
         "dev-db-migration",
+        "Existing Security Findings",
+        "New Security Violations Introduced By Task",
     ))
     require(DETECTOR, (
-        "compose.yml",
-        "supabase",
-        "NETWORK_HOST",
-        "CONTAINER",
-        "database_vendor",
+        "is_dockerfile_name",
+        "is_compose_name",
+        "supabase:provider-env-contract",
+        "supabase:database-endpoint",
+        'database_platform = "UNKNOWN"',
+        "database_host",
+        "database_port",
     ))
     require(PLANNER, (
+        "INITIAL_CONFIGURATION",
         "RUNTIME_CHANGE",
+        "HOST_CHANGE",
         "PLATFORM_CHANGE",
         "VENDOR_CHANGE",
+        "DATABASE_HOST",
+        "DATABASE_PORT",
         "database-persistent-volume",
         "dev-data-feature",
         "destructive_operations",
@@ -51,6 +62,9 @@ def main() -> int:
     require(CACHE, (
         'application_runtime: "CONTAINER"',
         'database_runtime: "CONTAINER"',
+        'database_platform: "NATIVE"',
+        "application_host",
+        "database_host",
         "INFRA_ENTRY_CANDIDATE=dev-infrastructure",
         'has_section(text, "infrastructure")',
     ))
@@ -60,6 +74,19 @@ def main() -> int:
         "dev-infrastructure: runtime/topology/configuration canonical entry",
         "기존 Repository의 하드코딩 설정",
         "dev-db-migration",
+    ))
+    require(PERSIST, (
+        "Persist a user-approved Infrastructure Desired State",
+        "atomic_write",
+        "application_host",
+        "database_host",
+        "INFRASTRUCTURE_DESIRED_PERSISTENCE",
+    ))
+    require(DISPATCH, (
+        "persist_infrastructure_desired.py",
+        "Infrastructure Impact: YES",
+        "Primary Repository",
+        "Desired State",
     ))
     require(IMPLEMENT, (
         'skill_view("dev-infrastructure")',
