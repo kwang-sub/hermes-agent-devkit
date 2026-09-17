@@ -10,6 +10,8 @@ PLANNER = ROOT / "custom-skills/shared/dev-infrastructure/scripts/plan_transitio
 CACHE = ROOT / "custom-skills/orchestrator/dev-project-bootstrap/scripts/infrastructure_cache.py"
 BREAKDOWN = ROOT / "custom-skills/orchestrator/dev-breakdown/SKILL.md"
 IMPLEMENT = ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md"
+DISPATCH = ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/SKILL.md"
+PERSIST = ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/scripts/persist_infrastructure_desired.py"
 
 
 def require(path: Path, terms: tuple[str, ...]) -> None:
@@ -29,21 +31,33 @@ def main() -> int:
         "SUPABASE",
         "Desired State",
         "Observed State",
+        "INITIAL_CONFIGURATION",
+        "HOST_CHANGE",
         "VENDOR_CHANGE",
+        "Supabase provider 사용 evidence",
+        "Existing Security Findings",
+        "New Security Violations Introduced By Task",
         "Detach != Destroy",
         "dev-db-migration",
     ))
     require(DETECTOR, (
-        "compose.yml",
-        "supabase",
-        "NETWORK_HOST",
-        "CONTAINER",
-        "database_vendor",
+        "Dockerfile.*",
+        "compose.*.yml",
+        "valid_compose",
+        "supabase:provider-env-contract",
+        "SUPABASE_DB_URL",
+        "database_host",
+        "database_port",
+        'database_platform = "UNKNOWN"',
     ))
     require(PLANNER, (
+        "INITIAL_CONFIGURATION",
         "RUNTIME_CHANGE",
+        "HOST_CHANGE",
         "PLATFORM_CHANGE",
         "VENDOR_CHANGE",
+        "database_host",
+        "database_port",
         "database-persistent-volume",
         "dev-data-feature",
         "destructive_operations",
@@ -51,6 +65,9 @@ def main() -> int:
     require(CACHE, (
         'application_runtime: "CONTAINER"',
         'database_runtime: "CONTAINER"',
+        "OPTIONAL_DESIRED_KEYS",
+        "database_host",
+        "database_port",
         "INFRA_ENTRY_CANDIDATE=dev-infrastructure",
         'has_section(text, "infrastructure")',
     ))
@@ -68,6 +85,25 @@ def main() -> int:
         'skill_view("dev-spring-feature")',
         'skill_view("dev-data-feature")',
         'skill_view("dev-db-migration")',
+    ))
+    require(DISPATCH, (
+        "Infrastructure Desired State Persistence",
+        "persist_infrastructure_desired.py",
+        "PROJECT_REPOSITORY",
+        "infrastructure.desired 블록만 atomic replace",
+        "Infrastructure Impact: YES",
+        "Desired Persist: UPDATED | UNCHANGED | NOT_REQUIRED",
+    ))
+    require(PERSIST, (
+        "application_runtime",
+        "application_host",
+        "database_runtime",
+        "database_host",
+        "database_port",
+        "database_platform",
+        "database_vendor",
+        "atomic_write",
+        "os.replace",
     ))
     print("PASS: infrastructure capability contract")
     return 0
