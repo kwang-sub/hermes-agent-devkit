@@ -113,6 +113,8 @@ def patch_tui_source(path: Path) -> str:
 
     # Recommended choices get a stable green role. This intentionally takes precedence
     # over the selected-row cyan role so the recommended option is visible immediately.
+    # Hermes currently has both single-question and batch-question renderers, so patch
+    # every renderer that uses the canonical selected/choice style assignment.
     if RECOMMENDED_BRANCH not in source:
         choice_pattern = re.compile(
             r'(?m)^(?P<indent>\s*)style\s*=\s*'
@@ -121,21 +123,21 @@ def patch_tui_source(path: Path) -> str:
             r'(?P<q2>[\'\"])class:clarify-choice(?P=q2)\s*$'
         )
         matches = list(choice_pattern.finditer(source))
-        if len(matches) != 1:
-            raise RuntimeError(
-                f"expected exactly one Clarify choice style assignment, found {len(matches)}"
+        if not matches:
+            raise RuntimeError("expected at least one Clarify choice style assignment")
+
+        def replace_choice(m: re.Match[str]) -> str:
+            i = m.group("indent")
+            return (
+                f'{i}if "(Recommended)" in choice:\n'
+                f"{i}    style = 'class:clarify-recommended'\n"
+                f"{i}elif i == selected and not freetext:\n"
+                f"{i}    style = 'class:clarify-selected'\n"
+                f"{i}else:\n"
+                f"{i}    style = 'class:clarify-choice'"
             )
-        m = matches[0]
-        i = m.group("indent")
-        replacement = (
-            f'{i}if "(Recommended)" in choice:\n'
-            f"{i}    style = 'class:clarify-recommended'\n"
-            f"{i}elif i == selected and not freetext:\n"
-            f"{i}    style = 'class:clarify-selected'\n"
-            f"{i}else:\n"
-            f"{i}    style = 'class:clarify-choice'"
-        )
-        source = source[: m.start()] + replacement + source[m.end() :]
+
+        source = choice_pattern.sub(replace_choice, source)
 
     if MARKER not in source:
         border = _style_pattern("clarify-border").search(source)
@@ -248,12 +250,19 @@ def self_test() -> None:
                         for i, choice in enumerate(choices):
                             style = 'class:clarify-selected' if i == selected and not freetext else 'class:clarify-choice'
                             print(style, choice)
+
+                    def batch_rows(self, choices, selected, freetext):
+                        for i, choice in enumerate(choices):
+                            style = 'class:clarify-selected' if i == selected and not freetext else 'class:clarify-choice'
+                            print(style, choice)
                 """
             ),
             encoding="utf-8",
         )
         if patch_tui_source(tui) != "patched":
             raise RuntimeError("self-test: TUI source was not patched")
+        if tui.read_text(encoding="utf-8").count(RECOMMENDED_BRANCH) != 2:
+            raise RuntimeError("self-test: all Clarify choice renderers were not patched")
         if patch_tui_source(tui) != "already-patched":
             raise RuntimeError("self-test: TUI patch is not idempotent")
 
