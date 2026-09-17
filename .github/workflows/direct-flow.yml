@@ -1,0 +1,51 @@
+name: direct-flow
+
+on:
+  pull_request:
+    paths:
+      - 'AGENTS.md'
+      - 'shared/AGENTS.common.md'
+      - 'custom-skills/orchestrator/dev-direct-flow/**'
+      - 'custom-skills/orchestrator/dev-workflow-orchestrate/**'
+      - 'custom-skills/orchestrator/dev-workspace-dispatch/**'
+      - 'custom-skills/coder/dev-implement-plan/**'
+      - 'custom-skills/coder/dev-review-cycle/**'
+      - 'custom-skills/reviewer/dev-review-cycle/**'
+      - 'custom-skills/shared/dev-flow-model-policy/**'
+      - 'scripts/check_direct_flow_contract.py'
+      - 'scripts/check_review_cycle_contract.py'
+      - 'scripts/check_skill_slash_suggest_contract.py'
+      - '.github/workflows/direct-flow.yml'
+  push:
+    branches: [dev]
+    paths:
+      - 'AGENTS.md'
+      - 'shared/AGENTS.common.md'
+      - 'custom-skills/orchestrator/dev-direct-flow/**'
+      - 'custom-skills/orchestrator/dev-workflow-orchestrate/**'
+      - 'custom-skills/orchestrator/dev-workspace-dispatch/**'
+      - 'custom-skills/coder/dev-implement-plan/**'
+      - 'custom-skills/coder/dev-review-cycle/**'
+      - 'custom-skills/reviewer/dev-review-cycle/**'
+      - 'custom-skills/shared/dev-flow-model-policy/**'
+      - 'scripts/check_direct_flow_contract.py'
+      - 'scripts/check_review_cycle_contract.py'
+      - 'scripts/check_skill_slash_suggest_contract.py'
+      - '.github/workflows/direct-flow.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Direct Flow contract
+        run: python3 scripts/check_direct_flow_contract.py
+      - name: Review cycle contract
+        run: python3 scripts/check_review_cycle_contract.py
+      - name: Skill metadata contract
+        run: python3 scripts/check_skill_contract.py
+      - name: Slash suggestion policy
+        run: python3 scripts/check_skill_slash_suggest_contract.py
