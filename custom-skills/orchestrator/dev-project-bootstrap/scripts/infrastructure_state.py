@@ -2,19 +2,43 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 from pathlib import Path
 import re
 import sys
+from typing import Any
 
 
 MANAGED_MARKER = "# managed-by: dev-project-bootstrap"
 INFRASTRUCTURE_VERSION = "1"
 SUPPORTED_VENDORS = {"postgresql", "mysql", "mariadb", "mssql", "oracle"}
+DEFAULT_APPLICATION_RUNTIME = "CONTAINER"
+DEFAULT_DATABASE_RUNTIME = "CONTAINER"
+DEFAULT_DATABASE_PLATFORM = "NATIVE"
+DEFAULT_DATABASE_VENDOR = "UNKNOWN"
 
 
 class InfrastructureStateError(RuntimeError):
     pass
+
+
+def load_infrastructure_detector():
+    script = (
+        Path(__file__).resolve().parents[3]
+        / "shared"
+        / "dev-infrastructure"
+        / "scripts"
+        / "detect_infrastructure.py"
+    )
+    if not script.is_file():
+        raise InfrastructureStateError(f"infrastructure detector is missing: {script}")
+    spec = importlib.util.spec_from_file_location("devkit_detect_infrastructure", script)
+    if spec is None or spec.loader is None:
+        raise InfrastructureStateError(f"cannot load infrastructure detector: {script}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def split_top_level_sections(text: str) -> tuple[str, list[tuple[str, str]]]:
@@ -71,18 +95,59 @@ def technology_vendors(sections: list[tuple[str, str]]) -> list[str]:
     return list(dict.fromkeys(values))
 
 
-def infrastructure_section(vendor: str) -> str:
+def initial_state(repo: Path, sections: list[tuple[str, str]]) -> tuple[dict[str, str], dict[str, Any]]:
+    detector = load_infrastructure_detector()
+    observed = detector.infer_state(repo)
+
+    runtime_candidates = list(observed.get("database_runtime_candidates", []))
+    if observed.get("database_runtime") == "UNKNOWN" and len(runtime_candidates) > 1:
+        raise InfrastructureStateError(
+            "conflicting database runtime evidence prevents safe bootstrap default: "
+            + ",".join(str(value) for value in runtime_candidates)
+        )
+
+    vendors = technology_vendors(sections)
+    technology_vendor = vendors[0] if len(vendors) == 1 else DEFAULT_DATABASE_VENDOR
+
+    observed_vendor = str(observed.get("database_vendor", "UNKNOWN"))
+    vendor = observed_vendor if observed_vendor != "UNKNOWN" else technology_vendor
+
+    platform = str(observed.get("database_platform", "UNKNOWN"))
+    if platform == "UNKNOWN":
+        platform = DEFAULT_DATABASE_PLATFORM
+
+    if platform == "SUPABASE":
+        vendor = "postgresql"
+
+    state = {
+        "application_runtime": (
+            str(observed.get("application_runtime", "UNKNOWN"))
+            if observed.get("application_runtime") != "UNKNOWN"
+            else DEFAULT_APPLICATION_RUNTIME
+        ),
+        "database_runtime": (
+            str(observed.get("database_runtime", "UNKNOWN"))
+            if observed.get("database_runtime") != "UNKNOWN"
+            else DEFAULT_DATABASE_RUNTIME
+        ),
+        "database_platform": platform,
+        "database_vendor": vendor,
+    }
+    return state, observed
+
+
+def infrastructure_section(state: dict[str, str]) -> str:
     return "\n".join([
         "infrastructure:",
         f"  version: {json.dumps(INFRASTRUCTURE_VERSION)}",
-        '  application_runtime: "CONTAINER"',
-        '  database_runtime: "CONTAINER"',
-        '  database_platform: "NATIVE"',
-        f"  database_vendor: {json.dumps(vendor)}",
+        f"  application_runtime: {json.dumps(state['application_runtime'])}",
+        f"  database_runtime: {json.dumps(state['database_runtime'])}",
+        f"  database_platform: {json.dumps(state['database_platform'])}",
+        f"  database_vendor: {json.dumps(state['database_vendor'])}",
     ]) + "\n"
 
 
-def ensure(repo: Path) -> tuple[str, str]:
+def ensure(repo: Path) -> tuple[str, dict[str, str], dict[str, Any] | None]:
     path = metadata_path(repo)
     if not path.is_file():
         raise InfrastructureStateError(
@@ -95,23 +160,25 @@ def ensure(repo: Path) -> tuple[str, str]:
     header, sections = split_top_level_sections(text)
     existing = next((body for key, body in sections if key == "infrastructure"), None)
     if existing is not None:
-        return "preserved", "existing"
+        return "preserved", {}, None
 
-    vendors = technology_vendors(sections)
-    vendor = vendors[0] if len(vendors) == 1 else "UNKNOWN"
+    state, observed = initial_state(repo, sections)
     parts = [body.rstrip() for _, body in sections if body.strip()]
-    parts.append(infrastructure_section(vendor).rstrip())
+    parts.append(infrastructure_section(state).rstrip())
     updated = header.rstrip("\r\n")
     if updated:
         updated += "\n"
     updated += "\n\n".join(parts) + "\n"
     path.write_text(updated, encoding="utf-8")
-    return "created", vendor
+    return "created", state, observed
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Ensure bootstrap-managed infrastructure desired-state defaults without overwriting existing choices"
+        description=(
+            "Ensure bootstrap-managed Infrastructure Desired State. "
+            "Explicit repository evidence wins; missing axes use safe defaults."
+        )
     )
     parser.add_argument("--repo", required=True)
     args = parser.parse_args()
@@ -121,16 +188,24 @@ def main() -> int:
         print(f"ERROR=repository not found: {repo}", file=sys.stderr)
         return 2
     try:
-        status, vendor = ensure(repo)
+        status, state, observed = ensure(repo)
     except InfrastructureStateError as exc:
         print(f"ERROR={exc}", file=sys.stderr)
         return 2
 
     print(f"INFRASTRUCTURE_STATE={status}")
-    print("APPLICATION_RUNTIME_DEFAULT=CONTAINER")
-    print("DATABASE_RUNTIME_DEFAULT=CONTAINER")
-    print("DATABASE_PLATFORM_DEFAULT=NATIVE")
-    print(f"DATABASE_VENDOR_DEFAULT={vendor}")
+    if status == "preserved":
+        print("INFRASTRUCTURE_INITIALIZATION=existing-desired-state-preserved")
+    else:
+        assert observed is not None
+        print(f"APPLICATION_RUNTIME_OBSERVED={observed.get('application_runtime', 'UNKNOWN')}")
+        print(f"DATABASE_RUNTIME_OBSERVED={observed.get('database_runtime', 'UNKNOWN')}")
+        print(f"DATABASE_PLATFORM_OBSERVED={observed.get('database_platform', 'UNKNOWN')}")
+        print(f"DATABASE_VENDOR_OBSERVED={observed.get('database_vendor', 'UNKNOWN')}")
+        print(f"APPLICATION_RUNTIME_INITIAL={state['application_runtime']}")
+        print(f"DATABASE_RUNTIME_INITIAL={state['database_runtime']}")
+        print(f"DATABASE_PLATFORM_INITIAL={state['database_platform']}")
+        print(f"DATABASE_VENDOR_INITIAL={state['database_vendor']}")
     print("STATUS=pass")
     return 0
 
