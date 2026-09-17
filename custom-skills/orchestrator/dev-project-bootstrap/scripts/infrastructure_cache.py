@@ -8,12 +8,18 @@ from pathlib import Path
 import re
 
 MANAGED_MARKER = "# managed-by: dev-project-bootstrap"
-DESIRED_KEYS = (
+REQUIRED_DESIRED_KEYS = (
     "application_runtime",
     "database_runtime",
     "database_platform",
     "database_vendor",
 )
+OPTIONAL_DESIRED_KEYS = (
+    "application_host",
+    "database_host",
+    "database_port",
+)
+UNKNOWN_VALUES = {"UNKNOWN", "unknown", "", "None", "none"}
 
 
 class InfrastructureCacheError(RuntimeError):
@@ -79,7 +85,7 @@ def existing_desired(text: str) -> dict[str, str] | None:
 
     desired_body = desired_match.group("body")
     result: dict[str, str] = {}
-    for key in DESIRED_KEYS:
+    for key in (*REQUIRED_DESIRED_KEYS, *OPTIONAL_DESIRED_KEYS):
         match = re.search(
             rf"(?m)^\s{{4}}{re.escape(key)}:\s*(.+?)\s*$",
             desired_body,
@@ -87,7 +93,9 @@ def existing_desired(text: str) -> dict[str, str] | None:
         if match is not None:
             result[key] = parse_scalar(match.group(1))
 
-    return result if len(result) == len(DESIRED_KEYS) else None
+    if not all(key in result for key in REQUIRED_DESIRED_KEYS):
+        return None
+    return result
 
 
 def technology_vendor(text: str) -> str:
@@ -101,10 +109,14 @@ def technology_vendor(text: str) -> str:
     return values[0].lower() if len(values) == 1 else "unknown"
 
 
+def _known(value: object) -> bool:
+    return str(value).strip() not in UNKNOWN_VALUES
+
+
 def desired_from_observed(observed: dict[str, object], metadata_text: str) -> dict[str, str]:
     app = str(observed.get("application_runtime", "UNKNOWN"))
     db = str(observed.get("database_runtime", "UNKNOWN"))
-    platform = str(observed.get("database_platform", "NATIVE"))
+    platform = str(observed.get("database_platform", "UNKNOWN"))
     vendor = str(observed.get("database_vendor", "unknown"))
 
     if app == "UNKNOWN":
@@ -119,12 +131,17 @@ def desired_from_observed(observed: dict[str, object], metadata_text: str) -> di
     if platform == "SUPABASE":
         vendor = "postgresql"
 
-    return {
+    desired = {
         "application_runtime": app,
         "database_runtime": db,
         "database_platform": platform,
         "database_vendor": vendor,
     }
+    for key in OPTIONAL_DESIRED_KEYS:
+        value = observed.get(key, "unknown")
+        if _known(value):
+            desired[key] = str(value).strip()
+    return desired
 
 
 def render(desired: dict[str, str]) -> str:
@@ -136,8 +153,9 @@ def render(desired: dict[str, str]) -> str:
         '    database_runtime: "CONTAINER"',
         "  desired:",
     ]
-    for key in DESIRED_KEYS:
-        lines.append(f"    {key}: {json.dumps(desired[key], ensure_ascii=False)}")
+    for key in (*REQUIRED_DESIRED_KEYS, *OPTIONAL_DESIRED_KEYS):
+        if key in desired:
+            lines.append(f"    {key}: {json.dumps(desired[key], ensure_ascii=False)}")
     return "\n".join(lines) + "\n"
 
 
@@ -180,10 +198,9 @@ def main() -> int:
         print(f"ERROR={exc}")
         return 2
     print(f"INFRASTRUCTURE_CACHE={status}")
-    print(f"APPLICATION_RUNTIME={desired['application_runtime']}")
-    print(f"DATABASE_RUNTIME={desired['database_runtime']}")
-    print(f"DATABASE_PLATFORM={desired['database_platform']}")
-    print(f"DATABASE_VENDOR={desired['database_vendor']}")
+    for key in (*REQUIRED_DESIRED_KEYS, *OPTIONAL_DESIRED_KEYS):
+        if key in desired:
+            print(f"{key.upper()}={desired[key]}")
     print("INFRA_ENTRY_CANDIDATE=dev-infrastructure")
     print("STATUS=pass")
     return 0

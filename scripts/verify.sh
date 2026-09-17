@@ -124,7 +124,11 @@ for name in ("dev-worktree-dispatch", "dev-worktree-cleanup"):
         raise SystemExit(f"deprecated orchestrator skill still exists: {path}")
 
 workspace = Path("custom-skills/orchestrator/dev-workspace-dispatch/SKILL.md").read_text(encoding="utf-8")
-if "신규 Dispatch의 표준" not in workspace:
+standard_dispatch_terms = (
+    "신규 Dispatch의 표준",
+    "신규 Standard Dispatch의 표준",
+)
+if not any(term in workspace for term in standard_dispatch_terms):
     raise SystemExit("dev-workspace-dispatch must remain the standard dispatch contract")
 PYTHON
 }

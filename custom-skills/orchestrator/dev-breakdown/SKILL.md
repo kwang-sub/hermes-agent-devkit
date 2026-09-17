@@ -1,12 +1,12 @@
 ---
 name: dev-breakdown
 description: managed 프로젝트의 실제 코드·디자인 Reference·데이터 근거와 기존 project pattern으로 한국어 Implementation Plan을 생성하며 구현하지 않는 orchestrator 전용 skill.
-version: 0.14.0
+version: 0.15.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, planning, analysis, breakdown, orchestrator, pattern, java, kotlin, frontend, design-reference, image, figma, data, dbml, api, spec, infrastructure, runtime, container, env]
+    tags: [dev, planning, analysis, breakdown, orchestrator, pattern, java, kotlin, frontend, design-reference, image, figma, data, dbml, api, spec, infrastructure, runtime, host, port, container, env]
     related_skills: [dev-project-bootstrap, dev-project-pattern, dev-tech-dispatch, dev-skill-preflight, dev-workspace-dispatch, dev-workflow-orchestrate, dev-java-guidelines, dev-kotlin-guidelines, dev-frontend-feature, dev-design-reference, dev-data-feature, dev-api-spec, dev-infrastructure]
     requires_tools: [terminal, skill_view]
 ---
@@ -35,7 +35,7 @@ metadata:
 16. Storybook/Playwright는 기존 project evidence가 있을 때만 계획에 활용한다. 화면 구현만을 이유로 자동 dependency 추가를 계획하지 않는다.
 17. `Applicable Skills`에 추정 이름을 만들지 않는다. runtime pin 가능 여부는 dispatch 직전 `dev-skill-preflight`가 검증한다.
 18. testable Acceptance Criteria와 risk-based Test Plan, Dependencies, Risks, Open Questions를 작성한다.
-19. project/repo·scope·pattern·AC·tasks·test·필요한 design/API/data model approval이 확립될 때만 `READY`, 아니면 `BLOCKED`다.
+19. project/repo·scope·pattern·AC·tasks·test·필요한 design/API/data model/Infrastructure approval이 확립될 때만 `READY`, 아니면 `BLOCKED`다.
 
 ## API Spec 계약
 
@@ -132,6 +132,7 @@ docs/data/schema.dbml
 ```text
 Dockerfile / Compose / containerization
 Application Runtime: LOCAL_HOST | NETWORK_HOST | CONTAINER 전환
+Application host 변경
 Database Runtime: LOCAL_HOST | NETWORK_HOST | CONTAINER 전환
 DB host / port / network / service DNS / volume 변경
 .env / container environment / remote runtime environment 전달 경로 변경
@@ -149,15 +150,21 @@ Applicable Skills:
 
 Observed State:
 - Application Runtime: ...
+- Application Host: ... | unknown
 - Database Runtime: ...
-- Database Platform: ...
-- Database Vendor: ...
+- Database Host: ... | unknown
+- Database Port: ... | unknown
+- Database Platform: NATIVE | SUPABASE | UNKNOWN
+- Database Vendor: ... | unknown
 
 Desired State:
-- Application Runtime: ...
-- Database Runtime: ...
-- Database Platform: ...
-- Database Vendor: ...
+- Application Runtime: LOCAL_HOST | NETWORK_HOST | CONTAINER
+- Application Host: ... | unknown
+- Database Runtime: LOCAL_HOST | NETWORK_HOST | CONTAINER
+- Database Host: ... | unknown
+- Database Port: ... | unknown
+- Database Platform: NATIVE | SUPABASE
+- Database Vendor: postgresql | mysql | mariadb | mssql | oracle | unknown
 
 Configuration Delivery:
 - Spring LOCAL_HOST: IntelliJ | OS_ENV
@@ -165,6 +172,12 @@ Configuration Delivery:
 - CONTAINER: COMPOSE_ENV | container environment
 - NETWORK_HOST: REMOTE_RUNTIME_ENV
 ```
+
+Observed State는 Repository evidence가 없는 값을 기본값으로 채우지 않는다. 증거가 없으면 `UNKNOWN/unknown`이다. Desired State만 사용자 요구/기존 metadata/기본 정책을 사용할 수 있다.
+
+`NEXT_PUBLIC_SUPABASE_URL` 또는 일반 `SUPABASE_URL`만 존재하는 것은 Supabase Auth/Client provider evidence일 수 있으므로 Database Platform을 `SUPABASE`로 확정하는 근거로 사용하지 않는다. Supabase DB 전환은 명시적 요구, `supabase/config.toml`, 명확한 DB connection contract 같은 강한 evidence를 요구한다.
+
+동일 runtime/vendor에서 host 또는 port만 바뀌면 `HOST_CHANGE`로 계획한다. runtime/platform/vendor 변경과 함께 발생하면 `COMBINED_CHANGE`다.
 
 Companion capability는 실제 affected area에만 추가한다.
 
@@ -289,6 +302,6 @@ DBML/schema 자체를 설계하지 않는 순수 JPA 구현까지 `dev-data-feat
 
 ## 필수 출력
 
-Task Identity; Project/working tree; Goal/Type/Requirement; Assumptions/Constraints/Out of Scope; **Project Pattern Summary**; Frontend Mode/Design Source/Status/Fidelity/Reference/Screen Spec(해당 시); **API Spec Mode/Gate/Status/Path/Source(해당 시)**; **Data Design Mode/Gate/Status/Task Class/Vendor/DBML Path(해당 시)**; **Infrastructure Impact/Observed State/Desired State/Configuration Delivery(해당 시)**; Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Data Capability Hints; Observed/Inferred/Unknown(해당 시); Storybook/Visual Verification Plan(해당 시); Acceptance Criteria; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
+Task Identity; Project/working tree; Goal/Type/Requirement; Assumptions/Constraints/Out of Scope; **Project Pattern Summary**; Frontend Mode/Design Source/Status/Fidelity/Reference/Screen Spec(해당 시); **API Spec Mode/Gate/Status/Path/Source(해당 시)**; **Data Design Mode/Gate/Status/Task Class/Vendor/DBML Path(해당 시)**; **Infrastructure Impact/Observed State/Desired State/Configuration Delivery(해당 시, host/port 포함)**; Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Data Capability Hints; Observed/Inferred/Unknown(해당 시); Storybook/Visual Verification Plan(해당 시); Acceptance Criteria; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
 
 유형별 상세 체크리스트와 출력 템플릿은 `references/planning-details.md`를 필요할 때만 읽는다.
