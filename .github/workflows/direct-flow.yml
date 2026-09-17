@@ -3,6 +3,7 @@ name: direct-flow
 on:
   pull_request:
     paths:
+      - 'README.md'
       - 'AGENTS.md'
       - 'shared/AGENTS.common.md'
       - 'custom-skills/orchestrator/dev-direct-flow/**'
@@ -10,6 +11,7 @@ on:
       - 'custom-skills/orchestrator/dev-workspace-dispatch/**'
       - 'custom-skills/coder/dev-implement-plan/**'
       - 'custom-skills/coder/dev-review-cycle/**'
+      - 'custom-skills/reviewer/dev-code-review/**'
       - 'custom-skills/reviewer/dev-review-cycle/**'
       - 'custom-skills/shared/dev-flow-model-policy/**'
       - 'scripts/check_direct_flow_contract.py'
@@ -19,6 +21,7 @@ on:
   push:
     branches: [dev]
     paths:
+      - 'README.md'
       - 'AGENTS.md'
       - 'shared/AGENTS.common.md'
       - 'custom-skills/orchestrator/dev-direct-flow/**'
@@ -26,6 +29,7 @@ on:
       - 'custom-skills/orchestrator/dev-workspace-dispatch/**'
       - 'custom-skills/coder/dev-implement-plan/**'
       - 'custom-skills/coder/dev-review-cycle/**'
+      - 'custom-skills/reviewer/dev-code-review/**'
       - 'custom-skills/reviewer/dev-review-cycle/**'
       - 'custom-skills/shared/dev-flow-model-policy/**'
       - 'scripts/check_direct_flow_contract.py'
