@@ -51,7 +51,7 @@ def main() -> int:
         "Data DESIGN → MIGRATION 강제 분리",
         "현재 DESIGN Plan의 Applicable Skills/Implementation Tasks에 `dev-db-migration`을 넣지 않는다",
         "후속 physical implementation 요청은 별도 Standard Flow",
-        "API Spec Gate 자체는 별도 Work Unit을 자동 의미하지 않는다",
+        "API Spec Gate는 항상 별도 Work Unit을 뜻하지 않는다",
     ))
 
     require(WORKFLOW, common + (
