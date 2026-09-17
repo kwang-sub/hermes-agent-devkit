@@ -8,6 +8,8 @@ SKILL = ROOT / "custom-skills/shared/dev-infrastructure/SKILL.md"
 DETECTOR = ROOT / "custom-skills/shared/dev-infrastructure/scripts/detect_infrastructure.py"
 PLANNER = ROOT / "custom-skills/shared/dev-infrastructure/scripts/plan_transition.py"
 CACHE = ROOT / "custom-skills/orchestrator/dev-project-bootstrap/scripts/infrastructure_cache.py"
+BREAKDOWN = ROOT / "custom-skills/orchestrator/dev-breakdown/SKILL.md"
+IMPLEMENT = ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md"
 
 
 def require(path: Path, terms: tuple[str, ...]) -> None:
@@ -51,6 +53,21 @@ def main() -> int:
         'database_runtime: "CONTAINER"',
         "INFRA_ENTRY_CANDIDATE=dev-infrastructure",
         'has_section(text, "infrastructure")',
+    ))
+    require(BREAKDOWN, (
+        "Infrastructure Capability mapping",
+        "Infrastructure Impact: YES",
+        "dev-infrastructure: runtime/topology/configuration canonical entry",
+        "기존 Repository의 하드코딩 설정",
+        "dev-db-migration",
+    ))
+    require(IMPLEMENT, (
+        'skill_view("dev-infrastructure")',
+        "첫 production patch 전에 반드시",
+        "기존 파일은 preserve-first",
+        'skill_view("dev-spring-feature")',
+        'skill_view("dev-data-feature")',
+        'skill_view("dev-db-migration")',
     ))
     print("PASS: infrastructure capability contract")
     return 0
