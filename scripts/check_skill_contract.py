@@ -88,9 +88,9 @@ def main()->int:
     require_terms(workflow,"dev-workflow-orchestrate approval gates",(
         "/opt/data/shared/references/approval-gate-rules.md","WORKSPACE_APPROVED","BRANCH_APPROVED","MODEL_APPROVED","PLAN_APPROVED",
         "REQUIREMENT_DELTA_APPROVED","Requirement Delta Approval","[추가 요구사항 확인]",
-        "한 번의 사용자 확인에서는 하나의 의사결정만 요청한다","clarify","choices","↑/↓ + Enter",
+        "한 번의 사용자 확인에서는 하나의 의사결정만 요청한다","clarify","choices","선택지는 질문 본문에 번호로 쓰지 않고",
         "[Project 선택]","[Workspace 선택]","[Branch 선택]","[Coder 모델 선택]","[작업 계획 승인]",
-        "DEFAULT | PREMIUM","같은 Gate를 다시 출력","NO_EXTRA_KANBAN_CONFIRMATION","추가 Kanban 생성 확인 없이 즉시 AUTO_DISPATCH",
+        "DEFAULT | PREMIUM","같은 Gate를 다시 출력","NO_EXTRA_KANBAN_CONFIRMATION","AUTO_DISPATCH_CURRENT_UNIT_ONLY",
         "NOTIFY_REGISTRATION_EVENT=queued"))
     require_terms(approval,"shared approval gate rules",(
         "clarify","choices","↑/↓ 이동 + Enter 선택","Other (type your answer)","Workspace와 Branch는 서로 다른 Gate다",
