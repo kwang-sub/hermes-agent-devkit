@@ -165,7 +165,7 @@ prepare_dispatch.py 정확히 한 번
 → dev-skill-preflight
 → approved API Spec contract 확인 (REQUIRED일 때)
 → approved model snapshot 확인
-→ kanban_create(initial_status="blocked", skills=VALIDATED_SKILLS + dev-flow-model-policy)
+→ kanban_create(board=BOARD, initial_status="blocked", model=MODEL, provider=PROVIDER, skills=VALIDATED_SKILLS + dev-flow-model-policy)
 → kanban_show 정확히 1회
 → 등록 read-back 계약 검증
 → subscribe_notification.py 정확히 1회
@@ -175,7 +175,19 @@ prepare_dispatch.py 정확히 한 번
 → ready 전환 후 worker dispatch
 ```
 
-알림 활성 환경에서 helper 실패/검증 실패/등록 event 누락 시 절대 unblock하지 않는다.
+### 최초 등록 알림
+
+알림이 활성화된 환경에서는 `kanban_show` read-back 이후 subscription을 검증하고, 그 다음 `registered` task event를 enqueue해서 **최초 등록 알림**이 subscription cursor보다 과거 event로 사라지지 않게 한다.
+
+```text
+task read-back
+→ notify-subscribe
+→ subscription verified
+→ registered task_event enqueue
+→ NOTIFY_REGISTRATION_EVENT=queued
+```
+
+`registered` event는 Task별 1회만 enqueue하는 idempotent 계약이다. 알림 활성 환경에서 helper 실패/검증 실패/등록 event 누락 시 절대 unblock하지 않는다.
 
 호출 횟수 계약:
 
