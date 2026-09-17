@@ -94,9 +94,42 @@ def list_value(section: str, key: str) -> list[str]:
 
 def technology_vendor(text: str) -> str:
     technology = top_level_section(text, "technology") or ""
-    candidates = [value for value in list_value(technology, "database_vendors") if value in VALID_VENDORS and value != "UNKNOWN"]
+    candidates = [
+        value
+        for value in list_value(technology, "database_vendors")
+        if value in VALID_VENDORS and value != "UNKNOWN"
+    ]
     unique = list(dict.fromkeys(candidates))
     return unique[0] if len(unique) == 1 else "UNKNOWN"
+
+
+def resolve_project_repo(workspace: Path, explicit_project_repo: Path | None = None) -> Path:
+    if explicit_project_repo is not None:
+        project_repo = explicit_project_repo.expanduser().resolve()
+        if not project_repo.is_dir():
+            raise TransitionPlanError(f"project repository not found: {project_repo}")
+        return project_repo
+
+    workspace = workspace.expanduser().resolve()
+    if (workspace / ".hermes" / "project.yaml").is_file():
+        return workspace
+
+    dot_git = workspace / ".git"
+    if dot_git.is_file():
+        first_line = dot_git.read_text(encoding="utf-8", errors="ignore").splitlines()[:1]
+        if first_line:
+            match = re.match(r"gitdir:\s*(.+?)\s*$", first_line[0], re.IGNORECASE)
+            if match:
+                git_dir = Path(match.group(1).strip())
+                if not git_dir.is_absolute():
+                    git_dir = (workspace / git_dir).resolve()
+                else:
+                    git_dir = git_dir.resolve()
+                for candidate in (git_dir, *git_dir.parents):
+                    if candidate.name == ".git":
+                        return candidate.parent
+
+    return workspace
 
 
 def validate_desired(state: dict[str, str]) -> dict[str, str]:
@@ -229,26 +262,36 @@ def compare(observed: dict[str, Any], desired: dict[str, str]) -> dict[str, Any]
     }
 
 
-def plan(repo: Path) -> dict[str, Any]:
+def plan(workspace: Path, *, project_repo: Path | None = None) -> dict[str, Any]:
     detector = load_detector()
-    observed = detector.infer_state(repo)
-    desired = desired_state(repo)
-    return compare(observed, desired)
+    workspace = workspace.expanduser().resolve()
+    resolved_project_repo = resolve_project_repo(workspace, project_repo)
+    observed = detector.infer_state(workspace)
+    desired = desired_state(resolved_project_repo)
+    result = compare(observed, desired)
+    result["workspace"] = str(workspace)
+    result["project_repository"] = str(resolved_project_repo)
+    return result
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Plan desired/observed infrastructure transition without destructive cleanup")
-    parser.add_argument("--repo", required=True)
+    parser.add_argument("--repo", required=True, help="Approved implementation workspace used for Observed State")
+    parser.add_argument(
+        "--project-repo",
+        help="Primary Repository holding .hermes/project.yaml; linked worktrees are auto-resolved when possible",
+    )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
-    repo = Path(args.repo).expanduser().resolve()
-    if not repo.is_dir():
-        print(f"ERROR=repository not found: {repo}", file=sys.stderr)
+    workspace = Path(args.repo).expanduser().resolve()
+    if not workspace.is_dir():
+        print(f"ERROR=repository not found: {workspace}", file=sys.stderr)
         return 2
+    project_repo = Path(args.project_repo) if args.project_repo else None
 
     try:
-        result = plan(repo)
+        result = plan(workspace, project_repo=project_repo)
     except TransitionPlanError as exc:
         print(f"ERROR={exc}", file=sys.stderr)
         return 2
@@ -257,6 +300,8 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
 
+    print(f"WORKSPACE={result['workspace']}")
+    print(f"PROJECT_REPOSITORY={result['project_repository']}")
     print(f"DRIFT={result['drift']}")
     print(f"TRANSITION={result['transition']}")
     for item in result["changes"]:
