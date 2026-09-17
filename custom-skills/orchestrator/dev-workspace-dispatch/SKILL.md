@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 구현 계획·API 규격·Infrastructure Desired State·workspace·branch·Coder 모델을 Primary Project context와 함께 Kanban으로 인계한다.
-version: 0.14.3
+version: 0.14.4
 author: local
 platforms: [linux]
 metadata:
@@ -13,7 +13,7 @@ metadata:
 
 # dev-workspace-dispatch
 
-사용자 승인까지 완료된 READY Plan을 승인된 Workspace/Branch와 Coder model snapshot으로 Kanban에 인계하는 Standard Flow dispatch entry다.
+사용자 승인까지 완료된 READY Plan을 승인된 Workspace/Branch와 Coder model snapshot으로 Kanban에 인계한다. **이 Skill이 신규 Dispatch의 표준이다.**
 
 ## 진입 조건
 
