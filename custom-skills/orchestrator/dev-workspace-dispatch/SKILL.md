@@ -68,7 +68,7 @@ Primary metadata가 실제로 없을 때만 `dev-project-bootstrap`을 사용한
 ```text
 prepare_dispatch.py --confirmed-dirty
 → repository/workspace/branch/Base SHA/Board만 검증
-→ repository-wide dirty/EOL/untracked 분류를 생략
+→ repository-wide dirty/EOL/untracked 분류를 **생략**
 → WORKSPACE_CHANGE_SCAN_MODE=skipped-approved-preservation
 → *_COUNT=-1, WORKSPACE_*_DIRTY=unknown
 ```
