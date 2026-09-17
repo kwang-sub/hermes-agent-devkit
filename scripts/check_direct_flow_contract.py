@@ -45,7 +45,7 @@ def main() -> int:
         direct,
         (
             "Orchestrator 소유의 compact dispatch 경로",
-            "Direct는 planning shortcut이지 구현 shortcut이 아니다",
+            "Direct에서 생략하는 것은 `dev-breakdown`의 광범위한 planning 단계",
             "Work Unit Class = IMPLEMENTATION | REFACTOR",
             "Work Unit Boundary = SINGLE_UNIT",
             "API Spec Gate = NOT_REQUIRED",
