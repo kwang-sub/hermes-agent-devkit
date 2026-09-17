@@ -246,7 +246,7 @@ Approval Reuse:
 
 `REQUIRED`가 여러 개여도 서로 다른 승인 Gate를 한 질문으로 합치지 않는다.
 
-pre-policy 활성 Task는 필요한 승인 뒤 기존 migration 정책을 사용한다. `done`/`archived` terminal Task 또는 Work Unit Boundary를 넘는 후속 작업은 새 Standard Flow를 사용한다.
+pre-policy 활성 Task는 새 카드를 만들지 않고 필요한 Requirement Delta/API Spec/Model/Plan 승인과 Work Unit 재분류 뒤 `flow_model_policy.py migrate-existing`를 사용한다. 성공 조건은 `STATUS=legacy-task-migrated`, `SNAPSHOT_SOURCE=durable-comment`다. 기존 Task의 Work Unit Boundary를 넘는 후속 작업은 같은 migration으로 범위를 넓히지 않고 별도 Standard Flow로 분리한다. `done`/`archived` terminal Task 또는 Work Unit Boundary를 넘는 후속 작업은 새 Standard Flow를 사용한다.
 
 ## 자동 Kanban Dispatch 불변식
 
