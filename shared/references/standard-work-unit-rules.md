@@ -167,6 +167,19 @@ Coder는 Task의 Work Unit Contract를 구현 범위 상한으로 사용한다.
 - AUDIT Task에서 application/test/config를 수정하지 않는다.
 - 후속 Work Unit이 필요해져도 임의로 scope를 확장하지 않고 BLOCK/escalate한다.
 
+### Standard Flow scoped summary
+
+최종 변경 범위 검증은 현재 Work Unit의 실제 Changed Files로 제한한다.
+
+```text
+change_summary.py --include <changed-path>...
+```
+
+- Standard Flow에서 `--include` 없이 repository 전체를 훑지 않는다.
+- `--allow-full-scan`은 명시적 진단 전용이다.
+- tracked와 untracked 모두 Git pathspec으로 제한한다.
+- Follow-up Work Unit의 파일을 현재 Task summary scope에 선행 포함하지 않는다.
+
 ## Reviewer 불변식
 
 Reviewer는 diff가 Work Unit Boundary를 넘었는지 확인한다.
