@@ -95,7 +95,7 @@ def main() -> int:
         "Infrastructure Desired State Persistence",
         "persist_infrastructure_desired.py",
         "PROJECT_REPOSITORY",
-        "infrastructure.desired 블록만 atomic replace",
+        "Primary metadata에 정확히 한 번 영속화",
         "Infrastructure Impact: YES",
         "Desired Persist: UPDATED | UNCHANGED | NOT_REQUIRED",
     ))

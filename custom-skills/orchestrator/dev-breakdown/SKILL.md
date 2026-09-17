@@ -1,19 +1,21 @@
 ---
 name: dev-breakdown
-description: managed 프로젝트의 실제 코드·디자인 Reference·데이터 근거와 기존 project pattern으로 한국어 Implementation Plan을 생성하며 구현하지 않는 orchestrator 전용 skill.
-version: 0.15.0
+description: managed 프로젝트의 실제 코드·디자인 Reference·데이터 근거와 기존 project pattern으로 단일 Work Unit의 한국어 Implementation Plan을 생성하며 구현하지 않는 orchestrator 전용 skill.
+version: 0.16.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, planning, analysis, breakdown, orchestrator, pattern, java, kotlin, frontend, design-reference, image, figma, data, dbml, api, spec, infrastructure, runtime, host, port, container, env]
-    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-tech-dispatch, dev-skill-preflight, dev-workspace-dispatch, dev-workflow-orchestrate, dev-java-guidelines, dev-kotlin-guidelines, dev-frontend-feature, dev-design-reference, dev-data-feature, dev-api-spec, dev-infrastructure]
+    tags: [dev, planning, analysis, breakdown, orchestrator, pattern, work-unit, java, kotlin, frontend, design-reference, image, figma, data, dbml, api, spec, infrastructure, runtime, host, port, container, env]
+    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-tech-dispatch, dev-skill-preflight, dev-workspace-dispatch, dev-workflow-orchestrate, dev-java-guidelines, dev-kotlin-guidelines, dev-spring-feature, dev-spring-data, dev-frontend-feature, dev-design-reference, dev-data-feature, dev-db-migration, dev-api-spec, dev-api-contract, dev-infrastructure]
     requires_tools: [terminal, skill_view]
 ---
 
 # dev-breakdown
 
 요구사항을 Coder가 실행 가능한 근거 기반 **한국어 Implementation Plan**으로 바꾸는 read-only 단계다. source/config 수정, dependency 설치, workspace/branch/Kanban 생성, commit/push/reset/restore/clean/stash를 하지 않는다.
+
+Standard Flow Plan은 `/opt/data/shared/references/standard-work-unit-rules.md`를 적용해 **한 Task = 한 주 Work Unit** 경계를 먼저 확정한다.
 
 ## 계약
 
@@ -23,19 +25,66 @@ metadata:
 4. targeted search로 source/call flow/config/tests/similar code만 확인하고 repository 전체 재분석을 피한다.
 5. Goal/Constraints/In-Out Scope/minimum affected areas를 정한다. product intent를 추측하지 않는다.
 6. 중요한 assumption은 source evidence로 닫고, product/architecture/design/data model 승인 결정이 필요하면 Open Question으로 남긴다.
-7. 최대 7개 Implementation Tasks를 변경·근거·완료조건·verification과 함께 순서화한다.
-8. Java 프로젝트의 Java 변경은 `dev-java-guidelines`, **Kotlin 프로젝트의 Kotlin 변경**은 `dev-kotlin-guidelines`, Spring 변경은 기존 `dev-spring-*` capability를 Applicable Skills에 지정한다. Java + Kotlin mixed project에서는 실제 affected source 언어에 따라 둘을 함께 또는 각각 적용한다.
-9. Frontend Task는 `dev-frontend-feature`를 canonical Applicable Skill로 지정하고 하위 Skill은 `Frontend Capability Hints`로만 전달한다. IMAGE/Figma Reference가 있으면 `dev-design-reference`를 hint에 포함한다.
-10. Data 모델/schema/SQL/migration/performance Task는 `dev-data-feature`를 canonical Applicable Skill로 지정하고 하위 Skill은 `Data Capability Hints`로 전달한다. 승인된 기존 schema의 단순 JPA 구현은 기존 `dev-spring-data`만 사용할 수 있다.
-11. Docker/Compose, Application/DB runtime·host·network, 환경변수 전달 경로, Supabase runtime/platform 등 **실행 위치와 연결 토폴로지**가 바뀌는 Task는 `dev-infrastructure`를 canonical Applicable Skill로 지정한다. Spring/Frontend/Data 변경이 함께 필요하면 해당 capability를 companion으로 함께 지정한다.
-12. Backend API와 Frontend가 함께 바뀌는 Task는 Frontend Capability Hints에 `dev-api-contract`를 포함한다.
-13. API endpoint 신규/변경/문서화/감사 작업은 `dev-api-spec`을 적용하고 API Spec Mode/Gate/Status/Path/Source를 계획에 명시한다.
-14. Frontend 디자인 입력은 `REFERENCE_DRIVEN | CODE_DRIVEN`으로 일반화하고 `IMAGE | FIGMA | EXISTING_CODE` source를 구분한다.
-15. data model/schema 의미 변경이면 아래 Data Model 계약을 계획에 보존한다.
-16. Storybook/Playwright는 기존 project evidence가 있을 때만 계획에 활용한다. 화면 구현만을 이유로 자동 dependency 추가를 계획하지 않는다.
-17. `Applicable Skills`에 추정 이름을 만들지 않는다. runtime pin 가능 여부는 dispatch 직전 `dev-skill-preflight`가 검증한다.
-18. testable Acceptance Criteria와 risk-based Test Plan, Dependencies, Risks, Open Questions를 작성한다.
-19. project/repo·scope·pattern·AC·tasks·test·필요한 design/API/data model/Infrastructure approval이 확립될 때만 `READY`, 아니면 `BLOCKED`다.
+7. **Implementation Tasks를 만들기 전에 Work Unit Class/Boundary를 확정한다.** 원 요청이 여러 독립 phase를 포함하면 현재 Plan에는 첫 Work Unit만 남기고 후속 phase는 Follow-up metadata로 분리한다.
+8. 현재 Work Unit 안에서 최대 7개 Implementation Tasks를 변경·근거·완료조건·verification과 함께 순서화한다.
+9. Java 프로젝트의 Java 변경은 `dev-java-guidelines`, Kotlin 프로젝트의 Kotlin 변경은 `dev-kotlin-guidelines`, Spring 변경은 기존 `dev-spring-*` capability를 Applicable Skills에 지정한다. Java + Kotlin mixed project에서는 실제 affected source 언어에 따라 둘을 함께 또는 각각 적용한다.
+10. Frontend Task는 `dev-frontend-feature`를 canonical Applicable Skill로 지정하고 하위 Skill은 `Frontend Capability Hints`로만 전달한다. IMAGE/Figma Reference가 있으면 `dev-design-reference`를 hint에 포함한다.
+11. Data 모델/schema/SQL/migration/performance Task는 `dev-data-feature`를 canonical Applicable Skill로 지정한다. Data DESIGN Task와 physical MIGRATION Task는 같은 Plan에 넣지 않는다. 승인된 기존 schema의 단순 JPA 구현은 기존 `dev-spring-data`만 사용할 수 있다.
+12. Docker/Compose, Application/DB runtime·host·network, 환경변수 전달 경로, Supabase runtime/platform 등 실행 위치와 연결 토폴로지가 바뀌는 Task는 `dev-infrastructure`를 canonical Applicable Skill로 지정한다. Spring/Frontend/Data 변경이 같은 Work Unit의 단일 deliverable에 필요하면 companion으로 함께 지정할 수 있다.
+13. Backend API와 Frontend가 함께 바뀌는 Task는 Frontend Capability Hints에 `dev-api-contract`를 포함한다.
+14. API endpoint 신규/변경/문서화/감사 작업은 `dev-api-spec`을 적용하고 API Spec Mode/Gate/Status/Path/Source를 계획에 명시한다.
+15. Frontend 디자인 입력은 `REFERENCE_DRIVEN | CODE_DRIVEN`으로 일반화하고 `IMAGE | FIGMA | EXISTING_CODE` source를 구분한다.
+16. data model/schema 의미 변경이면 아래 Data Model 계약을 계획에 보존한다.
+17. Storybook/Playwright는 기존 project evidence가 있을 때만 계획에 활용한다. 화면 구현만을 이유로 자동 dependency 추가를 계획하지 않는다.
+18. `Applicable Skills`에 추정 이름을 만들지 않는다. runtime pin 가능 여부는 dispatch 직전 `dev-skill-preflight`가 검증한다.
+19. testable Acceptance Criteria와 risk-based Test Plan, Dependencies, Risks, Open Questions를 작성한다.
+20. project/repo·Work Unit boundary·scope·pattern·AC·tasks·test·필요한 design/API/data model/Infrastructure approval이 확립될 때만 `READY`, 아니면 `BLOCKED`다.
+
+## Standard Work Unit Boundary
+
+모든 Standard Plan은 다음을 포함한다.
+
+```text
+Work Unit Class: DESIGN | IMPLEMENTATION | MIGRATION | REFACTOR | AUDIT
+Work Unit Boundary: SINGLE_UNIT | SPLIT_REQUIRED
+Current Deliverable: ...
+Follow-up Required: YES | NO
+Follow-up Work Unit: DESIGN | IMPLEMENTATION | MIGRATION | REFACTOR | AUDIT | NONE
+Follow-up Input: ... | NONE
+Excluded Follow-up Scope: ... | NONE
+```
+
+분리 기준은 **Skill 수나 파일 수가 아니라 독립 산출물의 lifecycle**이다.
+
+```text
+현재 단계가 독립 승인 가능한 artifact/decision을 생성
++ 그것이 다음 mutation 단계의 authoritative input
++ 다음 단계가 application/runtime/schema/data를 실제 변경
+→ SPLIT_REQUIRED
+```
+
+여러 Skill을 사용해도 하나의 deliverable을 완성하는 경우는 한 Work Unit으로 유지한다.
+
+```text
+Docker Compose + Spring datasource env 연결
+Backend + Frontend가 하나의 승인 API contract를 구현
+여러 파일/모듈의 동일 use case 변경
+→ SINGLE_UNIT 가능
+```
+
+`SPLIT_REQUIRED`여도 현재 Plan은 첫 Work Unit만 READY로 만든다. Follow-up Work Unit을 현재 Implementation Tasks에 넣지 않는다.
+
+### Work Unit 분류 기본값
+
+```text
+독립 설계/모델/계약 산출물 자체가 목표 → DESIGN
+승인 요구/설계를 실제 behavior/runtime로 구현 → IMPLEMENTATION
+승인 schema/data intent physicalization → MIGRATION
+behavior-preserving 구조 개선 → REFACTOR
+read-only 조사/차이 분석 → AUDIT
+```
+
+Audit에서 수정 필요성이 발견되어도 같은 Task에 fix를 자동 추가하지 않는다. 처음부터 작고 명확한 fix가 주 목적이면 AUDIT가 아니라 IMPLEMENTATION으로 분류한다.
 
 ## API Spec 계약
 
@@ -55,6 +104,18 @@ API contract 영향 없음 → NOT_REQUIRED
 ```
 
 `DESIGN_FIRST`이면 `API Spec Gate: REQUIRED`, 최초 `API Spec Status: DRAFT`다. Plan Approval 전에 Markdown 규격 초안을 사용자에게 보여주되 source를 수정하지 않는다.
+
+API Spec Gate는 항상 별도 Work Unit을 뜻하지 않는다.
+
+```text
+하나의 구현 use case에 종속된 bounded API contract
+→ Work Unit Class: IMPLEMENTATION
+→ API 규격 승인 후 같은 Task에서 구현 가능
+
+API 설계 자체가 사용자 요청의 독립 deliverable이거나 여러 후속 consumer가 재사용
+→ Work Unit Class: DESIGN
+→ 후속 구현은 별도 IMPLEMENTATION Work Unit
+```
 
 `SOURCE_SYNC`는 Application Source 역문서화이며 `Status: DRAFT`, `Documentation Source: APPLICATION_SOURCE`를 유지하고 자동 APPROVED로 승격하지 않는다.
 
@@ -79,6 +140,7 @@ Database Vendor: generic | mssql | mysql | mariadb | postgresql | oracle | unkno
 Data Model Mode: LOGICAL_RELATIONAL | PHYSICAL
 DBML Mode: CANONICAL | PROJECT_EXISTING | NOT_REQUIRED
 DBML Path: <planned/existing path | none>
+Physicalization Required: YES | NO
 ```
 
 ### Data Model Gate REQUIRED
@@ -98,19 +160,51 @@ ownership/lifecycle 변경
 
 `DRAFT`를 임의로 `APPROVED`로 승격하지 않는다.
 
-### Data Capability mapping
+### Data DESIGN → MIGRATION 강제 분리
+
+`MODEL_CHANGE` 또는 `SCHEMA_CHANGE`의 logical design이 필요한 경우 현재 Task는 다음으로 고정한다.
 
 ```text
+Work Unit Class: DESIGN
+Current Deliverable: approved/materialized logical DBML
 Applicable Skills:
-- dev-data-feature: Data/DB canonical implementation entry
-
+- dev-data-feature
 Data Capability Hints:
-- dev-data-modeling: 책임/lifecycle/cardinality/DBML
-- dev-db-schema: PK/FK/constraint/type/index
-- dev-db-query: SQL semantics/dialect
-- dev-db-migration: DDL/backfill/deployment compatibility
-- dev-db-performance: execution plan/index/locking evidence
-- dev-spring-data: JPA/Repository implementation companion
+- dev-data-modeling
+```
+
+`Physicalization Required: YES`이면:
+
+```text
+Work Unit Boundary: SPLIT_REQUIRED
+Follow-up Required: YES
+Follow-up Work Unit: MIGRATION
+Follow-up Input: approved/materialized logical DBML
+Excluded Follow-up Scope: Flyway/Liquibase, DDL, physical schema, JPA physical mapping
+```
+
+현재 DESIGN Plan의 Applicable Skills/Implementation Tasks에 `dev-db-migration`을 넣지 않는다. DBML materialization과 `dbml_guard`까지 완료한 뒤 Task를 종료한다.
+
+후속 physical implementation 요청은 별도 Standard Flow다.
+
+```text
+Work Unit Class: MIGRATION
+Applicable Skills:
+- dev-data-feature
+- dev-db-migration
+Data Capability Hints:
+- dev-db-schema
+- dev-spring-data (실제 JPA mapping 영향이 있을 때)
+```
+
+MIGRATION Task는 repository canonical DBML 또는 별도 승인 artifact snapshot을 authoritative input으로 사용한다. logical responsibility/cardinality redesign이 필요해지면 migration scope를 확장하지 않고 새 DESIGN Work Unit으로 되돌린다.
+
+### 기타 Data Capability mapping
+
+```text
+QUERY_ONLY → dev-data-feature + dev-db-query
+PERFORMANCE → dev-data-feature + dev-db-performance
+승인된 기존 schema의 JPA 구현 → dev-spring-data
 ```
 
 작업에 실제 필요한 hint만 남긴다.
@@ -179,7 +273,7 @@ Observed State는 Repository evidence가 없는 값을 기본값으로 채우지
 
 동일 runtime/vendor에서 host 또는 port만 바뀌면 `HOST_CHANGE`로 계획한다. runtime/platform/vendor 변경과 함께 발생하면 `COMBINED_CHANGE`다.
 
-Companion capability는 실제 affected area에만 추가한다.
+Companion capability는 같은 Work Unit의 Current Deliverable에 실제 필요한 경우에만 추가한다.
 
 ```text
 Spring application.yml|yaml|properties 또는 Spring connection 설정 변경
@@ -189,7 +283,7 @@ Frontend .env / Next.js runtime env 변경
 → dev-frontend-feature
 → Next.js-specific 변경이면 dev-nextjs-feature hint
 
-DB Vendor 변경
+DB Vendor 변경 + 실제 physicalization Task
 → dev-data-feature
 → dev-db-migration
 ```
@@ -235,15 +329,7 @@ DRAFT
 → CODE_DRIVEN + EXISTING_CODE
 ```
 
-`REFERENCE_DRIVEN` Task에서는 디자인 evidence를 구분한다.
-
-```text
-Observed Design Requirements
-Inferred Design Hints
-Unknown / Open Questions
-```
-
-IMAGE의 추정 spacing/radius/color를 exact token/CSS 값으로 확정하지 않는다.
+현재 Task가 새 UI 설계 자체를 독립 deliverable로 만드는 경우 `DESIGN`으로 분류하고 후속 구현과 분리한다. 이미 승인된 IMAGE/Figma를 입력으로 구현하는 경우는 `IMPLEMENTATION` Work Unit에서 그대로 사용할 수 있다.
 
 ## Frontend 계획 규칙
 
@@ -282,11 +368,7 @@ Frontend Capability Hints:
 - dev-api-contract: Backend DTO와 frontend type 동시 변경
 ```
 
-Figma인 경우에만 추가로:
-
-```text
-- dev-figma-design: APPROVED Figma selected frame provider
-```
+Figma인 경우에만 추가로 `dev-figma-design` hint를 사용한다.
 
 ## 기존 Spring/JPA 정책 보존
 
@@ -302,6 +384,6 @@ DBML/schema 자체를 설계하지 않는 순수 JPA 구현까지 `dev-data-feat
 
 ## 필수 출력
 
-Task Identity; Project/working tree; Goal/Type/Requirement; Assumptions/Constraints/Out of Scope; **Project Pattern Summary**; Frontend Mode/Design Source/Status/Fidelity/Reference/Screen Spec(해당 시); **API Spec Mode/Gate/Status/Path/Source(해당 시)**; **Data Design Mode/Gate/Status/Task Class/Vendor/DBML Path(해당 시)**; **Infrastructure Impact/Observed State/Desired State/Configuration Delivery(해당 시, host/port 포함)**; Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Data Capability Hints; Observed/Inferred/Unknown(해당 시); Storybook/Visual Verification Plan(해당 시); Acceptance Criteria; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
+Task Identity; Project/working tree; Goal/Type/Requirement; Assumptions/Constraints/Out of Scope; **Work Unit Class/Boundary/Current Deliverable/Follow-up Required/Follow-up Work Unit/Follow-up Input/Excluded Follow-up Scope**; **Project Pattern Summary**; Frontend Mode/Design Source/Status/Fidelity/Reference/Screen Spec(해당 시); **API Spec Mode/Gate/Status/Path/Source(해당 시)**; **Data Design Mode/Gate/Status/Task Class/Vendor/DBML Path/Physicalization Required(해당 시)**; **Infrastructure Impact/Observed State/Desired State/Configuration Delivery(해당 시, host/port 포함)**; Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Data Capability Hints; Observed/Inferred/Unknown(해당 시); Storybook/Visual Verification Plan(해당 시); Acceptance Criteria; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
 
 유형별 상세 체크리스트와 출력 템플릿은 `references/planning-details.md`를 필요할 때만 읽는다.

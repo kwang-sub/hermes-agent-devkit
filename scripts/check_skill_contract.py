@@ -8,7 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_ROOT = REPO_ROOT / "custom-skills"
 REQUIRED_SKILLS = {"dev-project-pattern","dev-skill-preflight","dev-java-guidelines","dev-spring-guidelines","dev-spring-feature","dev-spring-data","dev-spring-test","dev-api-docs"}
 REQUIRED_REFERENCES = {("shared","dev-api-docs"):{"references/spring-openapi-reference.md","references/postman-reference.md"},("orchestrator","dev-workflow-orchestrate"):{"references/dispatch-efficiency.md"}}
-SHARED_REQUIRED_REFERENCES={"approval-gate-rules.md"}
+SHARED_REQUIRED_REFERENCES={"approval-gate-rules.md","standard-work-unit-rules.md"}
 
 def fail(message:str)->None: raise SystemExit(f"[FAIL] {message}")
 def parse_inline_list(value:str)->list[str]:
@@ -82,15 +82,16 @@ def main()->int:
     workflow_file=discovered[("orchestrator","dev-workflow-orchestrate")]; workflow=workflow_file.read_text(encoding="utf-8")
     reviewer=discovered[("reviewer","dev-code-review")].read_text(encoding="utf-8")
     approval=(shared_reference_root/"approval-gate-rules.md").read_text(encoding="utf-8")
+    work_unit=(shared_reference_root/"standard-work-unit-rules.md").read_text(encoding="utf-8")
 
     require_terms(breakdown,"dev-breakdown",('skill_view("dev-project-pattern")',"dev-java-guidelines"))
     require_terms(dispatch,"dev-workspace-dispatch preflight",('skill_view("dev-skill-preflight")',"VALIDATED_SKILLS","REJECTED_SKILLS","kanban_create.skills"))
     require_terms(workflow,"dev-workflow-orchestrate approval gates",(
         "/opt/data/shared/references/approval-gate-rules.md","WORKSPACE_APPROVED","BRANCH_APPROVED","MODEL_APPROVED","PLAN_APPROVED",
         "REQUIREMENT_DELTA_APPROVED","Requirement Delta Approval","[추가 요구사항 확인]",
-        "한 번의 사용자 확인에서는 하나의 의사결정만 요청한다","clarify","choices","↑/↓ + Enter",
+        "한 번의 사용자 확인에서는 하나의 의사결정만 요청한다","clarify","choices","선택지는 질문 본문에 번호로 쓰지 않고",
         "[Project 선택]","[Workspace 선택]","[Branch 선택]","[Coder 모델 선택]","[작업 계획 승인]",
-        "DEFAULT | PREMIUM","같은 Gate를 다시 출력","NO_EXTRA_KANBAN_CONFIRMATION","추가 Kanban 생성 확인 없이 즉시 AUTO_DISPATCH",
+        "DEFAULT | PREMIUM","같은 Gate를 다시 출력","NO_EXTRA_KANBAN_CONFIRMATION","AUTO_DISPATCH_CURRENT_UNIT_ONLY",
         "NOTIFY_REGISTRATION_EVENT=queued"))
     require_terms(approval,"shared approval gate rules",(
         "clarify","choices","↑/↓ 이동 + Enter 선택","Other (type your answer)","Workspace와 Branch는 서로 다른 Gate다",
@@ -121,16 +122,17 @@ def main()->int:
     forbid_terms(approval,"legacy verbose Plan Gate question",("위 Implementation Plan을 어떻게 처리할까요?",))
     forbid_terms(workflow,"legacy verbose Plan Gate question",("위 Implementation Plan을 어떻게 처리할까요?",))
 
-    require_terms(workflow,"dispatch efficiency",("prepare_dispatch.py","정확히 한 번","working-tree 전체 scan을 하지 않는다","kanban_create tool 1회","kanban_show tool 1회","hermes project list","Kanban body 임시 파일","dispatch-efficiency.md","skipped-approved-preservation","change_summary.py --include","review_context.py --include"))
+    require_terms(workflow,"dispatch efficiency",("prepare_dispatch.py","정확히 한 번","working-tree 전체 scan을 하지 않는다","kanban_create tool 1회","kanban_show tool 1회","dispatch-efficiency.md","skipped-approved-preservation","change_summary.py --include","review_context.py --include"))
     require_terms(dispatch,"dev-workspace-dispatch fast path",(
-        "--confirmed-dirty","repository-wide dirty/EOL/untracked 분류를 **생략**","WORKSPACE_CHANGE_SCAN_MODE=skipped-approved-preservation","*_COUNT=-1","git diff --name-only -z HEAD","WORKSPACE_CLASSIFICATION_TOTAL_SECONDS",'initial_status="blocked"',
-        "kanban_show(board=BOARD, task_id=<CREATED_TASK_ID>)","subscribe_notification.py --board BOARD --task-id <CREATED_TASK_ID>",
-        "NOTIFY_STATUS=subscribed + NOTIFY_VERIFIED=true + NOTIFY_REGISTRATION_EVENT=queued","registered","등록 event","kanban_unblock(board=BOARD, task_id=<CREATED_TASK_ID>)","board == BOARD","HERMES_KANBAN_BOARD","CLI body-file 지원 여부 탐색","CLI fallback을 탐색하지 않고 BLOCK"))
+        "--confirmed-dirty","repository-wide dirty/EOL/untracked 분류를 **생략**","WORKSPACE_CHANGE_SCAN_MODE=skipped-approved-preservation","*_COUNT=-1","git diff --name-only -z HEAD",'initial_status="blocked"',
+        "kanban_show 정확히 1회","subscribe_notification.py 정확히 1회",
+        "NOTIFY_STATUS=subscribed + NOTIFY_VERIFIED=true + NOTIFY_REGISTRATION_EVENT=queued","등록 read-back 계약 검증","등록 event","kanban_unblock 정확히 1회","board == BOARD","HERMES_KANBAN_BOARD"))
     efficiency=(workflow_file.parent/"references"/"dispatch-efficiency.md").read_text(encoding="utf-8")
-    require_terms(efficiency,"dispatch-efficiency reference",("skipped-approved-preservation","change_summary.py --include","review_context.py --include","큰 파일을 임의의 MB threshold로 제외하지 않는다","hermes project --help","CLI body-file capability probing"))
+    require_terms(efficiency,"dispatch-efficiency reference",("skipped-approved-preservation","change_summary.py --include","review_context.py --include","큰 파일을 임의의 MB threshold로 제외하지 않는다","hermes project list","Kanban body 임시 파일","hermes project --help","CLI body-file capability probing","CLI fallback"))
     for cap in ("dev-java-guidelines","dev-spring-guidelines","dev-spring-feature","dev-spring-data","dev-spring-test","dev-api-docs"):
         if f'skill_view("{cap}")' not in implement: fail(f"dev-implement-plan must explicitly load {cap} via skill_view")
-    require_terms(implement,"dev-implement-plan scoped summary",("scoped change_summary.py","Standard Flow에서 `--include` 없이","--allow-full-scan","tracked와 untracked 모두 Git pathspec","Changed Files"))
+    require_terms(implement,"dev-implement-plan scoped summary",("/opt/data/shared/references/standard-work-unit-rules.md","scoped change_summary.py","Standard Flow에서 `--include` 없이","Changed Files"))
+    require_terms(work_unit,"standard work unit scoped summary",("change_summary.py --include","Standard Flow에서 `--include` 없이","--allow-full-scan","tracked와 untracked 모두 Git pathspec","Follow-up Work Unit의 파일"))
     require_terms(reviewer,"dev-code-review scoped review",("review_context.py --include","Standard Flow에서는 `--include`를 반드시 제공","--allow-full-scan","tracked와 untracked 모두 Git pathspec","Java Convention Review Gate"))
     print(f"[PASS] Custom skill contract: {len(discovered)} scoped skills ({len(paths_by_name)} unique names) validated")
     return 0

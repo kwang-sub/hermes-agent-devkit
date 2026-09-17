@@ -1,12 +1,12 @@
 ---
 name: dev-db-migration
-description: 승인된 DBA logical model을 target DBMS 물리 schema로 변환하고 기존 migration convention을 존중해 Flyway-first/Liquibase-compatible migration을 작성·검증할 때 Coder가 실행하고 Reviewer가 read-only 기준으로 공유하는 DB migration capability.
-version: 0.2.0
+description: 승인된 DBA logical model을 별도 Standard MIGRATION Work Unit에서 target DBMS 물리 schema로 변환하고 기존 migration convention을 존중해 Flyway-first/Liquibase-compatible migration을 작성·검증할 때 Coder가 실행하고 Reviewer가 read-only 기준으로 공유하는 DB migration capability.
+version: 0.3.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, database, physicalization, migration, flyway, liquibase, ddl, compatibility]
+    tags: [dev, database, physicalization, migration, flyway, liquibase, ddl, compatibility, work-unit]
     related_skills: [dev-data-feature, dev-data-modeling, dev-db-schema, dev-spring-data]
     requires_tools: [terminal, skill_view]
 ---
@@ -15,8 +15,12 @@ metadata:
 
 shared/pinnable DB physicalization / migration capability다. **migration 파일 작성·변경의 실행 책임은 Coder**, Reviewer는 동일 계약을 read-only 검토 기준으로 사용한다.
 
+`/opt/data/shared/references/standard-work-unit-rules.md`를 적용한다. 이 capability를 사용해 physicalization을 수행하는 Standard Task는 `Work Unit Class: MIGRATION`이어야 한다.
+
 ```text
 APPROVED DBA Logical Model
+        ↓
+별도 Standard MIGRATION Work Unit
         ↓
 Coder Physicalization
         ↓
@@ -28,6 +32,27 @@ JPA / Application Mapping
         ↓
 Reviewer read-only verification
 ```
+
+## Work Unit Preconditions
+
+새 table 또는 의미 있는 schema 변경은 다음을 모두 요구한다.
+
+```text
+Work Unit Class: MIGRATION
+Work Unit Boundary: SINGLE_UNIT
+Data Model Status: APPROVED
+DBML Path: <repository canonical path or approved artifact path>
+Subject Areas: <approved mapping>
+Logical Tables / Relationships:
+Business Constraints:
+Target DBMS / Version: <known or detect before vendor DDL>
+```
+
+`DESIGN` Work Unit에서 이 Skill을 실행해 Flyway/Liquibase/DDL/JPA physical mapping을 만들지 않는다. logical DBML이 아직 DRAFT이거나 현재 Task가 logical design과 physicalization을 동시에 요구하면 migration을 시작하지 않고 Work Unit Boundary 위반으로 BLOCK한다.
+
+MIGRATION 중 responsibility/cardinality/ownership 같은 논리 의미를 바꿔야 한다는 사실이 드러나면 현재 Task를 확장하지 않는다. 새 `DESIGN` Work Unit에서 logical model을 다시 승인받은 뒤 별도 MIGRATION Task를 재계획한다.
+
+기존 승인 schema의 단순 migration-only 보정은 Task evidence에 따라 logical gate가 NOT_REQUIRED일 수 있지만, 그래도 현재 Task Class는 `MIGRATION`으로 명시한다.
 
 ## Role Boundary
 
@@ -45,26 +70,12 @@ JPA physical mapping 반영
 ```text
 logical ↔ physical mapping 검토
 migration naming/version/order/compatibility 검토
+Work Unit Boundary 준수 검토
 검증 evidence 재사용 또는 필요한 read-only verification
 application/migration source 수정 금지
 ```
 
 운영 DB에 직접 ad-hoc DDL을 실행하는 권한을 의미하지 않는다. Production 적용은 프로젝트의 승인된 deployment/migration pipeline을 따른다.
-
-## Preconditions
-
-새 table 또는 의미 있는 schema 변경은 Coder 구현 전에 다음 evidence를 요구한다.
-
-```text
-Data Model Status: APPROVED
-DBML Path: <path>
-Subject Areas: <approved mapping>
-Logical Tables / Relationships:
-Business Constraints:
-Target DBMS / Version: <known or detect before vendor DDL>
-```
-
-`DRAFT` logical model을 Coder가 임의로 승인하지 않는다. 기존 승인 schema의 단순 migration-only 보정은 Task evidence에 따라 logical gate가 NOT_REQUIRED일 수 있다.
 
 ## Coder 책임
 
@@ -310,9 +321,11 @@ Coder는 가능한 범위에서 다음을 수행하고 Reviewer는 그 evidence�
 ## Handoff
 
 ```text
+Work Unit Class: MIGRATION
+Work Unit Boundary: SINGLE_UNIT
+Logical Model Status / DBML:
 Migration Tool / Evidence:
 Target DBMS / Version:
-Logical Model Status / DBML:
 Subject Area → Physical Table Mapping:
 Physical Schema Decisions:
 Migration Files:

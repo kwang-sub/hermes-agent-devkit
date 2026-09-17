@@ -1,0 +1,49 @@
+name: standard-work-unit
+
+on:
+  pull_request:
+    paths:
+      - 'shared/references/standard-work-unit-rules.md'
+      - 'custom-skills/orchestrator/dev-breakdown/**'
+      - 'custom-skills/orchestrator/dev-workflow-orchestrate/**'
+      - 'custom-skills/orchestrator/dev-workspace-dispatch/**'
+      - 'custom-skills/coder/dev-implement-plan/**'
+      - 'custom-skills/reviewer/dev-code-review/**'
+      - 'custom-skills/shared/dev-data-feature/**'
+      - 'custom-skills/shared/dev-data-modeling/**'
+      - 'custom-skills/shared/dev-db-migration/**'
+      - 'scripts/check_standard_work_unit_contract.py'
+      - 'scripts/check_data_capability_contract.py'
+      - '.github/workflows/standard-work-unit.yml'
+  push:
+    branches: [dev]
+    paths:
+      - 'shared/references/standard-work-unit-rules.md'
+      - 'custom-skills/orchestrator/dev-breakdown/**'
+      - 'custom-skills/orchestrator/dev-workflow-orchestrate/**'
+      - 'custom-skills/orchestrator/dev-workspace-dispatch/**'
+      - 'custom-skills/coder/dev-implement-plan/**'
+      - 'custom-skills/reviewer/dev-code-review/**'
+      - 'custom-skills/shared/dev-data-feature/**'
+      - 'custom-skills/shared/dev-data-modeling/**'
+      - 'custom-skills/shared/dev-db-migration/**'
+      - 'scripts/check_standard_work_unit_contract.py'
+      - 'scripts/check_data_capability_contract.py'
+      - '.github/workflows/standard-work-unit.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Standard Work Unit contract
+        run: python3 scripts/check_standard_work_unit_contract.py
+      - name: Data DBA capability contract
+        run: python3 scripts/check_data_capability_contract.py
+      - name: Capability lifecycle contract
+        run: python3 scripts/check_capability_lifecycle_contract.py
+      - name: Skill metadata contract
+        run: python3 scripts/check_skill_contract.py
