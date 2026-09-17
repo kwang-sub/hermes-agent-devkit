@@ -15,7 +15,12 @@ DISPATCH = ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/SKILL.md"
 PREFLIGHT = ROOT / "custom-skills/orchestrator/dev-skill-preflight/SKILL.md"
 INIT_PROFILES = ROOT / "init-profiles.ps1"
 
-CANONICAL_MARKER = re.compile(r"\bcanonical(?:\s+runtime)?\s+entry\b", re.IGNORECASE)
+# `canonical entry로`, `canonical runtime entry다`처럼 한국어 조사가 바로 붙을 수 있다.
+# 영문 식별자 일부(`entrypoint`)는 오탐하지 않도록 ASCII 식별자만 후행 금지한다.
+CANONICAL_MARKER = re.compile(
+    r"\bcanonical(?:\s+runtime)?\s+entry(?![A-Za-z0-9_-])",
+    re.IGNORECASE,
+)
 VALID_KINDS = {
     "canonical_entry",
     "domain_entry",
@@ -29,6 +34,26 @@ def read(path: Path) -> str:
     if not path.is_file():
         raise SystemExit(f"missing required lifecycle file: {path}")
     return path.read_text(encoding="utf-8-sig")
+
+
+def frontmatter_description(text: str) -> str:
+    """Return only the SKILL frontmatter description used for canonical discovery.
+
+    Body text can mention another capability as a "canonical entry" and must not
+    cause that support skill itself to be registered as a canonical entry.
+    """
+    match = re.match(r"\A---\s*\n(?P<body>.*?)\n---\s*(?:\n|\Z)", text, flags=re.DOTALL)
+    if not match:
+        return ""
+    description = re.search(
+        r"(?m)^description:\s*(?P<value>.+?)\s*$",
+        match.group("body"),
+    )
+    return description.group("value").strip() if description else ""
+
+
+def declares_canonical_entry(text: str) -> bool:
+    return bool(CANONICAL_MARKER.search(frontmatter_description(text)))
 
 
 def fail(message: str) -> None:
@@ -77,8 +102,11 @@ def main() -> int:
         skill_path = SHARED / name / "SKILL.md"
         skill_text = read(skill_path)
 
-        if entry["kind"] == "canonical_entry" and not CANONICAL_MARKER.search(skill_text):
-            fail(f"{name}: canonical_entry must declare canonical entry in SKILL.md")
+        if entry["kind"] == "canonical_entry" and not declares_canonical_entry(skill_text):
+            fail(
+                f"{name}: canonical_entry must declare canonical entry "
+                "in SKILL.md frontmatter description"
+            )
 
         if entry["planner_required"] and name not in planner:
             fail(f"{name}: planner routing missing from dev-breakdown")
@@ -94,12 +122,13 @@ def main() -> int:
         if entry["strict_pin"] and not skill_path.is_file():
             fail(f"{name}: strict pinned capability must live in shared skill root")
 
-    # New shared skills that declare themselves a canonical entry must be registered.
+    # New shared skills that explicitly declare themselves canonical in their
+    # frontmatter description must be registered. Body references do not count.
     registered = set(names)
     discovered: set[str] = set()
     for skill_path in sorted(SHARED.glob("dev-*/SKILL.md")):
         skill_text = read(skill_path)
-        if CANONICAL_MARKER.search(skill_text):
+        if declares_canonical_entry(skill_text):
             discovered.add(skill_path.parent.name)
     missing_registry = sorted(discovered - registered)
     if missing_registry:
