@@ -135,6 +135,7 @@ Coder evidence 재사용 조건:
 Verification Evidence: REUSED
 Verification Scope Match: true
 Primary Reused: true
+PRIMARY_REUSED=true
 Reason: coder final verification covers the unchanged executable scope
 ```
 
@@ -147,6 +148,18 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification_
   --test "<same-selector>" \
   --scope-path "<same-covered-path>"
 ```
+
+현재 scope가 Coder PASS와 동일하면 helper가 `VERIFICATION_EVIDENCE=REUSED`, `PRIMARY_REUSED=true`로 끝나야 한다. 이 경로에서 **Gradle primary를 다시 실행하면 안 된다**.
+
+재실행이 **필수**인 경우:
+- Coder PASS 이후 executable production/test/build/toolchain 파일이 수정됨
+- Coder/Reviewer effective scope 또는 verification scope fingerprint가 불일치함
+- verification fingerprint 또는 `Verification Final`/command/result가 누락됨
+- Reviewer finding 수정으로 Coder가 source/test를 변경한 뒤 재-review가 들어옴
+- P0/P1 가능성을 검증하는데 기존 PASS command가 해당 behavior를 cover하지 않음
+- Coder verification이 실패/모호함. 단 `GRADLE_STATUS=BLOCKED`를 Reviewer가 같은 primary command로 대신 재시도하지 않는다.
+
+재실행이 필요한 경우에는 이전 PASS evidence를 재사용하지 않고 fresh verification을 요구한다. 동일 scope와 동일 PASS evidence가 유효한 경우에는 독립성 확보만을 이유로 같은 Gradle primary를 반복하지 않는다.
 
 `GRADLE_STATUS=BLOCKED`이면 Reviewer가 direct `hermes-java ./gradlew`로 우회하지 않고 blocker evidence를 유지한다.
 
