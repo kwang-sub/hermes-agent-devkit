@@ -1,13 +1,13 @@
 ---
 name: dev-workspace-dispatch
-description: 승인된 구현 계획·API 규격·workspace·branch·Coder 모델과 project pattern/capability 계약을 최초 등록 알림과 함께 Kanban으로 인계한다.
-version: 0.13.0
+description: 승인된 구현 계획·API 규격·Infrastructure Desired State·workspace·branch·Coder 모델과 project pattern/capability 계약을 최초 등록 알림과 함께 Kanban으로 인계한다.
+version: 0.14.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, capability, preflight, notification, registration, model, api, spec, performance]
-    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-api-spec, dev-skill-preflight, dev-workflow-orchestrate, dev-flow-model-policy]
+    tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, capability, infrastructure, desired-state, preflight, notification, registration, model, api, spec, performance]
+    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-api-spec, dev-infrastructure, dev-skill-preflight, dev-workflow-orchestrate, dev-flow-model-policy]
     requires_tools: [terminal, skill_view, kanban_create, kanban_show, kanban_unblock, clarify]
 ---
 
@@ -20,6 +20,7 @@ metadata:
 - 승인 이후 요구사항 변경 작업이면 Requirement Delta 승인 완료
 - `API Spec Gate: REQUIRED`이면 `API Spec Status: APPROVED` 및 승인된 Markdown snapshot 확보
 - `API Spec Gate: NOT_REQUIRED`이면 Mode가 `SOURCE_SYNC | AUDIT | NOT_REQUIRED` 중 하나임을 확인
+- `Infrastructure Impact: YES`이면 승인 Plan의 Infrastructure Desired State 8축(runtime/host/port/platform/vendor) snapshot 확보
 - workspace/current 또는 create branch 승인 완료
 - 기존 변경이 있을 수 있는 workspace라면 reset/restore/stash 없이 전부 보존할지 승인 완료
 - Coder Model Tier(DEFAULT|PREMIUM) 승인 완료
@@ -67,7 +68,7 @@ Primary metadata가 실제로 없을 때만 `dev-project-bootstrap`을 사용한
 ```text
 prepare_dispatch.py --confirmed-dirty
 → repository/workspace/branch/Base SHA/Board만 검증
-→ repository-wide dirty/EOL/untracked 분류를 **생략**
+→ repository-wide dirty/EOL/untracked 분류를 생략
 → WORKSPACE_CHANGE_SCAN_MODE=skipped-approved-preservation
 → *_COUNT=-1, WORKSPACE_*_DIRTY=unknown
 ```
@@ -82,7 +83,7 @@ git ls-files -z --others --exclude-standard
 
 파일별 `git diff --quiet` 반복 호출은 금지한다.
 
-## 3. Helper 실행
+## 3. Workspace Helper 실행
 
 현재 branch:
 
@@ -115,7 +116,53 @@ python3 /opt/data/shared/scripts/flow_model_policy.py resolve --tier "<DEFAULT|P
 
 `MODEL_TIER`, `MODEL`, `PROVIDER`를 immutable snapshot으로 사용한다.
 
-## 4. Skill Preflight
+## 4. Infrastructure Desired State Persistence
+
+`Infrastructure Impact: YES`인 승인 Plan은 worker dispatch 전에 승인된 목표 상태를 **Primary Repository** metadata에 영속화한다.
+
+`prepare_dispatch.py`가 반환한 `PROJECT_REPOSITORY`를 사용해 다음 helper를 정확히 한 번 실행한다.
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/persist_infrastructure_desired.py" \
+  --repo "<PROJECT_REPOSITORY>" \
+  --application-runtime "<LOCAL_HOST|NETWORK_HOST|CONTAINER>" \
+  --application-host "<hostname|address|unknown>" \
+  --application-port "<port|unknown>" \
+  --database-runtime "<LOCAL_HOST|NETWORK_HOST|CONTAINER>" \
+  --database-host "<hostname|address|unknown>" \
+  --database-port "<port|unknown>" \
+  --database-platform "<NATIVE|SUPABASE>" \
+  --database-vendor "<postgresql|mysql|mariadb|mssql|oracle|unknown>"
+```
+
+필수 계약:
+
+```text
+Plan Approval
+→ prepare_dispatch Workspace/Primary 검증
+→ persist_infrastructure_desired.py
+→ INFRASTRUCTURE_DESIRED_PERSISTENCE=updated | reused
+→ 같은 Desired State snapshot을 Kanban body에 기록
+→ skill preflight / create
+```
+
+Desired State는 구현 결과가 아니라 **사용자가 승인한 목표**다. Coder 실행이 실패해도 `Observed != Desired`가 남는 것은 정상이며 후속 reconciliation에서 drift로 사용한다.
+
+다음은 금지한다.
+
+```text
+Plan 승인 전 Desired State 저장
+linked worktree의 .hermes/project.yaml 수정
+username/password/token/connection URL 전체를 infrastructure metadata에 저장
+승인 snapshot과 다른 값으로 dispatch 직전 재추론
+Infrastructure Impact: NO인데 metadata를 임의 변경
+```
+
+`SUPABASE` platform이면 vendor는 helper가 `postgresql`로 정규화한다. host/port에는 credential을 포함한 URL이 아니라 endpoint만 저장한다.
+
+`Infrastructure Impact: NO`이면 이 helper를 호출하지 않고 기존 Desired State를 그대로 보존한다.
+
+## 5. Skill Preflight
 
 `skill_view("dev-skill-preflight")` 후 Coder/Reviewer 공통 사용 가능 skill만 pin한다.
 
@@ -126,14 +173,17 @@ REJECTED_SKILLS → body 기록만 하고 pin 금지
 
 API Task의 `Applicable Skills`에 `dev-api-spec`이 있으면 Coder/Reviewer가 동일 Markdown contract를 볼 수 있도록 공통 pin 대상으로 검증한다. `dev-api-contract`, `dev-api-docs`도 계획에 필요한 경우 같은 방식으로 검증한다.
 
+Infrastructure Task의 `Applicable Skills`에 `dev-infrastructure`가 있으면 같은 방식으로 검증하고, 누락되면 canonical capability 계약을 충족할 수 없으므로 dispatch를 진행하지 않는다.
+
 `dev-flow-model-policy`는 runtime pin 필수다. preflight 실패 시 dispatch하지 않는다.
 
-## 5. Kanban 생성·알림 Gate 단일 경로
+## 6. Kanban 생성·알림 Gate 단일 경로
 
 Task는 알림 Gate가 완료되기 전 worker가 가져가지 못하도록 **처음부터 `blocked` 상태로 생성**한다.
 
 ```text
 prepare_dispatch.py 정확히 한 번
+→ Infrastructure Impact YES면 approved Desired State persist 정확히 한 번
 → dev-skill-preflight
 → approved API Spec contract 확인 (REQUIRED일 때)
 → approved model snapshot 확인
@@ -163,20 +213,11 @@ task read-back
 → notify-subscribe
 → notify-list 검증
 → 구독 cursor 확정
-→ `registered` task_event enqueue
+→ registered task_event enqueue
 → NOTIFY_REGISTRATION_EVENT=queued
 ```
 
-Hermes 새 subscription은 생성 시점의 최신 `task_events.id`를 cursor로 잡으므로, `registered` event는 **구독이 확인된 뒤에** 생성한다. 그래야 최초 등록 알림이 과거 이벤트로 간주되어 누락되지 않는다.
-
-Gateway notifier patch는 `registered`를 감시 대상 kind에 포함하고 Discord에서는 다음 의미로 표시한다.
-
-```text
-🆕 작업 등록
-상태 REGISTERED
-```
-
-등록 event는 Task별 1회만 enqueue하는 idempotent 계약이다. transient 재시도 때문에 같은 카드의 등록 알림을 중복 생성하지 않는다.
+Hermes 새 subscription은 생성 시점의 최신 `task_events.id`를 cursor로 잡으므로, `registered` event는 **구독이 확인된 뒤에** 생성한다. 등록 event는 Task별 1회만 enqueue하는 idempotent 계약이다.
 
 `kanban_show` 성공 전에는 알림 helper를 실행하지 않는다. 알림 활성 환경에서 다음 중 하나라도 발생하면 **절대 unblock하지 않는다**.
 
@@ -209,6 +250,7 @@ default/current board fallback
 Coder 모델 승인 없이 create/unblock
 Requirement Delta가 필요한 작업을 승인 없이 create/unblock
 API Spec Gate가 REQUIRED인데 APPROVED 없이 create/unblock
+Infrastructure Impact YES인데 Desired State persist 없이 create/unblock
 승인 뒤 ENV를 다시 resolve하여 model 변경
 hermes kanban --board <board> create --help
 hermes project list / --help
@@ -228,22 +270,12 @@ task.skills == VALIDATED_SKILLS (+ dev-flow-model-policy)
 status == blocked
 model_override == MODEL
 provider_override == PROVIDER
-```
-
-Task body 모델 계약:
-
-```text
-Model Policy:
-- Coder Model Tier: MODEL_TIER
-- Coder Model: MODEL
-- Coder Provider: PROVIDER
-- Reviewer Model: DEFAULT
-- Model Escalation: REQUIRE_REAPPROVAL
+Infrastructure Impact YES면 Task body Desired State == persisted Desired State
 ```
 
 하나라도 불일치하면 unblock 금지다.
 
-## 6. Workspace / Model / API Spec Contract
+## 7. Workspace / Model / API / Infrastructure Contract
 
 Task body에는 다음을 남긴다.
 
@@ -268,6 +300,18 @@ API Specification:
 - API Spec Source: DESIGN | APPLICATION_SOURCE | MIGRATED_SPEC | none
 - API Spec Snapshot: <approved Markdown body or DRAFT/source-sync evidence when applicable>
 
+Infrastructure:
+- Infrastructure Impact: YES | NO
+- Desired State Persistence: UPDATED | REUSED | NOT_REQUIRED
+- Application Runtime: ...
+- Application Host: ... | unknown
+- Application Port: ... | unknown
+- Database Runtime: ...
+- Database Host: ... | unknown
+- Database Port: ... | unknown
+- Database Platform: ...
+- Database Vendor: ...
+
 Model Policy:
 - Coder Model Tier: <DEFAULT|PREMIUM>
 - Coder Model: <MODEL>
@@ -280,9 +324,9 @@ Model Policy:
 
 `SOURCE_SYNC`에서는 `API Spec Status: DRAFT`, `API Spec Source: APPLICATION_SOURCE`가 정상이며 Coder는 bounded source evidence로 Markdown을 생성/갱신한다. 자동 APPROVED 승격은 금지한다.
 
-Fast Path에서는 모든 기존 변경 보존 승인이 baseline 계약이다. Coder는 자신의 실제 변경 scope만 별도로 추적한다.
+기존 변경 보존 승인은 baseline 계약이다. Coder는 자신의 실제 변경 scope만 별도로 추적한다.
 
-## 7. Coder↔Reviewer 모델 전이
+## 8. Coder↔Reviewer 모델 전이
 
 ```text
 Coder run
@@ -299,21 +343,23 @@ Reviewer CHANGES_REQUESTED
 
 동일 승인 모델 retry는 재승인하지 않는다. 모델/Provider 변경 또는 PREMIUM escalation은 사용자 재승인 대상이다.
 
-## 8. 성능 불변식
+## 9. 성능 불변식
 
 - Workspace 승인 전 working-tree 전체 scan 금지.
 - `--confirmed-dirty` 이후 exact count 복구를 위한 재scan 금지.
 - API SOURCE_SYNC/AUDIT도 Task/도메인 범위의 bounded scan을 기본으로 함.
+- Infrastructure detector도 bounded evidence scan을 유지함.
 - Coder/Reviewer는 실제 changed scope만 검증.
 - large/binary file을 임의 MB 기준으로 제외하지 않음.
 - 모델 snapshot은 승인 시 1회 resolve.
 
-## 9. 회귀 검증
+## 10. 회귀 검증
 
 ```bash
 python3 scripts/check_skill_contract.py
 python3 scripts/check_api_spec_contract.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
+python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_persist_infrastructure_desired.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py
 python3 shared/scripts/test_kanban_registration_event.py
 python3 shared/scripts/test_flow_model_policy.py
