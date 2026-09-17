@@ -121,13 +121,13 @@ def main()->int:
     forbid_terms(approval,"legacy verbose Plan Gate question",("위 Implementation Plan을 어떻게 처리할까요?",))
     forbid_terms(workflow,"legacy verbose Plan Gate question",("위 Implementation Plan을 어떻게 처리할까요?",))
 
-    require_terms(workflow,"dispatch efficiency",("prepare_dispatch.py","정확히 한 번","working-tree 전체 scan을 하지 않는다","kanban_create tool 1회","kanban_show tool 1회","hermes project list","Kanban body 임시 파일","dispatch-efficiency.md","skipped-approved-preservation","change_summary.py --include","review_context.py --include"))
+    require_terms(workflow,"dispatch efficiency",("prepare_dispatch.py","정확히 한 번","working-tree 전체 scan을 하지 않는다","kanban_create tool 1회","kanban_show tool 1회","dispatch-efficiency.md","skipped-approved-preservation","change_summary.py --include","review_context.py --include"))
     require_terms(dispatch,"dev-workspace-dispatch fast path",(
         "--confirmed-dirty","repository-wide dirty/EOL/untracked 분류를 **생략**","WORKSPACE_CHANGE_SCAN_MODE=skipped-approved-preservation","*_COUNT=-1","git diff --name-only -z HEAD","WORKSPACE_CLASSIFICATION_TOTAL_SECONDS",'initial_status="blocked"',
         "kanban_show(board=BOARD, task_id=<CREATED_TASK_ID>)","subscribe_notification.py --board BOARD --task-id <CREATED_TASK_ID>",
         "NOTIFY_STATUS=subscribed + NOTIFY_VERIFIED=true + NOTIFY_REGISTRATION_EVENT=queued","registered","등록 event","kanban_unblock(board=BOARD, task_id=<CREATED_TASK_ID>)","board == BOARD","HERMES_KANBAN_BOARD","CLI body-file 지원 여부 탐색","CLI fallback을 탐색하지 않고 BLOCK"))
     efficiency=(workflow_file.parent/"references"/"dispatch-efficiency.md").read_text(encoding="utf-8")
-    require_terms(efficiency,"dispatch-efficiency reference",("skipped-approved-preservation","change_summary.py --include","review_context.py --include","큰 파일을 임의의 MB threshold로 제외하지 않는다","hermes project --help","CLI body-file capability probing"))
+    require_terms(efficiency,"dispatch-efficiency reference",("skipped-approved-preservation","change_summary.py --include","review_context.py --include","큰 파일을 임의의 MB threshold로 제외하지 않는다","hermes project list","Kanban body 임시 파일","hermes project --help","CLI body-file capability probing"))
     for cap in ("dev-java-guidelines","dev-spring-guidelines","dev-spring-feature","dev-spring-data","dev-spring-test","dev-api-docs"):
         if f'skill_view("{cap}")' not in implement: fail(f"dev-implement-plan must explicitly load {cap} via skill_view")
     require_terms(implement,"dev-implement-plan scoped summary",("scoped change_summary.py","Standard Flow에서 `--include` 없이","--allow-full-scan","tracked와 untracked 모두 Git pathspec","Changed Files"))
