@@ -306,6 +306,10 @@ def main() -> int:
                 env=env,
             )
             run(
+                python_stage(scripts / "ensure_config_security.py", "--repo", repo),
+                env=env,
+            )
+            run(
                 python_stage(scripts / "stack_cache.py", "--repo", repo, "--force"),
                 env=env,
             )
@@ -324,6 +328,10 @@ def main() -> int:
         )
         run(
             python_stage(scripts / "ensure_gitignore.py", "--repo", repo),
+            env=env,
+        )
+        run(
+            python_stage(scripts / "ensure_config_security.py", "--repo", repo),
             env=env,
         )
         run(
