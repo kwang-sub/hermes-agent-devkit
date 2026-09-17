@@ -1,13 +1,13 @@
 ---
 name: dev-implement-plan
 description: 승인된 Kanban 작업을 할당 Workspace에서 최소 구현·구조 품질 점검·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.21.0
+version: 0.22.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, implementation, coder, kanban, workspace, review, fast-flow, capability, java, refactor, structural-quality, performance]
-    related_skills: [dev-fast-flow, dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-docs]
+    tags: [dev, implementation, coder, kanban, workspace, review, fast-flow, capability, java, refactor, structural-quality, performance, infrastructure, runtime, container, env]
+    related_skills: [dev-fast-flow, dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-docs, dev-frontend-feature, dev-infrastructure, dev-data-feature, dev-db-migration]
     requires_tools: [terminal, kanban_show, kanban_request_review, kanban_complete, kanban_block, kanban_heartbeat, skill_view]
 ---
 
@@ -154,13 +154,49 @@ Excluded:
 - 존재가 확인되지 않은 예상 test 파일을 연속 probe하지 않는다.
 - 기존 사용자 변경을 reset/restore/clean/stash하지 않는다.
 
-## Java / Spring capability lazy-load
+## Capability lazy-load
+
+Task body의 `Applicable Skills`와 실제 affected scope를 기준으로 필요한 capability만 로드한다.
+
+### Infrastructure
+
+다음 중 하나면 **첫 production patch 전에 반드시** `skill_view("dev-infrastructure")`를 적용한다.
+
+```text
+Applicable Skills에 dev-infrastructure 존재
+Dockerfile / Compose / containerization 변경
+Application Runtime 또는 Database Runtime 변경
+DB host / port / network / service DNS / volume 변경
+.env / container environment / remote runtime environment 전달 경로 변경
+Supabase Local ↔ Cloud 또는 NATIVE ↔ SUPABASE runtime/platform 변경
+```
+
+Plan에 Infrastructure 영향이 명확한데 `dev-infrastructure`가 누락되어 있으면 해당 capability를 생략하지 않는다. Task scope를 바꾸지 않는 범위에서 routing 누락으로 기록하고 `dev-infrastructure`를 로드한 뒤 기존 승인 Goal/AC 안에서 구현한다. 새로운 architecture/product 결정이 필요하면 임의 확장하지 않고 기존 Flow 규칙에 따라 Block/Escalate한다.
+
+`dev-infrastructure`는 runtime/topology/configuration delivery를 소유하고 companion 구현은 affected area에 맡긴다.
+
+```text
+Spring application.yml|yaml|properties / connection config 변경
+→ skill_view("dev-spring-feature")
+
+Frontend runtime env 변경
+→ skill_view("dev-frontend-feature")
+→ Next.js-specific env/client-server boundary면 dev-nextjs-feature도 적용
+
+DB Vendor 변경
+→ skill_view("dev-data-feature")
+→ skill_view("dev-db-migration")
+```
+
+기존 프로젝트에서 Bootstrap이 하드코딩/추적 Secret을 WARN으로 보고한 사실만으로 설정 migration을 자동 수행하지 않는다. 기존 파일은 preserve-first다. 단 이번 Task가 해당 설정을 **새로 만들거나 실제로 수정해야 하는 범위**라면 `/opt/data/shared/references/application-configuration-security.md`를 적용해 신규/변경 값은 `${ENV_VAR}` / `.env.example` / runtime environment 계약을 우선한다. 실제 Secret 값은 로그, Task comment, sample/example, Git tracked config에 복사하지 않는다.
+
+### Java / Spring
 
 실제 evidence가 필요한 경우에만 로드한다.
 
 - Java 언어/convention → `skill_view("dev-java-guidelines")`
 - 공통 Spring 규칙 → `skill_view("dev-spring-guidelines")`
-- API/Controller/Service/DTO/Validation/Exception → `skill_view("dev-spring-feature")`
+- API/Controller/Service/DTO/Validation/Exception 및 Infrastructure companion Spring 설정 → `skill_view("dev-spring-feature")`
 - JPA/Repository/QueryDSL/Converter/Paging → `skill_view("dev-spring-data")`
 - 테스트 작성/수정 → `skill_view("dev-spring-test")`
 - Spring source 구현 완료 후 **구조 trigger**가 실제로 있을 때만 → `skill_view("dev-spring-refactor")`
@@ -287,6 +323,7 @@ Standard Flow에서 `--include` 없이 `change_summary.py`를 호출하지 않�
 - shared/common behavior 변경
 - legacy/fallback/backward compatibility 변경
 - operational config/persistence 의미 변경
+- Infrastructure runtime/topology/environment delivery 변경
 - 영향 범위 불명확
 
 Review handoff에는 최소 다음을 남긴다.

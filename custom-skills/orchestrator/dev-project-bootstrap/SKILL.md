@@ -1,7 +1,7 @@
 ---
 name: dev-project-bootstrap
 description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, Fast Preflight·기술 스택/Infrastructure cache·Java toolchain·EOL·Git ignore·애플리케이션 환경설정 보안·Kanban/Profile/Context/.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
-version: 0.6.0
+version: 0.6.1
 author: local
 platforms: [linux]
 metadata:
@@ -31,8 +31,8 @@ metadata:
 - 일반 source 변경은 technology cache를 무효화하지 않고 manifest 또는 detector version 변경 때만 재탐지한다.
 - `.gitattributes`와 `.gitignore`의 Hermes 관리 정책을 보장하되 기존 사용자 정책은 임의로 덮어쓰지 않는다.
 - `.env.example`을 환경변수 계약 파일의 기본 관행으로 사용하고 실제 `.env*` 값은 Git에서 분리한다.
-- Spring 공통 `application.yml|yaml|properties`는 Git 추적을 유지하되 credential/환경별 endpoint는 `${ENV_VAR}`로 외부화한다.
-- 이미 Git 추적 중인 local/secret 설정을 자동 untrack하지 않고 Block한다.
+- Spring 공통 `application.yml|yaml|properties`를 모두 지원한다. 신규/변경 구성은 `${ENV_VAR}` 외부화를 우선하되 기존 하드코딩 설정은 자동 변경하지 않는다.
+- 이미 Git 추적 중인 local/secret 설정 또는 하드코딩 runtime 값을 발견해도 값 자체를 출력하지 않고 `WARN` 후 기존 상태를 보존하며 Bootstrap을 계속한다.
 - 이미 유효한 Project/Board/Profile Binding은 재사용한다.
 - Resolver와 Legacy/Source-specific Metadata는 보존한다.
 
@@ -380,7 +380,9 @@ SUPABASE_SECRET_KEY=
 
 ### Spring Boot
 
-공통 `application.yml|yaml|properties`는 Git 추적을 유지한다.
+공통 `application.yml`, `application.yaml`, `application.properties`를 모두 지원하고 Git 추적을 유지한다.
+
+YAML 예:
 
 ```yaml
 spring:
@@ -394,7 +396,17 @@ supabase:
   secret-key: ${SUPABASE_SECRET_KEY}
 ```
 
-Bootstrap은 `${ENV_VAR}` placeholder 이름을 Backend `.env.example` 계약에 반영한다.
+Properties 예:
+
+```properties
+spring.datasource.url=${DB_URL}
+spring.datasource.username=${DB_USERNAME}
+spring.datasource.password=${DB_PASSWORD}
+supabase.url=${SUPABASE_URL}
+supabase.secret-key=${SUPABASE_SECRET_KEY}
+```
+
+Bootstrap은 YAML/Properties 양쪽에서 `${ENV_VAR}` placeholder 이름을 Backend `.env.example` 계약에 반영한다. 기존 하드코딩 값도 두 형식 모두 감지하지만 자동 변환하지 않는다.
 
 중요:
 
@@ -417,7 +429,7 @@ Application Runtime = CONTAINER
 → Spring Environment
 ```
 
-`application-local.*`, `application-secret.*`, `application-private.*` 같은 기존 local 파일을 사용할 수는 있지만 Git ignore 대상이다. 신규 구성은 공통 `application.yml` + environment variable 방식을 우선한다.
+`application-local.*`, `application-secret.*`, `application-private.*` 같은 기존 local 파일을 사용할 수는 있지만 Git ignore 대상이다. 신규 구성은 공통 `application.*` + environment variable 방식을 우선한다.
 
 ### 공개키 / 비밀키
 
@@ -429,20 +441,18 @@ Application Runtime = CONTAINER
 
 ### 기존 Repository 안전 처리
 
-이미 Git에 추적된 `.env.local`, `application-local.*`, private key/keystore 등은 `.gitignore` 추가만으로 보호되지 않는다.
-
-따라서 Bootstrap은:
+기존 Repository는 **Preserve First**다. 이미 Git에 추적된 `.env.local`, `application-local.*`, private key/keystore 또는 Spring 공통 설정의 하드코딩 credential/runtime 값이 있어도 Bootstrap이 기존 파일을 자동 변경하지 않는다.
 
 ```text
-tracked protected file 발견
-→ SECURITY BLOCK
-→ 경로만 보고
-→ git rm --cached 자동 실행 금지
+tracked protected file / hardcoded runtime value 발견
+→ WARN
+→ 실제 값이 아닌 경로/키만 보고
+→ 기존 파일 유지
+→ git rm --cached / placeholder 자동 치환 금지
+→ BOOTSTRAP CONTINUE
 ```
 
-공통 Spring 설정에 DB credential/secret/token/private key 또는 환경별 datasource/Supabase 값이 실제 값으로 하드코딩되어 있어도 placeholder 전환 전까지 Block한다.
-
-기존 `.env.example`은 사용자 계약으로 보고 자동 덮어쓰지 않는다.
+권장되지 않는 보안 상태는 이후 별도 migration/refactor Task에서 개선한다. 기존 `.env.example`은 사용자 계약으로 보고 자동 덮어쓰지 않는다.
 
 ## 11. Block 조건
 
@@ -457,14 +467,14 @@ tracked protected file 발견
 - 충돌하는 `.gitattributes` EOL 정책
 - 손상된 `.gitignore` Hermes marker
 - Hermes local/application secret path ignore 검증 실패
-- protected local/secret 파일이 이미 Git tracked 상태
-- tracked Spring 공통 설정에 credential/환경별 runtime 값 하드코딩
 - Base ref resolve 실패
 - Common Context 없음
 - Metadata identity 충돌
 - Project ID가 다른 Repository를 가리킴
 - 필수 Profile 없음
 - Hermes CLI 실패
+
+`tracked protected config`와 `tracked Spring hardcoded runtime/credential`은 Block 조건이 아니라 기본 `WARN + CONTINUE` 대상이다.
 
 ## 12. 안전 규칙
 
@@ -478,6 +488,7 @@ tracked protected file 발견
 - 기존 `.gitignore` 사용자 규칙 삭제/재정렬
 - `git rm --cached` 자동 실행
 - tracked secret 파일 삭제/untrack 자동화
+- 기존 Spring 설정의 하드코딩 값을 `${ENV_VAR}`로 자동 치환
 - `.env.example`에 실제 credential/token/환경별 key 값을 복사
 - Spring이 `.env`를 직접 자동 로드한다고 가정
 - 전체 Repository 자동 renormalize
@@ -506,9 +517,11 @@ different-Java sibling JVM roots fail closed
 .env/.env.local/Spring private config/private key are ignored
 .env.example/application.yml/public key remain trackable
 .env.example generation copies keys only, never values
-Spring ${ENV_VAR} placeholders populate backend .env.example contract
-tracked protected config fails closed without git rm --cached
-hardcoded Spring credential/runtime values fail closed
+Spring YAML ${ENV_VAR} placeholders populate backend .env.example contract
+Spring Properties ${ENV_VAR} placeholders populate backend .env.example contract
+tracked protected config warns and continues without git rm --cached
+hardcoded Spring YAML credential/runtime values warn and remain unchanged
+hardcoded Spring Properties credential/runtime values warn and remain unchanged
 resolver/custom metadata is preserved
 technology cache creates/reuses/refreshes correctly
 infrastructure desired state creates/reuses correctly

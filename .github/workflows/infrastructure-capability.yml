@@ -8,6 +8,8 @@ on:
       - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/bootstrap.py'
       - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_infrastructure_cache.py'
       - 'custom-skills/orchestrator/dev-tech-dispatch/SKILL.md'
+      - 'custom-skills/orchestrator/dev-breakdown/SKILL.md'
+      - 'custom-skills/coder/dev-implement-plan/SKILL.md'
       - 'scripts/check_infrastructure_capability_contract.py'
       - '.github/workflows/infrastructure-capability.yml'
   push:
@@ -18,7 +20,10 @@ on:
       - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/bootstrap.py'
       - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_infrastructure_cache.py'
       - 'custom-skills/orchestrator/dev-tech-dispatch/SKILL.md'
+      - 'custom-skills/orchestrator/dev-breakdown/SKILL.md'
+      - 'custom-skills/coder/dev-implement-plan/SKILL.md'
       - 'scripts/check_infrastructure_capability_contract.py'
+      - '.github/workflows/infrastructure-capability.yml'
 
 jobs:
   verify:

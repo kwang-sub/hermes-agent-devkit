@@ -38,6 +38,16 @@ class ConfigSecurityTest(unittest.TestCase):
         git(repo, "add", ".")
         git(repo, "commit", "-m", message)
 
+    def spring_backend(self, repo: Path) -> tuple[Path, Path]:
+        backend = repo / "backend"
+        resources = backend / "src" / "main" / "resources"
+        resources.mkdir(parents=True)
+        (backend / "build.gradle.kts").write_text(
+            'plugins { id("org.springframework.boot") version "3.5.0" }\n',
+            encoding="utf-8",
+        )
+        return backend, resources
+
     def test_frontend_example_uses_conventional_name_and_never_copies_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = self.make_repo(Path(tmp))
@@ -65,16 +75,10 @@ class ConfigSecurityTest(unittest.TestCase):
             self.assertNotIn("sb_publishable_real", example)
             self.assertNotIn("sb_secret_real", example)
 
-    def test_spring_example_is_derived_from_application_placeholders(self) -> None:
+    def test_spring_yaml_example_is_derived_from_application_placeholders(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = self.make_repo(Path(tmp))
-            backend = repo / "backend"
-            resources = backend / "src" / "main" / "resources"
-            resources.mkdir(parents=True)
-            (backend / "build.gradle.kts").write_text(
-                'plugins { id("org.springframework.boot") version "3.5.0" }\n',
-                encoding="utf-8",
-            )
+            backend, resources = self.spring_backend(repo)
             (resources / "application.yml").write_text(
                 "spring:\n"
                 "  datasource:\n"
@@ -101,6 +105,33 @@ class ConfigSecurityTest(unittest.TestCase):
                 self.assertIn(key, example)
             self.assertIn("Spring Boot does not load .env by itself", example)
 
+    def test_spring_properties_example_is_derived_from_application_placeholders(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self.make_repo(Path(tmp))
+            backend, resources = self.spring_backend(repo)
+            (resources / "application.properties").write_text(
+                "spring.datasource.url=${DB_URL}\n"
+                "spring.datasource.username=${DB_USERNAME}\n"
+                "spring.datasource.password=${DB_PASSWORD}\n"
+                "supabase.url=${SUPABASE_URL}\n"
+                "supabase.secret-key=${SUPABASE_SECRET_KEY}\n",
+                encoding="utf-8",
+            )
+
+            result = security.ensure_configuration_security(repo)
+            example = (backend / ".env.example").read_text(encoding="utf-8")
+
+            self.assertIn("backend/.env.example", result["created"])
+            for key in (
+                "DB_URL=",
+                "DB_USERNAME=",
+                "DB_PASSWORD=",
+                "SUPABASE_URL=",
+                "SUPABASE_SECRET_KEY=",
+            ):
+                self.assertIn(key, example)
+            self.assertEqual([], result["hardcoded_spring"])
+
     def test_existing_example_is_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = self.make_repo(Path(tmp))
@@ -117,34 +148,42 @@ class ConfigSecurityTest(unittest.TestCase):
             self.assertIn("frontend/.env.example", result["reused"])
             self.assertEqual("CUSTOM_CONTRACT=\n", example.read_text(encoding="utf-8"))
 
-    def test_tracked_local_env_is_blocked_without_untracking(self) -> None:
+    def test_tracked_local_env_warns_and_does_not_untrack(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = self.make_repo(Path(tmp))
             (repo / ".env.local").write_text("DB_PASSWORD=real-secret\n", encoding="utf-8")
             self.commit_all(repo)
 
-            with self.assertRaises(security.ConfigSecurityError) as ctx:
-                security.ensure_configuration_security(repo)
+            result = security.ensure_configuration_security(repo)
 
-            self.assertIn(".env.local", str(ctx.exception))
+            self.assertIn(".env.local", result["tracked_protected"])
+            self.assertIn("tracked-protected:.env.local", result["warnings"])
             self.assertIn(".env.local", security.tracked_paths(repo))
 
-    def test_tracked_spring_local_and_private_key_are_blocked(self) -> None:
+    def test_tracked_spring_local_and_private_key_warn_without_rewriting(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = self.make_repo(Path(tmp))
             resources = repo / "backend" / "src" / "main" / "resources"
             keys = resources / "keys"
             keys.mkdir(parents=True)
-            (resources / "application-local.yml").write_text("password: real\n", encoding="utf-8")
-            (keys / "jwt-private.pem").write_text("PRIVATE FIXTURE\n", encoding="utf-8")
+            local = resources / "application-local.yml"
+            private = keys / "jwt-private.pem"
+            local.write_text("password: real\n", encoding="utf-8")
+            private.write_text("PRIVATE FIXTURE\n", encoding="utf-8")
             self.commit_all(repo)
 
-            with self.assertRaises(security.ConfigSecurityError) as ctx:
-                security.ensure_configuration_security(repo)
+            result = security.ensure_configuration_security(repo)
 
-            message = str(ctx.exception)
-            self.assertIn("application-local.yml", message)
-            self.assertIn("jwt-private.pem", message)
+            self.assertIn(
+                "backend/src/main/resources/application-local.yml",
+                result["tracked_protected"],
+            )
+            self.assertIn(
+                "backend/src/main/resources/keys/jwt-private.pem",
+                result["tracked_protected"],
+            )
+            self.assertEqual("password: real\n", local.read_text(encoding="utf-8"))
+            self.assertEqual("PRIVATE FIXTURE\n", private.read_text(encoding="utf-8"))
 
     def test_public_key_is_not_treated_as_private(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -156,11 +195,10 @@ class ConfigSecurityTest(unittest.TestCase):
 
             self.assertEqual([], security.protected_tracked_paths(repo))
 
-    def test_hardcoded_spring_password_is_blocked_but_placeholder_is_allowed(self) -> None:
+    def test_hardcoded_spring_yaml_warns_but_placeholder_is_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = self.make_repo(Path(tmp))
-            resources = repo / "backend" / "src" / "main" / "resources"
-            resources.mkdir(parents=True)
+            _, resources = self.spring_backend(repo)
             app = resources / "application.yml"
             app.write_text(
                 "spring:\n  datasource:\n    username: ${DB_USERNAME}\n    password: actual-secret\n",
@@ -168,11 +206,11 @@ class ConfigSecurityTest(unittest.TestCase):
             )
             self.commit_all(repo)
 
-            findings = security.hardcoded_spring_config(repo)
-            self.assertEqual(
-                ["backend/src/main/resources/application.yml:spring.datasource.password"],
-                findings,
-            )
+            result = security.ensure_configuration_security(repo)
+            expected = "backend/src/main/resources/application.yml:spring.datasource.password"
+            self.assertEqual([expected], result["hardcoded_spring"])
+            self.assertIn(f"hardcoded-spring:{expected}", result["warnings"])
+            self.assertIn("actual-secret", app.read_text(encoding="utf-8"))
 
             app.write_text(
                 "spring:\n  datasource:\n    username: ${DB_USERNAME}\n    password: ${DB_PASSWORD}\n",
@@ -181,6 +219,35 @@ class ConfigSecurityTest(unittest.TestCase):
             git(repo, "add", str(app.relative_to(repo)))
             git(repo, "commit", "-m", "fix: externalize password")
             self.assertEqual([], security.hardcoded_spring_config(repo))
+
+    def test_hardcoded_spring_properties_warns_and_preserves_existing_values(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self.make_repo(Path(tmp))
+            _, resources = self.spring_backend(repo)
+            app = resources / "application.properties"
+            app.write_text(
+                "spring.datasource.url=jdbc:postgresql://localhost:5432/app\n"
+                "spring.datasource.username=app_user\n"
+                "spring.datasource.password=actual-secret\n"
+                "supabase.url=https://example.supabase.co\n",
+                encoding="utf-8",
+            )
+            self.commit_all(repo)
+
+            result = security.ensure_configuration_security(repo)
+
+            self.assertEqual(
+                [
+                    "backend/src/main/resources/application.properties:spring.datasource.url",
+                    "backend/src/main/resources/application.properties:spring.datasource.username",
+                    "backend/src/main/resources/application.properties:spring.datasource.password",
+                    "backend/src/main/resources/application.properties:supabase.url",
+                ],
+                result["hardcoded_spring"],
+            )
+            self.assertTrue(result["warnings"])
+            self.assertIn("actual-secret", app.read_text(encoding="utf-8"))
+            self.assertIn("jdbc:postgresql://localhost:5432/app", app.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
