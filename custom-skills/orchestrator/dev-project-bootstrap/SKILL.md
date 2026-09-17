@@ -1,7 +1,7 @@
 ---
 name: dev-project-bootstrap
 description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, Fast Preflight·기술 스택/Infrastructure cache·Java toolchain·EOL·Git ignore·애플리케이션 환경설정 보안·Kanban/Profile/Context/.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
-version: 0.6.1
+version: 0.6.2
 author: local
 platforms: [linux]
 metadata:
@@ -33,6 +33,7 @@ metadata:
 - `.env.example`을 환경변수 계약 파일의 기본 관행으로 사용하고 실제 `.env*` 값은 Git에서 분리한다.
 - Spring 공통 `application.yml|yaml|properties`를 모두 지원한다. 신규/변경 구성은 `${ENV_VAR}` 외부화를 우선하되 기존 하드코딩 설정은 자동 변경하지 않는다.
 - 이미 Git 추적 중인 local/secret 설정 또는 하드코딩 runtime 값을 발견해도 값 자체를 출력하지 않고 `WARN` 후 기존 상태를 보존하며 Bootstrap을 계속한다.
+- Infrastructure Observed State는 실제 evidence만 사용하고, evidence 없는 신규 프로젝트의 기본 정책은 Desired State에만 적용한다.
 - 이미 유효한 Project/Board/Profile Binding은 재사용한다.
 - Resolver와 Legacy/Source-specific Metadata는 보존한다.
 
@@ -85,16 +86,23 @@ technology:
     - "dev-nextjs-feature"
 
 infrastructure:
-  version: "1"
+  version: "2"
   defaults:
     application_runtime: "CONTAINER"
     database_runtime: "CONTAINER"
+    database_platform: "NATIVE"
   desired:
     application_runtime: "CONTAINER"
+    application_host: "unknown"
+    application_port: "unknown"
     database_runtime: "CONTAINER"
+    database_host: "unknown"
+    database_port: "unknown"
     database_platform: "NATIVE"
     database_vendor: "postgresql"
 ```
+
+`host`에는 hostname/address만 두며 URL, username, password, token을 넣지 않는다. Bootstrap은 existing v1 Infrastructure Desired State를 덮어쓰지 않고 endpoint를 `unknown`으로 호환 해석한다. 이후 Standard Flow에서 사용자가 Infrastructure 변경을 승인하면 `dev-workspace-dispatch`가 승인된 v2 Desired State를 Primary Repository metadata에 영속화한다.
 
 Repository stack은 Task 분류가 아니다. Standard Flow의 Orchestrator가 사용자 요구사항과 affected area를 함께 보고 Backend / Frontend / Full-stack을 판단한다.
 
@@ -524,7 +532,7 @@ hardcoded Spring YAML credential/runtime values warn and remain unchanged
 hardcoded Spring Properties credential/runtime values warn and remain unchanged
 resolver/custom metadata is preserved
 technology cache creates/reuses/refreshes correctly
-infrastructure desired state creates/reuses correctly
+infrastructure desired state v2 creates/reuses and keeps endpoint values separate from secrets
 source-only change keeps stack fingerprint stable
 manifest change invalidates stack fingerprint
 backend/frontend monorepo detection works
