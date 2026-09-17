@@ -1,7 +1,7 @@
 ---
 name: dev-infrastructure
 description: 애플리케이션과 DB의 실행 위치, DB 플랫폼/벤더, 기존 환경과 목표 환경의 전환을 안전하게 감지·계획하는 Infrastructure canonical entry.
-version: 0.1.0
+version: 0.2.0
 author: local
 platforms: [linux]
 metadata:
@@ -15,6 +15,8 @@ metadata:
 
 애플리케이션 코드 밖의 **실행 위치와 연결 토폴로지**를 다루는 canonical Infrastructure entry다.
 현재 버전은 Kubernetes/Terraform/배포 자동화를 구현하지 않고 다음 범위만 소유한다.
+
+설정/Secret을 다룰 때는 `/opt/data/shared/references/application-configuration-security.md` 계약을 함께 적용한다.
 
 ```text
 Application Runtime
@@ -120,6 +122,30 @@ vendor   = postgresql
 
 `SUPABASE + CONTAINER`를 단일 `postgres` container로 축약하지 않는다. `supabase/config.toml`과 기존 Supabase CLI/local stack을 우선한다.
 
+## Runtime / Configuration 전달 계약
+
+Infrastructure는 runtime topology뿐 아니라 **실제 설정값이 application process까지 전달되는 경로**를 명확히 해야 한다.
+
+```text
+Application LOCAL_HOST + Spring
+→ Dockerfile/Compose 생성 안 함
+→ application.yml에는 ${ENV_VAR} placeholder 유지
+→ IntelliJ Run Configuration 또는 OS Environment가 실제 값 제공
+
+Application LOCAL_HOST + Next.js
+→ .env.local이 로컬 실제 값 제공
+→ .env.example은 변수명 계약만 Git 추적
+
+Application CONTAINER
+→ Dockerfile/Compose 대상
+→ .env 또는 deployment environment를 Compose/container environment로 주입
+→ Secret value는 Compose YAML/Application YAML에 하드코딩하지 않음
+```
+
+Spring Boot 자체가 일반적인 `.env`를 자동 로드한다고 가정하지 않는다. `.env`를 사용하는 Container 경로에서는 Compose `env_file`/`environment` 등 **누가 process environment로 주입하는지**를 명시한다.
+
+Supabase의 `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`는 browser-visible 값이므로 Secret은 아니다. 그러나 실제 project별 값은 환경별 runtime configuration으로 취급해 Git에 하드코딩하지 않고 `.env.local`/deployment environment에서 주입한다. `SUPABASE_SECRET_KEY` / service-role 계열은 server-only secret이다.
+
 ## Docker / Compose 책임
 
 `CONTAINER`가 Desired State일 때만 Docker artifact를 생성/수정한다.
@@ -169,6 +195,8 @@ dev-data-feature / dev-db-migration
 - NATIVE ↔ SUPABASE와 DB Vendor 변경을 별도로 판정한다.
 - Vendor 변경은 반드시 Data Migration Gate를 연다.
 - 전환 완료 후 실제 connection/health evidence를 남긴다.
+- 실제 Secret을 Git tracked config/Dockerfile/Compose에 하드코딩하지 않는다.
+- `.env.example`에는 실제 값이 아니라 환경변수 이름/placeholder만 둔다.
 
 ## Handoff
 
@@ -190,6 +218,11 @@ Transition:
 - Runtime: ...
 - Platform: ...
 - Vendor: ...
+
+Configuration Delivery:
+- Contract: .env.example / application.yml placeholders
+- Local source: IntelliJ | OS_ENV | .env.local | COMPOSE_ENV | REMOTE_RUNTIME_ENV
+- Secret files tracked: NONE
 
 Resources:
 - Added:
