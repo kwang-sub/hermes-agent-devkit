@@ -39,12 +39,39 @@ def test_missing_infrastructure_defaults_to_container() -> None:
         assert status == "created"
         assert desired["application_runtime"] == "CONTAINER"
         assert desired["database_runtime"] == "CONTAINER"
+        assert desired["database_platform"] == "NATIVE"
         assert desired["database_vendor"] == "postgresql"
+        assert desired["application_host"] == "unknown"
+        assert desired["database_host"] == "unknown"
+        assert 'version: "2"' in text
         assert 'application_runtime: "CONTAINER"' in text
         assert 'database_runtime: "CONTAINER"' in text
+        assert 'database_platform: "NATIVE"' in text
+        assert 'database_host: "unknown"' in text
 
 
-def test_existing_infrastructure_is_not_overwritten() -> None:
+def test_observed_endpoint_is_preserved_in_initial_desired_state() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        path = project_yaml(root)
+        resources = root / "backend" / "src" / "main" / "resources"
+        resources.mkdir(parents=True)
+        (resources / "application.properties").write_text(
+            "spring.datasource.url=jdbc:postgresql://db.internal:5544/app\n",
+            encoding="utf-8",
+        )
+
+        status, desired = cache.initialize(root)
+        assert status == "created"
+        assert desired["database_runtime"] == "NETWORK_HOST"
+        assert desired["database_host"] == "db.internal"
+        assert desired["database_port"] == "5544"
+        text = path.read_text(encoding="utf-8")
+        assert 'database_host: "db.internal"' in text
+        assert 'database_port: "5544"' in text
+
+
+def test_existing_v1_infrastructure_is_not_overwritten_and_gets_compatible_endpoint_defaults() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         existing = (
@@ -64,7 +91,11 @@ def test_existing_infrastructure_is_not_overwritten() -> None:
         assert before == after
         assert desired == {
             "application_runtime": "LOCAL_HOST",
+            "application_host": "unknown",
+            "application_port": "unknown",
             "database_runtime": "NETWORK_HOST",
+            "database_host": "unknown",
+            "database_port": "unknown",
             "database_platform": "SUPABASE",
             "database_vendor": "postgresql",
         }
@@ -90,6 +121,7 @@ def test_incomplete_existing_infrastructure_is_rejected() -> None:
 
 if __name__ == "__main__":
     test_missing_infrastructure_defaults_to_container()
-    test_existing_infrastructure_is_not_overwritten()
+    test_observed_endpoint_is_preserved_in_initial_desired_state()
+    test_existing_v1_infrastructure_is_not_overwritten_and_gets_compatible_endpoint_defaults()
     test_incomplete_existing_infrastructure_is_rejected()
     print("PASS")
