@@ -1,0 +1,42 @@
+name: infrastructure-capability
+
+on:
+  pull_request:
+    paths:
+      - 'custom-skills/shared/dev-infrastructure/**'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/infrastructure_cache.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/bootstrap.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_infrastructure_cache.py'
+      - 'custom-skills/orchestrator/dev-tech-dispatch/SKILL.md'
+      - 'scripts/check_infrastructure_capability_contract.py'
+      - '.github/workflows/infrastructure-capability.yml'
+  push:
+    branches: [dev]
+    paths:
+      - 'custom-skills/shared/dev-infrastructure/**'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/infrastructure_cache.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/bootstrap.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_infrastructure_cache.py'
+      - 'custom-skills/orchestrator/dev-tech-dispatch/SKILL.md'
+      - 'scripts/check_infrastructure_capability_contract.py'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Infrastructure capability contract
+        run: python3 scripts/check_infrastructure_capability_contract.py
+      - name: Infrastructure detection tests
+        run: python3 custom-skills/shared/dev-infrastructure/tests/test_detect_infrastructure.py
+      - name: Infrastructure transition tests
+        run: python3 custom-skills/shared/dev-infrastructure/tests/test_plan_transition.py
+      - name: Infrastructure bootstrap cache tests
+        run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_infrastructure_cache.py
+      - name: Bootstrap launcher regression
+        run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_bootstrap_launcher.py
+      - name: Existing tech-dispatch regression
+        run: python3 custom-skills/orchestrator/dev-tech-dispatch/tests/test_detect_capabilities.py
