@@ -32,6 +32,8 @@ def normalize(state: dict[str, Any]) -> dict[str, str]:
         raise ValueError(f"invalid database runtime: {db}")
     if platform not in PLATFORMS:
         raise ValueError(f"invalid database platform: {platform}")
+    if platform == "SUPABASE":
+        vendor = "postgresql"
     return {
         "application_runtime": app,
         "database_runtime": db,
@@ -79,9 +81,6 @@ def plan(observed: dict[str, Any], desired: dict[str, Any]) -> dict[str, Any]:
         preserved.append("database-persistent-volume")
     if before["application_runtime"] == "CONTAINER" and after["application_runtime"] != "CONTAINER":
         detached.append("application-container-service")
-
-    if after["database_platform"] == "SUPABASE":
-        after["database_vendor"] = "postgresql"
 
     return {
         "transition_class": transition_class,
