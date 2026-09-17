@@ -1,13 +1,13 @@
 ---
 name: dev-breakdown
 description: managed 프로젝트의 실제 코드·디자인 Reference·데이터 근거와 기존 project pattern으로 한국어 Implementation Plan을 생성하며 구현하지 않는 orchestrator 전용 skill.
-version: 0.13.0
+version: 0.14.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, planning, analysis, breakdown, orchestrator, pattern, java, kotlin, frontend, design-reference, image, figma, data, dbml, api, spec]
-    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-tech-dispatch, dev-skill-preflight, dev-workspace-dispatch, dev-workflow-orchestrate, dev-java-guidelines, dev-kotlin-guidelines, dev-frontend-feature, dev-design-reference, dev-data-feature, dev-api-spec]
+    tags: [dev, planning, analysis, breakdown, orchestrator, pattern, java, kotlin, frontend, design-reference, image, figma, data, dbml, api, spec, infrastructure, runtime, container, env]
+    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-tech-dispatch, dev-skill-preflight, dev-workspace-dispatch, dev-workflow-orchestrate, dev-java-guidelines, dev-kotlin-guidelines, dev-frontend-feature, dev-design-reference, dev-data-feature, dev-api-spec, dev-infrastructure]
     requires_tools: [terminal, skill_view]
 ---
 
@@ -27,14 +27,15 @@ metadata:
 8. Java 프로젝트의 Java 변경은 `dev-java-guidelines`, **Kotlin 프로젝트의 Kotlin 변경**은 `dev-kotlin-guidelines`, Spring 변경은 기존 `dev-spring-*` capability를 Applicable Skills에 지정한다. Java + Kotlin mixed project에서는 실제 affected source 언어에 따라 둘을 함께 또는 각각 적용한다.
 9. Frontend Task는 `dev-frontend-feature`를 canonical Applicable Skill로 지정하고 하위 Skill은 `Frontend Capability Hints`로만 전달한다. IMAGE/Figma Reference가 있으면 `dev-design-reference`를 hint에 포함한다.
 10. Data 모델/schema/SQL/migration/performance Task는 `dev-data-feature`를 canonical Applicable Skill로 지정하고 하위 Skill은 `Data Capability Hints`로 전달한다. 승인된 기존 schema의 단순 JPA 구현은 기존 `dev-spring-data`만 사용할 수 있다.
-11. Backend API와 Frontend가 함께 바뀌는 Task는 Frontend Capability Hints에 `dev-api-contract`를 포함한다.
-12. API endpoint 신규/변경/문서화/감사 작업은 `dev-api-spec`을 적용하고 API Spec Mode/Gate/Status/Path/Source를 계획에 명시한다.
-13. Frontend 디자인 입력은 `REFERENCE_DRIVEN | CODE_DRIVEN`으로 일반화하고 `IMAGE | FIGMA | EXISTING_CODE` source를 구분한다.
-14. data model/schema 의미 변경이면 아래 Data Model 계약을 계획에 보존한다.
-15. Storybook/Playwright는 기존 project evidence가 있을 때만 계획에 활용한다. 화면 구현만을 이유로 자동 dependency 추가를 계획하지 않는다.
-16. `Applicable Skills`에 추정 이름을 만들지 않는다. runtime pin 가능 여부는 dispatch 직전 `dev-skill-preflight`가 검증한다.
-17. testable Acceptance Criteria와 risk-based Test Plan, Dependencies, Risks, Open Questions를 작성한다.
-18. project/repo·scope·pattern·AC·tasks·test·필요한 design/API/data model approval이 확립될 때만 `READY`, 아니면 `BLOCKED`다.
+11. Docker/Compose, Application/DB runtime·host·network, 환경변수 전달 경로, Supabase runtime/platform 등 **실행 위치와 연결 토폴로지**가 바뀌는 Task는 `dev-infrastructure`를 canonical Applicable Skill로 지정한다. Spring/Frontend/Data 변경이 함께 필요하면 해당 capability를 companion으로 함께 지정한다.
+12. Backend API와 Frontend가 함께 바뀌는 Task는 Frontend Capability Hints에 `dev-api-contract`를 포함한다.
+13. API endpoint 신규/변경/문서화/감사 작업은 `dev-api-spec`을 적용하고 API Spec Mode/Gate/Status/Path/Source를 계획에 명시한다.
+14. Frontend 디자인 입력은 `REFERENCE_DRIVEN | CODE_DRIVEN`으로 일반화하고 `IMAGE | FIGMA | EXISTING_CODE` source를 구분한다.
+15. data model/schema 의미 변경이면 아래 Data Model 계약을 계획에 보존한다.
+16. Storybook/Playwright는 기존 project evidence가 있을 때만 계획에 활용한다. 화면 구현만을 이유로 자동 dependency 추가를 계획하지 않는다.
+17. `Applicable Skills`에 추정 이름을 만들지 않는다. runtime pin 가능 여부는 dispatch 직전 `dev-skill-preflight`가 검증한다.
+18. testable Acceptance Criteria와 risk-based Test Plan, Dependencies, Risks, Open Questions를 작성한다.
+19. project/repo·scope·pattern·AC·tasks·test·필요한 design/API/data model approval이 확립될 때만 `READY`, 아니면 `BLOCKED`다.
 
 ## API Spec 계약
 
@@ -123,6 +124,64 @@ docs/data/schema.dbml
 ```
 
 이다. DBML Canvas는 IntelliJ Human Review View로 사용할 수 있지만 Plugin 설치를 Flow 전제조건으로 만들지 않는다.
+
+## Infrastructure Capability mapping
+
+다음 변화가 실제 Task scope에 있으면 `Infrastructure Impact: YES`다.
+
+```text
+Dockerfile / Compose / containerization
+Application Runtime: LOCAL_HOST | NETWORK_HOST | CONTAINER 전환
+Database Runtime: LOCAL_HOST | NETWORK_HOST | CONTAINER 전환
+DB host / port / network / service DNS / volume 변경
+.env / container environment / remote runtime environment 전달 경로 변경
+Supabase Local ↔ Cloud 또는 NATIVE ↔ SUPABASE platform/runtime 변경
+```
+
+단순 Spring business code, 일반 frontend UI, DB schema/query만 바뀌고 위 실행 토폴로지 변화가 없으면 Infrastructure로 과도하게 승격하지 않는다.
+
+Infrastructure Task는 계획에 다음을 남긴다.
+
+```text
+Infrastructure Impact: YES
+Applicable Skills:
+- dev-infrastructure: runtime/topology/configuration canonical entry
+
+Observed State:
+- Application Runtime: ...
+- Database Runtime: ...
+- Database Platform: ...
+- Database Vendor: ...
+
+Desired State:
+- Application Runtime: ...
+- Database Runtime: ...
+- Database Platform: ...
+- Database Vendor: ...
+
+Configuration Delivery:
+- Spring LOCAL_HOST: IntelliJ | OS_ENV
+- Next.js LOCAL_HOST: .env.local
+- CONTAINER: COMPOSE_ENV | container environment
+- NETWORK_HOST: REMOTE_RUNTIME_ENV
+```
+
+Companion capability는 실제 affected area에만 추가한다.
+
+```text
+Spring application.yml|yaml|properties 또는 Spring connection 설정 변경
+→ dev-spring-feature
+
+Frontend .env / Next.js runtime env 변경
+→ dev-frontend-feature
+→ Next.js-specific 변경이면 dev-nextjs-feature hint
+
+DB Vendor 변경
+→ dev-data-feature
+→ dev-db-migration
+```
+
+기존 Repository의 하드코딩 설정은 Bootstrap security warning만으로 migration scope에 자동 포함하지 않는다. 사용자가 설정 외부화를 요구하거나 이번 Task에서 해당 설정을 새로 만들거나 변경해야 할 때만 `${ENV_VAR}` / `.env.example` 계약을 Implementation Task에 포함한다.
 
 ## Kotlin 계획 규칙
 
@@ -230,6 +289,6 @@ DBML/schema 자체를 설계하지 않는 순수 JPA 구현까지 `dev-data-feat
 
 ## 필수 출력
 
-Task Identity; Project/working tree; Goal/Type/Requirement; Assumptions/Constraints/Out of Scope; **Project Pattern Summary**; Frontend Mode/Design Source/Status/Fidelity/Reference/Screen Spec(해당 시); **API Spec Mode/Gate/Status/Path/Source(해당 시)**; **Data Design Mode/Gate/Status/Task Class/Vendor/DBML Path(해당 시)**; Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Data Capability Hints; Observed/Inferred/Unknown(해당 시); Storybook/Visual Verification Plan(해당 시); Acceptance Criteria; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
+Task Identity; Project/working tree; Goal/Type/Requirement; Assumptions/Constraints/Out of Scope; **Project Pattern Summary**; Frontend Mode/Design Source/Status/Fidelity/Reference/Screen Spec(해당 시); **API Spec Mode/Gate/Status/Path/Source(해당 시)**; **Data Design Mode/Gate/Status/Task Class/Vendor/DBML Path(해당 시)**; **Infrastructure Impact/Observed State/Desired State/Configuration Delivery(해당 시)**; Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Data Capability Hints; Observed/Inferred/Unknown(해당 시); Storybook/Visual Verification Plan(해당 시); Acceptance Criteria; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
 
 유형별 상세 체크리스트와 출력 템플릿은 `references/planning-details.md`를 필요할 때만 읽는다.
