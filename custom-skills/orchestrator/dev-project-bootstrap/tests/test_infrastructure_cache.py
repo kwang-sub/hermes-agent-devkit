@@ -39,9 +39,32 @@ def test_missing_infrastructure_defaults_to_container() -> None:
         assert status == "created"
         assert desired["application_runtime"] == "CONTAINER"
         assert desired["database_runtime"] == "CONTAINER"
+        assert desired["database_platform"] == "NATIVE"
         assert desired["database_vendor"] == "postgresql"
         assert 'application_runtime: "CONTAINER"' in text
         assert 'database_runtime: "CONTAINER"' in text
+
+
+def test_observed_database_endpoint_is_preserved_in_initial_desired_state() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        path = project_yaml(root)
+        resources = root / "src" / "main" / "resources"
+        resources.mkdir(parents=True)
+        (resources / "application.properties").write_text(
+            "spring.datasource.url=jdbc:postgresql://db.internal:5544/app\n",
+            encoding="utf-8",
+        )
+
+        status, desired = cache.initialize(root)
+        text = path.read_text(encoding="utf-8")
+
+        assert status == "created"
+        assert desired["database_runtime"] == "NETWORK_HOST"
+        assert desired["database_host"] == "db.internal"
+        assert desired["database_port"] == "5544"
+        assert 'database_host: "db.internal"' in text
+        assert 'database_port: "5544"' in text
 
 
 def test_existing_infrastructure_is_not_overwritten() -> None:
@@ -55,6 +78,8 @@ def test_existing_infrastructure_is_not_overwritten() -> None:
             "    database_runtime: \"NETWORK_HOST\"\n"
             "    database_platform: \"SUPABASE\"\n"
             "    database_vendor: \"postgresql\"\n"
+            "    database_host: \"db.example.supabase.co\"\n"
+            "    database_port: \"5432\"\n"
         )
         path = project_yaml(root, existing)
         before = path.read_text(encoding="utf-8")
@@ -67,6 +92,8 @@ def test_existing_infrastructure_is_not_overwritten() -> None:
             "database_runtime": "NETWORK_HOST",
             "database_platform": "SUPABASE",
             "database_vendor": "postgresql",
+            "database_host": "db.example.supabase.co",
+            "database_port": "5432",
         }
 
 
@@ -90,6 +117,7 @@ def test_incomplete_existing_infrastructure_is_rejected() -> None:
 
 if __name__ == "__main__":
     test_missing_infrastructure_defaults_to_container()
+    test_observed_database_endpoint_is_preserved_in_initial_desired_state()
     test_existing_infrastructure_is_not_overwritten()
     test_incomplete_existing_infrastructure_is_rejected()
     print("PASS")
