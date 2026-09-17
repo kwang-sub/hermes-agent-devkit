@@ -3,6 +3,7 @@ name: bootstrap-config-security
 on:
   pull_request:
     paths:
+      - 'custom-skills/orchestrator/dev-project-bootstrap/SKILL.md'
       - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/ensure_gitignore.py'
       - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/ensure_config_security.py'
       - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/bootstrap.py'
@@ -15,6 +16,7 @@ on:
   push:
     branches: [dev]
     paths:
+      - 'custom-skills/orchestrator/dev-project-bootstrap/SKILL.md'
       - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/ensure_gitignore.py'
       - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/ensure_config_security.py'
       - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/bootstrap.py'
