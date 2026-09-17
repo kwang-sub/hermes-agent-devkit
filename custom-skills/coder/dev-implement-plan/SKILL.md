@@ -1,19 +1,19 @@
 ---
 name: dev-implement-plan
-description: 승인된 Kanban 작업을 할당 Workspace에서 최소 구현·구조 품질 점검·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.22.0
+description: 승인된 Kanban 단일 Work Unit을 할당 Workspace에서 최소 구현·구조 품질 점검·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
+version: 0.23.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, implementation, coder, kanban, workspace, review, fast-flow, capability, java, refactor, structural-quality, performance, infrastructure, runtime, container, env]
-    related_skills: [dev-fast-flow, dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-docs, dev-frontend-feature, dev-infrastructure, dev-data-feature, dev-db-migration]
+    tags: [dev, implementation, coder, kanban, workspace, review, fast-flow, work-unit, capability, java, refactor, structural-quality, performance, infrastructure, runtime, container, env]
+    related_skills: [dev-fast-flow, dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-docs, dev-frontend-feature, dev-infrastructure, dev-data-feature, dev-data-modeling, dev-db-migration]
     requires_tools: [terminal, kanban_show, kanban_request_review, kanban_complete, kanban_block, kanban_heartbeat, skill_view]
 ---
 
 # dev-implement-plan
 
-Coder worker의 compact 실행 계약이다. 상세 구현/검증/risk 형식이 필요할 때만 `references/implementation-details.md`를 읽는다.
+Coder worker의 compact 실행 계약이다. 상세 구현/검증/risk 형식이 필요할 때만 `references/implementation-details.md`를 읽는다. Standard Flow에서는 `/opt/data/shared/references/standard-work-unit-rules.md`를 함께 적용한다.
 
 ## 실행 순서 — Worker Context Gate → Workspace Verify
 
@@ -26,8 +26,9 @@ kanban_show
 → WORKER CONTEXT valid
 → verify_workspace.py 단독 1회
 → STATUS=valid
+→ Standard Flow면 Work Unit Boundary Gate
 → 필요한 target source/test만 탐색
-→ 구현
+→ 현재 Work Unit만 구현
 → targeted verification
 → IMPLEMENTATION_STABLE
 → final regression gate (필요한 경우 full test 1회)
@@ -60,11 +61,9 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/verify_worker_contex
   --expected-profile coder
 ```
 
-`WORKER_CONTEXT_STATUS=valid`이 아니면 구현/검증을 시작하지 않는다. 수동 `hermes --resume` 또는 직접 chat에서 Kanban env를 수동 주입해 Gate를 우회하지 않는다.
+`WORKER_CONTEXT_STATUS=valid`이 아니면 구현/검증을 시작하지 않는다.
 
 Worker Context Gate가 성공한 뒤 `verify_workspace.py`가 **첫 Git/workspace terminal command**다. 그 전에 workspace를 훑는 terminal probe는 실행하지 않는다.
-
-Workspace 검증 전에 다음 명령 또는 동등한 inline Python/subprocess 조합을 실행하지 않는다.
 
 ```text
 git status
@@ -80,8 +79,6 @@ Task body의 Workspace / Expected Branch / Base SHA는 Orchestrator가 이미 �
 
 ## Canonical Workspace Verification
 
-Workspace 검증은 아래 **독립 terminal command로 정확히 1회** 실행한다. 다른 명령을 `+`, `&&`, `;`, background process 또는 batch 형태로 붙이지 않는다.
-
 ```bash
 python3 /opt/custom-skills/coder/dev-implement-plan/scripts/verify_workspace.py \
   --task-key "<Task Key>" \
@@ -91,9 +88,7 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/verify_workspace.py 
   --base-sha "<Base SHA>"
 ```
 
-`verify_workspace.py`는 **Git/Workspace 전용 검증기**다. Kanban Task ownership 검증은 앞 단계 Worker Context Gate가 담당한다. 따라서 Codex native shell에서 `HERMES_KANBAN_TASK`가 보이지 않아도 이 helper는 정상 동작해야 한다.
-
-`STATUS=valid`이면 helper가 확인한 workspace/branch/base를 신뢰한다. 이를 재확인하기 위한 `git status`, `git branch`, `git rev-parse` probe를 실행하지 않는다. helper가 non-zero로 실패했을 때만 reported error를 해석하기 위한 최소 probe를 허용하며, 실패 전에 사전 probe로 우회하지 않는다.
+`STATUS=valid`이면 helper가 확인한 workspace/branch/base를 신뢰한다. 이를 재확인하기 위한 `git status`, `git branch`, `git rev-parse` probe를 실행하지 않는다.
 
 특히 Windows bind mount에서 raw `git status`는 수천 개 EOL-only 파일 때문에 매우 비쌀 수 있다. raw modified-file 개수를 baseline으로 재정의하거나 작업 중단 근거로 사용하지 않는다.
 
@@ -108,6 +103,83 @@ Workspace change scan mode: skipped-approved-preservation
 
 이 경우 Coder는 exact pre-existing file list/count를 복구하려고 repository-wide `git status`, `git diff`, `git ls-files --others`, EOL 분류를 다시 실행하지 않는다. 기존 변경 전체를 baseline으로 보존하고 자신의 실제 변경 path만 별도로 추적한다.
 
+## Standard Work Unit Boundary Gate
+
+Standard Flow Task는 구현 전에 다음 Task body 계약을 반드시 가진다.
+
+```text
+Work Unit Class: DESIGN | IMPLEMENTATION | MIGRATION | REFACTOR | AUDIT
+Work Unit Boundary: SINGLE_UNIT | SPLIT_REQUIRED
+Current Deliverable: ...
+Follow-up Required: YES | NO
+Follow-up Work Unit: ... | NONE
+Follow-up Input: ... | NONE
+Excluded Follow-up Scope: ... | NONE
+```
+
+누락되면 production patch를 시작하지 않고 `CAPABILITY`/contract blocker로 `kanban_block`한다.
+
+`Work Unit Boundary: SPLIT_REQUIRED`는 **현재 Task가 첫 Work Unit만 실행한다**는 의미다. Follow-up metadata를 현재 구현 범위로 승격하지 않는다.
+
+### DESIGN
+
+```text
+허용:
+- 승인된 설계 artifact materialization
+- 문서/DBML/API spec/ADR 등 현재 deliverable에 필요한 파일
+- artifact 자체 검증
+
+금지:
+- Excluded Follow-up Scope의 application/runtime/schema/data mutation
+```
+
+Data logical DESIGN이면:
+
+```text
+skill_view("dev-data-feature")
+skill_view("dev-data-modeling")
+→ approved logical DBML materialize
+→ dbml_guard
+→ STOP at DESIGN boundary
+```
+
+같은 Task에서 `dev-db-migration`을 사용해 Flyway/Liquibase/DDL/JPA physical mapping을 만들지 않는다.
+
+### IMPLEMENTATION
+
+승인된 requirement/design/contract를 application/runtime behavior로 구현한다. 같은 deliverable을 완성하는 Backend/Frontend/Infrastructure companion은 함께 사용할 수 있다. 여러 capability를 사용한다는 이유만으로 scope를 임의 축소하거나 Follow-up Task를 만들지 않는다.
+
+### MIGRATION
+
+```text
+필수:
+- approved/canonical logical model 또는 명시적 migration intent
+- Work Unit Class: MIGRATION
+```
+
+필요하면 `skill_view("dev-data-feature")`와 `skill_view("dev-db-migration")`을 적용한다. migration 중 logical responsibility/cardinality/ownership redesign이 필요하면 현재 scope를 확장하지 않고 BLOCK하고 새 DESIGN Work Unit을 요구한다.
+
+### REFACTOR
+
+behavior-preserving structural change만 수행한다. API/schema/behavior 의미 변경을 refactor에 섞지 않는다.
+
+### AUDIT
+
+기본 read-only다. 승인된 audit report/document path가 있으면 문서 산출물은 쓸 수 있지만 application/test/config source를 수정하지 않는다. finding을 고치는 작업은 별도 IMPLEMENTATION/REFACTOR Work Unit이다.
+
+### Boundary escalation
+
+실제 source evidence에서 `Excluded Follow-up Scope`가 반드시 필요하다고 드러나면 임의 구현하지 않는다.
+
+```text
+WORK_UNIT_BOUNDARY_EXCEEDED
+- Current Work Unit: ...
+- Required Follow-up Work Unit: ...
+- Evidence: ...
+```
+
+를 기록하고 `kanban_block`한다. Requirement Delta를 같은 Task에 주입해 Work Unit Class를 바꾸는 것도 금지한다.
+
 ## Flow: FAST
 
 Fast Flow는 Task의 `Pre-existing effective changes at dispatch`를 기존 사용자 변경 baseline으로 사용한다. raw `git status`의 EOL-only noise를 사용자 변경으로 승격하지 않는다.
@@ -121,7 +193,7 @@ Fast Flow는 Task의 `Pre-existing effective changes at dispatch`를 기존 사�
 
 ## Source / Scope 계약
 
-Task의 `Project Pattern Summary`, `Pattern References`, `Goal`, `Acceptance Criteria`, `Implementation Tasks`, 기존 변경 baseline을 재사용한다. 실제 source와 충돌하지 않는 한 프로젝트 전체를 다시 분석하지 않는다.
+Task의 `Project Pattern Summary`, `Pattern References`, `Goal`, `Acceptance Criteria`, `Implementation Tasks`, Work Unit Contract, 기존 변경 baseline을 재사용한다. 실제 source와 충돌하지 않는 한 프로젝트 전체를 다시 분석하지 않는다.
 
 첫 production patch 전에 다음을 만족한다.
 
@@ -143,8 +215,10 @@ Tests:
 Docs:
 - <files if required>
 Excluded:
-- <directly checked but unchanged>
+- <Work Unit의 Excluded Follow-up Scope + directly checked unchanged>
 ```
+
+DESIGN/AUDIT Work Unit에서는 Production scope가 비어 있을 수 있다.
 
 탐색 규칙:
 - Task/Pattern References에 정확한 path가 있으면 바로 사용한다.
@@ -156,11 +230,11 @@ Excluded:
 
 ## Capability lazy-load
 
-Task body의 `Applicable Skills`와 실제 affected scope를 기준으로 필요한 capability만 로드한다.
+Task body의 `Applicable Skills`와 실제 **현재 Work Unit** affected scope를 기준으로 필요한 capability만 로드한다. Follow-up Work Unit 전용 capability는 현재 Task에서 로드/실행하지 않는다.
 
 ### Infrastructure
 
-다음 중 하나면 **첫 production patch 전에 반드시** `skill_view("dev-infrastructure")`를 적용한다.
+다음 중 하나면 첫 production patch 전에 반드시 `skill_view("dev-infrastructure")`를 적용한다.
 
 ```text
 Applicable Skills에 dev-infrastructure 존재
@@ -171,9 +245,7 @@ DB host / port / network / service DNS / volume 변경
 Supabase Local ↔ Cloud 또는 NATIVE ↔ SUPABASE runtime/platform 변경
 ```
 
-Plan에 Infrastructure 영향이 명확한데 `dev-infrastructure`가 누락되어 있으면 해당 capability를 생략하지 않는다. Task scope를 바꾸지 않는 범위에서 routing 누락으로 기록하고 `dev-infrastructure`를 로드한 뒤 기존 승인 Goal/AC 안에서 구현한다. 새로운 architecture/product 결정이 필요하면 임의 확장하지 않고 기존 Flow 규칙에 따라 Block/Escalate한다.
-
-`dev-infrastructure`는 runtime/topology/configuration delivery를 소유하고 companion 구현은 affected area에 맡긴다.
+Plan에 Infrastructure 영향이 명확한데 `dev-infrastructure`가 누락되어 있으면 routing 누락으로 기록하고 기존 승인 Goal/AC와 Work Unit 안에서만 적용한다. 새로운 architecture/product/Work Unit 결정이 필요하면 Block/Escalate한다.
 
 ```text
 Spring application.yml|yaml|properties / connection config 변경
@@ -181,14 +253,13 @@ Spring application.yml|yaml|properties / connection config 변경
 
 Frontend runtime env 변경
 → skill_view("dev-frontend-feature")
-→ Next.js-specific env/client-server boundary면 dev-nextjs-feature도 적용
 
-DB Vendor 변경
+DB Vendor 변경이 현재 MIGRATION Work Unit 범위
 → skill_view("dev-data-feature")
 → skill_view("dev-db-migration")
 ```
 
-기존 프로젝트에서 Bootstrap이 하드코딩/추적 Secret을 WARN으로 보고한 사실만으로 설정 migration을 자동 수행하지 않는다. 기존 파일은 preserve-first다. 단 이번 Task가 해당 설정을 **새로 만들거나 실제로 수정해야 하는 범위**라면 `/opt/data/shared/references/application-configuration-security.md`를 적용해 신규/변경 값은 `${ENV_VAR}` / `.env.example` / runtime environment 계약을 우선한다. 실제 Secret 값은 로그, Task comment, sample/example, Git tracked config에 복사하지 않는다.
+기존 프로젝트의 하드코딩/추적 Secret WARN만으로 설정 migration을 자동 수행하지 않는다. 이번 Task가 해당 설정을 새로 만들거나 실제 수정해야 할 때만 configuration security 계약을 적용한다.
 
 ### Java / Spring
 
@@ -199,10 +270,8 @@ DB Vendor 변경
 - API/Controller/Service/DTO/Validation/Exception 및 Infrastructure companion Spring 설정 → `skill_view("dev-spring-feature")`
 - JPA/Repository/QueryDSL/Converter/Paging → `skill_view("dev-spring-data")`
 - 테스트 작성/수정 → `skill_view("dev-spring-test")`
-- Spring source 구현 완료 후 **구조 trigger**가 실제로 있을 때만 → `skill_view("dev-spring-refactor")`
+- Spring source 구현 완료 후 구조 trigger가 실제로 있을 때만 → `skill_view("dev-spring-refactor")`
 - OpenAPI/Swagger/Postman → `skill_view("dev-api-docs")`
-
-Java 프로젝트에서는 `dev-java-guidelines`가 Java version/build/Lombok/type placement/JavaDoc만 담당하고, 공통 품질 규칙은 `coding-rules.md`, Spring 규칙은 Spring capability에 맡긴다.
 
 구조 점검 evidence는 `Structural quality check: PASS | REFACTORED | ESCALATED`로 남긴다.
 
@@ -210,7 +279,7 @@ Java 프로젝트에서는 `dev-java-guidelines`가 Java version/build/Lombok/ty
 
 Java/Gradle/Maven 프로젝트는 Bootstrap의 `.hermes/toolchain.env`를 사용한다. JDK/Gradle/Maven을 task-time에 설치하지 않는다.
 
-Gradle compile/targeted test의 canonical 실행은 **재사용 계층이 포함된** `scripts/gradle_verification_cached.py`다. 기본 verification timeout은 600초이며 600초를 초과할 수 없다.
+Gradle compile/targeted test의 canonical 실행은 `scripts/gradle_verification_cached.py`다. 기본 verification timeout은 600초이며 600초를 초과할 수 없다.
 
 ```bash
 python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification_cached.py \
@@ -218,28 +287,20 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification_
   --mode TARGETED_TEST \
   --test "<fully-qualified-test-selector>" \
   --scope-path "<covered-production-or-test-path>" \
-  --scope-path "<covered-production-or-test-path>" \
   --evidence-root "/opt/data/gradle/verification-evidence/<Task ID>"
 ```
-
-`--scope-path`에는 이번 Gradle 검증이 실제로 cover하는 executable production/test 파일을 모두 넣는다. helper는 이 파일들과 build/toolchain 핵심 파일의 content fingerprint를 저장한다. `--evidence-root`는 Task ID별 경로를 명시해 Codex shell에서 ownership env가 제거되어도 서로 다른 Task가 PASS evidence를 공유하지 않게 한다. Task ID는 식별값으로만 사용하며 Kanban ownership/claim 권한을 부여하지 않는다.
 
 규칙:
 - 여러 targeted test는 가능한 한 한 invocation으로 합친다.
 - 구현 중에는 targeted test 또는 필요한 integration/module test만 사용한다.
-- **전체 `test`는 탐색/중간 확인 용도로 실행하지 않는다. `IMPLEMENTATION_STABLE` 이후 final regression gate에서만 실행한다.**
-- 전체 test가 필요한 작업은 canonical cached helper의 `--mode COMPILE --task test`를 **최종 회귀 게이트 용도로만** 사용한다.
-- 한 stable verification cycle에서 full test는 기본 **1회**다. 동일 실패를 확인하기 위해 같은 전체 test를 반복하지 않는다.
+- 전체 `test`는 `IMPLEMENTATION_STABLE` 이후 final regression gate에서만 실행한다.
+- 한 stable verification cycle에서 full test는 기본 1회다.
 - 실제 BUILD_FAILURE는 source/test 수정 후 최소 재검증할 수 있다.
-- PASS evidence의 `VERIFICATION_SCOPE_SHA256`와 request가 동일하면 `VERIFICATION_EVIDENCE=REUSED`, `PRIMARY_REUSED=true`로 재사용하며 같은 Gradle command를 다시 실행하지 않는다.
-- **PASS 이후 `--scope-path`에 포함된 production/test 또는 자동 포함 build/toolchain 파일이 하나라도 바뀌면 기존 evidence는 즉시 무효이며 fresh Gradle verification을 반드시 다시 실행한다.**
-- 검증 실행 도중 scope가 바뀌면 `SOURCE_CHANGED_DURING_VERIFICATION`으로 BLOCK하고 fresh verification을 요구한다.
-- `GRADLE_STATUS=BLOCKED`이면 direct Gradle 반복이나 우회 wrapper를 만들지 않는다. Standard Flow에서도 BLOCKED verification을 Reviewer가 대신 재실행하도록 넘기지 않고 `kanban_block`한다.
-- Maven 등 비-Gradle launcher 경로만 `hermes-java`를 사용한다.
+- PASS evidence의 scope/request fingerprint가 동일하면 재사용하며 같은 Gradle command를 다시 실행하지 않는다.
+- PASS 이후 covered production/test/build/toolchain 파일이 바뀌면 fresh verification을 반드시 다시 실행한다.
+- `GRADLE_STATUS=BLOCKED`이면 direct Gradle 반복이나 우회 wrapper를 만들지 않고 `kanban_block`한다.
 
 ### Gradle PASS Evidence 재사용 계약
-
-재사용 가능한 PASS는 다음 네 값이 모두 일치해야 한다.
 
 ```text
 Verification Request SHA256: <VERIFICATION_REQUEST_SHA256>
@@ -248,11 +309,7 @@ Verification Evidence: EXECUTED | REUSED
 Primary Reused: true | false
 ```
 
-동일 Task/Workspace에서 Coder 재개 또는 Reviewer가 검증할 때 scope fingerprint가 동일하면 PASS를 재사용한다. source/test/build/toolchain 변경으로 fingerprint가 달라지면 재사용 금지이며 fresh Gradle verification이 필수다.
-
-### Full Test 실패 재사용 정책
-
-Full test가 실패하면 즉시 반복 실행하지 않고 실패를 먼저 분류한다.
+## Full Test 실패 재사용 정책
 
 ```text
 FULL_TEST_FAILURE_CLASSIFICATION
@@ -261,43 +318,33 @@ FULL_TEST_FAILURE_CLASSIFICATION
 - UNCERTAIN
 ```
 
-`OUT_OF_SCOPE_UNCHANGED`는 다음 evidence가 모두 있을 때만 사용할 수 있다.
+`OUT_OF_SCOPE_UNCHANGED`는 실패 source/test가 Changed Files와 직접 영향 범위 밖이고 signature가 동일한 경우에만 사용한다. 이 경우 같은 Coder run에서 전체 test를 반복하지 않는다.
 
-- 실패한 test/source가 Task의 Changed Files에 포함되지 않는다.
-- `SOURCE_EVIDENCE_READY`의 Direct Impact 기준으로 변경 production symbol이 실패 test의 직접 영향 범위가 아니다.
-- 첫 full test 이후 해당 실패를 고치기 위한 production/test 변경을 하지 않았다.
-- 실패 signature(test class/method 또는 동일한 failure message)가 첫 실행과 동일하다.
-
-이 경우 첫 full test의 failure evidence를 재사용하고 **같은 Coder run에서 전체 test를 다시 실행하지 않는다.** Reviewer handoff에는 `Full Test: FAIL_REUSED_OUT_OF_SCOPE`와 failure signature를 남긴다.
-
-`IN_SCOPE_OR_IMPACTED`이면 해당 실패를 먼저 targeted test로 재현/수정하고, 다시 `IMPLEMENTATION_STABLE`이 된 뒤 full test를 최종 1회 실행할 수 있다. `UNCERTAIN`은 evidence 재사용으로 우회하지 않고 risk/blocker로 남긴다.
+`IN_SCOPE_OR_IMPACTED`이면 targeted 수정 후 stable 상태에서 final full test를 1회 다시 수행할 수 있다. `UNCERTAIN`은 risk/blocker로 남긴다.
 
 ## Implementation Stable / Final Scope
 
-전체 회귀 검증 전에 다음을 확정한다.
-
 ```text
 IMPLEMENTATION_STABLE
+- Work Unit Boundary respected: true
 - Production scope fixed: true
 - Test scope fixed: true
 - Additional production edits planned: false
 - Structural quality check: PASS | REFACTORED | ESCALATED
 ```
 
-검증 순서는 다음을 기본으로 한다.
+검증 순서:
 
 ```text
 targeted/integration verification
 → IMPLEMENTATION_STABLE
-→ full test 1회 (Task/Standard Flow/AC에서 필요한 경우)
-→ failure classification 또는 PASS 확정
-→ bootJar 등 artifact 검증 (필요한 경우)
+→ full test 1회 (필요한 경우)
+→ failure classification 또는 PASS
+→ artifact 검증 (필요한 경우)
 → scoped change_summary.py 1회
 ```
 
-Full test 이후 executable production/test를 수정하면 해당 full-test evidence는 무효다. 단, `OUT_OF_SCOPE_UNCHANGED`로 분류한 실패 때문에 코드를 수정하지는 않는다.
-
-최종 변경 범위가 확정된 뒤 scoped `change_summary.py`를 최종 검증으로 1회 실행한다.
+최종 변경 범위가 확정된 뒤:
 
 ```bash
 python3 /opt/custom-skills/coder/dev-implement-plan/scripts/change_summary.py \
@@ -306,19 +353,16 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/change_summary.py \
   --include "<changed-path-2>"
 ```
 
-Standard Flow에서 `--include` 없이 `change_summary.py`를 호출하지 않는다. `--allow-full-scan`은 명시적 진단 전용이다. tracked와 untracked 모두 Git pathspec으로 제한하며 unrelated repository 전체를 훑지 않는다.
-
-`EOL_ONLY_COUNT > 0` + `WHITESPACE_ERROR_COUNT=0`은 정상이다. EOL 복구를 위해 Python/sed/perl/awk/dos2unix/unix2dos/전체 rewrite를 하지 않는다. final summary 이후 executable source/test가 바뀌면 기존 fingerprint와 `Verification Final: true`는 무효다.
-
-`change_summary.py`가 DevKit runtime/capability 문제로 실패하면 **임시 wrapper/script 생성**, executable bit 변경, inline Python monkey-patch, protected `.hermes` write, approval 대기 등으로 우회하지 않고 `CAPABILITY` blocker로 종료한다.
+Standard Flow에서 `--include` 없이 호출하지 않는다. `EOL_ONLY_COUNT > 0` + `WHITESPACE_ERROR_COUNT=0`은 정상이다.
 
 ## Review Risk / Handoff
 
-**Standard Flow 또는 CHANGES_REQUESTED 재작업은 항상 review**한다. Fast Flow는 LOW를 positive evidence로 증명한 경우만 self-complete 가능하다.
+Standard Flow 또는 CHANGES_REQUESTED 재작업은 항상 review한다. Fast Flow는 LOW를 positive evidence로 증명한 경우만 self-complete 가능하다.
 
 다음은 `REVIEW_REQUIRED`다.
 - API/request/response 의미 변경
 - DB schema/data/query 의미 변경
+- Work Unit DESIGN/MIGRATION artifact 변경
 - transaction/security/concurrency 영향
 - shared/common behavior 변경
 - legacy/fallback/backward compatibility 변경
@@ -329,19 +373,25 @@ Standard Flow에서 `--include` 없이 `change_summary.py`를 호출하지 않�
 Review handoff에는 최소 다음을 남긴다.
 
 ```text
+Work Unit Class: <...>
+Work Unit Boundary: <...>
+Current Deliverable: <...>
+Follow-up Required: <YES|NO>
+Follow-up Work Unit: <...|NONE>
+Excluded Follow-up Scope: <...|NONE>
+Work Unit Boundary Respected: true
 Changed Files:
 - ...
 Verification Mode: <mode>
 Verification Commands / Results:
 - <command> -> PASS | FAIL
-Verification Request SHA256: <VERIFICATION_REQUEST_SHA256 | NONE>
-Verification Scope SHA256: <VERIFICATION_SCOPE_SHA256 | NONE>
+Verification Request SHA256: <...|NONE>
+Verification Scope SHA256: <...|NONE>
 Verification Evidence: EXECUTED | REUSED | NOT_REUSABLE
 Primary Reused: true | false
 Full Test: PASS | NOT_REQUIRED | FAIL_REUSED_OUT_OF_SCOPE | FAIL_IN_SCOPE | UNCERTAIN
-Full Test Failure Signature: <test/method/message | NONE>
 Verification Final: true
-Effective Scope SHA256: <EFFECTIVE_SCOPE_SHA256>
+Effective Scope SHA256: <...>
 Structural Quality Check: PASS | REFACTORED | ESCALATED
 Review Risk: REVIEW_REQUIRED
 Risk Reasons:
@@ -353,16 +403,14 @@ Residual Risk:
 - ...
 ```
 
-가능한 경우 `kanban_request_review` metadata에도 `verification_final`, `verification_mode`, `effective_scope_sha256`, `verification`, `changed_files`, `review_risk`, `risk_reasons`, `residual_risk`를 기록한다.
-
 ## Terminal transition
 
 한 Coder run의 terminal transition은 `kanban_complete`, `kanban_block`, `kanban_request_review` 중 정확히 하나다.
 
 - Standard Flow에서 Coder self-complete 금지.
-- `CHANGES_REQUESTED`는 terminal 상태가 아니며 **original coder가 동일 Workspace**에서 blocking finding만 수정 후 반드시 재-review한다.
+- `CHANGES_REQUESTED`는 terminal 상태가 아니며 original coder가 동일 Workspace에서 blocking finding만 수정 후 재-review한다.
 - `GRADLE_STATUS=BLOCKED`인 검증은 review residual risk로 넘기지 않고 `kanban_block`한다.
-- `kanban_request_review` 성공 후 즉시 종료한다. 추가 `kanban_complete`, reviewer skill load, `kanban_show`, status probe를 실행하지 않는다.
+- `kanban_request_review` 성공 후 즉시 종료한다.
 
 ## 공통 Coding Rules 핵심
 
@@ -380,5 +428,6 @@ Residual Risk:
 - secret/raw credential 기록 금지.
 - behavior/API/schema 의미 변경을 refactor라는 이름으로 섞지 않는다.
 - existing preservation fast path를 이유로 repository-wide dirty/EOL/untracked scan을 재실행하지 않는다.
+- Follow-up Work Unit을 현재 Task에서 선행 구현하지 않는다.
 
 retry/BLOCKED/검증/risk metadata의 추가 세부 형식이 필요할 때만 `references/implementation-details.md`를 읽는다.
