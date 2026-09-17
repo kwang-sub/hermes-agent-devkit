@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 구현 계획·API 규격·Infrastructure Desired State·workspace·branch·Coder 모델을 Primary Project context와 함께 Kanban으로 인계한다.
-version: 0.14.1
+version: 0.14.2
 author: local
 platforms: [linux]
 metadata:
@@ -152,6 +152,8 @@ Approved Applicable Skills
 
 `REJECTED_SKILLS`는 body에 근거를 남기되 pin하지 않는다. Infrastructure Task의 `dev-infrastructure`, API Task의 `dev-api-spec`, 그리고 `dev-flow-model-policy`처럼 필수 capability가 누락되면 dispatch하지 않는다.
 
+API Task의 `dev-api-spec`은 **Coder/Reviewer가 동일 Markdown contract**를 볼 수 있도록 공통 pin 대상으로 검증한다.
+
 ## Kanban 생성 / 알림 Gate
 
 ```text
@@ -231,6 +233,8 @@ Model Policy:
 - Reviewer Model: DEFAULT
 - Model Escalation: REQUIRE_REAPPROVAL
 ```
+
+API `DESIGN_FIRST`에서 Coder는 **production API를 변경하기 전에 승인 snapshot을 repository Markdown에 materialize/update**하고, 그 Markdown을 normative contract로 구현한다. `SOURCE_SYNC`는 Application Source 기반 DRAFT 문서화이며 자동 APPROVED 승격을 하지 않는다.
 
 API DESIGN_FIRST의 APPROVED snapshot과 Infrastructure의 persisted Desired State가 각각 Coder/Reviewer normative contract다.
 
