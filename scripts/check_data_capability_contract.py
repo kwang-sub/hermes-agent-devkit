@@ -106,7 +106,7 @@ checks = {
         "dev-db-query", "dev-db-migration", "dev-db-performance", "DBML Canvas",
     )),
     "detector": (detector, (
-        'DETECTOR_VERSION = "4"', "DATABASE_JVM_MARKERS", "DATABASE_NPM_MARKERS",
+        'DETECTOR_VERSION = ', "BACKEND_ENTRY_BY_STACK", "BACKEND_HINT_BY_STACK", "DATABASE_JVM_MARKERS", "DATABASE_NPM_MARKERS",
         "schema.prisma", "database_vendors", "data_entry_candidate", "dev-data-feature",
     )),
     "stack cache": (cache, (
