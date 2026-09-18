@@ -29,8 +29,21 @@ def main() -> int:
         raise SystemExit("Dockerfile must not execute the checked-out Python file by shebang")
 
     implement = (ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md").read_text(encoding="utf-8")
+    implement_details = (ROOT / "custom-skills/coder/dev-implement-plan/references/implementation-details.md").read_text(encoding="utf-8")
     require(
         implement,
+        (
+            "Worker Context Gate 1회",
+            "verify_workspace.py 1회",
+            "Work Unit Boundary Gate",
+            "scoped change_summary.py",
+            "kanban_request_review | kanban_block",
+            "references/implementation-details.md",
+        ),
+        "dev-implement-plan compact runtime entry",
+    )
+    require(
+        implement_details,
         (
             "Worker Context Gate 정확히 1회",
             "kanban_worker_context MCP tool 정확히 1회",
@@ -53,7 +66,7 @@ def main() -> int:
             "GRADLE_STATUS=BLOCKED",
             "kanban_block",
         ),
-        "dev-implement-plan runtime policy",
+        "dev-implement-plan runtime detail policy",
     )
 
     workspace_helper = (ROOT / "custom-skills/coder/dev-implement-plan/scripts/verify_workspace.py").read_text(encoding="utf-8")
@@ -116,8 +129,19 @@ def main() -> int:
     )
 
     reviewer = (ROOT / "custom-skills/reviewer/dev-code-review/SKILL.md").read_text(encoding="utf-8")
+    reviewer_details = (ROOT / "custom-skills/reviewer/dev-code-review/references/review-details.md").read_text(encoding="utf-8")
     require(
         reviewer,
+        (
+            "Verification Evidence Reuse",
+            "GRADLE_STATUS=BLOCKED",
+            "hermes-java",
+            "references/review-details.md",
+        ),
+        "reviewer compact verification entry",
+    )
+    require(
+        reviewer_details,
         (
             "Verification Request SHA256",
             "Verification Scope SHA256",
@@ -126,7 +150,7 @@ def main() -> int:
             "Gradle primary를 다시 실행하면 안 된다",
             "GRADLE_STATUS=BLOCKED",
         ),
-        "reviewer verification reuse policy",
+        "reviewer verification reuse detail policy",
     )
 
     hermes_java = (ROOT / "scripts/hermes-java").read_text(encoding="utf-8")
