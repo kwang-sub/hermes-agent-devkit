@@ -86,7 +86,7 @@ Flyway / Liquibase / Physical Schema
 초기 아이디어나 화면 이미지/Figma를 입력으로 받아 **문서화된 설계 기준 → 데이터/API 계약 → Frontend/Backend 구현** 순서로 프로젝트를 발전시킬 수 있습니다.
 
 <p align="center">
-  <img src="docs/images/new-project-development-flow.webp" alt="Hermes Agent DevKit 신규 프로젝트 개발 흐름" width="900" />
+  <img src="docs/images/new-project-development-flow.png" alt="Hermes Agent DevKit 신규 프로젝트 개발 흐름" width="900" />
 </p>
 
 이미지의 파일 경로는 전체 흐름을 설명하기 위한 대표 예시입니다. 프로젝트에 기존 문서 convention이 있으면 기존 구조를 우선하며, 별도 convention이 없을 때 현재 DevKit의 기본/권장 산출물은 다음과 같습니다.
