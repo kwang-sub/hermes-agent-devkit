@@ -1,13 +1,13 @@
 ---
 name: dev-tech-dispatch
-description: managed Repository의 bounded build/dependency manifest에서 JVM/Frontend stack과 DBMS vendor candidate를 감지하고 backend/frontend/data capability entry 후보와 fingerprint를 반환하는 orchestrator 전용 resolver.
-version: 0.5.2
+description: managed Repository의 bounded build/dependency manifest에서 기술 stack과 DBMS vendor candidate를 감지하고 확장 가능한 backend entry/hint, frontend entry/hint, data capability 후보와 fingerprint를 반환하는 orchestrator 전용 resolver.
+version: 0.6.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, orchestrator, stack, capability, java, kotlin, spring, typescript, react, nextjs, frontend, data, database, fingerprint, monorepo, infrastructure]
-    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-java-guidelines, dev-kotlin-guidelines, dev-spring-guidelines, dev-frontend-feature, dev-data-feature, dev-infrastructure, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract, dev-figma-design, dev-ui-ux]
+    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-java-guidelines, dev-kotlin-guidelines, dev-spring-guidelines, dev-spring-feature, dev-frontend-feature, dev-data-feature, dev-infrastructure, dev-typescript-guidelines, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract, dev-figma-design, dev-ui-ux]
     requires_tools: [terminal]
 ---
 
@@ -29,10 +29,12 @@ python3 /opt/custom-skills/orchestrator/dev-tech-dispatch/scripts/detect_capabil
 예:
 
 ```text
-DETECTOR_VERSION=4
+DETECTOR_VERSION=5
 STACK_FINGERPRINT=sha256:...
 STACK_INPUTS=backend/build.gradle.kts,backend/schema.prisma,frontend/package.json
 STACKS=kotlin,spring,typescript,react,nextjs
+BACKEND_ENTRIES=dev-spring-feature
+BACKEND_HINTS=dev-kotlin-guidelines,dev-spring-guidelines
 BACKEND_SKILLS=dev-kotlin-guidelines,dev-spring-guidelines
 FRONTEND_ENTRY=dev-frontend-feature
 DATABASE_VENDORS=postgresql
@@ -76,16 +78,45 @@ schema.prisma
 
 `Dockerfile`, `compose.yml`, `compose.yaml`, `supabase/config.toml`도 이 technology fingerprint에는 넣지 않는다. 해당 파일은 Infrastructure observed state evidence다.
 
-## JVM / Frontend capability
+## Backend / Frontend capability
+
+Backend 감지 결과는 **실행 진입 capability**와 **보조 guideline/hint**를 분리한다.
 
 ```text
-Java   → dev-java-guidelines
-Kotlin → dev-kotlin-guidelines
-Spring → dev-spring-guidelines
-Frontend affected area → dev-frontend-feature
+BACKEND_ENTRIES
+→ 실제 Backend Work Unit의 domain/framework entry 후보
+→ 현재 Spring: dev-spring-feature
+
+BACKEND_HINTS
+→ language/framework guideline 후보
+→ Java: dev-java-guidelines
+→ Kotlin: dev-kotlin-guidelines
+→ Spring: dev-spring-guidelines
 ```
 
-Frontend 하위 skill은 `FRONTEND_HINTS`로만 제공하고 시작부터 전부 runtime pin하지 않는다.
+현재 지원 stack은 JVM/Spring이지만 metadata schema는 특정 Backend 생태계에 고정하지 않는다. 향후 Python/FastAPI 같은 실제 capability를 추가할 때 detector에 manifest evidence와 mapping만 추가한다.
+
+```text
+예: 향후 실제 FastAPI capability가 추가되는 경우
+
+stacks:
+- python
+- fastapi
+
+backend_entries:
+- dev-fastapi-feature
+
+backend_hints:
+- dev-python-guidelines
+```
+
+지원하지 않는 stack 이름이나 존재하지 않는 Skill을 placeholder로 미리 등록하지 않는다.
+
+복수 Backend를 가진 monorepo를 표현할 수 있도록 `BACKEND_ENTRIES`는 list 계약이다. 실제 Task에서는 repository 전체 후보를 모두 적용하지 않고 affected area와 사용자 요구를 함께 보고 Applicable Skill을 선택한다.
+
+`BACKEND_SKILLS`는 기존 managed project/reader 호환을 위한 legacy alias이며 현재 `BACKEND_HINTS`와 같은 값을 반환한다. 신규 consumer는 `BACKEND_ENTRIES + BACKEND_HINTS`를 사용한다.
+
+Frontend affected area의 canonical entry는 계속 `dev-frontend-feature`다. Frontend 하위 skill은 `FRONTEND_HINTS`로만 제공하고 시작부터 전부 runtime pin하지 않는다.
 
 ## Database vendor candidate
 
@@ -178,6 +209,8 @@ PostgreSQL -> MySQL
 - dependency 설치/architecture 선택/DB version 추측 금지.
 - database vendor를 language/framework stack과 동일시하지 않는다.
 - technology fingerprint와 infrastructure topology fingerprint/lifecycle을 섞지 않는다.
+- Backend 생태계 확장을 위해 unsupported stack/Skill placeholder를 미리 등록하지 않는다.
+- 신규 Backend detector consumer는 legacy `BACKEND_SKILLS` 대신 `BACKEND_ENTRIES + BACKEND_HINTS`를 사용한다.
 - `dev-tech-dispatch` 자체는 Coder/Reviewer runtime pinned skill이 아니다.
 - cache 정책은 `dev-project-bootstrap/scripts/stack_cache.py`가 소유한다.
 - Infrastructure desired-state 초기화는 `dev-project-bootstrap/scripts/infrastructure_cache.py`가 소유하며 기존 `infrastructure:` section을 자동 덮어쓰지 않는다.

@@ -24,10 +24,12 @@ def test_spring_only() -> None:
         write(repo / "build.gradle", 'plugins { id "org.springframework.boot" version "3.5.0" }')
         result = MODULE.detect(repo)
         assert result["stacks"] == ["java", "spring"]
-        assert result["backend_skills"] == ["dev-java-guidelines", "dev-spring-guidelines"]
+        assert result["backend_entries"] == ["dev-spring-feature"]
+        assert result["backend_hints"] == ["dev-java-guidelines", "dev-spring-guidelines"]
+        assert result["backend_skills"] == result["backend_hints"]
         assert result["frontend_entry"] == ""
         assert result["frontend_hints"] == []
-        assert result["detector_version"] == "4"
+        assert result["detector_version"] == "5"
         assert result["inputs"] == ["build.gradle"]
         assert result["database_vendors"] == []
         assert result["data_entry_candidate"] == ""
@@ -40,7 +42,9 @@ def test_kotlin_only() -> None:
         write(repo / "build.gradle.kts", 'plugins { kotlin("jvm") version "2.4.20" }')
         result = MODULE.detect(repo)
         assert result["stacks"] == ["kotlin"]
-        assert result["backend_skills"] == ["dev-kotlin-guidelines"]
+        assert result["backend_entries"] == []
+        assert result["backend_hints"] == ["dev-kotlin-guidelines"]
+        assert result["backend_skills"] == result["backend_hints"]
 
 
 def test_kotlin_spring() -> None:
@@ -55,7 +59,9 @@ plugins {
 ''')
         result = MODULE.detect(repo)
         assert result["stacks"] == ["kotlin", "spring"]
-        assert result["backend_skills"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+        assert result["backend_entries"] == ["dev-spring-feature"]
+        assert result["backend_hints"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+        assert result["backend_skills"] == result["backend_hints"]
 
 
 def test_kotlin_spring_jpa() -> None:
@@ -74,7 +80,9 @@ dependencies {
 ''')
         result = MODULE.detect(repo)
         assert result["stacks"] == ["kotlin", "spring"]
-        assert result["backend_skills"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+        assert result["backend_entries"] == ["dev-spring-feature"]
+        assert result["backend_hints"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+        assert result["backend_skills"] == result["backend_hints"]
         assert result["data_entry_candidate"] == "dev-data-feature"
 
 
@@ -90,9 +98,11 @@ plugins {
 ''')
         result = MODULE.detect(repo)
         assert result["stacks"] == ["java", "kotlin", "spring"]
-        assert result["backend_skills"] == [
+        assert result["backend_entries"] == ["dev-spring-feature"]
+        assert result["backend_hints"] == [
             "dev-java-guidelines", "dev-kotlin-guidelines", "dev-spring-guidelines"
         ]
+        assert result["backend_skills"] == result["backend_hints"]
 
 
 def test_maven_kotlin() -> None:
@@ -106,7 +116,9 @@ def test_maven_kotlin() -> None:
 ''')
         result = MODULE.detect(repo)
         assert result["stacks"] == ["kotlin", "spring"]
-        assert result["backend_skills"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+        assert result["backend_entries"] == ["dev-spring-feature"]
+        assert result["backend_hints"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+        assert result["backend_skills"] == result["backend_hints"]
 
 
 def test_next_typescript_with_tests() -> None:
@@ -124,6 +136,8 @@ def test_next_typescript_with_tests() -> None:
             "dev-typescript-guidelines", "dev-frontend-guidelines", "dev-nextjs-feature", "dev-frontend-test"
         ]
         assert result["ui_candidate"] == "dev-ui-ux"
+        assert result["backend_entries"] == []
+        assert result["backend_hints"] == []
         assert result["backend_skills"] == []
 
 
@@ -139,7 +153,9 @@ def test_fullstack_contract_candidate() -> None:
         result = MODULE.detect(repo)
         assert result["frontend_entry"] == "dev-frontend-feature"
         assert result["cross_stack_candidate"] == "dev-api-contract"
-        assert result["backend_skills"] == ["dev-java-guidelines", "dev-spring-guidelines"]
+        assert result["backend_entries"] == ["dev-spring-feature"]
+        assert result["backend_hints"] == ["dev-java-guidelines", "dev-spring-guidelines"]
+        assert result["backend_skills"] == result["backend_hints"]
 
 
 def test_kotlin_frontend_monorepo() -> None:
@@ -158,7 +174,9 @@ plugins {
         write(repo / "frontend" / "tsconfig.json", "{}")
         result = MODULE.detect(repo)
         assert result["stacks"] == ["kotlin", "spring", "typescript", "react", "nextjs"]
-        assert result["backend_skills"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+        assert result["backend_entries"] == ["dev-spring-feature"]
+        assert result["backend_hints"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+        assert result["backend_skills"] == result["backend_hints"]
         assert result["cross_stack_candidate"] == "dev-api-contract"
 
 

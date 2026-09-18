@@ -118,8 +118,14 @@ def technology_section(result: dict[str, Any]) -> str:
     yaml_list(lines, [str(value) for value in result.get("inputs", [])])
     lines.append("  stacks:")
     yaml_list(lines, [str(value) for value in result.get("stacks", [])])
+    lines.append("  backend_entries:")
+    yaml_list(lines, [str(value) for value in result.get("backend_entries", [])])
+    lines.append("  backend_hints:")
+    yaml_list(lines, [str(value) for value in result.get("backend_hints", [])])
+    # Compatibility alias. Keep while existing managed projects/readers may
+    # still consume backend_skills; new consumers use entry + hint fields.
     lines.append("  backend_skills:")
-    yaml_list(lines, [str(value) for value in result.get("backend_skills", [])])
+    yaml_list(lines, [str(value) for value in result.get("backend_skills", result.get("backend_hints", []))])
     lines.extend([
         f"  frontend_entry: {yaml_scalar(str(result.get('frontend_entry', '')))}",
         "  frontend_hints:",
@@ -207,10 +213,17 @@ def cached_values(sections: list[tuple[str, str]]) -> tuple[str | None, str | No
 
 
 def cached_summary(body: str, current: dict[str, Any]) -> dict[str, Any]:
+    backend_entries = list_value(body, "backend_entries")
+    backend_hints = list_value(body, "backend_hints")
+    legacy_backend_skills = list_value(body, "backend_skills")
+    if not backend_hints:
+        backend_hints = legacy_backend_skills
     return {
         **current,
         "stacks": list_value(body, "stacks"),
-        "backend_skills": list_value(body, "backend_skills"),
+        "backend_entries": backend_entries,
+        "backend_hints": backend_hints,
+        "backend_skills": legacy_backend_skills or list(backend_hints),
         "frontend_entry": scalar(body, "frontend_entry") or "",
         "frontend_hints": list_value(body, "frontend_hints"),
         "ui_candidate": scalar(body, "ui_candidate") or "",
@@ -266,6 +279,8 @@ def main() -> int:
     print(f"STACK_FINGERPRINT={result['fingerprint']}")
     print(f"STACK_INPUTS={','.join(result.get('inputs', []))}")
     print(f"STACKS={','.join(result.get('stacks', []))}")
+    print(f"BACKEND_ENTRIES={','.join(result.get('backend_entries', []))}")
+    print(f"BACKEND_HINTS={','.join(result.get('backend_hints', []))}")
     print(f"BACKEND_SKILLS={','.join(result.get('backend_skills', []))}")
     print(f"FRONTEND_ENTRY={result.get('frontend_entry', '')}")
     print(f"FRONTEND_HINTS={','.join(result.get('frontend_hints', []))}")

@@ -1,4 +1,4 @@
-# dev-project-bootstrap v0.5.1
+# dev-project-bootstrap v0.6.2
 
 기존 Git Repository를 Hermes Managed Project로 idempotent하게 등록하는 Skill입니다.
 
@@ -77,6 +77,30 @@ BUILD_TYPE=gradle
 BUILD_PROJECT_COUNT=1
 BUILD_PROJECTS=gradle:chagok-backend
 ```
+
+
+## Backend capability cache
+
+기술 감지 결과는 Backend의 실행 진입점과 보조 guideline을 분리해 저장합니다.
+
+```yaml
+technology:
+  stacks:
+    - java
+    - spring
+  backend_entries:
+    - dev-spring-feature
+  backend_hints:
+    - dev-java-guidelines
+    - dev-spring-guidelines
+  backend_skills:
+    - dev-java-guidelines
+    - dev-spring-guidelines
+```
+
+`backend_skills`는 기존 managed project/reader 호환을 위한 legacy alias입니다. 신규 consumer는 `backend_entries + backend_hints`를 사용합니다.
+
+현재 detector는 JVM/Spring을 지원하며 Python/FastAPI 같은 미지원 Backend Skill을 미리 생성하지 않습니다. 향후 실제 Stack을 추가할 때 stack evidence와 entry/hint mapping을 확장하는 방식으로 동일 metadata contract를 유지합니다.
 
 ## Full Preflight
 
