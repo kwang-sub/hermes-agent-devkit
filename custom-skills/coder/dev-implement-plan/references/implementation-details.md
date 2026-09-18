@@ -1,6 +1,6 @@
 # dev-implement-plan 상세 계약
 
-이 문서는 compact `SKILL.md`에서 분리한 **현재 상세 계약 보존본**이다. 기본 실행에서는 entrypoint만 사용하고, edge case·상세 절차·검증 형식·예시가 필요한 경우에만 관련 절을 읽는다.
+이 문서는 compact `SKILL.md`에서 분리한 **현재 상세 계약 보존본**이다. 기본 실행에서는 entrypoint만 사용하고, edge case·상세 절차·검증 형식·예시가 필요한 경우에만 관련 절을 읽는다. Direct/Standard 구현은 항상 Reviewer handoff로 종료한다.
 
 > Source snapshot: maintenance hardening 직전 dev-implement-plan 계약
 
