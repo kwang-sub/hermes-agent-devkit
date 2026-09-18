@@ -80,7 +80,9 @@ dependencies {
 ''')
         result = MODULE.detect(repo)
         assert result["stacks"] == ["kotlin", "spring"]
-        assert result["backend_skills"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+        assert result["backend_entries"] == ["dev-spring-feature"]
+        assert result["backend_hints"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+        assert result["backend_skills"] == result["backend_hints"]
         assert result["data_entry_candidate"] == "dev-data-feature"
 
 
@@ -114,7 +116,9 @@ def test_maven_kotlin() -> None:
 ''')
         result = MODULE.detect(repo)
         assert result["stacks"] == ["kotlin", "spring"]
-        assert result["backend_skills"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+        assert result["backend_entries"] == ["dev-spring-feature"]
+        assert result["backend_hints"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+        assert result["backend_skills"] == result["backend_hints"]
 
 
 def test_next_typescript_with_tests() -> None:
