@@ -101,8 +101,8 @@ Flyway / Liquibase / Physical Schema
 | 논리 DB 모델 | canonical logical DBML | `docs/data/schema.dbml` |
 | API Specification | 사람이 검토하는 Markdown API 계약 | `docs/api/README.md`, `docs/api/<domain>.md` |
 | OpenAPI / Swagger | 승인 API 계약과 구현의 API 문서 | 프로젝트 SpringDoc/OpenAPI convention |
-| Backend | Spring Boot application / test source | 대상 프로젝트 기존 source 구조 |
-| Frontend | React / Next.js application / test source | 대상 프로젝트 기존 source 구조 |
+| Backend | 현재 Backend Stack의 application / test source (예: Spring Boot) | 대상 프로젝트 기존 source 구조 |
+| Frontend | 현재 Frontend Stack의 application / test source (예: React / Next.js) | 대상 프로젝트 기존 source 구조 |
 
 ### 예시 개발 순서
 
@@ -317,6 +317,28 @@ API
 ```
 
 Canonical capability와 Planner → Coder → Reviewer → Preflight 연결은 `custom-skills/shared/capability-lifecycle.json`과 CI에서 검증합니다.
+
+
+### Stack 확장 정책
+
+Hermes Agent DevKit의 **Workflow, Work Unit, API/Data/Infrastructure/Review 계약은 특정 Framework에 고정하지 않습니다.**
+
+현재 실제 프로젝트에서 사용·검증된 Stack을 우선 지원합니다.
+
+- Backend: Java / Kotlin / Spring Boot 중심
+- Frontend: TypeScript / React / Next.js 중심
+- Data / API / Infrastructure / Review Workflow는 Stack과 독립적으로 재사용
+
+새로운 Stack은 필요해지는 시점에 다음 흐름으로 추가합니다.
+
+```text
+Stack Detection
+→ Capability Entry / Hint
+→ Coder / Reviewer 연결
+→ 실제 프로젝트 검증
+```
+
+사용하지 않는 기술의 Skill을 미리 만들지 않고, 실제 프로젝트에서 필요할 때 Capability를 추가하는 방식으로 확장합니다.
 
 ---
 
