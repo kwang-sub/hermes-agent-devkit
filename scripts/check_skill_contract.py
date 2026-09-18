@@ -53,8 +53,9 @@ def main()->int:
     discovered={}; paths_by_name=defaultdict(list); related_by_skill={}
     for skill_file in sorted(SKILLS_ROOT.glob("*/*/SKILL.md")):
         text=skill_file.read_text(encoding="utf-8"); scalar,lists,_=parse_frontmatter(text,skill_file)
-        scope=skill_file.parent.parent.name; name=scalar.get("name","").strip(); desc=scalar.get("description","").strip()
+        scope=skill_file.parent.parent.name; name=scalar.get("name","").strip(); desc=scalar.get("description","").strip(); version=scalar.get("version","").strip()
         if not name or name!=skill_file.parent.name: fail(f"skill name/path mismatch: {skill_file}")
+        if not re.fullmatch(r"\d+\.\d+\.\d+",version): fail(f"skill version must be semantic x.y.z: {skill_file}: {version!r}")
         if (scope,name) in discovered: fail(f"duplicate skill name within scope {scope!r}: {name!r}")
         if not desc or len(desc)>1024: fail(f"invalid description: {skill_file}")
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]*",name): fail(f"skill name must be lowercase kebab-case: {name}")

@@ -22,7 +22,6 @@ def main() -> int:
     compat = ROOT / "scripts/verify_latest_hermes_compat.sh"
 
     require(skill, (
-        "version: 0.2.0",
         "Language Feature Stability Gate",
         "Preview / Incubator",
         "Record",

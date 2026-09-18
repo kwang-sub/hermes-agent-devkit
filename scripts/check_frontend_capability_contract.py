@@ -66,7 +66,7 @@ checks = {
         "Regression Baseline: APPROVED_BROWSER_SCREENSHOT",
     )),
     "frontend entry": (frontend, (
-        "version: 0.4.0", "canonical entry", "REFERENCE_DRIVEN", "CODE_DRIVEN",
+        "canonical entry", "REFERENCE_DRIVEN", "CODE_DRIVEN",
         "View Strategy / Implementation Architecture", "SHARED", "RESPONSIVE", "HYBRID", "SPLIT_VIEW",
         "src/features/<feature>/", "Shared / Split 책임", "API Boundary", "Desktop/Mobile Verification Matrix",
         "Design Source", "IMAGE", "FIGMA", "EXISTING_CODE", "dev-design-reference",
@@ -78,13 +78,13 @@ checks = {
         "EXTRANEOUS", "analysis_incomplete", "Tirith Package Preflight",
     )),
     "official docs skill": (official_docs, (
-        "version: 0.1.1", "Version First", "Context7 Hosted MCP Provider",
+        "Version First", "Context7 Hosted MCP Provider",
         "https://mcp.context7.com/mcp", "Default auth: anonymous", "resolve-library-id", "query-docs",
         "EXACT", "COMPATIBLE", "LATEST_ONLY", "LOCAL_ONLY",
         "DEPENDENCY_DECLARATION_COMPATIBILITY", "compiler/typecheck/test/build",
     )),
     "node dependency skill": (node_dependencies, (
-        "version: 0.1.2", "node_modules", "EXTRANEOUS_PRESENT", "packageManager", "canonical lockfile",
+        "node_modules", "EXTRANEOUS_PRESENT", "packageManager", "canonical lockfile",
         "package-manager root", "PACKAGE_MANAGER_ROOT", "LOCKFILE_PRESENT", "bounded walk",
         "node_dependency_preflight.py", "tirith_package_preflight.py", "analysis_incomplete", "daemon start --detach",
         "TIRITH_PREFLIGHT=allow", "TIRITH_PREFLIGHT=approval_required", "Hermes actual terminal guard parity",
@@ -108,7 +108,7 @@ checks = {
         "timed out waiting for Node workspace lock", "project-controlled;workspace-serialized",
     )),
     "design reference": (design, (
-        "version: 0.2.0", "Design Source", "IMAGE", "FIGMA", "DRAFT", "REFERENCE", "APPROVED",
+        "Design Source", "IMAGE", "FIGMA", "DRAFT", "REFERENCE", "APPROVED",
         "STRUCTURE", "VISUAL", "HIGH", "OBSERVED", "INFERRED", "UNKNOWN",
         "docs/ui/screens/<screen>/", "reference.png", "screen-spec.md", "Normalized Design Evidence",
         "screen_spec_guard.py", "dev-figma-design",
@@ -126,7 +126,7 @@ checks = {
         "SCREEN_SPEC_STATUS=pass", "VIEW_STRATEGY=", "IMAGE reference not found", "FIGMA reference must be",
     )),
     "frontend test": (frontend_test, (
-        "version: 0.3.1", "Storybook", "Playwright", "FUNCTIONAL", "COMPONENT", "E2E",
+        "Storybook", "Playwright", "FUNCTIONAL", "COMPONENT", "E2E",
         "View Strategy / Platform Verification", "Desktop/Mobile Verification Matrix", "Shared owner check",
         "VISUAL_CONFORMANCE", "VISUAL_REGRESSION", "Design Conformance", "Visual Regression",
         "Approved Implementation", "Browser Screenshot Golden", "toHaveScreenshot",
@@ -134,7 +134,7 @@ checks = {
         "/opt/data/node", "workspace lock", "project 설정을 임의 변경하지 않음", "Tirith actual guard",
     )),
     "typescript skill": (typescript, (
-        "version: 0.3.0", "Version Gate", "TypeScript 7 Gate", "Strictness Gate", "useUnknownInCatchVariables",
+        "Version Gate", "TypeScript 7 Gate", "Strictness Gate", "useUnknownInCatchVariables",
         "noUncheckedSideEffectImports", "Type Design Performance", "Build Performance", "Incremental",
         "Project References", "TypeScript 7 Parallelism", "skipLibCheck", "Performance Investigation", "Review Hotspots",
     )),
@@ -145,7 +145,7 @@ checks = {
         "Performance Investigation Before Refactoring", "Project References", "Microsoft TypeScript Wiki: Performance",
     )),
     "react skill": (react, (
-        "version: 0.3.0", "Rules of Hooks / `use` 예외", "State Ownership", "`useEffectEvent` (React 19.2+)",
+        "Rules of Hooks / `use` 예외", "State Ownership", "`useEffectEvent` (React 19.2+)",
         "Measurement First", "React Compiler 1.0+", "Compiler-aware ESLint", "Transition / Deferred Rendering",
         "`<Activity>` (React 19.2+)", "Performance Evidence", "Review Hotspots",
     )),
@@ -156,7 +156,7 @@ checks = {
         "`<Activity>` (React 19.2+)", "Primary Official Sources",
     )),
     "nextjs skill": (nextjs, (
-        "version: 0.3.0", "Version Lane", "Measure First", "Client JS Budget", "Bundle Analysis / Package Optimization",
+        "Version Lane", "Measure First", "Client JS Budget", "Bundle Analysis / Package Optimization",
         "Lazy Loading / Dynamic Import", "Navigation / Prefetch / Streaming", "Instant Navigation",
         "Data Fetching / Waterfall", "Cache / Revalidation / Cache Components", "Image Optimization",
         "Font Optimization", "Third-party Script Optimization", "Turbopack Dev / Build Performance",
@@ -171,7 +171,7 @@ checks = {
         "Performance Investigation Order", "Primary Official Sources",
     )),
     "figma skill": (figma, (
-        "version: 0.2.0", "dev-design-reference", "DRAFT", "REFERENCE", "APPROVED",
+        "dev-design-reference", "DRAFT", "REFERENCE", "APPROVED",
         "Normalized Evidence", "FIGMA_ACCESS_TOKEN", "FIGMA_OAUTH_TOKEN", "file_content:read", "--preview-out", "read-only",
     )),
     "figma provider": (figma_script, (

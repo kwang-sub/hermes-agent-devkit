@@ -1,7 +1,7 @@
 ---
 name: dev-direct-flow
 description: Orchestrator가 작고 명확한 단일 Work Unit 요청을 짧은 승인 절차로 현재 workspace/current branch에 Kanban dispatch하고 Coder→Reviewer 실행 계약을 재사용하는 Direct Flow.
-version: 1.0.0
+version: 1.0.1
 author: local
 platforms: [linux]
 metadata:
@@ -232,8 +232,8 @@ Direct 승인은 **한 Task에 대한 one-shot approval**이다. 이미 dispatch
 ## 10. 금지
 
 - Orchestrator가 Direct라는 이유로 source 직접 수정
-- Interactive Coder가 새 mutation request를 DIRECT/FAST로 self-route
-- Fast Flow 또는 Fast Task 생성
+- Interactive Coder가 새 mutation request를 self-route/self-dispatch
+- Direct/Standard canonical dispatch를 우회하는 별도 실행 경로 또는 Task 생성
 - Reviewer 생략 / risk-based self-complete
 - current workspace/current branch 외 Direct 실행
 - Direct에서 API/DB/Infrastructure/architecture 정책 결정

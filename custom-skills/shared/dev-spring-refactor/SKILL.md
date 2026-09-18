@@ -1,7 +1,7 @@
 ---
 name: dev-spring-refactor
 description: Spring 구현 완료 후 변경 범위에서 드러난 책임 혼재, orchestration/detail 결합, 문서화 부족을 점검하고 기존 프로젝트 패턴 안에서 behavior-preserving task-coupled refactoring을 수행한다.
-version: 0.1.0
+version: 0.1.1
 author: local
 platforms: [linux]
 metadata:
@@ -32,7 +32,7 @@ Use-case / Service
 Coder가 Task의 기능 구현을 끝낸 뒤 최종 verification 전에 수행한다.
 
 - Standard Flow의 Spring source 변경: Structural Quality Check를 항상 수행한다.
-- Fast Flow: 변경이 작고 국소적이면 check만 수행하고, trigger가 확인될 때만 refactor한다.
+- Direct Flow: 변경이 작고 국소적이면 check만 수행하고, trigger가 확인될 때만 승인된 REFACTOR 범위에서 refactor한다.
 - `CHANGES_REQUESTED` 재작업: Reviewer가 구조 finding을 준 경우 해당 finding 범위에서 수행한다.
 
 ## Refactor Trigger
@@ -188,7 +188,7 @@ private void migrateImages(...) { ... }
 - 대규모 공통 abstraction 신설
 - 사용자의 기존 코드 스타일과 다른 새로운 표준 강제
 
-Standard Flow에서는 Reviewer에게 구조 대안을 evidence로 넘긴다. Fast Flow에서 범위가 커지면 `FAST_FLOW_ESCALATION_REQUIRED`로 전환한다.
+Standard Flow에서는 Reviewer에게 구조 대안을 evidence로 넘긴다. Direct Flow에서 범위가 커지면 `DIRECT_SCOPE_EXCEEDED`로 차단하고 Standard Flow 재계획을 요구한다.
 
 ## Structural Quality Check 결과
 
