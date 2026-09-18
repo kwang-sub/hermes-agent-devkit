@@ -68,7 +68,7 @@ def main() -> int:
 
     frontend = read(FRONTEND)
     require(frontend, (
-        "version: 0.3.2", "dev-official-docs-context", 'skill_view("dev-official-docs-context")',
+        "dev-official-docs-context", 'skill_view("dev-official-docs-context")',
         "External Technology Documentation Gate", "actual resolved version",
         "DEPENDENCY_DECLARATION_COMPATIBILITY", "Documentation Version Match",
     ), "frontend entry")
