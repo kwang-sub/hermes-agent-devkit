@@ -1,7 +1,7 @@
 ---
 name: dev-project-bootstrap
 description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, Fast Preflight·기술 스택/Infrastructure cache·Java toolchain·EOL·Git ignore·애플리케이션 환경설정 보안·Kanban/Profile/Context/.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
-version: 0.6.1
+version: 0.6.2
 author: local
 platforms: [linux]
 metadata:
@@ -75,8 +75,13 @@ technology:
     - "typescript"
     - "react"
     - "nextjs"
-  backend_skills:
+  backend_entries:
+    - "dev-spring-feature"
+  backend_hints:
     - "dev-java-guidelines"
+    - "dev-spring-guidelines"
+  backend_skills:
+    - "dev-java-guidelines"   # legacy compatibility alias
     - "dev-spring-guidelines"
   frontend_entry: "dev-frontend-feature"
   frontend_hints:
@@ -97,6 +102,21 @@ infrastructure:
 ```
 
 Repository stack은 Task 분류가 아니다. Standard Flow의 Orchestrator가 사용자 요구사항과 affected area를 함께 보고 Backend / Frontend / Full-stack을 판단한다.
+
+Backend technology cache는 framework/domain entry와 guideline hint를 분리한다.
+
+```text
+backend_entries
+→ 실제 Backend Work Unit의 실행 진입 capability 후보
+
+backend_hints
+→ language/framework guideline 후보
+
+backend_skills
+→ 기존 managed project/reader 호환용 legacy alias
+```
+
+현재 detector가 지원하는 Backend는 JVM/Spring이지만 이 metadata 구조는 특정 Backend 생태계에 고정하지 않는다. 향후 실제 Python/FastAPI 등 capability를 추가할 때 detector mapping과 Skill/CI만 확장하고 project metadata schema를 다시 바꾸지 않는 것을 목표로 한다.
 
 ## 2. Technology Stack Cache
 

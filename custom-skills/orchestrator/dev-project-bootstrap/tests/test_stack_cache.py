@@ -76,6 +76,12 @@ dependencies { runtimeOnly "com.microsoft.sqlserver:mssql-jdbc:12.8.1.jre11" }
         assert '    - "nextjs"' in text1
         assert '    - "mssql"' in text1
         assert '  data_entry_candidate: "dev-data-feature"' in text1
+        assert result1["backend_entries"] == ["dev-spring-feature"]
+        assert result1["backend_hints"] == ["dev-java-guidelines", "dev-spring-guidelines"]
+        assert result1["backend_skills"] == result1["backend_hints"]
+        assert '  backend_entries:' in text1
+        assert '    - "dev-spring-feature"' in text1
+        assert '  backend_hints:' in text1
         assert result1["database_vendors"] == ["mssql"]
         assert result1["data_entry_candidate"] == "dev-data-feature"
         assert "custom_policy:\n  keep: true" in text1
@@ -110,12 +116,14 @@ plugins {
         status1, result1 = MODULE.resolve(repo)
         text1 = meta.read_text(encoding="utf-8")
         assert status1 == "created"
-        assert result1["detector_version"] == "4"
+        assert result1["detector_version"] == "5"
         assert result1["stacks"] == ["kotlin", "spring"]
-        assert result1["backend_skills"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+        assert result1["backend_entries"] == ["dev-spring-feature"]
+        assert result1["backend_hints"] == ["dev-kotlin-guidelines", "dev-spring-guidelines"]
+        assert result1["backend_skills"] == result1["backend_hints"]
         assert result1["database_vendors"] == []
         assert result1["data_entry_candidate"] == ""
-        assert '  detector_version: "4"' in text1
+        assert '  detector_version: "5"' in text1
         assert '    - "kotlin"' in text1
         assert '    - "dev-kotlin-guidelines"' in text1
         assert '    - "java"' not in text1
@@ -161,6 +169,29 @@ def test_source_change_keeps_cache_hit() -> None:
         assert meta.read_text(encoding="utf-8") == before
 
 
+
+def test_legacy_backend_skills_cache_remains_readable() -> None:
+    body = """technology:
+  stacks:
+    - "java"
+  backend_skills:
+    - "dev-java-guidelines"
+  frontend_entry: ""
+  frontend_hints: []
+  database_vendors: []
+  data_entry_candidate: ""
+"""
+    current = {
+        "detector_version": "5",
+        "fingerprint": "sha256:test",
+        "inputs": [],
+    }
+    result = MODULE.cached_summary(body, current)
+    assert result["backend_entries"] == []
+    assert result["backend_hints"] == ["dev-java-guidelines"]
+    assert result["backend_skills"] == ["dev-java-guidelines"]
+
+
 def test_unmanaged_metadata_is_blocked() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp)
@@ -179,5 +210,6 @@ if __name__ == "__main__":
     test_kotlin_stack_is_cached_and_reused()
     test_prisma_database_vendor_is_cached()
     test_source_change_keeps_cache_hit()
+    test_legacy_backend_skills_cache_remains_readable()
     test_unmanaged_metadata_is_blocked()
     print("TEST_STATUS=PASS")

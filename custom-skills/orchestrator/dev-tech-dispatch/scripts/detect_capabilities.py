@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Iterable
 
 
-DETECTOR_VERSION = "4"
+DETECTOR_VERSION = "5"
 MAX_MANIFEST_DEPTH = 3
 SKIP_DIRS = {
     ".git", ".hermes", ".worktrees", ".gradle", ".idea", ".vscode",
@@ -42,6 +42,18 @@ JAVA_EXPLICIT_PATTERNS = (
 SPRING_MARKERS = (
     "org.springframework.boot", "spring-boot", "org.springframework",
 )
+
+# Backend capability routing is intentionally separated from stack detection.
+# Adding a future backend ecosystem should extend stack evidence + these maps,
+# without changing the cache/orchestration schema.
+BACKEND_ENTRY_BY_STACK = {
+    "spring": "dev-spring-feature",
+}
+BACKEND_HINT_BY_STACK = {
+    "java": "dev-java-guidelines",
+    "kotlin": "dev-kotlin-guidelines",
+    "spring": "dev-spring-guidelines",
+}
 
 DATABASE_JVM_MARKERS = {
     "mssql": ("com.microsoft.sqlserver", "mssql-jdbc", "r2dbc-mssql"),
@@ -183,7 +195,8 @@ def detect(repo: Path) -> dict[str, object]:
     fp = fingerprint(repo, manifests)
 
     stacks: list[str] = []
-    backend_skills: list[str] = []
+    backend_entries: list[str] = []
+    backend_hints: list[str] = []
     frontend_hints: list[str] = []
     database_vendors: list[str] = []
 
@@ -211,13 +224,10 @@ def detect(repo: Path) -> dict[str, object]:
 
     if has_java:
         add(stacks, "java")
-        add(backend_skills, "dev-java-guidelines")
     if has_kotlin:
         add(stacks, "kotlin")
-        add(backend_skills, "dev-kotlin-guidelines")
     if has_spring:
         add(stacks, "spring")
-        add(backend_skills, "dev-spring-guidelines")
 
     package_files = [path for path in manifests if path.name == "package.json"]
     deps = package_dependencies(package_files)
@@ -242,6 +252,14 @@ def detect(repo: Path) -> dict[str, object]:
     if deps.intersection(test_markers):
         add(frontend_hints, "dev-frontend-test")
 
+    for stack in stacks:
+        entry = BACKEND_ENTRY_BY_STACK.get(stack)
+        if entry:
+            add(backend_entries, entry)
+        hint = BACKEND_HINT_BY_STACK.get(stack)
+        if hint:
+            add(backend_hints, hint)
+
     for vendor, markers in DATABASE_JVM_MARKERS.items():
         if any(marker.lower() in jvm_text_lower for marker in markers):
             add(database_vendors, vendor)
@@ -260,11 +278,16 @@ def detect(repo: Path) -> dict[str, object]:
         has_persistence = True
 
     has_frontend = any(stack in stacks for stack in ("typescript", "react", "nextjs"))
-    has_backend = any(stack in stacks for stack in ("java", "kotlin", "spring"))
+    has_backend = bool(backend_entries or backend_hints)
     return {
         **fp,
         "stacks": stacks,
-        "backend_skills": backend_skills,
+        "backend_entries": backend_entries,
+        "backend_hints": backend_hints,
+        # Compatibility alias for existing cache/readers. New consumers should
+        # use backend_entries + backend_hints so future backend ecosystems can
+        # add executable entry capabilities without overloading guideline hints.
+        "backend_skills": list(backend_hints),
         "frontend_entry": "dev-frontend-feature" if has_frontend else "",
         "frontend_hints": frontend_hints,
         "ui_candidate": "dev-ui-ux" if has_frontend else "",
@@ -280,6 +303,8 @@ def print_text(result: dict[str, object], *, fingerprint_only: bool) -> None:
     print(f"STACK_INPUTS={','.join(result['inputs'])}")
     if not fingerprint_only:
         print(f"STACKS={','.join(result['stacks'])}")
+        print(f"BACKEND_ENTRIES={','.join(result['backend_entries'])}")
+        print(f"BACKEND_HINTS={','.join(result['backend_hints'])}")
         print(f"BACKEND_SKILLS={','.join(result['backend_skills'])}")
         print(f"FRONTEND_ENTRY={result['frontend_entry']}")
         print(f"FRONTEND_HINTS={','.join(result['frontend_hints'])}")
