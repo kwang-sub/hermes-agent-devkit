@@ -5,6 +5,7 @@ source: IMAGE
 reference: ./reference.png
 fidelity: VISUAL
 viewport: 1440x1024
+view_strategy: <SHARED | RESPONSIVE | HYBRID | SPLIT_VIEW>
 ---
 
 # <화면 이름>
@@ -31,11 +32,27 @@ viewport: 1440x1024
 - error: <필요한 경우>
 - disabled/selected 등: <필요한 경우>
 
+## View Strategy
+
+- Strategy: <SHARED | RESPONSIVE | HYBRID | SPLIT_VIEW>
+- Rationale: <정보 구조/interaction/state/data 차이 근거>
+- Platform Scope: <DESKTOP | MOBILE | BOTH>
+- Section Overrides: <section=strategy | NONE>
+
+## 구현 구조
+
+- Package / View Plan: <기존 project convention에 매핑한 구현 경로>
+- Shared Implementation: <api/model/state/hooks/common UI>
+- Split Implementation: <desktop/mobile 전용 presentation 또는 NONE>
+- Responsive / Breakpoint Source: <project token/utility/CSS convention>
+- API Impact: <NONE | SHARED_CONTRACT | CONTRACT_CHANGE>
+
 ## 반응형
 
 - Desktop: reference 기준
 - Tablet: <승인/기존 pattern/unknown>
 - Mobile: <승인/기존 pattern/unknown>
+- Verification Matrix: <viewport / state / expected view>
 
 ## Interaction / Navigation
 

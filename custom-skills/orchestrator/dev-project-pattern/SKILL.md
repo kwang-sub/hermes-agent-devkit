@@ -1,7 +1,7 @@
 ---
 name: dev-project-pattern
 description: 개발 계획 전에 Bootstrap 기술 스택 캐시와 대상 Repository의 기존 구조·코드·UI·디자인 Reference·데이터·테스트 패턴을 근거로 유지할 convention과 적용할 capability skill을 식별한다.
-version: 0.7.0
+version: 0.8.0
 author: local
 platforms: [linux]
 metadata:
@@ -127,6 +127,34 @@ Figma provider read → dev-figma-design
 
 React/Next.js가 repository에 있다는 이유만으로 frontend entry나 UI/UX를 자동 적용하지 않는다.
 
+## Frontend View Architecture Pattern
+
+Desktop/Mobile UI 작업이면 기존 구현에서 다음 evidence를 bounded하게 확인한다.
+
+```text
+feature/package root
+route/page composition 위치
+common/shared component 위치
+desktop/mobile 전용 component naming/location
+API client / query / state / hook 위치
+responsive breakpoint/token/utility source
+viewport 기반 runtime 분기 방식
+```
+
+Repository 전체를 재분류하거나 폴더를 일괄 migration하지 않는다. 가장 가까운 유사 화면/feature의 구조를 우선한다.
+
+Project Pattern 결과에는 가능한 범위에서 다음을 남긴다.
+
+```text
+Frontend Package Convention: <path/pattern | UNKNOWN>
+Existing View Strategy Evidence: SHARED | RESPONSIVE | HYBRID | SPLIT_VIEW | UNKNOWN
+View Variant Convention: <desktop/mobile/common naming/path | NONE | UNKNOWN>
+Shared Data/State Convention: <api/model/state/hooks ownership>
+Responsive / Breakpoint Source: <token/utility/css/module | UNKNOWN>
+```
+
+`Existing View Strategy Evidence`는 현재 코드가 그렇게 구현되어 있다는 관찰값이며 새 Task의 최종 View Strategy를 자동 결정하지 않는다. Orchestrator는 Design/Use Case와 함께 판단한다.
+
 ## Design Source / Reference Package
 
 Frontend Task에서는 다음을 구분한다.
@@ -248,6 +276,8 @@ Project Pattern Summary
 - Data Schema/Migration/DBML Convention (해당 시)
 - Kotlin Language/Compiler/Interop Convention (해당 시)
 - Frontend Component/State/Style Convention (해당 시)
+- Frontend Package/View Architecture Convention (해당 시)
+- Existing View Strategy Evidence / View Variant Convention / Responsive Breakpoint Source (해당 시)
 - Design System Reference (해당 시)
 - Frontend Mode / Design Source / Status / Fidelity / Reference / Screen Spec (해당 시)
 - Storybook / Visual Test Convention (해당 시)

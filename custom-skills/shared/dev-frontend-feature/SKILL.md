@@ -1,7 +1,7 @@
 ---
 name: dev-frontend-feature
 description: Frontend 작업의 canonical entry point로 승인된 Design Reference 또는 기존 코드 기준을 TypeScript·React/Next.js·UI/UX·API contract·test capability와 조합한다.
-version: 0.3.2
+version: 0.4.0
 author: local
 platforms: [linux]
 metadata:
@@ -40,6 +40,145 @@ EXISTING_CODE
 
 IMAGE와 FIGMA의 차이는 provider 단계에서만 다루고 이후 Coder/Reviewer는 Normalized Design Evidence를 공통 계약으로 사용한다.
 
+## View Strategy / Implementation Architecture
+
+Desktop/Web과 Mobile이 함께 범위에 들어오면 구현 전에 화면 단위 `View Strategy`를 확정한다.
+
+```text
+SHARED
+- 동일한 정보 구조와 interaction
+- viewport 차이가 작고 공통 component tree를 그대로 사용
+
+RESPONSIVE
+- 동일한 use case / 정보 구조 / 상태 흐름
+- layout, order, visibility, size가 breakpoint에 따라 달라짐
+- CSS media/container query와 기존 responsive utility를 우선
+
+HYBRID
+- 화면 shell/data/state는 공유
+- 일부 section만 desktop/mobile 전용 presentation 필요
+
+SPLIT_VIEW
+- 정보 우선순위, navigation, interaction, content density 또는 user journey가 의미 있게 다름
+- desktop/mobile presentation tree를 분리하되 data/business layer는 기본적으로 공유
+```
+
+화면 전체 전략을 기본값으로 하고 특정 section만 다른 전략이 필요하면 `Section Override`와 이유를 남긴다. 단순히 reference 이미지가 다르다는 이유만으로 `SPLIT_VIEW`를 선택하지 않고 정보 구조, interaction, state lifecycle, accessibility, data requirement 차이를 근거로 판단한다.
+
+### 기본 Package / Folder 구조
+
+프로젝트에 기존 feature/package convention이 있으면 그것을 우선한다. 기존 convention이 없을 때만 다음을 기본 구현 구조로 사용한다.
+
+```text
+src/features/<feature>/
+├─ api/          # API client/query definition
+├─ model/        # domain-facing frontend types / view model
+├─ state/        # shared client state (필요한 경우만)
+├─ hooks/        # shared orchestration/data hooks
+└─ ui/
+   ├─ common/    # desktop/mobile 공통 presentation
+   ├─ desktop/   # desktop 전용 presentation
+   └─ mobile/    # mobile 전용 presentation
+```
+
+빈 directory를 기계적으로 만들지 않는다. 프로젝트가 `components/`, `modules/`, `app/`, `pages/` 등 다른 convention을 사용하면 위 책임을 해당 구조에 매핑하고 unrelated package migration을 하지 않는다.
+
+Next.js route/page component는 가능한 한 route binding과 화면 composition에 집중하고, feature-specific state/data/presentation 책임을 route 파일에 누적하지 않는다.
+
+### Shared / Split 책임
+
+기본 공유 대상:
+
+```text
+API client / query key / cache contract
+request / response type
+domain-facing model
+business rule / formatter / selector
+data-fetching hook
+shared client state
+validation rule
+analytics event meaning
+```
+
+기본 분리 후보:
+
+```text
+layout composition
+desktop/mobile navigation
+interaction affordance
+content density
+platform-specific gesture / control
+viewport별 presentation-only component
+```
+
+규칙:
+
+- layout 차이만으로 API/hook/state를 복제하지 않는다.
+- `desktopApi`, `mobileApi`, `desktopStore`, `mobileStore`를 UI 차이만으로 만들지 않는다.
+- shared data hook 안에 presentation breakpoint 분기를 넣지 않는다.
+- platform-specific hook은 gesture, keyboard, pointer/touch 등 실제 interaction 차이가 있을 때만 둔다.
+- Desktop/Mobile variant가 같은 server state를 사용하면 fetch/query/cache owner를 공유하고 각 View에서 다시 요청하지 않는다.
+- 두 View가 동시에 mount될 수 있는 구조에서 effect/subscription/analytics가 중복 실행되지 않도록 owner를 한 곳에 둔다.
+
+### Strategy별 구현 규칙
+
+```text
+SHARED
+→ 하나의 component tree
+→ 공통 style/token 사용
+
+RESPONSIVE
+→ 하나의 semantic/component tree 우선
+→ CSS media/container query 또는 project responsive utility로 layout 조정
+→ 전체 화면을 JS viewport 분기로 교체하지 않음
+
+HYBRID
+→ shared screen/container + common UI
+→ 필요한 section만 ui/desktop | ui/mobile로 분리
+→ data/state owner는 shared layer 유지
+
+SPLIT_VIEW
+→ thin screen coordinator
+→ DesktopView / MobileView를 명시적으로 분리
+→ API/model/state/business logic은 기본 공유
+→ 각 View 내부에서 동일 fetch/effect를 독립 소유하지 않음
+```
+
+SSR/SSG framework에서는 client viewport 값 때문에 server initial markup과 hydration 결과가 달라지는 구조를 만들지 않는다. viewport 기반 runtime 분기가 필요한 경우 기존 framework/project pattern을 확인하고 client boundary 또는 CSS 기반 전략을 선택한 근거를 남긴다.
+
+### API Boundary
+
+Desktop과 Mobile 화면 구성이 다르다는 사실만으로 Backend Response를 두 화면의 모든 필드를 합친 superset DTO로 만들지 않는다.
+
+```text
+동일 use case / 동일 resource
+→ 기존 또는 하나의 shared API contract 우선
+→ frontend selector / view model로 화면별 shape 생성
+
+다른 use case / 다른 authorization / 큰 data-volume 또는 latency 차이
+→ 별도 API contract 후보
+→ dev-api-spec / dev-api-contract로 독립 판단
+```
+
+UI 구성 차이를 API endpoint 분리 근거로 사용하지 않는다. 반대로 실제 use case나 성능 요구가 다른데 하나의 비대한 응답으로 억지 통합하지 않는다.
+
+### Planning / Handoff 필수 필드
+
+Desktop/Mobile이 범위에 포함된 Frontend Task는 다음을 Plan과 Coder handoff에 남긴다.
+
+```text
+View Strategy: SHARED | RESPONSIVE | HYBRID | SPLIT_VIEW
+View Strategy Rationale:
+Platform Scope: DESKTOP | MOBILE | BOTH
+Section Overrides: <section=strategy | NONE>
+Package / View Plan:
+Shared Implementation:
+Split Implementation:
+API Impact: NONE | SHARED_CONTRACT | CONTRACT_CHANGE
+Responsive / Breakpoint Source:
+Desktop/Mobile Verification Matrix:
+```
+
 ## Coder 실행 순서
 
 ```text
@@ -48,14 +187,16 @@ IMAGE와 FIGMA의 차이는 provider 단계에서만 다루고 이후 Coder/Revi
 3. dependency mutation이 실제 scope면 dev-node-dependencies preflight
 4. REFERENCE_DRIVEN | CODE_DRIVEN 결정
 5. REFERENCE_DRIVEN이면 dev-design-reference load
-6. Screen Spec / Design Evidence와 기존 component/token/style/API/test pattern 대조
-7. 필요한 하위 capability만 lazy-load
-8. IMPLEMENTATION_SCOPE_READY 확정
-9. 최소 변경 구현
-10. 의미 있는 stateful/shared UI면 기존 Storybook catalog 갱신 검토
-11. UI 변경이면 dev-ui-ux quality gate
-12. affected test/typecheck/lint/build + 필요한 visual verification
-13. handoff evidence 기록
+6. Screen Spec / Design Evidence와 기존 component/token/style/API/test/package pattern 대조
+7. Desktop/Mobile 범위면 View Strategy와 Package / View Plan 확정
+8. Shared / Split 책임과 API Impact 확정
+9. 필요한 하위 capability만 lazy-load
+10. IMPLEMENTATION_SCOPE_READY 확정
+11. 최소 변경 구현
+12. 의미 있는 stateful/shared UI면 기존 Storybook catalog 갱신 검토
+13. UI 변경이면 dev-ui-ux quality gate
+14. affected test/typecheck/lint/build + Desktop/Mobile verification matrix 수행
+15. handoff evidence 기록
 ```
 
 ## Lazy capability
@@ -208,6 +349,10 @@ ChatGPT/디자인 PNG를 곧바로 장기 regression golden으로 사용하지 �
 Reviewer는 기존 `dev-code-review`의 diff-first/verification reuse 계약을 유지하면서 다음을 추가한다.
 
 - Frontend Mode / Design Source / Status / Fidelity를 확인한다.
+- Desktop/Mobile 범위면 View Strategy와 실제 package/component 분리가 Plan과 일치하는지 확인한다.
+- `SPLIT_VIEW`/`HYBRID`에서 API/model/state/hooks가 presentation 차이만으로 불필요하게 복제되지 않았는지 확인한다.
+- `SHARED`/`RESPONSIVE`에서 동일 semantic tree를 불필요하게 desktop/mobile 별도 tree로 복제하지 않았는지 확인한다.
+- Desktop/Mobile 차이를 이유로 Backend API가 불필요한 superset DTO 또는 중복 endpoint로 확장되지 않았는지 확인한다.
 - REFERENCE_DRIVEN이면 Coder의 Normalized Design Evidence와 `screen-spec.md`를 우선 재사용한다.
 - fidelity finding에 원본이 필요할 때만 IMAGE/Figma Reference를 다시 확인한다.
 - `OBSERVED`, `INFERRED`, `UNKNOWN` 경계를 Coder가 무너뜨리지 않았는지 확인한다.
@@ -225,6 +370,16 @@ Design Status: DRAFT | REFERENCE | APPROVED | N/A
 Design Fidelity: STRUCTURE | VISUAL | HIGH | N/A
 Reference: <repo path | Figma URL | current code>
 Screen Spec: <path | none>
+View Strategy: SHARED | RESPONSIVE | HYBRID | SPLIT_VIEW | N/A
+View Strategy Rationale:
+Platform Scope: DESKTOP | MOBILE | BOTH | N/A
+Section Overrides: <... | NONE>
+Package / View Plan:
+Shared Implementation:
+Split Implementation:
+API Impact: NONE | SHARED_CONTRACT | CONTRACT_CHANGE | N/A
+Responsive / Breakpoint Source:
+Desktop/Mobile Verification Matrix:
 Observed / Inferred / Unknown:
 - ...
 Applied Capability Skills:
@@ -255,6 +410,9 @@ Residual Risk:
 - DRAFT/REFERENCE를 APPROVED로 임의 승격하지 않는다.
 - 이미지 추정치를 exact design fact로 바꾸지 않는다.
 - Approved Reference 일치를 이유로 unrelated global style/token refactor를 하지 않는다.
+- Desktop/Mobile 차이만으로 API/model/state/data hook을 중복 구현하지 않는다.
+- View Strategy 없이 desktop/mobile component tree를 임의 분기하지 않는다.
+- project package convention이 있는데 feature-first 구조로 일괄 migration하지 않는다.
 - dependency/state/form/query/UI/test library를 편의상 추가하지 않는다.
 - 외부 기술 변경에서 actual resolved version 확인 전에 latest 문법을 도입하지 않는다.
 - Context7 조회 성공을 typecheck/test/build 성공으로 대체하지 않는다.
