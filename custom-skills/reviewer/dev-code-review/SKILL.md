@@ -55,7 +55,7 @@ Coder의 `Verification Final: true`, command/result, verification/effective scop
 
 Coder PASS 이후 executable source/test/build/toolchain이 바뀌었거나 fingerprint/evidence가 불일치하면 fresh verification을 요구한다. `GRADLE_STATUS=BLOCKED`를 같은 primary command로 우회 재시도하지 않는다.
 
-Java/Gradle 재검증은 project toolchain의 `hermes-java`와 canonical cached verification helper를 사용하며 임의 JDK를 설치하거나 host Java로 우회하지 않는다.
+Java/Gradle 재검증은 `hermes-java` 기반 cached helper를 사용하고 임의 JDK/host Java로 우회하지 않는다.
 
 ## Common Coding Review Gate
 
@@ -76,7 +76,7 @@ dev-api-spec
 dev-api-contract
 ```
 
-`strict_pin=true` applicable capability가 validated/pinned skill에서 누락되면 Dispatch Preflight 계약 위반이다. Follow-up 전용 capability가 현재 Task에 pin되지 않은 것은 정상이다.
+`strict_pin=true` applicable capability가 validated/pinned skill에서 누락되면 Dispatch Preflight 계약 위반이다.
 
 ## Java Convention Review Gate
 
