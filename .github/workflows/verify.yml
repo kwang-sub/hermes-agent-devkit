@@ -137,6 +137,10 @@ jobs:
         shell: bash
         run: python3 scripts/test_verification_runtime_contract.py
 
+      - name: Verify Gradle launcher isolation contract
+        shell: bash
+        run: python3 scripts/check_gradle_launcher_contract.py
+
       - name: Verify Gradle bounded verification helper
         shell: bash
         run: python3 custom-skills/coder/dev-implement-plan/tests/test_gradle_verification.py

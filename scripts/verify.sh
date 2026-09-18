@@ -239,6 +239,7 @@ run_check "Custom skill Python compilation" python3 -m compileall -q custom-skil
 run_check "Custom skill metadata and progressive-disclosure contract" python3 scripts/check_skill_contract.py
 run_check "Capability lifecycle contract" python3 scripts/check_capability_lifecycle_contract.py
 run_check "Orchestrator Direct Flow contract" python3 scripts/check_direct_flow_contract.py
+run_check "Gradle launcher isolation contract" python3 scripts/check_gradle_launcher_contract.py
 run_check "Standard Flow Work Unit boundary contract" python3 scripts/check_standard_work_unit_contract.py
 run_check "Markdown API specification contract" python3 scripts/check_api_spec_contract.py
 run_check "DevKit updater contract" python3 scripts/check_update_devkit_contract.py

@@ -64,6 +64,9 @@ def main() -> int:
             "Coder self-complete를 허용하지 않는다",
             "DIRECT_SCOPE_EXCEEDED",
             "Requirement Delta/Standard Flow",
+            "Gradle 재현이 필요하면 Direct 판정을 멈추고 Standard로 전환",
+            "`hermes-java ./gradlew ...`",
+            "Plan 승인 전 source mutation/Kanban 생성/build/test 실행은 금지한다",
         ),
         failures,
     )
