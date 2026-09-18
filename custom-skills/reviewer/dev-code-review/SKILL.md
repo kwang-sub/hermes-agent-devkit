@@ -1,19 +1,19 @@
 ---
 name: dev-code-review
-description: 동일 Workspace의 미커밋 구현을 requirement/AC와 Work Unit·project pattern·capability·구조 품질 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
-version: 0.16.0
+description: 동일 Workspace의 Direct/Standard 미커밋 구현을 requirement/AC와 Work Unit·project pattern·capability·구조 품질 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
+version: 0.17.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, review, reviewer, kanban, quality, verification, work-unit, capability, lifecycle, java, refactor, structural-quality, performance]
+    tags: [dev, review, reviewer, kanban, quality, verification, direct-flow, standard-flow, work-unit, capability, lifecycle, java, refactor, structural-quality, performance]
     related_skills: [dev-implement-plan, dev-review-cycle, dev-workspace-dispatch, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-frontend-feature, dev-data-feature, dev-data-modeling, dev-db-migration, dev-infrastructure, dev-api-spec, dev-api-contract, dev-api-docs]
     requires_tools: [terminal, kanban_show, kanban_request_changes, kanban_complete, kanban_block, kanban_heartbeat, skill_view]
 ---
 
 # dev-code-review
 
-Reviewer의 **compact 실행 계약**이다. 상세 severity/checklist/escalation은 필요할 때만 `references/review-details.md`를 읽는다. Standard Flow에서는 `/opt/data/shared/references/standard-work-unit-rules.md`를 함께 적용한다.
+Reviewer의 **compact 실행 계약**이다. 상세 severity/checklist/escalation은 필요할 때만 `references/review-details.md`를 읽는다. Direct/Standard 모두 `/opt/data/shared/references/standard-work-unit-rules.md`를 적용한다.
 
 ## 실행 계약
 1. `kanban_show()`에서 requirement/AC/scope, **Work Unit Contract**, Pattern References, Applied Capability Skills, coder evidence, attempts/comments를 읽는다.
@@ -94,7 +94,7 @@ python3 /opt/custom-skills/reviewer/dev-code-review/scripts/review_context.py \
 
 Canonical 호출은 `review_context.py --include` scoped review다.
 
-- Standard Flow에서는 `--include`를 반드시 제공한다. 값은 Coder handoff의 `Changed Files`를 그대로 사용한다.
+- Direct/Standard Flow에서는 `--include`를 반드시 제공한다. 값은 Coder handoff의 `Changed Files`를 그대로 사용한다.
 - Coder Changed Files가 누락되면 repository-wide scan으로 복구하지 않고 evidence 부족으로 BLOCK한다.
 - `--allow-full-scan`은 명시적 진단 전용이다.
 - tracked와 untracked 모두 Git pathspec으로 제한한다.
@@ -222,9 +222,9 @@ P0/P1 없음 + evidence 충분 → kanban_complete
 - commit, push, PR, cleanup 금지.
 - EOL-only noise를 이유로 source line ending을 변경하지 않는다.
 - finding은 file/symbol, evidence, required change, expected verification을 포함한다.
-- Fast Flow `Review Risk: LOW` Task는 Coder가 완료하므로 Reviewer가 호출되지 않는다.
+- Direct/Standard Task는 모두 Reviewer가 호출되는 계약이며 risk가 낮다는 이유로 review를 생략하지 않는다.
 - Coder Risk Reasons는 starting point이지 verdict가 아니다.
-- Standard Flow에서는 scope 없는 `review_context.py` 호출을 하지 않는다.
+- Direct/Standard Flow에서는 scope 없는 `review_context.py` 호출을 하지 않는다.
 - Follow-up Work Unit을 현재 Task에 구현하도록 요구하지 않는다.
 
 Severity, 상세 checklist, retry/escalation이 필요하면 `references/review-details.md`를 읽는다.

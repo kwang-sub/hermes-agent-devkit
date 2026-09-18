@@ -72,7 +72,7 @@ def main() -> int:
     ))
 
     require(IMPLEMENT, common + (
-        "Standard Work Unit Boundary Gate",
+        "Work Unit Boundary Gate",
         "WORK_UNIT_BOUNDARY_EXCEEDED",
         "STOP at DESIGN boundary",
         "dev-db-migration",

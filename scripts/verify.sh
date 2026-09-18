@@ -238,6 +238,7 @@ run_check "Context budget and compact policy invariants" python3 scripts/context
 run_check "Custom skill Python compilation" python3 -m compileall -q custom-skills
 run_check "Custom skill metadata and progressive-disclosure contract" python3 scripts/check_skill_contract.py
 run_check "Capability lifecycle contract" python3 scripts/check_capability_lifecycle_contract.py
+run_check "Orchestrator Direct Flow contract" python3 scripts/check_direct_flow_contract.py
 run_check "Standard Flow Work Unit boundary contract" python3 scripts/check_standard_work_unit_contract.py
 run_check "Markdown API specification contract" python3 scripts/check_api_spec_contract.py
 run_check "DevKit updater contract" python3 scripts/check_update_devkit_contract.py
@@ -246,8 +247,6 @@ run_check "Hermes Discord Kanban notification patch" python3 scripts/patch_herme
 run_check "Kanban task/profile session-affinity runtime" python3 scripts/devkit_session_affinity.py --self-test
 run_check "Kanban worker session-affinity patch" python3 scripts/patch_hermes_kanban_session_affinity.py --self-test
 run_check "Discord Kanban session-context patch" python3 scripts/patch_hermes_discord_kanban_session.py --self-test
-run_check "dev-fast-flow task creation regression tests" python3 custom-skills/coder/dev-fast-flow/tests/test_create_fast_task.py
-run_check "dev-fast-flow active task follow-up regression tests" python3 custom-skills/coder/dev-fast-flow/tests/test_update_fast_task.py
 run_check "dev-workspace-dispatch regression tests" python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
 run_check "dev-implement-plan workspace verification tests" python3 custom-skills/coder/dev-implement-plan/tests/test_verify_workspace.py
 run_check "dev-code-review context tests" python3 custom-skills/reviewer/dev-code-review/tests/test_review_context.py

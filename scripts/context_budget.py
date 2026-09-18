@@ -16,35 +16,35 @@ BASELINES = {
 
 REQUIRED = {
     "AGENTS.md": [
-        "Orchestrator", "Coder", "Reviewer", "Fast Flow", "Standard Flow",
-        "FAST_FLOW_ESCALATION_REQUIRED", "공통 코드 품질", "2-depth",
-        "Stack/Capability Skill", "secret", "commit", "push", "한국어",
-        "Review Policy: RISK_BASED", "REVIEW_REQUIRED", "기존 변경",
+        "Orchestrator", "Coder", "Reviewer", "Direct Flow", "Standard Flow",
+        "DIRECT | STANDARD", "Coder: **Kanban에 할당된 Task만** 구현",
+        "공통 코드 품질", "2-depth", "Stack/Capability Skill", "secret", "commit", "push", "한국어",
+        "Review Policy: REQUIRED", "기존 변경",
     ],
     "shared/AGENTS.common.md": [
-        "Orchestrator", "Coder", "Reviewer", "Fast Flow", "Standard Flow",
-        "FAST_FLOW_ESCALATION_REQUIRED", "공통 코드 품질", "2-depth",
-        "Stack/Capability Skill", "secret", "commit", "push", "한국어",
-        "Review Policy: RISK_BASED", "REVIEW_REQUIRED", "기존 변경",
+        "Orchestrator", "Coder", "Reviewer", "Direct Flow", "Standard Flow",
+        "DIRECT | STANDARD", "Coder: **Kanban에 할당된 Task만** 구현",
+        "공통 코드 품질", "2-depth", "Stack/Capability Skill", "secret", "commit", "push", "한국어",
+        "Review Policy: REQUIRED", "기존 변경",
+    ],
+    "custom-skills/orchestrator/dev-direct-flow/SKILL.md": [
+        "Orchestrator 소유의 compact dispatch 경로", "Flow: DIRECT", "Review Policy: REQUIRED",
+        "Work Unit Boundary = SINGLE_UNIT", "DIRECT_SCOPE_EXCEEDED", "dev-workspace-dispatch",
+        "[Coder 모델 선택]", "[작업 계획 승인]",
     ],
     "custom-skills/orchestrator/dev-workflow-orchestrate/SKILL.md": [
         "Project Approval", "Plan Approval", "Workspace / Branch", "dev-workspace-dispatch",
         "Base SHA", "coder", "reviewer", "READY", "BLOCKED", "commit", "push", "한국어",
     ],
-    # Breakdown owns plan readiness; approval gates remain in workflow-orchestrate.
     "custom-skills/orchestrator/dev-breakdown/SKILL.md": [
         "READY", "BLOCKED", "한국어", "commit", "push", "dev-project-pattern",
         "Acceptance Criteria", "Applicable Skills",
     ],
-    "custom-skills/coder/dev-fast-flow/SKILL.md": [
-        "ACTIVE_TASK_FOLLOWUP", "Kanban", "coder", "reviewer", "current branch", "기존 변경",
-        "FAST_FLOW_ESCALATION_REQUIRED", "Standard Flow", "commit", "push",
-        "Review Policy: RISK_BASED", "LOW", "REVIEW_REQUIRED",
-    ],
     "custom-skills/coder/dev-implement-plan/SKILL.md": [
-        "Workspace", "Pattern References", "Flow: FAST", "FAST_FLOW_ESCALATION_REQUIRED",
+        "Workspace", "Pattern References", "Flow: DIRECT", "DIRECT_SCOPE_EXCEEDED",
         "공통 Coding Rules 핵심", "2-depth", "skill_view", "coding-rules.md",
-        "secret", "commit", "push", "BLOCKED", "Review Risk", "LOW", "REVIEW_REQUIRED",
+        "secret", "commit", "push", "BLOCKED", "Review Policy: REQUIRED",
+        "Direct/Standard Flow 모두 Coder self-complete 금지",
     ],
     "custom-skills/reviewer/dev-code-review/SKILL.md": [
         "Reviewer", "source를 수정하지", "Common Coding Review Gate", "2-depth",
@@ -54,16 +54,16 @@ REQUIRED = {
 
 DETAIL_REQUIRED = {
     "custom-skills/coder/dev-implement-plan/references/implementation-details.md": [
-        "Risk-based Review", "Review Risk: LOW", "REVIEW_REQUIRED", "review_skipped", "targeted",
-        "Standard Flow", "CHANGES_REQUESTED", "kanban_request_review", "kanban_complete",
+        "Direct Flow", "Standard Flow", "DIRECT_SCOPE_EXCEEDED", "targeted",
+        "CHANGES_REQUESTED", "kanban_request_review", "Reviewer", "kanban_block",
     ],
     "custom-skills/coder/dev-review-cycle/references/review-protocol.md": [
-        "Fast Flow", "Standard Flow", "Review Risk LOW", "review_skipped=true",
-        "CHANGES_REQUESTED", "kanban_request_review", "kanban_complete", "no commit/push/PR",
+        "Direct와 Standard Flow는 모두 Reviewer 필수", "CHANGES_REQUESTED",
+        "kanban_request_review", "kanban_complete", "no commit/push/PR",
     ],
     "custom-skills/reviewer/dev-review-cycle/references/review-protocol.md": [
-        "Fast Flow", "Standard Flow", "Review Risk LOW", "review_skipped=true",
-        "CHANGES_REQUESTED", "kanban_request_review", "kanban_complete", "no commit/push/PR",
+        "Direct와 Standard Flow는 모두 Reviewer 필수", "CHANGES_REQUESTED",
+        "kanban_request_review", "kanban_complete", "no commit/push/PR",
     ],
 }
 

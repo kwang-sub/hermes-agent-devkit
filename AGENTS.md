@@ -5,55 +5,54 @@
 항상 적용되는 최소 정책이다. 세부 규칙은 필요할 때만 `shared/references/common-agent-rules.md`, `/opt/data/shared/references/coding-rules.md`, `/opt/data/shared/references/stack-capability-skill-guide.md`를 읽는다.
 
 ## 역할 / Workflow
-- Orchestrator: 복잡한 작업의 resolve → `dev-breakdown` → 승인 → `dev-workspace-dispatch`; 구현/review는 하지 않는다.
-- Coder: 초소형 저위험 작업은 DIRECT로 직접 수행할 수 있고, 작은 작업은 Fast Flow로 Kanban self-dispatch한다. Standard Flow는 직접 진행하지 않고 Orchestrator로 안내한다.
-- Reviewer: requirement/AC와 diff/evidence를 독립 검토하며 source를 수정하지 않는다.
+- Orchestrator: 모든 새 mutation request의 실행 진입점이다. 요청을 `DIRECT | STANDARD`로 분류하고 승인/dispatch를 담당하며 구현/review는 하지 않는다.
+- Coder: **Kanban에 할당된 Task만** 구현한다. Interactive Coder가 새 요청을 직접 수정하거나 self-dispatch하지 않는다.
+- Reviewer: Direct/Standard 모두 requirement/AC와 diff/evidence를 독립 검토하며 source를 수정하지 않는다.
 
-## Coder 실행 방식 확인 Gate
-Interactive Coder의 모든 mutation request는 어떤 implementation/capability Skill보다 먼저 `DIRECT | FAST | STANDARD_REQUIRED`로 분류하고 사용자에게 실행 방식을 확인한다.
-
-- `DIRECT`: Kanban 없이 현재 Interactive Coder가 직접 수행하는 초소형·저위험 변경.
-- `FAST`: Kanban에 self-dispatch하고 별도 Coder Worker가 수행하는 작은 기존 패턴 기반 작업.
-- `STANDARD_REQUIRED`: Standard Flow가 필요한 작업. Coder가 직접 실행하지 않고 Orchestrator에서 진행하도록 안내하고 STOP한다.
-
-DIRECT는 다음을 모두 만족할 때만 후보로 제시한다: managed 단일 Repository와 대상 영역이 명확함, current workspace/current branch 유지, 예상 1~3개 파일의 초소형 변경, 기존 패턴 그대로 적용, public API/request/response schema·DB schema·dependency·transaction·security·concurrency·common architecture 영향 없음, 별도 Reviewer가 필요할 정도의 위험 없음, 짧은 compile/targeted test로 검증 가능. 범위가 불명확하거나 여러 호출 흐름 분석, 공통 Utility 재사용/추출 필요성 판단이 먼저 필요하면 DIRECT가 아니라 FAST를 우선한다.
-
-- **Execution Router Priority:** semantic skill auto-selection으로 `dev-direct-flow`, `dev-spring-*`, `gradle-spring-verification` 또는 다른 구현 Skill이 먼저 선택되어도 Gate를 우회하지 않는다. Interactive mutation request에서는 execution router가 먼저다.
-- DIRECT 승인은 execution mode 자체를 명시적으로 선택한 경우만 인정한다. 예: `DIRECT로 진행해주세요`, `직접 수정 모드로 진행해주세요`, 또는 바로 앞 `clarify`에서 `직접 수정` 선택.
-- `수정해주세요`, `바로 수정해주세요`, `적용해주세요`, `고쳐주세요`, `재검토 후 수정해주세요`, `오류가 있으면 수정해주세요` 같은 일반 mutation 표현은 **DIRECT 승인으로 간주하지 않는다**.
-- FAST 승인은 `FAST Flow로 진행`, `칸반으로 진행`, `/dev-fast-flow ...`처럼 실행 방식을 명시한 경우 인정한다.
-- `Standard Flow로 진행`을 Coder가 직접 실행하는 승인으로 취급하지 않는다. Standard 대상이면 Orchestrator에서 진행해야 한다고 안내하고 STOP한다.
-- 같은 요청 반복, 요청 문구 수정/보완, 추가 요구사항 전달, 파일 재첨부, `@file` 재지정, 질문 재입력은 실행 승인으로 간주하지 않는다.
-- 승인 대기 상태에서 새 메시지가 들어왔는데 명시적 선택이 아니면 최신 요구사항만 반영하고 실행 선택지를 다시 물은 뒤 그 turn을 종료한다.
-- 승인 전에는 source write/patch, build/test, 구현용 capability Skill 로드, Kanban Task 생성, plan/read/grep/find를 하지 않는다. Flow 분류에 필요한 최소 metadata/path 확인만 허용한다.
-- 승인 전 Gate를 통과하지 못한 turn의 유일한 실행 action은 `clarify`다.
-- read-only 분석/설명/코드 리뷰 요청은 Gate를 적용하지 않는다. 분석 중 수정 필요성을 발견하면 수정 전에 execution Gate를 적용한다.
-- 실제 Kanban Task ID가 있는 Worker 세션은 Gate를 다시 묻지 않고 할당된 Task를 수행한다.
+## Orchestrator 실행 방식 Gate
+새 mutation request는 implementation/capability Skill보다 먼저 Orchestrator가 `DIRECT | STANDARD`로 분류한다.
 
 ### Direct Flow
-`User → Coder gate → explicit DIRECT selection → scoped read/edit → minimal verification → report`
+`Request → Orchestrator → Direct eligibility → Flow/Model/Compact Plan 승인 → dev-workspace-dispatch → Coder → Reviewer`
 
-DIRECT는 Kanban Task/Reviewer를 생성하지 않는다. `dev-direct-flow`가 semantic auto-selection으로 먼저 로드되어도 명시적 DIRECT 선택 전에는 source/plan/read/grep/write/patch/test를 시작하지 않는다. 실제 source에서 범위가 커지면 계속 구현하지 않고 `DIRECT_FLOW_ESCALATION_REQUIRED: FAST | STANDARD`로 중단한다.
+Direct는 planning shortcut이지 구현 shortcut이 아니다. 다음을 모두 만족할 때만 후보가 된다.
 
-### Fast Flow
-`User → Coder intake → Kanban → Coder worker → LOW done | REVIEW_REQUIRED → Reviewer`
+- managed 단일 Project와 current workspace/current branch가 명확함
+- 하나의 `IMPLEMENTATION | REFACTOR` Work Unit, `SINGLE_UNIT`
+- 작은 기존 패턴 기반 변경이며 요구사항 해석이 하나임
+- API Spec Gate가 필요하지 않고 Infrastructure Impact가 없음
+- DB schema/data migration, dependency, security/authz, transaction/concurrency, architecture/common contract 결정이 없음
+- cross-repository/의미 있는 multi-module 변경이 없음
+- scope 판정을 위해 broad source 분석이 필요하지 않음
+- bounded compile/targeted test로 검증 가능
 
-단일 managed Repository의 current branch에서 작고 명확한 기존 패턴 기반 작업에 사용한다. 기존 변경이 있어도 그대로 보존하며 작업할 수 있으면 허용한다. 기존 변경을 안전하게 보존하기 어렵거나 실제 evidence에서 architecture/product/public API/DB schema/dependency/cross-repo 등 범위 확대가 확인되면 `FAST_FLOW_ESCALATION_REQUIRED`로 Standard Flow 전환한다.
+애매하거나 위 조건 하나라도 벗어나면 Standard다. Direct도 Kanban Task를 생성하고 Coder→Reviewer를 반드시 거친다. Coder self-complete와 Reviewer 생략은 금지한다.
 
-Fast worker는 구현 후 risk를 판정한다. `LOW`는 위험 영역이 없고 targeted verification이 충분할 때만 Coder가 근거를 남기고 complete한다. 불확실하거나 API/schema/entity/dependency/transaction/security/concurrency/complex query/common architecture 영향이 있으면 `REVIEW_REQUIRED`. `CHANGES_REQUESTED` 재작업은 항상 다시 Reviewer에게 보낸다.
+Direct는 current workspace/current branch 고정 경로다. 다른 workspace/새 branch 또는 기존 변경 처리의 별도 판단이 필요하면 Standard로 전환한다. Direct Task에는 `Flow: DIRECT`, `Review Policy: REQUIRED`, `Work Unit Boundary: SINGLE_UNIT`을 기록한다.
 
 ### Standard Flow
-`Request → Project Approval → Breakdown → Plan Approval → Workspace / Branch Approval → Dispatch → Coder ↔ Reviewer`
+`Request → Project Approval → Breakdown → Work Unit/API/Workspace/Branch/Model/Plan Approval → Dispatch → Coder ↔ Reviewer`
 
-신규 기능, 설계/분해, multi-module/repository, API/Schema/Dependency 변경, 모호한 요구사항은 Standard Flow이며 Reviewer를 생략하지 않는다. Interactive Coder는 Standard Flow를 직접 실행하지 않고 Orchestrator에서 진행하도록 안내하고 STOP한다.
+신규 기능/설계, DESIGN/MIGRATION, multi-module/repository, API/Schema/Dependency/Infrastructure 변경, security/transaction/concurrency/architecture 결정, 모호한 요구사항은 Standard Flow다. Standard Work Unit 계약을 적용하며 독립 승인 artifact가 다음 mutation phase의 authoritative input이면 Task를 분리한다.
+
+### 실행 Gate 불변식
+- 실행 방식 승인과 Coder 모델 승인은 서로 다른 Gate다.
+- Direct 후보라도 사용자가 `Standard Flow`를 선택하면 Standard 계약을 따른다.
+- `수정해주세요`, `적용해주세요`, `바로 해주세요` 같은 일반 mutation 표현은 Direct 실행 승인 자체로 간주하지 않는다.
+- 승인 전에는 source mutation, build/test, Kanban 생성으로 넘어가지 않는다.
+- read-only 분석/설명/코드 리뷰 요청은 실행 Gate 대상이 아니다. 분석 중 수정 필요성이 생기면 mutation 전에 Orchestrator Flow Gate로 돌아간다.
+- 실제 Kanban Task ID가 있는 Worker 세션은 Flow Gate를 다시 묻지 않고 할당 Task를 수행한다.
+- Fast Flow는 신규 실행 경로로 사용하지 않는다.
 
 ## Kanban 계약
-Task에는 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Risks, Workspace, Expected/Base Branch, Base SHA, coder/reviewer를 보존한다. Fast Flow에는 `Flow: FAST`, `Review Policy: RISK_BASED`와 dispatch 시 기존 변경 baseline을 추가한다. Standard Flow에서 Coder self-complete는 금지한다.
+Direct/Standard Task 모두 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Risks, Work Unit Contract, Workspace, Expected/Base Branch, Base SHA, Coder model snapshot, Reviewer DEFAULT를 보존한다. 구현 완료 후 Coder는 항상 Reviewer에게 인계한다.
+
+이미 dispatch된 Task의 추가 요구사항은 Interactive Coder가 직접 반영하지 않는다. Orchestrator의 Requirement Delta/Work Unit 재평가 계약을 사용하고, 경계를 넘으면 새 Standard Flow로 분리한다.
 
 ## 사용자 가시 언어 정책
 - 계획/진행 보고뿐 아니라 **Kanban Task 제목·본문, Requirement Delta, 대체/후속 작업 설명, Task comment, review/dispatch handoff의 자연어는 기본 한국어로 작성한다.**
 - 사용자에게 보이는 자유 형식 섹션명을 `Task Key`, `Supersedes`, `Goal`, `Final ... Contract`, `Implementation Tasks`, `Test Plan`, `Known Risks`처럼 영어로 새로 만들지 않는다. 각각 `작업 키`, `대체 대상`, `목표`, `최종 ... 계약`, `구현 작업`, `테스트 계획`, `위험`처럼 한국어 제목을 사용한다.
-- 예외는 자동화가 정확한 문자열로 파싱하는 고정 키(`Flow`, `Review Policy`, `Verification Mode`, `Coder Model Tier`, `Coder Model`, `Coder Provider`, `Reviewer Model`, `Model Escalation`, `Base SHA`, API/Data contract field), enum/status 값, 코드·클래스·메서드·API·SQL·경로·브랜치·명령어·모델명 등 기술 식별자다. 이런 고정 키 주변의 설명 문장은 한국어로 쓴다.
+- 예외는 자동화가 정확한 문자열로 파싱하는 고정 키(`Flow`, `Review Policy`, `Verification Mode`, `Coder Model Tier`, `Coder Model`, `Coder Provider`, `Reviewer Model`, `Model Escalation`, `Base SHA`, API/Data contract field), enum/status 값, 코드·클래스·메서드·API·SQL·경로·브랜치·명령어·모델명 등 기술 식별자다.
 - 영어 Jira/문서/요구사항을 입력으로 받아도 의미를 보존해 한국어 계획으로 정규화한다. 정확한 원문 인용이 필요한 경우에만 영어 원문을 제한적으로 남긴다.
 
 ## JVM 언어 capability

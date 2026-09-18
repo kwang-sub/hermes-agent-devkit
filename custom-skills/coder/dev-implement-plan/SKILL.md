@@ -1,19 +1,19 @@
 ---
 name: dev-implement-plan
-description: 승인된 Kanban 단일 Work Unit을 할당 Workspace에서 최소 구현·구조 품질 점검·검증하고 Fast Flow는 risk에 따라 완료 또는 review, Standard Flow는 reviewer에게 인계한다.
-version: 0.23.1
+description: Orchestrator가 승인·dispatch한 Direct 또는 Standard Kanban 단일 Work Unit을 할당 Workspace에서 구현·검증하고 항상 Reviewer에게 인계한다.
+version: 0.24.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, implementation, coder, kanban, workspace, review, fast-flow, work-unit, capability, java, refactor, structural-quality, performance, infrastructure, runtime, container, env]
-    related_skills: [dev-fast-flow, dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-spec, dev-api-contract, dev-api-docs, dev-frontend-feature, dev-infrastructure, dev-data-feature, dev-data-modeling, dev-db-migration]
-    requires_tools: [terminal, kanban_show, kanban_request_review, kanban_complete, kanban_block, kanban_heartbeat, skill_view]
+    tags: [dev, implementation, coder, kanban, workspace, review, direct-flow, standard-flow, work-unit, capability, java, refactor, structural-quality, performance, infrastructure, runtime, container, env]
+    related_skills: [dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-spec, dev-api-contract, dev-api-docs, dev-frontend-feature, dev-infrastructure, dev-data-feature, dev-data-modeling, dev-db-migration]
+    requires_tools: [terminal, kanban_show, kanban_request_review, kanban_block, kanban_heartbeat, skill_view]
 ---
 
 # dev-implement-plan
 
-Coder worker의 compact 실행 계약이다. 상세 구현/검증/risk 형식이 필요할 때만 `references/implementation-details.md`를 읽는다. Standard Flow에서는 `/opt/data/shared/references/standard-work-unit-rules.md`를 함께 적용한다.
+Coder worker의 compact 실행 계약이다. **Coder는 새 mutation request의 실행 방식을 선택하거나 self-dispatch하지 않고 Orchestrator가 생성한 Kanban Task만 수행한다.** 상세 구현/검증/risk 형식이 필요할 때만 `references/implementation-details.md`를 읽는다. Direct/Standard 모두 `/opt/data/shared/references/standard-work-unit-rules.md`를 적용한다.
 
 ## 실행 순서 — Worker Context Gate → Workspace Verify
 
@@ -26,14 +26,14 @@ kanban_show
 → WORKER CONTEXT valid
 → verify_workspace.py 단독 1회
 → STATUS=valid
-→ Standard Flow면 Work Unit Boundary Gate
+→ Work Unit Boundary Gate
 → 필요한 target source/test만 탐색
 → 현재 Work Unit만 구현
 → targeted verification
 → IMPLEMENTATION_STABLE
 → final regression gate (필요한 경우 full test 1회)
 → change_summary.py 1회
-→ terminal transition 1회
+→ kanban_request_review 또는 kanban_block 정확히 1회
 ```
 
 ### Worker Context Gate
@@ -107,9 +107,9 @@ Workspace change scan mode: skipped-approved-preservation
 
 이 경우 Coder는 exact pre-existing file list/count를 복구하려고 repository-wide `git status`, `git diff`, `git ls-files --others`, EOL 분류를 다시 실행하지 않는다. 기존 변경 전체를 baseline으로 보존하고 자신의 실제 변경 path만 별도로 추적한다. **기존 파일은 preserve-first**이며 Work Unit 경계 도입을 이유로 기존 사용자 변경이나 기존 설정을 자동 정리하지 않는다.
 
-## Standard Work Unit Boundary Gate
+## Work Unit Boundary Gate
 
-Standard Flow Task는 구현 전에 다음 Task body 계약을 반드시 가진다.
+Direct/Standard Task는 구현 전에 다음 Task body 계약을 반드시 가진다.
 
 ```text
 Work Unit Class: DESIGN | IMPLEMENTATION | MIGRATION | REFACTOR | AUDIT
@@ -184,16 +184,42 @@ WORK_UNIT_BOUNDARY_EXCEEDED
 
 를 기록하고 `kanban_block`한다. Requirement Delta를 같은 Task에 주입해 Work Unit Class를 바꾸는 것도 금지한다.
 
-## Flow: FAST
+## Flow: DIRECT
 
-Fast Flow는 Task의 `Pre-existing effective changes at dispatch`를 기존 사용자 변경 baseline으로 사용한다. raw `git status`의 EOL-only noise를 사용자 변경으로 승격하지 않는다.
+Direct Task는 Orchestrator의 compact eligibility를 통과한 작은 단일 Work Unit이다. Task body는 최소 다음을 만족해야 한다.
 
-다음처럼 설계 판단이 필요한 경우 `FAST_FLOW_ESCALATION_REQUIRED`로 `kanban_block`한다.
+```text
+Flow: DIRECT
+Review Policy: REQUIRED
+Work Unit Class: IMPLEMENTATION | REFACTOR
+Work Unit Boundary: SINGLE_UNIT
+API Spec Gate: NOT_REQUIRED
+Infrastructure Impact: NO
+Workspace Approval Source: DIRECT_FIXED_CURRENT
+Branch Approval Source: DIRECT_FIXED_CURRENT
+```
 
-- API/schema/dependency/architecture 의미 변경
-- transaction/security/concurrency 영향
-- cross-repo 변경
-- 요구사항이 모호해 구현 방향을 임의로 정해야 함
+실제 source에서 다음이 필요하다고 드러나면 구현 범위를 확대하지 않는다.
+
+```text
+API/schema/dependency/DB migration
+Infrastructure runtime/topology/env delivery
+security/authz/transaction/concurrency 정책
+architecture/common shared contract 결정
+cross-repository 또는 승인 범위를 벗어난 multi-module 변경
+새 DESIGN/MIGRATION Work Unit
+복수 해석 요구사항
+```
+
+이 경우:
+
+```text
+DIRECT_SCOPE_EXCEEDED
+- Evidence: <확인 근거>
+- Required Flow: STANDARD
+```
+
+를 남기고 `kanban_block`한다. Direct Task를 내부에서 Standard 범위로 조용히 확장하지 않는다.
 
 ## Source / Scope 계약
 
@@ -367,15 +393,15 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/change_summary.py \
   --include "<changed-path-2>"
 ```
 
-Standard Flow에서 `--include` 없이 호출하지 않는다. `--allow-full-scan`은 명시적 진단 전용이다. tracked와 untracked 모두 Git pathspec으로 제한하며 unrelated repository 전체를 훑지 않는다. `EOL_ONLY_COUNT > 0` + `WHITESPACE_ERROR_COUNT=0`은 정상이다.
+Direct/Standard Flow에서 `--include` 없이 호출하지 않는다. `--allow-full-scan`은 명시적 진단 전용이다. tracked와 untracked 모두 Git pathspec으로 제한하며 unrelated repository 전체를 훑지 않는다. `EOL_ONLY_COUNT > 0` + `WHITESPACE_ERROR_COUNT=0`은 정상이다.
 
 `change_summary.py`가 DevKit runtime/capability 문제로 실패하면 **임시 wrapper/script 생성**, executable bit 변경, inline Python monkey-patch 등으로 우회하지 않고 `CAPABILITY` blocker로 종료한다.
 
-## Review Risk / Handoff
+## Review / Handoff
 
-Standard Flow 또는 CHANGES_REQUESTED 재작업은 항상 review한다. Fast Flow는 LOW를 positive evidence로 증명한 경우만 self-complete 가능하다.
+**Direct Flow, Standard Flow, CHANGES_REQUESTED 재작업은 모두 항상 review한다.** Coder가 risk를 LOW로 판정해도 self-complete하지 않는다.
 
-다음은 `REVIEW_REQUIRED`다.
+다음은 특히 높은 review attention이 필요한 영역이다.
 - API/request/response 의미 변경
 - DB schema/data/query 의미 변경
 - Work Unit DESIGN/MIGRATION artifact 변경
@@ -389,6 +415,7 @@ Standard Flow 또는 CHANGES_REQUESTED 재작업은 항상 review한다. Fast Fl
 Review handoff에는 최소 다음을 남긴다.
 
 ```text
+Flow: DIRECT | STANDARD
 Work Unit Class: <...>
 Work Unit Boundary: <...>
 Current Deliverable: <...>
@@ -421,9 +448,9 @@ Residual Risk:
 
 ## Terminal transition
 
-한 Coder run의 terminal transition은 `kanban_complete`, `kanban_block`, `kanban_request_review` 중 정확히 하나다.
+한 Coder run의 terminal transition은 `kanban_block`, `kanban_request_review` 중 정확히 하나다.
 
-- Standard Flow에서 Coder self-complete 금지.
+- Direct/Standard Flow 모두 Coder self-complete 금지.
 - `CHANGES_REQUESTED`는 terminal 상태가 아니며 original coder가 동일 Workspace에서 blocking finding만 수정 후 재-review한다.
 - `GRADLE_STATUS=BLOCKED`인 검증은 review residual risk로 넘기지 않고 `kanban_block`한다.
 - `kanban_request_review` 성공 후 즉시 종료한다.
@@ -445,5 +472,6 @@ Residual Risk:
 - behavior/API/schema 의미 변경을 refactor라는 이름으로 섞지 않는다.
 - existing preservation fast path를 이유로 repository-wide dirty/EOL/untracked scan을 재실행하지 않는다.
 - Follow-up Work Unit을 현재 Task에서 선행 구현하지 않는다.
+- Interactive Coder가 Kanban 없이 새 mutation request를 직접 구현하거나 self-dispatch하지 않는다.
 
 retry/BLOCKED/검증/risk metadata의 추가 세부 형식이 필요할 때만 `references/implementation-details.md`를 읽는다.
