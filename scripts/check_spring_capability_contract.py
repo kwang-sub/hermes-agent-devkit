@@ -26,7 +26,6 @@ def main() -> int:
     compat = ROOT / "scripts/verify_latest_hermes_compat.sh"
 
     require(guidelines, (
-        "version: 0.2.0",
         "Version Compatibility Gate",
         "Dependency Injection",
         "constructor injection",
@@ -60,7 +59,6 @@ def main() -> int:
         "Project Convention First",
     ), failures)
     require(feature, (
-        "version: 0.2.1",
         "dev-official-docs-context",
         'skill_view("dev-official-docs-context")',
         "External SDK / API Documentation Gate",
@@ -76,7 +74,6 @@ def main() -> int:
         "Compile Evidence",
     ), failures)
     require(official_docs, (
-        "version: 0.1.1",
         "Version First",
         "Context7 Hosted MCP Provider",
         "https://mcp.context7.com/mcp",

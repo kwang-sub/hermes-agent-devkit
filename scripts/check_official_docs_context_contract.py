@@ -35,7 +35,7 @@ def forbid(text: str, terms: tuple[str, ...], label: str) -> None:
 def main() -> int:
     skill = read(SKILL)
     require(skill, (
-        "version: 0.1.1", "Version First", "Context7 Hosted MCP Provider",
+        "Version First", "Context7 Hosted MCP Provider",
         "https://mcp.context7.com/mcp", "Default auth: anonymous",
         "resolve-library-id", "query-docs", "EXACT", "COMPATIBLE", "LATEST_ONLY", "LOCAL_ONLY",
         "DEPENDENCY_DECLARATION_COMPATIBILITY", "compiler/typecheck/test/build",
@@ -75,7 +75,7 @@ def main() -> int:
 
     spring = read(SPRING)
     require(spring, (
-        "version: 0.2.1", "dev-official-docs-context", 'skill_view("dev-official-docs-context")',
+        "dev-official-docs-context", 'skill_view("dev-official-docs-context")',
         "External SDK / API Documentation Gate", "actual Gradle/Maven resolved dependency version",
         "Context7 version-matched official docs", "Compile Evidence",
     ), "Spring feature")
