@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import py_compile
 import re
 import tempfile
@@ -25,6 +26,27 @@ NOTIFIER_SEND_RE = re.compile(
     r'sub\["chat_id"\],\s*msg,\s*metadata=metadata\)',
     re.MULTILINE,
 )
+NOTIFIER_SEND_INIT_RE = re.compile(r'(?m)^(?P<indent>[ \t]*)_send_res\s*=\s*None\s*$')
+NOTIFIER_DISCORD_BLOCK_RE = re.compile(
+    r'(?P<indent>^[ \t]*)if self\.platform_str == "discord":\n'
+    r'(?P=indent)    msg = _devkit_discord_kanban_message\(\n'
+    r'(?P=indent)        kind=ev\.kind, task=self\.task, sub=sub, board_slug=self\.board_slug,\n'
+    r'(?P=indent)        event=ev, fallback=msg,\n'
+    r'(?P=indent)    \)\n',
+    re.MULTILINE,
+)
+
+
+def _notifier_discord_block(indent: str) -> str:
+    return (
+        f'{indent}if self.platform_str == "discord":\n'
+        f'{indent}    msg = _devkit_discord_kanban_message(\n'
+        f'{indent}        kind=ev.kind, task=self.task, sub=sub, board_slug=self.board_slug,\n'
+        f'{indent}        event=ev, fallback=msg,\n'
+        f'{indent}    )\n'
+    )
+
+
 TERMINAL_KINDS_RE = re.compile(r'(?m)^TERMINAL_KINDS\s*=\s*\((?P<body>[^\n]*)\)$')
 EVENT_FORMATTERS_RE = re.compile(
     r'(?m)^(?P<indent>[ \t]*)_EVENT_FORMATTERS(?:\s*:[^=\n]+)?\s*=\s*\{\s*$'
@@ -187,30 +209,46 @@ def _patch_legacy(source: str, path: Path) -> tuple[str, bool]:
 
 
 def _patch_notifier(source: str, path: Path) -> tuple[str, bool]:
-    source, changed = _insert_formatter(source, NOTIFIER_CLASS_MARKER, path)
-    source, kinds_changed = _patch_terminal_kinds(source, path)
-    changed = changed or kinds_changed
-    source, formatter_changed = _patch_event_formatters(source, path)
-    changed = changed or formatter_changed
-    if 'self.platform_str == "discord"' in source:
-        return source, changed
+    original = source
+    source, _ = _insert_formatter(source, NOTIFIER_CLASS_MARKER, path)
+    source, _ = _patch_terminal_kinds(source, path)
+    source, _ = _patch_event_formatters(source, path)
 
-    matches = list(NOTIFIER_SEND_RE.finditer(source))
-    if len(matches) != 1:
-        raise RuntimeError(f"{path}: expected one notifier send site, found {len(matches)}")
+    # Older DevKit images may already contain the Discord formatter block at
+    # the adapter.send() site. In current Hermes that call lives inside the
+    # nested send_ping() closure, where assigning msg makes fallback=msg read an
+    # uninitialised local variable. Remove that exact DevKit block first, then
+    # reinsert it in the outer _send_event() scope.
+    existing = list(NOTIFIER_DISCORD_BLOCK_RE.finditer(source))
+    if len(existing) > 1:
+        raise RuntimeError(f"{path}: expected at most one DevKit Discord notifier block, found {len(existing)}")
+    if existing:
+        match = existing[0]
+        source = source[: match.start()] + source[match.end() :]
 
-    match = matches[0]
-    indent = match.group("indent")
-    replacement = (
-        f'{indent}if self.platform_str == "discord":\n'
-        f'{indent}    msg = _devkit_discord_kanban_message(\n'
-        f'{indent}        kind=ev.kind, task=self.task, sub=sub, board_slug=self.board_slug,\n'
-        f'{indent}        event=ev, fallback=msg,\n'
-        f'{indent}    )\n'
-        f'{match.group(0)}'
-    )
-    source = source[:match.start()] + replacement + source[match.end():]
-    return source, True
+    init_matches = list(NOTIFIER_SEND_INIT_RE.finditer(source))
+    if len(init_matches) > 1:
+        raise RuntimeError(f"{path}: expected at most one notifier _send_res initializer, found {len(init_matches)}")
+    if len(init_matches) == 1:
+        # Current Hermes: adapter.send() is nested in send_ping(). Patching at
+        # _send_res = None keeps msg owned by _send_event() and lets send_ping()
+        # capture it read-only.
+        match = init_matches[0]
+        block = _notifier_discord_block(match.group("indent"))
+        source = source[: match.start()] + block + source[match.start() :]
+    else:
+        # Compatibility with older Hermes notifier layouts where adapter.send()
+        # still runs directly in _send_event().
+        matches = list(NOTIFIER_SEND_RE.finditer(source))
+        if len(matches) != 1:
+            raise RuntimeError(
+                f"{path}: expected one notifier send site or _send_res initializer, found {len(matches)} send sites"
+            )
+        match = matches[0]
+        block = _notifier_discord_block(match.group("indent"))
+        source = source[: match.start()] + block + source[match.start() :]
+
+    return source, source != original
 
 
 def patch_source(path: Path) -> str:
@@ -248,28 +286,56 @@ def _assert_notifier_registration_runtime(path: Path) -> None:
     if not rendered:
         raise RuntimeError("self-test notifier: registered format_event returned no message")
 
-    discord_formatter = namespace["_devkit_discord_kanban_message"]
-    discord_message = discord_formatter(  # type: ignore[operator]
-        kind="registered",
-        task=SimpleNamespace(
-            id="t_1",
-            title="등록 테스트",
-            assignee="coder",
-            model_override="gpt-test",
-            provider_override="openai-codex",
-        ),
-        sub={"task_id": "t_1", "chat_id": "c_1"},
-        board_slug="board",
-        event=event,
-        fallback=rendered,
-    )
+    sent: list[str] = []
+
+    class _Adapter:
+        async def send(self, chat_id, msg, metadata=None):
+            sent.append(msg)
+            return SimpleNamespace(success=True)
+
+    notification.adapter = _Adapter()
+    asyncio.run(notification._send_event(event, rendered))  # type: ignore[attr-defined]
+    if len(sent) != 1:
+        raise RuntimeError(f"self-test notifier: expected one Discord send, got {len(sent)}")
+    discord_message = sent[0]
     if "작업 등록" not in discord_message or "REGISTERED" not in discord_message:
         raise RuntimeError("self-test notifier: Discord registered formatter contract failed")
 
 
 def self_test() -> None:
     legacy_sample = '''from __future__ import annotations\n\ndef _safe_review_reason(value, limit=160):\n    return str(value)[:limit]\n\nclass GatewayKanbanWatchersMixin:\n    async def run(self, adapter, sub, metadata, platform_str, kind, task, board_slug, ev, msg):\n        try:\n                            _send_res = await adapter.send(\n                                sub["chat_id"], msg, metadata=metadata,\n                            )\n        except Exception:\n            pass\n'''
-    notifier_sample = '''from __future__ import annotations\n\nTERMINAL_KINDS = ("completed", "blocked", "review_requested")\n\ndef _safe_review_reason(value, limit=160):\n    return str(value)[:limit]\n\n_EVENT_FORMATTERS = {\n    "completed": lambda ev, n: ("done", None, None),\n}\n\nclass _KanbanNotification:\n    def __init__(self):\n        self.platform_str = "discord"\n        self.task = None\n        self.board_slug = "board"\n        self.sub = {"task_id": "t_1", "chat_id": "c_1"}\n        self.adapter = None\n        self.head = "Kanban t_1"\n        self.title = "등록 테스트"\n\n    def format_event(self, ev):\n        formatter = _EVENT_FORMATTERS.get(ev.kind)\n        if formatter is None:\n            return None\n        msg, _handoff, _review_detail = formatter(ev, self)\n        return msg\n\n    async def _send_event(self, ev, msg):\n        sub, adapter = self.sub, self.adapter\n        metadata = {}\n        _send_res = await adapter.send(sub["chat_id"], msg, metadata=metadata)\n'''
+    notifier_sample = '''from __future__ import annotations
+\nTERMINAL_KINDS = ("completed", "blocked", "review_requested")
+\ndef _safe_review_reason(value, limit=160):
+    return str(value)[:limit]
+\n_EVENT_FORMATTERS = {
+    "completed": lambda ev, n: ("done", None, None),
+}
+\nclass _KanbanNotification:
+    def __init__(self):
+        self.platform_str = "discord"
+        self.task = None
+        self.board_slug = "board"
+        self.sub = {"task_id": "t_1", "chat_id": "c_1"}
+        self.adapter = None
+        self.head = "Kanban t_1"
+        self.title = "등록 테스트"
+\n    def format_event(self, ev):
+        formatter = _EVENT_FORMATTERS.get(ev.kind)
+        if formatter is None:
+            return None
+        msg, _handoff, _review_detail = formatter(ev, self)
+        return msg
+\n    async def _send_event(self, ev, msg):
+        sub, adapter = self.sub, self.adapter
+        metadata = {}
+        _send_res = None
+        async def send_ping():
+            nonlocal _send_res
+            _send_res = await adapter.send(sub["chat_id"], msg, metadata=metadata)
+        await send_ping()
+        return _send_res
+'''
 
     cases = (
         ("legacy", legacy_sample, "patched-legacy", "already-patched-legacy", 'platform_str == "discord"', False),
@@ -325,6 +391,32 @@ def self_test() -> None:
             raise RuntimeError("self-test notifier upgrade: missing registered formatter was not repaired")
         _assert_terms(upgrade_path, (REGISTERED_EVENT_FORMATTER_MARKER,))
         _assert_notifier_registration_runtime(upgrade_path)
+
+        # Regression for the exact Sep 2026 failure: the previous DevKit patch
+        # inserted the Discord formatter inside send_ping(), making msg a local
+        # variable and raising UnboundLocalError at fallback=msg. Re-applying
+        # the patch must migrate that already-patched shape back to _send_event().
+        buggy_path = Path(temp_dir) / "notifier-buggy-nested-msg.py"
+        buggy_path.write_text(notifier_sample, encoding="utf-8")
+        if patch_source(buggy_path) != "patched-notifier":
+            raise RuntimeError("self-test notifier nested-msg: initial patch failed")
+        buggy_source = buggy_path.read_text(encoding="utf-8")
+        outer_block = NOTIFIER_DISCORD_BLOCK_RE.search(buggy_source)
+        if outer_block is None:
+            raise RuntimeError("self-test notifier nested-msg: outer Discord block missing")
+        without_outer = buggy_source[: outer_block.start()] + buggy_source[outer_block.end() :]
+        nested_send = NOTIFIER_SEND_RE.search(without_outer)
+        if nested_send is None:
+            raise RuntimeError("self-test notifier nested-msg: nested send site missing")
+        buggy_source = (
+            without_outer[: nested_send.start()]
+            + _notifier_discord_block(nested_send.group("indent"))
+            + without_outer[nested_send.start() :]
+        )
+        buggy_path.write_text(buggy_source, encoding="utf-8")
+        if patch_source(buggy_path) != "patched-notifier":
+            raise RuntimeError("self-test notifier nested-msg: buggy shape was not repaired")
+        _assert_notifier_registration_runtime(buggy_path)
 
 
 def main() -> None:
