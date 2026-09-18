@@ -1,307 +1,225 @@
-# 상세 정책 보존본
+# dev-code-review 상세 계약
 
-이 문서는 compact entrypoint 이전의 `custom-skills/reviewer/dev-code-review/SKILL.md` 전체 내용을 보존한다. compact 문서가 지시하는 상황에 필요한 절만 적용한다. 아래 원본의 YAML frontmatter는 참조 정보이며 중첩 skill 선언이 아니다.
+이 문서는 compact `SKILL.md`에서 분리한 **현재 상세 계약 보존본**이다. 기본 실행에서는 entrypoint만 사용하고, edge case·상세 절차·검증 형식·예시가 필요한 경우에만 관련 절을 읽는다.
 
----
+> Source snapshot: maintenance hardening 직전 dev-code-review 계약
 
----
-name: dev-code-review
-description: coder가 동일 Workspace에 구현한 미커밋 변경을 승인된 계획과 Acceptance Criteria 기준으로 독립 검토하고, 승인하거나 정확한 수정 요청을 원래 구현자에게 반환한다.
-version: 0.1.1
-author: local
-platforms: [linux]
-metadata:
-  hermes:
-    tags: [dev, review, reviewer, kanban, quality, verification]
-    related_skills: [dev-implement-plan, dev-review-cycle, dev-workspace-dispatch]
-    requires_tools: [terminal, kanban_show, kanban_request_changes, kanban_complete, kanban_block, kanban_heartbeat]
 ---
 
 # dev-code-review
 
-**reviewer** 프로필이 독립적인 Code Review를 수행한다.
+Reviewer의 **compact 실행 계약**이다. 상세 severity/checklist/escalation은 필요할 때만 `references/review-details.md`를 읽는다. Direct/Standard 모두 `/opt/data/shared/references/standard-work-unit-rules.md`를 적용한다.
 
-Review는 Coder가 사용한 동일 Kanban Card와 동일 External Workspace에서 진행한다.
+## 실행 계약
+1. `kanban_show()`에서 requirement/AC/scope, **Work Unit Contract**, Pattern References, Applied Capability Skills, coder evidence, attempts/comments를 읽는다.
+2. 같은 Workspace에서 `scripts/review_context.py`를 canonical 형식으로 한 번 실행해 Base SHA/Expected Branch/safe.directory/scoped changed paths/EOL noise와 `EFFECTIVE_SCOPE_SHA256`를 검증한다.
+3. Review는 diff-first로 시작한다. 전체 프로젝트를 다시 분석하지 않고 changed hunk와 그 주변 코드부터 본다.
+4. requirement/AC/correctness/compatibility/security/tests와 Coder verification claim, **Work Unit Boundary**를 대조한다.
+5. `/opt/custom-skills/shared/capability-lifecycle.json`의 `reviewer_required=true` 등록부와 Task의 `Applicable Skills`/`Applied Capability Skills`를 대조한다. 실제 finding 판단에 필요한 capability만 `skill_view`한다.
+6. Java source 변경에서는 필요할 때 `skill_view("dev-java-guidelines")`를 적용한다. Spring source 변경에서는 Coder의 Structural Quality/Javadoc evidence를 실제 diff와 대조한다.
+7. Coder의 `Verification Final: true`, PASS command/result, verification/effective scope fingerprint가 reviewer 계산과 일치하면 해당 PASS evidence를 재사용한다.
+8. Coder의 `Review Risk`와 구조화된 `Risk Reasons`를 탐색 시작점으로 재사용하되 verdict로 그대로 신뢰하지 않는다.
+9. P0/P1이 있으면 `kanban_request_changes`; 없고 evidence가 충분하면 `kanban_complete`; 안전한 판단 불가·외부 결정 필요·반복 blocker면 `kanban_block` 중 정확히 하나만 실행한다.
 
-Reviewer는 구현 파일을 수정하지 않는다.
+## Standard Work Unit Review Gate
 
----
+Task body에 다음이 있어야 한다.
 
-# 1. 시작 절차
+```text
+Work Unit Class: DESIGN | IMPLEMENTATION | MIGRATION | REFACTOR | AUDIT
+Work Unit Boundary: SINGLE_UNIT | SPLIT_REQUIRED
+Current Deliverable: ...
+Follow-up Required: YES | NO
+Follow-up Work Unit: ... | NONE
+Follow-up Input: ... | NONE
+Excluded Follow-up Scope: ... | NONE
+```
 
-Review Worker로 실행되면:
+Reviewer는 capability 수가 아니라 **diff가 Current Deliverable과 Excluded Follow-up Scope의 경계를 넘었는지** 본다.
 
-1. `kanban_show()`를 호출한다.
-2. 다음을 읽는다.
-   - Original Task Body
-   - Implementation Plan
-   - Acceptance Criteria
-   - Coder의 Review Request Summary/Metadata
-   - 이전 Review Attempt/Comment
-3. `$HERMES_KANBAN_WORKSPACE`로 이동한다.
-4. Review Context를 검증한다.
+### DESIGN
+
+DESIGN diff는 승인 artifact/document materialization과 검증에 한정한다.
+
+Data logical DESIGN에서 다음이 섞이면 blocking finding이다.
+
+```text
+Flyway/Liquibase migration
+CREATE/ALTER/DROP DDL
+physical tbl_* mapping
+vendor-specific physical schema decision
+JPA @Table/@Column physical mapping
+schema mutation
+```
+
+DBML/design artifact가 `Physicalization Required: YES`여도 같은 Task에서 migration을 선행 구현한 것은 허용하지 않는다.
+
+### IMPLEMENTATION
+
+하나의 Current Deliverable을 완성하기 위해 Backend/Frontend/Infrastructure 등 여러 capability가 함께 변경되는 것은 허용한다. 여러 Skill 사용 자체를 split finding으로 만들지 않는다.
+
+### MIGRATION
+
+MIGRATION은 approved/canonical logical model 또는 명시적 migration intent를 입력으로 가져야 한다. physicalization 과정에서 Subject Area/responsibility/cardinality/ownership을 임의 redesign했다면 blocking finding이다.
+
+### REFACTOR
+
+behavior/API/schema 의미 변경이 섞이면 Work Unit 위반이다.
+
+### AUDIT
+
+AUDIT Task에서 application/test/config source mutation이 발생하면 blocking finding이다. 명시된 audit report/document artifact만 예외다.
+
+### Boundary finding
+
+Coder가 `Excluded Follow-up Scope`를 구현했거나 Task의 Work Unit Class를 사실상 바꿨다면 P1 수준의 scope/contract finding으로 `kanban_request_changes`한다. 안전하게 되돌릴 수 없거나 새 product/architecture 결정이 필요하면 `kanban_block`한다.
+
+## Canonical Review Context
 
 ```bash
-python3 "${HERMES_SKILL_DIR}/scripts/review_context.py" \
+python3 /opt/custom-skills/reviewer/dev-code-review/scripts/review_context.py \
+  --workspace "<Workspace>" \
+  --expected-workspace "<Workspace>" \
+  --expected-branch "<Expected Branch>" \
   --base-branch "<Base Branch>" \
   --base-sha "<Base SHA>" \
-  --expected-branch "<Expected Branch>"
+  --include "<changed-path-1>" \
+  --include "<changed-path-2>"
 ```
 
-Workspace 또는 Branch가 Task와 일치하지 않으면 Block한다.
+Canonical 호출은 `review_context.py --include` scoped review다.
 
-Expected Branch는 정상 Workflow에서 다음 형식이다.
+- Direct/Standard Flow에서는 `--include`를 반드시 제공한다. 값은 Coder handoff의 `Changed Files`를 그대로 사용한다.
+- Coder Changed Files가 누락되면 repository-wide scan으로 복구하지 않고 evidence 부족으로 BLOCK한다.
+- `--allow-full-scan`은 명시적 진단 전용이다.
+- tracked와 untracked 모두 Git pathspec으로 제한한다.
+- `EOL_ONLY_*`는 CRLF/LF-only noise이며 review failure가 아니다.
+- `EFFECTIVE_SCOPE_SHA256`는 Coder `change_summary.py`와 동일 방식의 fingerprint다.
+
+## Existing Changes Preservation Fast Path
 
 ```text
-<Kanban Workspace Contract의 Expected Branch>
+Existing changes preservation approved: true
+Workspace change scan mode: skipped-approved-preservation
 ```
 
----
+이 상태에서는 exact 기존 변경 목록을 복원하려고 repository-wide scan을 하지 않는다. 검토 대상은 Coder가 선언한 `Changed Files`와 직접 영향 범위다.
 
-# 2. Review 범위
+## Diff-first Review Budget
+1. Base SHA 기준 changed hunk/diff부터 확인한다.
+2. Coder Risk Reasons와 Work Unit Contract를 diff에 대조한다.
+3. diff만으로 이해되지 않는 symbol만 bounded read한다.
+4. 변경되지 않은 DTO/entity/repository/service를 전부 읽지 않는다.
+5. 동일 파일을 반복 대량 read하지 않는다.
+6. 분석 Markdown과 source가 충돌하면 source/diff를 우선한다.
 
-요청된 구현만 Review하되 Correctness 판단에 필요한 주변 코드는 충분히 확인한다.
+## Verification Evidence Reuse
 
-비교 순서:
+Coder evidence 재사용 조건:
+- command와 결과가 명시됨
+- `Verification Final: true`
+- `Verification Request SHA256`와 `Verification Scope SHA256`가 있음
+- Coder `Effective Scope SHA256`와 Reviewer `EFFECTIVE_SCOPE_SHA256`가 일치
+- PASS 이후 executable source/test/build/toolchain 변경 없음
+- verification command가 현재 behavior를 충분히 cover
+- `Work Unit Boundary Respected: true` claim과 실제 diff가 일치
+
+모두 만족하면:
 
 ```text
-Requirement / Goal
-        ↓
-Acceptance Criteria
-        ↓
-Approved Implementation Plan
-        ↓
-Actual diff + untracked files
-        ↓
-Verification evidence
+Verification Evidence: REUSED
+Verification Scope Match: true
+Primary Reused: true
+PRIMARY_REUSED=true
+Reason: coder final verification covers the unchanged executable scope
 ```
 
-Style만 검토하고 끝내지 않는다.
-
----
-
-# 3. Diff 확인
-
-구현은 의도적으로 아직 Commit되지 않은 상태다.
-
-Tracked Change는 dispatch 시점의 Base SHA 기준으로 확인한다. Base Branch/ref가 이후 이동한 경우 `BASE_BRANCH_DRIFTED=true`로 별도 보고하되 비교 기준은 Base SHA에서 이동하지 않는다.
+Java/Gradle evidence 확인이 필요하면 같은 cached helper와 `--scope-path` 목록을 사용한다.
 
 ```bash
-git diff --no-ext-diff <Base SHA> -- .
+python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification_cached.py \
+  --workspace "<Workspace>" \
+  --mode TARGETED_TEST \
+  --test "<same-selector>" \
+  --scope-path "<same-covered-path>"
 ```
 
-추가로 확인:
+현재 scope가 Coder PASS와 동일하면 helper가 `VERIFICATION_EVIDENCE=REUSED`, `PRIMARY_REUSED=true`로 끝나야 한다. 이 경로에서 **Gradle primary를 다시 실행하면 안 된다**.
 
-```bash
-git status --short --untracked-files=all
-git diff --check
-git ls-files --others --exclude-standard
-```
+재실행이 **필수**인 경우:
+- Coder PASS 이후 executable production/test/build/toolchain 파일이 수정됨
+- Coder/Reviewer effective scope 또는 verification scope fingerprint가 불일치함
+- verification fingerprint 또는 `Verification Final`/command/result가 누락됨
+- Reviewer finding 수정으로 Coder가 source/test를 변경한 뒤 재-review가 들어옴
+- P0/P1 가능성을 검증하는데 기존 PASS command가 해당 behavior를 cover하지 않음
+- Coder verification이 실패/모호함. 단 `GRADLE_STATUS=BLOCKED`를 Reviewer가 같은 primary command로 대신 재시도하지 않는다.
 
-Untracked Source/Test/Config File도 Review 대상이며 무시하지 않는다.
+재실행이 필요한 경우에는 이전 PASS evidence를 재사용하지 않고 fresh verification을 요구한다. 동일 scope와 동일 PASS evidence가 유효한 경우에는 독립성 확보만을 이유로 같은 Gradle primary를 반복하지 않는다.
 
-Workspace를 변경하는 명령은 실행하지 않는다.
+`GRADLE_STATUS=BLOCKED`이면 Reviewer가 direct `hermes-java ./gradlew`로 우회하지 않고 blocker evidence를 유지한다.
 
----
+## Common Coding Review Gate
+- `/opt/data/shared/references/coding-rules.md`와 project pattern을 기준으로 기존 abstraction 재사용, scope, `2-depth`, 반복 I/O/N+1을 확인한다.
+- Style/nit만으로 승인을 막지 않는다.
+- API는 기존 response/error contract, JPA는 Method Query → QueryDSL → 근거 있는 Native Query 정책을 확인한다.
+- 테스트는 변경 behavior와 risk를 실제로 증명하는지 본다.
 
-# 4. Review 우선순위
+## Capability Lifecycle Review Gate
 
-다음 Severity를 사용한다.
-
-## P0 — Critical
-
-예:
-
-- Data Loss / Corruption
-- 심각한 Security Exposure
-- 파괴적이며 호환되지 않는 동작
-- Requirement를 근본적으로 위반한 구현
-
-P0는 항상 수정 요청이다.
-
-## P1 — Must Fix
-
-예:
-
-- Acceptance Criterion 미충족
-- 잘못된 Execution Path
-- 의미 있는 Regression
-- 필요한 Error/Transaction/Concurrency 처리 누락
-- 필수 Test Coverage 누락
-- Bug Fix가 Root Cause를 다루지 않음
-
-P1은 수정 요청이다.
-
-## P2 — Non-blocking Improvement
-
-예:
-
-- Maintainability 개선
-- 합리적인 추가 Test
-- 현재 코드가 올바른 상태에서의 명확한 Naming 개선
-
-P2만 있다면 Note와 함께 승인할 수 있다.
-
-## P3 — Nit
-
-Correctness에 영향을 주지 않는 Formatting/Style Preference.
-
-P3 때문에 승인을 막지 않는다.
-
----
-
-# 5. Review Checklist
-
-관련 있는 항목만 적용한다.
-
-- Goal 및 Acceptance Criteria 충족
-- 승인된 Scope 내 변경
-- 기존 Project Pattern 준수
-- 관계없는 우발적 변경 없음
-- Null/Input Edge Case
-- Error Handling
-- Transaction Boundary
-- Idempotency
-- Concurrency
-- Backward Compatibility
-- Schema/Config Compatibility
-- Secret/Security
-- Test가 실제 변경 동작을 검증하는지
-- 중요한 Failure Path Coverage
-- `git diff --check` 통과
-- Coder의 Verification Claim과 실제 Evidence 일치
-
-코드 근거가 없는 이론적 문제를 만들어내지 않는다.
-
----
-
-# 6. Reviewer는 구현하지 않는다
-
-Application/Test/Config Source를 Reviewer가 직접 수정하지 않는다.
-
-"간단하니 바로 고친다"는 방식도 금지한다.
-
-Blocking Finding은 `kanban_request_changes`로 돌려보내 원래 Coder가 수정하도록 한다.
-
-Reviewer가 수행할 수 있는 것은 Read-only Inspection과 Test/Build Command다.
-
----
-
-# 7. Verdict: CHANGES_REQUESTED
-
-P0 또는 P1 Finding이 하나라도 있으면 `kanban_request_changes`를 호출한다.
-
-Reason은 실행 가능해야 한다.
-
-권장 형식:
+목록의 source of truth는 `capability-lifecycle.json`이며 다음은 설명용이다.
 
 ```text
-CHANGES_REQUESTED
-
-P1
-- <file/symbol>: <problem>
-  Evidence: ...
-  Required change: ...
-  Verification expected: ...
-
-P2
-- ...
+Backend        → dev-spring-feature, dev-spring-data
+Frontend       → dev-frontend-feature
+Data           → dev-data-feature, dev-db-migration
+Infrastructure → dev-infrastructure
+API            → dev-api-spec, dev-api-contract
 ```
 
-다음처럼 모호한 피드백은 보내지 않는다.
+규칙:
+- Task의 `Applicable Skills` 또는 실제 diff가 등록 capability 영역이면 판단에 필요한 시점에 `skill_view("<capability>")`한다.
+- `strict_pin=true` capability가 Applicable Skills에 있는데 validated/pinned skill에서 누락되면 Dispatch Preflight 계약 위반이다.
+- `strict_pin=false` support/companion은 affected scope로 lazy-load할 수 있다.
+- **Follow-up Work Unit 전용 capability가 현재 Task에 pin되지 않은 것은 정상**이다.
+- capability 재탐색을 위해 repository-wide 분석을 다시 수행하지 않는다.
 
+## Java Convention Review Gate
+Java diff에서 실제 판단에 필요할 때 `dev-java-guidelines`를 적용한다.
+
+- target Java version과 사용 문법/API 호환
+- Lombok/project convention
+- top-level/nested type 배치
+- JavaDoc/documentation 품질
+
+## Structural Quality Review Gate
+Task와 직접 연결된 책임 혼재, raw payload parsing/persistence/external I/O 결합, behavior-preserving verification 누락은 finding이 될 수 있다. 파일 길이/개인적 선호만으로 blocking finding을 만들지 않는다.
+
+Coder handoff의 `Structural Quality/Javadoc evidence`를 실제 diff와 대조한다. public API/schema/dependency/transaction/security/concurrency/architecture 의미 변경이 필요한 개선은 현재 Work Unit을 넘어가면 follow-up/escalation으로 분리한다.
+
+## Stack / Capability Review Gate
+`capability-lifecycle.json`을 cross-flow source of truth로 사용하고 Task/diff에 해당하는 등록 capability와 support capability만 확인한다. Reviewer가 자체 별도 capability 목록을 source of truth로 유지하지 않는다.
+
+## Java / Build Verification Gate
+- `.hermes/toolchain.env`가 있으면 Java target/runtime과 Coder evidence를 대조한다.
+- Java/Gradle 재검증은 `gradle_verification_cached.py`를 canonical 경로로 사용한다. 최대 primary timeout은 600초다.
+- Reviewer가 임의 JDK를 다운로드하거나 host Java를 탐색하지 않는다.
+
+## Verdict
 ```text
-needs cleanup
-tests insufficient
-please improve
+P0/P1 + coder가 수정 가능 → kanban_request_changes
+P0/P1 없음 + evidence 충분 → kanban_complete
+판단 불가/외부 결정/동일 blocker 3회 → kanban_block(kind=needs_input...)
 ```
 
-동일 Card가 원래 Implementer에게 돌아간다.
+## 불변식
+- Reviewer는 application/test/config source를 수정하지 않는다.
+- secret/raw credential을 출력하지 않는다.
+- commit, push, PR, cleanup 금지.
+- EOL-only noise를 이유로 source line ending을 변경하지 않는다.
+- finding은 file/symbol, evidence, required change, expected verification을 포함한다.
+- Direct/Standard Task는 모두 Reviewer가 호출되는 계약이며 risk가 낮다는 이유로 review를 생략하지 않는다.
+- Coder Risk Reasons는 starting point이지 verdict가 아니다.
+- Direct/Standard Flow에서는 scope 없는 `review_context.py` 호출을 하지 않는다.
+- Follow-up Work Unit을 현재 Task에 구현하도록 요구하지 않는다.
 
----
-
-# 8. Verdict: APPROVED
-
-P0/P1이 남아 있지 않고 필요한 Verification이 신뢰할 수 있을 때만 승인한다.
-
-승인은 현재 Git/PR 이전 단계의 최종 Review이므로 `kanban_complete`를 호출한다.
-
-권장 Summary:
-
-```text
-APPROVED
-
-Acceptance Criteria: satisfied
-Blocking findings: none
-Verification reviewed:
-- ...
-Residual risk:
-- ...
-```
-
-권장 Metadata:
-
-```json
-{
-  "phase": "review",
-  "review_verdict": "APPROVED",
-  "blocking_findings": [],
-  "non_blocking_findings": [],
-  "verification": [],
-  "residual_risk": [],
-  "base_sha": "<verified Base SHA>",
-  "base_branch_drifted": false
-}
-```
-
-Approval은 Uncommitted Change가 있는 Workspace를 삭제해도 된다는 뜻이 아니다.
-
-이 Skill은 commit/push하지 않는다.
-
----
-
-# 9. Review Loop Escalation
-
-`kanban_show()`로 이전 Attempt를 읽는다.
-
-실질적으로 동일한 Blocking Finding이 **3번의 Review Cycle** 동안 남아 있으면 무한 반복하지 않는다.
-
-`kind=needs_input`으로 `kanban_block`을 호출하고 다음을 설명한다.
-
-```text
-repeated finding
-review rounds attempted
-why prior fixes did not resolve it
-human decision needed
-```
-
-새로운 별개 Finding은 동일 Blocker 반복 횟수로 자동 계산하지 않는다.
-
----
-
-# 10. BLOCKED
-
-다음처럼 Review 자체를 안전하게 수행할 수 없으면 승인/수정요청 대신 Block한다.
-
-- Workspace가 없거나 잘못됨
-- Base Branch를 확인할 수 없음
-- Task Contract/Plan이 없음
-- Diff를 확립할 수 없음
-- 필요한 환경 문제로 Correctness를 판단할 수 없음
-- Repository 상태가 일관되지 않음
-
----
-
-# 11. 성공 기준
-
-Reviewer는 정확히 다음 Terminal Action 중 하나를 수행해야 한다.
-
-```text
-kanban_request_changes
-or
-kanban_complete (APPROVED)
-or
-kanban_block
-```
-
-그리고 Reviewer가 Source를 수정하지 않아야 한다.
+Severity, 상세 checklist, retry/escalation이 필요하면 `references/review-details.md`를 읽는다.

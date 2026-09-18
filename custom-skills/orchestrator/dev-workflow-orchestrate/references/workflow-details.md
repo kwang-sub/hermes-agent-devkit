@@ -1,742 +1,353 @@
-# 상세 정책 보존본
+# dev-workflow-orchestrate 상세 계약
 
-이 문서는 compact entrypoint 이전의 `custom-skills/orchestrator/dev-workflow-orchestrate/SKILL.md` 전체 내용을 보존한다. compact 문서가 지시하는 상황에 필요한 절만 적용한다. 아래 원본의 YAML frontmatter는 참조 정보이며 중첩 skill 선언이 아니다.
+이 문서는 compact `SKILL.md`에서 분리한 **현재 상세 계약 보존본**이다. 기본 실행에서는 entrypoint만 사용하고, edge case·상세 절차·검증 형식·예시가 필요한 경우에만 관련 절을 읽는다.
 
----
+> Source snapshot: maintenance hardening 직전 dev-workflow-orchestrate 계약
 
----
-name: dev-workflow-orchestrate
-description: Jira 티켓 또는 자유 텍스트 요청을 받아 프로젝트 결정, 사용자 승인, Breakdown 승인, Workspace Dispatch까지 전체 개발 흐름을 조정하는 orchestrator 전용 Skill.
-version: 0.1.1
-author: local
-platforms: [linux]
-metadata:
-  hermes:
-    tags: [dev, workflow, orchestrator, intake, resolve, approval, breakdown, dispatch, kanban]
-    related_skills:
-      - dev-work-intake
-      - dev-project-resolve
-      - dev-project-bootstrap
-      - dev-breakdown
-      - dev-workspace-dispatch
-      - dev-worktree-cleanup
 ---
 
 # dev-workflow-orchestrate
 
-개발 요청의 최상위 진입점이다.
+Orchestrator는 개발 요청의 상태 머신만 조정한다. application/test code, refactor, code review, commit, push, PR, merge, destructive cleanup은 직접 하지 않는다. 계획/진행 보고와 승인 질문은 **한국어**로 작성한다.
 
-사용자는 Jira 티켓 또는 자연어 텍스트로 작업을 시작할 수 있다.
+Standard Flow의 모든 사용자 승인 UI는 `/opt/data/shared/references/approval-gate-rules.md`를 canonical contract로 사용하고, Task 크기/phase 경계는 `/opt/data/shared/references/standard-work-unit-rules.md`를 적용한다. **한 번의 사용자 확인에서는 하나의 의사결정만 요청한다.** 선택은 일반 텍스트 번호 목록이 아니라 Hermes 내장 `clarify` tool의 `choices`로 제공한다.
 
-예:
+`clarify.question`은 상세 내용을 보여주는 영역이 아니라 결정을 받는 짧은 UI다. 특히 Plan Gate에서는 Implementation Plan을 일반 메시지로 먼저 보여주고, `clarify.question`에는 canonical 고정 리터럴만 사용한다. Task/Project/Workspace/Branch/Coder Model/Goal/Design Evidence/Implementation Tasks 같은 동적 Plan 내용을 질문에 재삽입하지 않는다.
 
-```text
-DSB-39 처리해줘.
-```
+핵심 불변식은 `Project Approval`, `Work Unit Boundary`, `Requirement Delta Approval`, 필요한 경우 `API Spec Approval`, `Plan Approval`, Workspace/Branch/Model 승인, 그리고 dispatch 시점의 `Base SHA` 보존이다.
 
-```text
-mini-calculator 프로젝트에 제곱 기능 추가해줘.
-Task Key: CALC-002
-```
+## 상태 머신
 
-```text
-계산기 프로젝트에서 나눗셈 오류 메시지를 개선해줘.
-```
-
-이 Skill은 직접 코드를 구현하지 않는다.
-
-역할:
-
-```text
-요청 분류
-→ Common Work Item 확보
-→ 프로젝트 결정
-→ Human Approval Gate
-→ dev-breakdown
-→ Human Plan Approval Gate
-→ dev-workspace-dispatch
-→ coder/reviewer로 인계
-```
-
----
-
-# 1. 절대 규칙
-
-Orchestrator는 다음을 직접 수행하지 않는다.
-
-```text
-애플리케이션 코드 수정
-테스트 코드 구현
-리팩터링
-Git commit
-Git push
-PR 생성
-코드 리뷰
-Workspace 강제 정리
-```
-
-실제 구현은 `coder`, 리뷰는 `reviewer`가 담당한다.
-
----
-
-# 2. Human Approval Gate
-
-두 개의 승인 Gate를 강제한다.
-
-## Gate #1 — Project Approval
-
-다음 경우에만 필요하다.
-
-```text
-Agent 또는 dev-project-resolve가 프로젝트를 추론한 경우
-```
-
-Resolver 결과가 하나여도 자동 승인하지 않는다.
-
-```text
-RESOLVED_SINGLE != PROJECT_APPROVED
-RESOLVED_MULTI  != PROJECT_APPROVED
-```
-
-반대로 사용자가 처음부터 정확한 프로젝트를 직접 명시한 경우에는
-사용자 선택 자체를 프로젝트 승인으로 본다.
-
-## Gate #2 — Plan Approval
-
-모든 작업에서 필수다.
-
-```text
-dev-breakdown = READY
-```
-
-여도 자동 Dispatch하지 않는다.
-
-사용자에게 계획을 보여주고 명시적 승인을 받은 뒤에만
-`dev-workspace-dispatch`를 실행한다.
-
----
-
-# 3. 전체 상태 머신
+신규 Standard Flow:
 
 ```text
 START
-  ↓
-SOURCE_CLASSIFIED
-  ↓
-WORK_ITEM_READY
-  ↓
-PROJECT_DECISION
-  ├─ 사용자가 프로젝트 명시
-  │       ↓
-  │   PROJECT_APPROVED
-  │
-  └─ 프로젝트 미명시
-          ↓
-    dev-project-resolve
-          ↓
-  WAITING_PROJECT_APPROVAL
-          ↓ 사용자 승인
-    PROJECT_APPROVED
-          ↓
-      dev-breakdown
-          ↓
-        READY
-          ↓
-   WAITING_PLAN_APPROVAL
-          ↓ 사용자 승인
-      PLAN_APPROVED
-          ↓
- dev-workspace-dispatch
-          ↓
-       DISPATCHED
-          ↓
-    coder ↔ reviewer
-          ↓
-      DONE/BLOCKED
+→ WORK_ITEM_READY
+→ PROJECT_APPROVED
+→ dev-breakdown READY
+→ WORK_UNIT_CLASSIFIED
+→ CURRENT_UNIT_SCOPED
+→ API_SPEC_REQUIRED | API_SPEC_NOT_REQUIRED
+→ API_SPEC_APPROVED | NOT_REQUIRED
+→ WORKSPACE_APPROVED
+→ BRANCH_APPROVED
+→ EXISTING_CHANGES_APPROVED | NOT_REQUIRED
+→ MODEL_APPROVED
+→ PLAN_APPROVED
+→ AUTO_DISPATCH_CURRENT_UNIT_ONLY
+→ SKILL_PREFLIGHT
+→ KANBAN_CREATED
+→ REGISTRATION_NOTIFICATION_QUEUED
+→ coder ↔ reviewer
+→ DONE/BLOCKED
 ```
 
-`WAITING_PROJECT_APPROVAL`과 `WAITING_PLAN_APPROVAL`에서는
-반드시 그 턴을 종료한다.
-
-같은 턴에서 다음 단계를 실행하지 않는다.
-
----
-
-# 4. 최초 입력 Source 판별
-
-## Jira
-
-다음처럼 Jira Issue Key가 작업의 주 입력인 경우:
+원 요청이 둘 이상의 독립 Work Unit을 포함하면:
 
 ```text
-DSB-39 처리해줘
-JQCX-278 작업 진행해줘
-Jira DSB-39 확인해서 개발해줘
+Work Unit Boundary: SPLIT_REQUIRED
+현재 Task = 첫 Work Unit만 dispatch
+후속 Work Unit = metadata로만 보존
+현재 Task DONE
+→ STOP
+→ 사용자가 별도 Standard Flow로 후속 Work Unit 요청
 ```
 
-`dev-work-intake`를 사용한다.
+현재 Plan 승인만으로 Follow-up Task를 자동 생성/dispatch하지 않는다.
+
+기존 카드/승인 이후 요구사항 변경:
 
 ```text
-Jira
-→ dev-work-intake
-→ normalized Common Work Item
+EXISTING_TASK
+→ TASK_INSPECTED
+→ REQUIREMENT_DELTA_READY
+→ REQUIREMENT_DELTA_APPROVED
+→ WORK_UNIT_REEVALUATED
+→ API_SPEC_REAPPROVED | REUSED | NOT_REQUIRED
+→ REQUIRED Gate 각각 clarify 또는 REUSE
+→ PLAN_REBUILT
+→ PLAN_APPROVED
+→ SAME_TASK_RESUMED | REPLACEMENT_TASK_AUTO_DISPATCH | FOLLOW_UP_STANDARD_FLOW
+→ coder ↔ reviewer
+→ DONE/BLOCKED
 ```
 
-Jira Project Key만으로 Repository를 결정하지 않는다.
+## Work Unit Boundary
 
-## Text
-
-일반 자연어 요청은 Text Work Item으로 취급한다.
+`dev-breakdown` 결과에서 다음 계약을 필수로 읽는다.
 
 ```text
-mini-calculator 프로젝트에 제곱 기능 추가해줘.
+Work Unit Class: DESIGN | IMPLEMENTATION | MIGRATION | REFACTOR | AUDIT
+Work Unit Boundary: SINGLE_UNIT | SPLIT_REQUIRED
+Current Deliverable: ...
+Follow-up Required: YES | NO
+Follow-up Work Unit: ... | NONE
+Follow-up Input: ... | NONE
+Excluded Follow-up Scope: ... | NONE
 ```
 
-Text 요청은 사용자의 원문을 보존한다.
+규칙:
+- `SINGLE_UNIT`: 승인된 Plan 전체를 현재 Task로 dispatch할 수 있다.
+- `SPLIT_REQUIRED`: 현재 Plan에는 첫 Work Unit만 있어야 한다. Follow-up scope가 Implementation Tasks/Acceptance Criteria에 섞여 있으면 READY로 취급하지 않는다.
+- 여러 capability가 같은 deliverable을 완성하는 것은 split 사유가 아니다.
+- 독립 승인 artifact가 다음 mutation phase의 authoritative input이 되면 split한다.
+- Data `DESIGN_FIRST` + `Physicalization Required: YES`는 반드시 `DESIGN → 별도 MIGRATION`이다.
+- DESIGN DB Task가 완료되어도 Orchestrator가 `dev-db-migration` Task를 자동 생성하지 않는다.
+- AUDIT 결과에서 fix 필요성이 발견되어도 현재 AUDIT Task를 mutation Task로 자동 확장하지 않는다.
 
-요구사항, Acceptance Criteria, 제약을 임의로 추가하지 않는다.
+## API Specification Mode
 
-Text 입력에 Task Key가 있으면 그대로 사용한다.
-
-예:
+`dev-breakdown`이 API 관련 Task를 다음 중 하나로 판정한다.
 
 ```text
-Task Key: CALC-002
+DESIGN_FIRST
+SOURCE_SYNC
+AUDIT
+NOT_REQUIRED
 ```
 
-Task Key가 없으면 Dispatch 전에 사용자에게 확인 가능한 Local Task Key를 제안한다.
+- `DESIGN_FIRST`: 신규 endpoint 또는 method/path/request/response/error/auth 등 의미 계약 변경. `API_SPEC_REQUIRED`이며 구현 전에 Markdown DRAFT를 승인받는다.
+- `SOURCE_SYNC`: 기존 Application Source를 Markdown DRAFT로 역문서화. API 의미를 바꾸지 않으므로 `API_SPEC_NOT_REQUIRED`다.
+- `AUDIT`: Source ↔ Markdown ↔ OpenAPI 차이를 조사. 기본 read-only이며 `API_SPEC_NOT_REQUIRED`다.
+- `NOT_REQUIRED`: API 계약 영향 없음.
 
-권장 형태:
+API Spec Gate 자체는 별도 Work Unit을 자동 의미하지 않는다. 하나의 구현 use case에 종속된 bounded API contract는 `IMPLEMENTATION` Work Unit 안에서 승인 후 구현할 수 있다. API 설계 자체가 독립 deliverable이면 현재 Task를 `DESIGN`, 후속 구현을 별도 `IMPLEMENTATION`으로 분리한다.
+
+`SOURCE_SYNC` 결과는 `Status: DRAFT`, `Documentation Source: APPLICATION_SOURCE`를 유지하며 자동 `APPROVED`로 승격하지 않는다.
+
+## 신규 Standard Flow
+
+1. `dev-work-intake`로 요구사항을 정규화한다.
+2. `dev-project-resolve` 결과를 `[Project 선택]` clarify Gate로 승인받는다. 이것이 Project Approval이다.
+3. `dev-breakdown`으로 READY 계획을 만들고 **Work Unit Class/Boundary를 먼저 확정**한 뒤 API Spec Mode/Gate/Status/Path를 확정한다.
+4. `SPLIT_REQUIRED`이면 Current Deliverable과 Excluded Follow-up Scope를 일반 메시지의 Plan에 명확히 보여준다. 후속 Work Unit은 계획 정보일 뿐 이번 Task의 구현 범위가 아니다.
+5. `DESIGN_FIRST + API Spec Gate: REQUIRED`이면 `skill_view("dev-api-spec")`로 Markdown API Spec DRAFT를 구성하고 일반 메시지로 보여준 뒤 `[API 규격 승인]` clarify Gate를 수행한다.
+6. `[Workspace 선택]` → `[Branch 선택]` → `[기존 변경 보존 확인]`(필요 시) → `[Coder 모델 선택]`을 각각 독립 clarify Gate로 승인받는다.
+7. 승인된 Tier를 `flow_model_policy.py resolve --tier <DEFAULT|PREMIUM>`으로 정확히 한 번 해석한다.
+8. **현재 Work Unit만 포함한** Implementation Plan 본문을 일반 메시지로 전부 보여준 뒤 `[작업 계획 승인]` clarify Gate를 수행한다. Plan이 길어도 질문 본문으로 옮기지 않는다.
+9. Plan까지 승인되면 추가 Kanban 생성 확인 없이 `AUTO_DISPATCH_CURRENT_UNIT_ONLY`한다.
+10. `prepare_dispatch.py`가 승인 workspace/branch의 `Base SHA`를 확정하고 Task body에 Work Unit Contract와 함께 보존한다.
+
+## API 규격 승인 Gate
+
+DESIGN_FIRST에서만 사용한다.
 
 ```text
-LOCAL-YYYYMMDD-HHMMSS
+API Spec Mode: DESIGN_FIRST
+API Spec Gate: REQUIRED
+API Spec Status: DRAFT
+API Spec Path: <planned docs/api/<domain>.md or existing path>
+API Spec Source: DESIGN
 ```
 
-사용자가 다른 Task Key를 지정하면 사용자의 값을 우선한다.
-
----
-
-# 5. 프로젝트가 사용자에 의해 명시된 경우
-
-예:
+그 다음 독립 `clarify` Gate를 수행한다.
 
 ```text
-mini-calculator 프로젝트에 제곱 기능 추가해줘.
+question: [API 규격 승인] 위 Markdown API Specification을 구현 기준으로 확정할까요?
+choices: [규격 승인, 규격 보류]
 ```
 
-정확한 managed project가 확인되면:
+규칙:
+- `규격 승인`만 `API_SPEC_APPROVED`다.
+- 승인 후 `API Spec Status: APPROVED`와 승인된 Markdown snapshot을 Implementation Plan/Task body에 보존한다.
+- `규격 보류`면 이후 Gate/dispatch를 진행하지 않는다.
+- `Other`는 API 규격 수정으로 처리하고 DRAFT를 갱신한 뒤 같은 Gate를 다시 출력한다.
+- API Spec 승인과 Plan 승인을 한 질문으로 합치지 않는다.
+- `SOURCE_SYNC | AUDIT | NOT_REQUIRED`는 `API Spec Gate: NOT_REQUIRED`로 이 Gate를 생략한다.
+
+## clarify Gate 계약
+
+선택지는 질문 본문에 번호로 쓰지 않고 `clarify.questions[].choices`에 넣는다. 첫 번째 choice는 Hermes가 Recommended로 표시하므로 현재 권장값을 첫 번째에 둔다. `Other (type your answer)`는 추가 요구사항 입력 경로다.
 
 ```text
-dev-project-resolve 생략
-Gate #1 생략
+[Project 선택]            choices: [제안된 프로젝트 사용, 다른 프로젝트 지정]
+[API 규격 승인]           choices: [규격 승인, 규격 보류] (DESIGN_FIRST일 때만)
+[Workspace 선택]          choices: [제안된 Workspace 사용, 다른 Workspace 지정]
+[Branch 선택]             choices: [제안된 Branch 사용, 다른 Branch 지정]
+[기존 변경 보존 확인]     choices: [기존 변경을 모두 보존하고 진행, 상태 확인 후 다시 결정]
+[Coder 모델 선택]         choices: [<권장 Tier>, <나머지 Tier>]
+[작업 계획 승인]          choices: [승인, 차단]
 ```
 
-단, 반드시 확인한다.
+선택 가능한 Coder Tier는 `DEFAULT | PREMIUM`뿐이다. Reviewer Model은 항상 DEFAULT이며 선택 Gate를 만들지 않는다. Agent가 PREMIUM을 추천할 수는 있지만 자동 escalation은 금지한다.
+
+`Other` 또는 다른 후보 지정/수정 요구는 승인으로 간주하지 않는다. 요구사항을 갱신한 뒤 **같은 Gate를 다시 출력**한다. Workspace와 Branch는 같은 질문에 합치지 않는다.
+
+### Plan Gate TUI 길이 계약
+
+Plan Gate는 일반 메시지와 `clarify`를 명확히 분리한다.
+
+1. 전체 Implementation Plan은 `clarify` 호출 직전 일반 메시지에 표시한다.
+2. Plan이 길면 Work Unit/Goal/Design Evidence/Implementation Tasks/Verification 같은 섹션 단위로 일반 메시지를 나눌 수 있다.
+3. `clarify.questions[0].question`은 아래 문자열을 그대로 사용한다.
 
 ```text
-<repo>/.hermes/project.yaml 존재
-project.id / repository 일치
-Git repository 유효
+[작업 계획 승인]
+위 Implementation Plan을 승인할까요?
 ```
 
-Git Repository는 존재하지만 아직 managed project가 아니면
-자동 Bootstrap하지 않는다.
+4. `Task`, `Project / Workspace / Branch`, `Coder Model`, `Goal`, `Design Evidence`, `Implementation Tasks`, `Acceptance Criteria`, API/환경변수/인증 계약 상세를 Plan Gate 질문에 재출력하지 않는다.
+5. 앞선 Gate에서 승인된 Workspace/Branch/Model 값은 Plan 승인 질문에 반복하지 않는다.
+6. 정보는 일반 메시지에 유지하고 결정 UI만 짧게 유지한다.
 
-사용자에게:
+## Requirement Delta Approval — 승인 이후 추가 요구사항
+
+이미 승인된 Plan, 생성된 Task, 완료/리뷰 완료 Task에 대해 사용자가 새 요구사항·롤백·범위 교체·목표 변경을 제시하면 그 자연어 요청 자체를 실행 승인으로 간주하지 않는다.
+
+먼저 `kanban_show`와 필요한 최소 read-only evidence로 기존 상태를 확인하고 다음을 정규화한다.
 
 ```text
-해당 저장소는 아직 Hermes managed project가 아닙니다.
-dev-project-bootstrap으로 등록할까요?
+Requirement Delta:
+- 변경 요구사항
+- 유지 요구사항
+- 롤백/제거 범위
+- 금지 작업
+- 재검토 범위
+- 기존 Task 처리: SAME_TASK_RESUME | REPLACEMENT_TASK | FOLLOW_UP_TASK
 ```
 
-라고 묻고 STOP한다.
-
-사용자가 승인한 뒤에만 `dev-project-bootstrap`을 실행한다.
-
----
-
-# 6. 프로젝트가 명시되지 않은 경우
-
-`dev-project-resolve`를 사용한다.
-
-Resolver는 managed project metadata만 대상으로 한다.
+그 다음 반드시 독립 clarify Gate를 수행한다.
 
 ```text
-/workspace/*/.hermes/project.yaml
+question: [추가 요구사항 확인] 위 Requirement Delta를 새 작업 범위로 확정할까요?
+choices: [요구사항 확정, 보류]
 ```
 
-다음은 하지 않는다.
+규칙:
+- `요구사항 확정`만 `REQUIREMENT_DELTA_APPROVED`다.
+- `보류`는 dispatch/재개/대체 카드 생성 금지다.
+- `Other`는 Requirement Delta를 수정한 뒤 같은 Gate를 다시 출력한다.
+- Requirement Delta 승인 후 `Approval Reuse:`와 Work Unit Boundary를 다시 판정한다.
+- Delta가 현재 Task의 `Excluded Follow-up Scope` 또는 다른 Work Unit Class에 들어가면 `SAME_TASK_RESUME`하지 않는다. `FOLLOW_UP_TASK` 또는 새 Standard Flow로 분리한다.
+- API 의미 계약이 바뀌면 기존 `API_SPEC_APPROVED`를 무효화하고 필요한 Gate를 다시 수행한다.
+- Goal/Acceptance Criteria/주요 구현 방식이 바뀐 경우 `Plan: REQUIRED`이며 `dev-breakdown`으로 갱신된 Plan을 만든다.
+- 필요한 Requirement Delta/API Spec/Plan 승인이 없으면 `prepare_dispatch.py`, `kanban_create`, `kanban_unblock`, model migration, same-task resume를 실행하지 않는다.
+
+## 기존 카드 재작업 계약
+
+먼저 `kanban_show`로 Task id/status, Project/Workspace/Branch, 기존 Plan/승인 증거, **Work Unit Contract**, API Spec Mode/Status/Path, assignee/lane, model snapshot을 확인한다.
 
 ```text
-/workspace 전체 source scan
-unmanaged repository 검색
-.worktrees 검색
-Git history 기반 추론
+Approval Reuse:
+- Project: REUSE | REQUIRED
+- Requirement Delta: REQUIRED
+- Work Unit Boundary: REUSE | RECLASSIFY
+- API Spec: REUSE | REQUIRED | NOT_REQUIRED
+- Workspace: REUSE | REQUIRED
+- Branch: REUSE | REQUIRED
+- Existing Changes: REUSE | REQUIRED | NOT_REQUIRED
+- Coder Model: REUSE | REQUIRED | MIGRATE
+- Plan: REUSE | REQUIRED
 ```
 
-Resolver 결과 후 반드시 Gate #1로 이동한다.
+`REQUIRED`가 여러 개여도 서로 다른 승인 Gate를 한 질문으로 합치지 않는다.
 
----
+pre-policy 활성 Task는 새 카드를 만들지 않고 필요한 Requirement Delta/API Spec/Model/Plan 승인과 Work Unit 재분류 뒤 `flow_model_policy.py migrate-existing`를 사용한다. 성공 조건은 `STATUS=legacy-task-migrated`, `SNAPSHOT_SOURCE=durable-comment`다. 기존 Task의 Work Unit Boundary를 넘는 후속 작업은 같은 migration으로 범위를 넓히지 않고 별도 Standard Flow로 분리한다. `done`/`archived` terminal Task 또는 Work Unit Boundary를 넘는 후속 작업은 새 Standard Flow를 사용한다.
 
-# 7. Gate #1 사용자 출력 형식
+## 자동 Kanban Dispatch 불변식
 
-## RESOLVED_SINGLE
-
-예:
+승인 상태:
 
 ```text
-작업 대상 프로젝트 후보를 확인했습니다.
-
-작업:
-- DSB-39: ...
-
-Resolver 결과:
-- Project: xcomm-server-jre17
-- Repository: /workspace/xcomm-server-jre17
-
-매칭 근거:
-- alias: XCommServer
-- module: XCommServer
-
-이 프로젝트를 작업 대상으로 사용할까요?
+project_approved = false
+work_unit_scoped = false
+requirement_delta_approved = true | false | not_required
+api_spec_approved = true | false | not_required
+workspace_approved = false
+branch_approved = false
+existing_changes_approved = false | not_required
+model_approved = false
+plan_approved = false
 ```
 
-여기서 STOP한다.
-
-사용자의 명확한 승인 후에만 다음 단계로 진행한다.
-
-## RESOLVED_MULTI
-
-모든 후보와 근거를 번호로 보여준다.
-
-예:
+모두 승인되고 현재 Plan이 단일 Work Unit으로 scoped된 순간:
 
 ```text
-1. xcomm-server-jre17
-2. approval-push-api-jre17
-3. daishinbank-sso
+NO_EXTRA_KANBAN_CONFIRMATION
+→ prepare_dispatch.py 정확히 한 번
+→ dev-skill-preflight
+→ approved model snapshot 확인
+→ kanban_create tool 1회 (initial_status=blocked)
+→ kanban_show tool 1회
+→ notification subscribe
+→ registration notification enqueue
+→ kanban_unblock
+→ worker dispatch
 ```
 
-사용자의 명시적 선택을 기다린다.
-
-### v0.1.x 제한
-
-한 Workflow 실행은 기본적으로 하나의 Repository를 대상으로 한다.
-
-사용자가 여러 프로젝트를 동시에 승인하면 자동 Dispatch하지 않는다.
-
-다음 중 하나를 요청한다.
+다음 질문은 금지한다.
 
 ```text
-- 우선 진행할 프로젝트 하나 선택
-- 프로젝트별 Work Item으로 분리
+Kanban 작업 카드를 등록할까요?
+Coder/Reviewer 흐름으로 배정해도 될까요?
+이제 실제 작업을 시작할까요?
 ```
 
----
+단, 추가 요구사항 자체를 정식 승인받는 `[추가 요구사항 확인]` Gate와 필요한 `[API 규격 승인]` Gate는 생략하면 안 된다.
 
-# 8. 프로젝트 승인 후 Breakdown
+## 모델 snapshot
 
-승인된 프로젝트에 대해 `dev-breakdown`을 실행한다.
+Tier 승인 직후:
 
-최소 입력:
+```bash
+python3 /opt/data/shared/scripts/flow_model_policy.py resolve --tier "<DEFAULT|PREMIUM>"
+```
+
+성공 계약:
 
 ```text
-Task Key
-Approved Project
-Original Work Item
-Description
-Acceptance Criteria
-Comments
-Constraints
-Source reference
+MODEL_TIER=<DEFAULT|PREMIUM>
+MODEL=<resolved model>
+PROVIDER=<resolved provider>
+REVIEWER_MODEL=DEFAULT
+MODEL_ESCALATION=REQUIRE_REAPPROVAL
+STATUS=resolved
 ```
 
-`dev-breakdown`은 구현을 수행하면 안 된다.
+Task body에도 `Model Escalation: REQUIRE_REAPPROVAL`을 기록한다. Task 생성 시 `model=<MODEL>`, `provider=<PROVIDER>`로 snapshot을 고정하고 `dev-flow-model-policy`를 runtime pin한다. 동일 승인 모델 retry는 재승인하지 않는다. Tier/Provider/Model 변경은 재승인 대상이다.
 
-결과:
+## 신규/대체 Task 승인 불변식
+
+`대체 카드 생성 승인` 자체는 각 Gate 승인을 대신하지 않는다. 기존 승인 뒤 범위가 바뀐 대체 Task는 Requirement Delta Approval + Work Unit reclassification + 필요한 API Spec Approval + 갱신된 Plan Approval을 반드시 가진다. 모든 필요한 Gate 승인 후에는 Kanban 생성 자체를 다시 승인받지 않는다.
+
+## Workspace / Branch 성능 계약
+
+승인 Gate 중에는 working-tree 전체 scan을 하지 않는다. repository/workspace/current branch/base branch identity 조회만 허용한다.
+
+기존 변경 전체 보존이 승인되면:
 
 ```text
-BLOCKED
+prepare_dispatch.py --confirmed-dirty
+WORKSPACE_CHANGE_SCAN_MODE=skipped-approved-preservation
 ```
 
-이면 사유를 사용자에게 보고하고 종료한다.
+이후 exact count를 복구하려고 `git status`, `git diff`, `git ls-files`를 다시 실행하지 않는다.
 
-결과:
+Coder/Reviewer도 전체 저장소를 재스캔하지 않는다.
 
 ```text
-READY
+Coder → change_summary.py --include <changed-path>...
+Reviewer → review_context.py --include <changed-path>...
 ```
 
-이면 Gate #2로 이동한다.
+API `SOURCE_SYNC`/`AUDIT`도 Task/도메인 범위의 bounded scan을 기본으로 하며, 전체 API 감사가 명시된 경우에만 범위를 넓힌다.
 
----
-
-# 9. Gate #2 — Plan Approval
-
-모든 작업에 적용한다.
-
-사용자에게 최소 다음을 보여준다.
+## Kanban 생성·최초 알림 단일 경로
 
 ```text
-Task Key
-Project
-Goal
-Affected Areas
-Implementation Tasks
-Acceptance Criteria
-Test Plan
-Dependencies
-Known Risks
-Open Questions
-Status = READY
+prepare_dispatch PASS
+→ skill preflight PASS
+→ kanban_create(initial_status=blocked)
+→ kanban_show read-back PASS
+→ subscribe_notification.py
+→ NOTIFY_STATUS=subscribed + NOTIFY_VERIFIED=true
+→ NOTIFY_REGISTRATION_EVENT=queued
+→ unblock
+→ dispatch
 ```
 
-그리고 반드시 묻는다.
+Board는 `.hermes/project.yaml`의 managed board만 사용한다. 알림 실패 시 기존 `dev-workspace-dispatch`의 차단 계약을 따른다.
 
-```text
-위 계획으로 구현을 진행할까요?
-```
+Coder/Reviewer 모델 전이는 `dev-flow-model-policy`의 `review-enter` / `changes-return` 계약을 사용하며 Reviewer profile DEFAULT를 유지한다.
 
-여기서 STOP한다.
-
-승인 예:
-
-```text
-진행해
-승인
-이 계획으로 해
-좋아 진행
-```
-
-다음은 승인으로 처리하지 않는다.
-
-```text
-테스트는?
-이 파일도 포함돼?
-조금 수정해줘
-```
-
-Plan이 수정되면 수정된 Plan에 대해 다시 Gate #2 승인을 받는다.
-
----
-
-# 10. Workspace / Branch 규칙
-
-Plan 승인 후 바로 Dispatch하지 않고, 먼저 Git Workspace / Branch Approval Gate를 수행한다.
-
-사용자에게 최소 다음을 보여준다.
-
-```text
-Project
-Repository
-Current Workspace
-Current Branch
-Git Status: clean / dirty
-Base Branch
-Suggested New Branch: feature/<TASK-KEY>
-```
-
-사용자는 다음 중 하나를 선택한다.
-
-```text
-1. 현재 workspace + 현재 branch 사용
-2. 현재 workspace + 새 branch 생성
-3. 사용자가 지정한 별도 workspace + 현재 branch 사용
-4. 사용자가 지정한 별도 workspace + 새 branch 생성
-```
-
-기존 변경이 있으면 `git status --short --untracked-files=all` 결과를 보여주고, 해당 dirty 상태를 작업에 포함해도 된다는 승인을 받은 뒤에만 Dispatch한다.
-
-새 Branch 기본 제안은 다음이다.
-
-```text
-feature/<TASK-KEY>
-```
-
-다만 현재 branch 사용을 승인받은 경우에는 현재 branch를 Expected Branch로 보존한다.
-
-Task 제목이나 설명을 Branch에 덧붙이지 않는다.
-
-금지:
-
-```text
-feature/calc-001-python-cli-calculator
-```
-
----
-
-# 11. Task Key 안전 규칙
-
-허용 기본 패턴:
-
-```text
-[A-Za-z0-9][A-Za-z0-9._-]*
-```
-
-다음은 거부한다.
-
-```text
-/
-\
-..
-공백
-경로 separator
-Shell meta character
-```
-
-예:
-
-```text
-DSB-39
-CALC-001
-LOCAL-20260814-174500
-```
-
----
-
-# 12. Dispatch 결과 검증
-
-`dev-workspace-dispatch` 결과를 그대로 신뢰하지 않는다.
-
-반드시 확인한다.
-
-```text
-Project
-Board
-Assignee = project.yaml profiles.coder
-Reviewer = project.yaml profiles.reviewer
-Status = ready
-Base Branch = project.yaml git.default_base_branch
-Base SHA = helper output BASE_SHA
-Workspace = user-approved workspace
-Kanban workspace = dir:<Workspace>
-Branch Mode = current/create
-Expected Branch = helper output BRANCH
-```
-
-Branch가 Helper 출력 `BRANCH`와 다르면 coder 실행으로 넘기지 않고 BLOCK한다.
-
-Orchestrator가 Branch를 임의로 rename하여 우회하지 않는다.
-
-# 13. Dispatch 이후
-
-정상 Dispatch 이후에는 구현/리뷰에 개입하지 않는다.
-
-```text
-coder
-  ↓
-dev-implement-plan
-  ↓
-kanban_request_review
-  ↓
-reviewer
-  ↓
-dev-code-review
-  ├─ CHANGES_REQUESTED
-  │      ↓
-  │    coder
-  │      ↓
-  │   reviewer
-  │
-  └─ APPROVED
-         ↓
-        Done
-```
-
-정상적인 coder ↔ reviewer 수정 루프에서는 사용자 승인을 다시 요구하지 않는다.
-
-다만 reviewer가 `BLOCKED` 또는 human input 상태로 전환하면
-사용자에게 원인과 필요한 결정을 보고한다.
-
----
-
-# 14. Git/PR 미연동 상태
-
-현재 Workflow 범위에는 포함하지 않는다.
-
-```text
-commit
-push
-PR create
-merge
-```
-
-Reviewer가 APPROVED하여 Kanban이 Done이 되어도 Workspace를 자동 정리하지 않는다.
-
-현재는 다음 상태가 정상이다.
-
-```text
-Review = APPROVED
-Kanban = Done
-Workspace = 유지
-Working tree = dirty 가능
-```
-
-Git publication 단계가 추가된 뒤에:
-
-```text
-APPROVED
-→ commit
-→ push
-→ PR
-→ merge
-→ dev-worktree-cleanup
-```
-
-으로 확장한다.
-
----
-
-# 15. dev-worktree-cleanup 호출 조건
-
-현재 Git/PR 단계가 없으므로 Workflow가 자동 호출하지 않는다.
-
-사용자가 cleanup을 명시적으로 요청한 경우에만 별도 실행을 고려한다.
-
-`dev-worktree-cleanup`의 안전 규칙을 유지한다.
-
-```text
-dirty/untracked legacy Worktree → 삭제 거부
-clean legacy Worktree → terminal task 확인 후 삭제 가능
-```
-
----
-
-# 16. Bootstrap 경계
-
-`dev-project-bootstrap`은 다음 조건에서만 사용한다.
-
-```text
-사용자가 정확한 Git Repository를 명시
-AND
-해당 Repository가 아직 managed project가 아님
-AND
-사용자가 Bootstrap을 명시적으로 승인
-```
-
-Resolver가 발견하지 못했다고 unmanaged Repository들을 자동 Bootstrap하지 않는다.
-
-`/workspace` 전체에 Bootstrap을 적용하지 않는다.
-
----
-
-# 17. 사용자 진행 상태 표시
-
-각 주요 단계에서 짧은 상태를 보여준다.
-
-예:
-
-```text
-Workflow: DSB-39
-
-Source        ✅ Jira
-Work Item     ✅
-Project       ⏳ 사용자 승인 대기
-Breakdown     -
-Plan Approval -
-Dispatch      -
-Coder         -
-Reviewer      -
-```
-
-Plan 승인 대기:
-
-```text
-Workflow: CALC-001
-
-Source        ✅ Text
-Work Item     ✅
-Project       ✅ mini-calculator
-Breakdown     ✅ READY
-Plan Approval ⏳ 사용자 승인 대기
-Dispatch      -
-Coder         -
-Reviewer      -
-```
-
----
-
-# 18. BLOCKED 조건
-
-다음은 추측하지 않고 BLOCK 또는 사용자 확인을 요청한다.
-
-```text
-Jira Intake 실패
-explicit project가 여러 managed project와 모호하게 일치
-managed project가 아닌 repo의 자동 등록이 필요한 상황
-Resolver 결과 없음
-Resolver 후보 사용자 승인 없음
-Breakdown BLOCKED
-Task Key가 안전하지 않음
-Plan 승인 없음
-Dispatch branch가 사용자 승인 Expected Branch와 불일치
-Workspace 검증 실패
-Kanban 생성/할당 실패
-reviewer가 human input 필요 상태로 종료
-```
-
----
-
-# 19. 하위 Skill 계약
-
-이 Skill은 다음 계약을 기대한다.
-
-```text
-dev-work-intake
-- Jira → Common Work Item
-
-dev-project-resolve
-- managed .hermes/project.yaml only
-- RESOLVED_SINGLE / RESOLVED_MULTI / BLOCKED
-- 자동 source scan 금지
-
-dev-project-bootstrap
-- managed project ensure
-- resolver user-managed
-
-dev-breakdown
-- 구현 금지
-- READY / BLOCKED
-- Implementation Plan 생성
-
-dev-workspace-dispatch
-- Plan 승인 이후에만 실행
-- user-approved Git Workspace
-- current/create branch mode와 expected branch 보존
-- coder/reviewer 정보 보존
-
-dev-worktree-cleanup
-- dirty legacy Worktree 삭제 금지
-```
-
-하위 Skill 계약이 맞지 않으면 Orchestrator가 임의 보정하지 않고 BLOCK한다.
-
----
-
-# 20. 완료 범위
-
-v0.1.x의 범위:
-
-```text
-Jira/Text 요청
-→ Work Item
-→ Project 확정
-→ Project Approval Gate
-→ Breakdown
-→ Plan Approval Gate
-→ Dispatch
-→ coder/reviewer 상태 추적
-→ APPROVED/Done 보고
-```
-
-아직 범위 밖:
-
-```text
-Git commit/push
-PR
-merge
-자동 cleanup
-multi-repository 동시 실행
-Notion adapter
-Slack adapter
-```
+세부 성능 규칙은 `references/dispatch-efficiency.md`를 따른다.
