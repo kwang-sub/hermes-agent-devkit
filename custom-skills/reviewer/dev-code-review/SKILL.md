@@ -55,6 +55,8 @@ Coder의 `Verification Final: true`, command/result, verification/effective scop
 
 Coder PASS 이후 executable source/test/build/toolchain이 바뀌었거나 fingerprint/evidence가 불일치하면 fresh verification을 요구한다. `GRADLE_STATUS=BLOCKED`를 같은 primary command로 우회 재시도하지 않는다.
 
+Java/Gradle 재검증은 project toolchain의 `hermes-java`와 canonical cached verification helper를 사용하며 임의 JDK를 설치하거나 host Java로 우회하지 않는다.
+
 ## Common Coding Review Gate
 
 `/opt/data/shared/references/coding-rules.md`와 project pattern을 기준으로 기존 abstraction 재사용, scope, 기본 `2-depth`, 반복 I/O/N+1, API response/error, JPA query 선택, test adequacy를 확인한다. Style/nit만으로 승인을 막지 않는다.
