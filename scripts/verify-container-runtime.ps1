@@ -124,6 +124,64 @@ Invoke-DockerCheck -Label "hermes-java launcher" -DockerArgs @(
 Invoke-DockerCheck -Label "Hermes CLI stable path" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "/usr/local/bin/hermes", "--help"
 )
+
+
+$DiscordKanbanNotifierCheck = @'
+import ast
+import inspect
+import textwrap
+
+import gateway.kanban_watchers_notifier as notifier
+
+if "registered" not in notifier.TERMINAL_KINDS:
+    raise SystemExit("registered event is missing from TERMINAL_KINDS")
+if "registered" not in notifier._EVENT_FORMATTERS:
+    raise SystemExit("registered event is missing from _EVENT_FORMATTERS")
+
+source = textwrap.dedent(inspect.getsource(notifier._KanbanNotification._send_event))
+tree = ast.parse(source)
+method = tree.body[0]
+
+formatter_calls = [
+    node
+    for node in ast.walk(method)
+    if isinstance(node, ast.Call)
+    and isinstance(node.func, ast.Name)
+    and node.func.id == "_devkit_discord_kanban_message"
+]
+if len(formatter_calls) != 1:
+    raise SystemExit(f"expected one Discord formatter call in _send_event, got {len(formatter_calls)}")
+
+for node in method.body:
+    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        continue
+    nested_formatter_calls = [
+        child
+        for child in ast.walk(node)
+        if isinstance(child, ast.Call)
+        and isinstance(child.func, ast.Name)
+        and child.func.id == "_devkit_discord_kanban_message"
+    ]
+    if nested_formatter_calls:
+        raise SystemExit(f"Discord formatter is incorrectly nested inside {node.name}()")
+    nested_msg_writes = [
+        child
+        for child in ast.walk(node)
+        if isinstance(child, ast.Name)
+        and child.id == "msg"
+        and isinstance(child.ctx, ast.Store)
+    ]
+    if nested_msg_writes:
+        raise SystemExit(f"nested notifier function {node.name}() writes msg and can shadow the outer argument")
+
+print("Discord Kanban notifier registration/msg-scope contract valid")
+'@
+
+$DiscordKanbanNotifierCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
+if ($LASTEXITCODE -ne 0) {
+    throw "[FAIL] Discord Kanban notifier registration/msg-scope contract. Re-run .\\update-devkit.ps1 or rebuild/recreate the container."
+}
+Write-Host "[OK] Discord Kanban notifier registration/msg-scope contract"
 Invoke-DockerCheck -Label "Tirith routed-profile guard patch" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "sh", "-lc",
     "grep -q DEVKIT_TIRITH_PROFILE_GUARD_V1 /opt/hermes/tools/tirith_security.py"
