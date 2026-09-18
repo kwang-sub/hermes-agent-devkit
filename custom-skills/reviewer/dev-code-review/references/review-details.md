@@ -136,6 +136,8 @@ Reason: coder final verification covers the unchanged executable scope
 
 Java/Gradle evidence 확인이 필요하면 같은 cached helper와 `--scope-path` 목록을 사용한다.
 
+Reviewer도 raw `./gradlew ...` 또는 `gradle ...`을 직접 호출하지 않는다. 단순 bounded 진단은 `hermes-java ./gradlew ...`, 실제 재검증은 아래 canonical cached helper만 사용한다.
+
 ```bash
 python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification_cached.py \
   --workspace "<Workspace>" \

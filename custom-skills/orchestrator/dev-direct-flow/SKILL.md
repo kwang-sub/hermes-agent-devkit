@@ -1,7 +1,7 @@
 ---
 name: dev-direct-flow
 description: Orchestrator가 작고 명확한 단일 Work Unit 요청을 짧은 승인 절차로 현재 workspace/current branch에 Kanban dispatch하고 Coder→Reviewer 실행 계약을 재사용하는 Direct Flow.
-version: 1.0.1
+version: 1.0.2
 author: local
 platforms: [linux]
 metadata:
@@ -37,6 +37,8 @@ Direct에서 생략하는 것은 `dev-breakdown`의 광범위한 planning 단계
 - 실제 Kanban Worker는 이미 할당된 Task 계약을 수행하며 Direct/Standard 선택 Gate를 다시 묻지 않는다.
 - read-only 분석/설명 요청은 Direct/Standard 실행 Gate 대상이 아니다.
 - Direct 여부 판정 때문에 source read/grep/build/test가 필요하면 Direct로 추측하지 않고 Standard로 보낸다.
+- Direct eligibility/원인 진단 단계에서 Orchestrator는 project build/test를 실행하지 않는다. Gradle 재현이 필요하면 Direct 판정을 멈추고 Standard로 전환하거나 승인/dispatch 후 Coder에게 위임한다.
+- 승인 이후 bounded 진단 예외에서도 raw `./gradlew ...` 또는 `gradle ...`을 직접 호출하지 않고 `hermes-java ./gradlew ...`를 사용한다. COMPILE/TARGETED_TEST 검증은 Coder의 canonical cached verification helper가 소유한다.
 - `/dev-direct-flow`를 명시해도 eligibility를 우회하지 않는다.
 
 ## 2. Direct eligibility
@@ -165,7 +167,7 @@ Review Policy: REQUIRED
 
 Applicable Skills를 확정하려고 broad source 분석이 필요하면 Standard로 전환한다.
 
-Plan은 기존 `[작업 계획 승인]` Gate를 사용한다. Plan 승인 전 source mutation/Kanban 생성은 금지한다.
+Plan은 기존 `[작업 계획 승인]` Gate를 사용한다. Plan 승인 전 source mutation/Kanban 생성/build/test 실행은 금지한다.
 
 ## 7. Dispatch
 
@@ -232,6 +234,8 @@ Direct 승인은 **한 Task에 대한 one-shot approval**이다. 이미 dispatch
 ## 10. 금지
 
 - Orchestrator가 Direct라는 이유로 source 직접 수정
+- Orchestrator가 raw `./gradlew ...` 또는 `gradle ...`을 직접 실행해 `/workspace`의 project-local `.gradle`/`build`를 오염시키는 행위
+- canonical cached verification helper 또는 `hermes-java`를 우회하는 ad-hoc Gradle build/test 실행
 - Interactive Coder가 새 mutation request를 self-route/self-dispatch
 - Direct/Standard canonical dispatch를 우회하는 별도 실행 경로 또는 Task 생성
 - Reviewer 생략 / risk-based self-complete

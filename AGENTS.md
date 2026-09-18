@@ -94,7 +94,8 @@ Direct/Standard Task 모두 Goal, Acceptance Criteria, Implementation Tasks, Tes
 - secret, credential, token, password, raw PII를 source/context/Kanban/log에 기록하지 않는다.
 - 사용자 변경을 reset/restore/clean/stash/commit하거나 덮어쓰지 않는다. publication 요청 전 commit, push, PR, merge 금지.
 - Coder worker의 workspace/branch/base 검증은 `dev-implement-plan/scripts/verify_workspace.py`를 **단독 command로 1회** 실행한다. `STATUS=valid`이면 같은 terminal invocation의 추가 Git/toolchain probe나 별도 중복 workspace probe를 금지한다.
-- Gradle COMPILE/TARGETED_TEST 검증은 `dev-implement-plan/scripts/gradle_verification.py`를 canonical 경로로 사용한다. helper가 `GRADLE_STATUS=BLOCKED`를 반환하면 timed-out primary command, `compileJava`, `--info` 변형, background wait를 임의 반복하지 않고 helper blocker evidence로 종료한다.
+- Hermes container 내부의 모든 Gradle 실행은 raw `./gradlew ...` 또는 `gradle ...`을 직접 호출하지 않는다. 단순 bounded 진단은 `hermes-java ./gradlew ...`, COMPILE/TARGETED_TEST 검증은 `dev-implement-plan/scripts/gradle_verification_cached.py`를 canonical 경로로 사용한다.
+- canonical helper가 `hermes-java`를 통해 `/opt/data/gradle`의 project cache/build output/workspace lock 격리를 적용하도록 유지한다. `GRADLE_STATUS=BLOCKED`이면 timed-out primary command, `compileJava`, `--info` 변형, background wait를 임의 반복하거나 raw Gradle로 우회하지 않고 helper blocker evidence로 종료한다.
 - targeted test부터 실행하고 실제 command/result, 미실행 이유, residual risk를 기록한다.
 - `BLOCKED`에는 evidence, blocker, 필요한 입력, 재개 조건을 남긴다.
 - 계획/진행 보고는 한국어로 작성한다.

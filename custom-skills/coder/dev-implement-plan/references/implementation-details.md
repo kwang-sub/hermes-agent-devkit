@@ -316,6 +316,8 @@ Java/Gradle/Maven 프로젝트는 Bootstrap의 `.hermes/toolchain.env`를 사용
 
 Gradle compile/targeted test의 canonical 실행은 `scripts/gradle_verification_cached.py`다. 기본 verification timeout은 600초이며 600초를 초과할 수 없다.
 
+Hermes container에서는 raw `./gradlew ...` 또는 `gradle ...`을 직접 호출하지 않는다. bounded 진단은 `hermes-java ./gradlew ...`를 사용하고, compile/targeted test는 cached helper가 `hermes-java`를 통해 `/opt/data/gradle` 격리를 적용하도록 유지한다.
+
 ```bash
 python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification_cached.py \
   --workspace "<Workspace>" \

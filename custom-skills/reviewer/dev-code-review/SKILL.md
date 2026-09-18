@@ -1,7 +1,7 @@
 ---
 name: dev-code-review
 description: 동일 Workspace의 Direct/Standard 미커밋 구현을 requirement/AC와 Work Unit·project pattern·capability·구조 품질 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
-version: 0.17.1
+version: 0.17.2
 author: local
 platforms: [linux]
 metadata:
@@ -55,7 +55,7 @@ Coder의 `Verification Final: true`, command/result, verification/effective scop
 
 Coder PASS 이후 executable source/test/build/toolchain이 바뀌었거나 fingerprint/evidence가 불일치하면 fresh verification을 요구한다. `GRADLE_STATUS=BLOCKED`를 같은 primary command로 우회 재시도하지 않는다.
 
-Java/Gradle 재검증은 `hermes-java` 기반 cached helper를 사용하고 임의 JDK/host Java로 우회하지 않는다.
+Java/Gradle 재검증은 `hermes-java` 기반 cached helper를 사용하고 임의 JDK/host Java로 우회하지 않는다. raw `./gradlew ...` 또는 `gradle ...` 직접 실행도 금지하며, fresh verification이 필요하면 동일 canonical cached helper를 사용한다.
 
 ## Common Coding Review Gate
 
