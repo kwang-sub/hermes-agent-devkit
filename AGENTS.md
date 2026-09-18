@@ -42,7 +42,7 @@ Direct는 current workspace/current branch 고정 경로다. 다른 workspace/�
 - 승인 전에는 source mutation, build/test, Kanban 생성으로 넘어가지 않는다.
 - read-only 분석/설명/코드 리뷰 요청은 실행 Gate 대상이 아니다. 분석 중 수정 필요성이 생기면 mutation 전에 Orchestrator Flow Gate로 돌아간다.
 - 실제 Kanban Task ID가 있는 Worker 세션은 Flow Gate를 다시 묻지 않고 할당 Task를 수행한다.
-- Fast Flow는 신규 실행 경로로 사용하지 않는다.
+- 지원하는 mutation 실행 경로는 Direct Flow와 Standard Flow뿐이다.
 
 ## Kanban 계약
 Direct/Standard Task 모두 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Risks, Work Unit Contract, Workspace, Expected/Base Branch, Base SHA, Coder model snapshot, Reviewer DEFAULT를 보존한다. 구현 완료 후 Coder는 항상 Reviewer에게 인계한다.

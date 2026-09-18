@@ -1,7 +1,7 @@
 ---
 name: dev-flow-model-policy
 description: Direct/Standard Flow에서 승인된 Coder 모델을 Task에 고정하고 Reviewer는 DEFAULT를 사용하도록 Coder↔Reviewer 전이 시 model override를 관리하는 공통 정책.
-version: 0.5.0
+version: 0.5.1
 author: local
 platforms: [linux]
 metadata:
@@ -157,7 +157,7 @@ HERMES_KANBAN_CLAIM_LOCK 수동 주입
 
 ## 8. 금지
 
-- Fast Flow 신규 Task 생성/모델 승인 경로
+- Direct/Standard canonical Gate를 우회하는 별도 Task 생성/모델 승인 경로
 - Reviewer를 PREMIUM으로 자동 승격
 - Coder가 난이도를 이유로 스스로 PREMIUM 전환
 - retry 때 ENV를 다시 해석해 기존 Task 모델 변경

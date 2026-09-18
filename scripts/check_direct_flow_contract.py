@@ -20,7 +20,7 @@ def require(path: Path, terms: tuple[str, ...], failures: list[str]) -> str:
 def forbid(text: str, label: str, terms: tuple[str, ...], failures: list[str]) -> None:
     present = [term for term in terms if term in text]
     if present:
-        failures.append(f"{label} contains removed Fast/interactive contract: {', '.join(present)}")
+        failures.append(f"{label} contains removed flow/interactive contract: {', '.join(present)}")
 
 
 def main() -> int:
@@ -29,6 +29,8 @@ def main() -> int:
     direct = ROOT / "custom-skills/orchestrator/dev-direct-flow/SKILL.md"
     implement = ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md"
     model_policy = ROOT / "custom-skills/shared/dev-flow-model-policy/SKILL.md"
+    preflight = ROOT / "custom-skills/orchestrator/dev-skill-preflight/SKILL.md"
+    spring_refactor = ROOT / "custom-skills/shared/dev-spring-refactor/SKILL.md"
     coder_cycle = ROOT / "custom-skills/coder/dev-review-cycle/SKILL.md"
     reviewer_cycle = ROOT / "custom-skills/reviewer/dev-review-cycle/SKILL.md"
     common = ROOT / "shared/AGENTS.common.md"
@@ -65,7 +67,7 @@ def main() -> int:
         ),
         failures,
     )
-    forbid(direct_text, "dev-direct-flow", ("FAST Flow", "dev-fast-flow", "Interactive Coder가 직접 수행"), failures)
+    forbid(direct_text, "dev-direct-flow", ("FAST Flow", "Fast Flow", "dev-fast-flow", "DIRECT/FAST", "Fast Task", "Interactive Coder가 직접 수행"), failures)
 
     implement_text = require(
         implement,
@@ -96,7 +98,30 @@ def main() -> int:
         ),
         failures,
     )
-    forbid(model_text, "dev-flow-model-policy", ("Fast LOW self-complete", "신규 Standard/Fast dispatch"), failures)
+    forbid(model_text, "dev-flow-model-policy", ("Fast Flow", "Fast LOW self-complete", "신규 Standard/Fast dispatch"), failures)
+
+    preflight_text = require(
+        preflight,
+        (
+            "Direct/Standard Task",
+            "coder",
+            "reviewer",
+            "strict_pin=true",
+        ),
+        failures,
+    )
+    forbid(preflight_text, "dev-skill-preflight", ("Fast Flow", "Standard/Fast", "Flow: FAST"), failures)
+
+    spring_refactor_text = require(
+        spring_refactor,
+        (
+            "Direct Flow",
+            "DIRECT_SCOPE_EXCEEDED",
+            "Standard Flow",
+        ),
+        failures,
+    )
+    forbid(spring_refactor_text, "dev-spring-refactor", ("Fast Flow", "FAST_FLOW_ESCALATION_REQUIRED"), failures)
 
     coder_cycle_text = require(
         coder_cycle,
@@ -131,7 +156,7 @@ def main() -> int:
                 "요청을 `DIRECT | STANDARD`로 분류",
                 "Coder: **Kanban에 할당된 Task만** 구현",
                 "Direct도 Kanban Task를 생성하고 Coder→Reviewer를 반드시 거친다",
-                "Fast Flow는 신규 실행 경로로 사용하지 않는다",
+                "지원하는 mutation 실행 경로는 Direct Flow와 Standard Flow뿐이다",
             ),
             failures,
         )

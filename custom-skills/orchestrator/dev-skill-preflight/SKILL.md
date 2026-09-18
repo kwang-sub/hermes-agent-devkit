@@ -1,7 +1,7 @@
 ---
 name: dev-skill-preflight
 description: Kanban dispatch 전에 대상 Hermes profile에 실제 존재하는 pinned skill만 선별하고 capability lifecycle 등록부의 필수 skill을 strict 검증해 unknown skill worker crash와 역할별 계약 누락을 차단하는 orchestrator 공통 검증 skill.
-version: 1.1.0
+version: 1.1.1
 author: local
 platforms: [linux]
 metadata:
@@ -13,7 +13,7 @@ metadata:
 
 # dev-skill-preflight
 
-Standard/Fast/Review Flow에서 Kanban Task에 `skills`를 pin하기 직전에 재사용하는 공통 검증 계층이다. 계획의 `Applicable Skills`를 실행 가능한 skill 목록으로 오해해 그대로 `kanban_create.skills`에 전달하지 않도록 한다.
+Direct/Standard Task에서 Kanban Task에 `skills`를 pin하기 직전에 재사용하는 공통 검증 계층이다. 계획의 `Applicable Skills`를 실행 가능한 skill 목록으로 오해해 그대로 `kanban_create.skills`에 전달하지 않도록 한다.
 
 ## 1. 책임
 
@@ -36,16 +36,14 @@ Standard/Fast/Review Flow에서 Kanban Task에 `skills`를 pin하기 직전에 �
 
 ## 2. 왜 Coder와 Reviewer를 같이 확인하는가
 
-Standard Flow의 같은 Task가 구현 후 Reviewer로 넘어갈 수 있으므로 Coder에서만 존재하는 pinned skill도 안전하지 않다. Task에 pin할 skill은 기본적으로 `coder`와 `reviewer` 모두에서 사용할 수 있어야 한다.
+Direct/Standard 모두 구현 후 Reviewer가 필수이므로 Coder에서만 존재하는 pinned skill도 안전하지 않다. Task에 pin할 skill은 `coder`와 `reviewer` 모두에서 사용할 수 있어야 한다.
 
-따라서 Standard Flow 기본 검증 대상은 project metadata의 다음 두 profile이다.
+따라서 기본 검증 대상은 project metadata의 다음 두 profile이다.
 
 ```text
 profiles.coder
 profiles.reviewer
 ```
-
-Reviewer를 사용하지 않는 Flow라면 실제 dispatch 대상 profile만 지정할 수 있다.
 
 ## 3. Capability Lifecycle Strict Gate
 
