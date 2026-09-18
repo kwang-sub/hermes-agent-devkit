@@ -1,7 +1,7 @@
 ---
 name: dev-breakdown
 description: managed 프로젝트의 실제 코드·디자인 Reference·데이터 근거와 기존 project pattern으로 단일 Work Unit의 한국어 Implementation Plan을 생성하며 구현하지 않는 orchestrator 전용 skill.
-version: 0.16.0
+version: 0.17.0
 author: local
 platforms: [linux]
 metadata:
@@ -307,6 +307,8 @@ Design Status: DRAFT | REFERENCE | APPROVED | N/A
 Design Fidelity: STRUCTURE | VISUAL | HIGH | N/A
 Reference: <repo image path | selected Figma URL | current code>
 Screen Spec: <path | none>
+View Strategy: SHARED | RESPONSIVE | HYBRID | SPLIT_VIEW | N/A
+Platform Scope: DESKTOP | MOBILE | BOTH | N/A
 ```
 
 판정:
@@ -338,20 +340,44 @@ Frontend Entry: dev-frontend-feature
 Frontend Mode: REFERENCE_DRIVEN | CODE_DRIVEN
 Design Source / Status / Fidelity
 Reference / Screen Spec
+View Strategy: SHARED | RESPONSIVE | HYBRID | SPLIT_VIEW
+View Strategy Rationale
+Platform Scope: DESKTOP | MOBILE | BOTH
+Section Overrides: <section=strategy | NONE>
 Package Manager / Framework evidence
-Existing Component/Token references
+Existing Package / Component / Token references
+Package / View Plan
+Shared Implementation: api | model | state | hooks | common UI
+Split Implementation: desktop/mobile presentation | NONE
+Responsive / Breakpoint Source
 Frontend Capability Hints
 Observed / Inferred / Unknown
 Affected UI States: loading | empty | error | populated (해당 시)
-Responsive scope
-API contract impact
+API Impact: NONE | SHARED_CONTRACT | CONTRACT_CHANGE
 Storybook Catalog Plan: UPDATE | NOT_REQUIRED | NOT_AVAILABLE
 Visual Verification: DESIGN_CONFORMANCE | VISUAL_REGRESSION | BOTH | NOT_REQUIRED
+Desktop/Mobile Verification Matrix
 Regression Baseline: APPROVED_BROWSER_SCREENSHOT | EXISTING_PROJECT_BASELINE | NOT_REQUIRED
 Verification plan
 ```
 
 `DESIGN_CONFORMANCE`는 Approved IMAGE/Figma Reference와 최초 구현의 구조·배치·visual intent 일치를 확인한다. `VISUAL_REGRESSION`은 승인된 실제 browser screenshot을 이후 golden으로 사용하는 회귀 검증이다. Design Reference PNG를 장기 regression golden과 동일시하지 않는다.
+
+Desktop/Mobile이 모두 scope이면 View Strategy를 구현 전에 확정한다. 기존 project package/component/state/API convention을 먼저 사용하고, 없을 때만 `dev-frontend-feature`의 feature-first 기본 구조를 적용한다.
+
+```text
+SHARED / RESPONSIVE
+→ presentation tree 공유 우선
+
+HYBRID
+→ common shell/data/state + 필요한 section만 platform split
+
+SPLIT_VIEW
+→ DesktopView / MobileView 분리
+→ API/model/state/business/data hook은 기본 공유
+```
+
+화면 차이만으로 Backend API를 desktop/mobile superset DTO 또는 중복 endpoint로 확대하지 않는다. 실제 use case/data-volume/security/performance 차이로 contract 변경이 필요할 때만 API Spec Gate를 재평가한다.
 
 예:
 
@@ -384,6 +410,6 @@ DBML/schema 자체를 설계하지 않는 순수 JPA 구현까지 `dev-data-feat
 
 ## 필수 출력
 
-Task Identity; Project/working tree; Goal/Type/Requirement; Assumptions/Constraints/Out of Scope; **Work Unit Class/Boundary/Current Deliverable/Follow-up Required/Follow-up Work Unit/Follow-up Input/Excluded Follow-up Scope**; **Project Pattern Summary**; Frontend Mode/Design Source/Status/Fidelity/Reference/Screen Spec(해당 시); **API Spec Mode/Gate/Status/Path/Source(해당 시)**; **Data Design Mode/Gate/Status/Task Class/Vendor/DBML Path/Physicalization Required(해당 시)**; **Infrastructure Impact/Observed State/Desired State/Configuration Delivery(해당 시, host/port 포함)**; Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Data Capability Hints; Observed/Inferred/Unknown(해당 시); Storybook/Visual Verification Plan(해당 시); Acceptance Criteria; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
+Task Identity; Project/working tree; Goal/Type/Requirement; Assumptions/Constraints/Out of Scope; **Work Unit Class/Boundary/Current Deliverable/Follow-up Required/Follow-up Work Unit/Follow-up Input/Excluded Follow-up Scope**; **Project Pattern Summary**; Frontend Mode/Design Source/Status/Fidelity/Reference/Screen Spec/**View Strategy/Platform Scope/Package-View Plan/Shared-Split Implementation/API Impact/Desktop-Mobile Verification Matrix**(해당 시); **API Spec Mode/Gate/Status/Path/Source(해당 시)**; **Data Design Mode/Gate/Status/Task Class/Vendor/DBML Path/Physicalization Required(해당 시)**; **Infrastructure Impact/Observed State/Desired State/Configuration Delivery(해당 시, host/port 포함)**; Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Data Capability Hints; Observed/Inferred/Unknown(해당 시); Storybook/Visual Verification Plan(해당 시); Acceptance Criteria; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
 
 유형별 상세 체크리스트와 출력 템플릿은 `references/planning-details.md`를 필요할 때만 읽는다.

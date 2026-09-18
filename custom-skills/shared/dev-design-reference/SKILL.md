@@ -1,7 +1,7 @@
 ---
 name: dev-design-reference
 description: 승인된 이미지 또는 Figma 디자인 자료를 Frontend 구현용 Normalized Design Evidence로 변환하고 GitHub Reference Package 계약을 관리하는 shared capability skill.
-version: 0.1.0
+version: 0.2.0
 author: local
 platforms: [linux]
 metadata:
@@ -98,10 +98,13 @@ source
 reference
 fidelity
 viewport
+view strategy: SHARED | RESPONSIVE | HYBRID | SPLIT_VIEW
 화면 목적
 주요 영역
 states: loading / empty / error / populated 등
 responsive behavior
+shared/split implementation boundary
+package/view plan
 interaction/navigation
 API/dependency
 existing component/token reuse
@@ -110,6 +113,8 @@ acceptance criteria
 ```
 
 모든 화면에 모든 상태를 기계적으로 추가하지 않는다. 실제 화면 behavior에 필요한 상태만 문서화한다.
+
+Desktop/Mobile이 모두 scope이면 `View Strategy`를 명시한다. 기존 legacy Screen Spec에 해당 필드가 없으면 guard는 읽을 수 있도록 유지하되, 새로 작성하거나 의미 있게 수정하는 Screen Spec에서는 누락하지 않는다. 전략별 구현 책임은 `dev-frontend-feature`의 View Strategy / Implementation Architecture 계약을 따른다.
 
 ## IMAGE Provider
 
@@ -167,6 +172,8 @@ Design Fidelity: STRUCTURE | VISUAL | HIGH
 Reference: <repo path | selected Figma URL>
 Screen Spec: <repo path | none>
 Viewport: <width>x<height> | UNKNOWN
+View Strategy: SHARED | RESPONSIVE | HYBRID | SPLIT_VIEW | UNKNOWN
+Section Overrides: <... | NONE>
 
 Observed:
 - ...
@@ -239,6 +246,8 @@ Reviewer는 Coder가 남긴 Normalized Design Evidence를 먼저 재사용한다
 ```
 
 단순 확신 확보를 위해 같은 이미지/Figma를 반복 분석하지 않는다.
+
+Desktop/Mobile reference가 모두 존재하면 화면별 `View Strategy`, section override, shared/split boundary가 reference evidence와 모순되지 않는지도 확인한다.
 
 ## 불변식
 

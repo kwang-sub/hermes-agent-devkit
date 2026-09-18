@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 ALLOWED_STATUS = {"DRAFT", "REFERENCE", "APPROVED"}
 ALLOWED_SOURCE = {"IMAGE", "FIGMA"}
 ALLOWED_FIDELITY = {"STRUCTURE", "VISUAL", "HIGH"}
+ALLOWED_VIEW_STRATEGY = {"SHARED", "RESPONSIVE", "HYBRID", "SPLIT_VIEW"}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
@@ -46,12 +47,15 @@ def validate(spec: Path) -> dict[str, str]:
     status = values["status"].upper()
     source = values["source"].upper()
     fidelity = values["fidelity"].upper()
+    view_strategy = values.get("view_strategy", "").upper()
     if status not in ALLOWED_STATUS:
         raise SpecError(f"invalid status: {values['status']}")
     if source not in ALLOWED_SOURCE:
         raise SpecError(f"invalid source: {values['source']}")
     if fidelity not in ALLOWED_FIDELITY:
         raise SpecError(f"invalid fidelity: {values['fidelity']}")
+    if view_strategy and view_strategy not in ALLOWED_VIEW_STRATEGY:
+        raise SpecError(f"invalid view_strategy: {values['view_strategy']}")
 
     viewport = values["viewport"]
     if viewport != "UNKNOWN" and not re.fullmatch(r"\d{2,5}x\d{2,5}", viewport):
@@ -77,6 +81,7 @@ def validate(spec: Path) -> dict[str, str]:
         "status": status,
         "source": source,
         "fidelity": fidelity,
+        "view_strategy": view_strategy or "UNSPECIFIED",
     }
 
 
@@ -95,6 +100,7 @@ def main() -> int:
     print(f"DESIGN_SOURCE={result['source']}")
     print(f"DESIGN_FIDELITY={result['fidelity']}")
     print(f"VIEWPORT={result['viewport']}")
+    print(f"VIEW_STRATEGY={result['view_strategy']}")
     return 0
 
 

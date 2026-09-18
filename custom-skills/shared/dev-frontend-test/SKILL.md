@@ -1,7 +1,7 @@
 ---
 name: dev-frontend-test
 description: frontend 변경에서 기존 Vitest/Jest/Testing Library/Storybook/Playwright/Cypress stack을 감지해 functional·component·e2e·design conformance·visual regression 검증을 선택하는 capability skill.
-version: 0.3.0
+version: 0.3.1
 author: local
 platforms: [linux]
 metadata:
@@ -66,6 +66,40 @@ Approved IMAGE/Figma reference 기반 첫 구현
 ```
 
 snapshot만으로 behavior correctness를 대체하지 않는다.
+
+## View Strategy / Platform Verification
+
+`dev-frontend-feature`의 View Strategy가 `BOTH` platform scope를 가지면 Desktop/Mobile 검증 범위를 명시한다.
+
+```text
+SHARED
+→ 대표 viewport + boundary viewport
+→ 동일 behavior/state가 유지되는지 확인
+
+RESPONSIVE
+→ Desktop + Mobile viewport 최소 확인
+→ layout/order/visibility 변화와 동일 interaction/state 확인
+
+HYBRID
+→ common 영역 + desktop 전용 section + mobile 전용 section 각각 확인
+→ shared state/API owner가 variant마다 중복 실행되지 않는지 확인
+
+SPLIT_VIEW
+→ DesktopView / MobileView를 각각 독립 화면처럼 검증
+→ 같은 use case면 동일 business/API contract를 만족하는지 확인
+→ navigation/interaction/accessibility가 각 View에서 완결되는지 확인
+```
+
+Project에 기존 viewport matrix가 있으면 그대로 사용한다. 없으면 Design Reference/Screen Spec의 승인 viewport를 우선하고, 임의의 device catalog 전체를 테스트하지 않는다.
+
+검증 계획은 다음 형태로 남긴다.
+
+```text
+Desktop/Mobile Verification Matrix:
+- Desktop <viewport>: <states / interaction / visual mode>
+- Mobile <viewport>: <states / interaction / visual mode>
+- Shared owner check: <fetch/cache/effect/subscription>
+```
 
 ## Storybook Catalog
 
@@ -222,6 +256,8 @@ Next/Vite/Storybook 등의 build output 경로를 DevKit이 일괄 override하�
 Skill: dev-frontend-test
 Detected test/catalog stack
 Verification Modes
+View Strategy: SHARED | RESPONSIVE | HYBRID | SPLIT_VIEW | N/A
+Desktop/Mobile Verification Matrix
 Affected tests/stories/pages
 Commands / Results
 Node Runtime Isolation: PASS | NOT_REQUIRED | BLOCKED

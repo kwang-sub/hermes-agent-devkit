@@ -25,6 +25,7 @@ source: IMAGE
 reference: {reference}
 fidelity: VISUAL
 viewport: 1440x1024
+view_strategy: RESPONSIVE
 ---
 # Dashboard
 """
@@ -39,6 +40,7 @@ def test_valid_image_reference() -> None:
         result = MODULE.validate(spec)
         assert result["source"] == "IMAGE"
         assert result["status"] == "APPROVED"
+        assert result["view_strategy"] == "RESPONSIVE"
 
 
 def test_missing_image_is_blocked() -> None:
@@ -71,6 +73,40 @@ viewport: UNKNOWN
         assert result["status"] == "REFERENCE"
 
 
+
+def test_legacy_spec_without_view_strategy_remains_readable() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        spec = root / "screen-spec.md"
+        write(spec, """---
+screen: dashboard
+status: APPROVED
+source: IMAGE
+reference: ./reference.png
+fidelity: VISUAL
+viewport: 1440x1024
+---
+# Dashboard
+""")
+        (spec.parent / "reference.png").write_bytes(b"png")
+        result = MODULE.validate(spec)
+        assert result["view_strategy"] == "UNSPECIFIED"
+
+
+def test_invalid_view_strategy_is_blocked() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        spec = root / "screen-spec.md"
+        write(spec, image_spec().replace("view_strategy: RESPONSIVE", "view_strategy: DEVICE_ONLY"))
+        (spec.parent / "reference.png").write_bytes(b"png")
+        try:
+            MODULE.validate(spec)
+        except MODULE.SpecError as exc:
+            assert "invalid view_strategy" in str(exc)
+        else:
+            raise AssertionError("invalid view strategy must be blocked")
+
+
 def test_invalid_enums_are_blocked() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         spec = Path(tmp) / "screen-spec.md"
@@ -88,5 +124,7 @@ if __name__ == "__main__":
     test_valid_image_reference()
     test_missing_image_is_blocked()
     test_valid_figma_reference()
+    test_legacy_spec_without_view_strategy_remains_readable()
+    test_invalid_view_strategy_is_blocked()
     test_invalid_enums_are_blocked()
     print("[PASS] Screen specification guard tests")
