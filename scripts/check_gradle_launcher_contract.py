@@ -120,6 +120,10 @@ def check_runtime_bypass(failures: list[str]) -> None:
     require_terms(
         launcher,
         (
+            'workspace_root="$(git rev-parse --show-toplevel',
+            'worktree list --porcelain',
+            'toolchain_file="$primary_root/.hermes/toolchain.env"',
+            'repo_hash="$(printf \'%s\' "$workspace_root" | git hash-object --stdin',
             'gradle_project_cache_root="${HERMES_GRADLE_PROJECT_CACHE_ROOT:-$gradle_root/project-cache}"',
             'gradle_extra_args+=(--project-cache-dir "$project_cache_dir")',
             'export HERMES_GRADLE_BUILD_DIR="$build_dir"',

@@ -6,15 +6,22 @@ if [ "$#" -eq 0 ]; then
   exit 2
 fi
 
-repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-if [ -z "$repo_root" ]; then
+workspace_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$workspace_root" ]; then
   echo "hermes-java: current directory is not inside a Git repository" >&2
   exit 2
 fi
 
-toolchain_file="$repo_root/.hermes/toolchain.env"
+worktree_listing="$(git -C "$workspace_root" worktree list --porcelain 2>/dev/null || true)"
+primary_root="$(printf '%s\n' "$worktree_listing" | sed -n 's/^worktree //p' | head -n 1)"
+if [ -z "$primary_root" ] || [ ! -d "$primary_root" ]; then
+  echo "hermes-java: cannot resolve primary worktree from $workspace_root" >&2
+  exit 2
+fi
+
+toolchain_file="$primary_root/.hermes/toolchain.env"
 if [ ! -f "$toolchain_file" ]; then
-  echo "hermes-java: missing $toolchain_file; run dev-project-bootstrap first" >&2
+  echo "hermes-java: missing canonical $toolchain_file; run dev-project-bootstrap for the primary repository first" >&2
   exit 2
 fi
 
@@ -205,8 +212,8 @@ if [ "$command_name" = "gradlew" ]; then
     esac
   done
 
-  repo_name="$(printf '%s' "$(basename "$repo_root")" | tr -c '[:alnum:]._-' '_')"
-  repo_hash="$(printf '%s' "$repo_root" | git hash-object --stdin | cut -c1-12)"
+  repo_name="$(printf '%s' "$(basename "$workspace_root")" | tr -c '[:alnum:]._-' '_')"
+  repo_hash="$(printf '%s' "$workspace_root" | git hash-object --stdin | cut -c1-12)"
   workspace_key="${repo_name}-${repo_hash}"
 
   gradle_extra_args=()
