@@ -34,6 +34,7 @@ PREFERRED_LOCKFILES = {
 }
 SKIP_DIRS = {".git", ".hermes", ".worktrees", "node_modules", ".next", "dist", "build", "coverage", "target"}
 MAX_DEPTH = 3
+INSTALL_TIMEOUT_SECONDS = 600
 MANIFEST_SECTIONS = (
     ("dependencies", "DECLARED_PROD"),
     ("devDependencies", "DECLARED_DEV"),
@@ -376,6 +377,7 @@ def main() -> int:
         print(f"INSTALL_REQUIRED={'true' if install_required else 'false'}")
         print(f"RESTORE_REQUIRED={'true' if restore_required else 'false'}")
         print(f"INSTALL_COMMAND={install_command}")
+        print(f"INSTALL_TIMEOUT_SECONDS={INSTALL_TIMEOUT_SECONDS}")
         print("STATUS=pass")
         return 0
     except PreflightError as exc:

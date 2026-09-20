@@ -1,7 +1,7 @@
 ---
 name: dev-node-dependencies
 description: Node.js 프로젝트의 dependency 추가·삭제·복원에서 package root/manager/version/lockfile 호환성을 먼저 검증하고 Tirith threat-intelligence incomplete를 보안 우회 없이 처리하는 공통 capability skill.
-version: 0.1.2
+version: 0.1.3
 author: local
 platforms: [linux]
 metadata:
@@ -40,6 +40,7 @@ manifest/lock evidence
 - install 실패를 해결하려고 다른 manager, global install, 임의 `--force`, `--legacy-peer-deps`, lockfile 삭제를 시도하지 않는다.
 - Tirith/approval을 끄거나 `TIRITH_ENABLED=0`, YOLO, approval off, fail-open 강제로 우회하지 않는다.
 - preflight 결과는 진단/사전 준비 evidence이며 실제 command 실행 허가는 Hermes terminal guard가 최종 결정한다.
+- dependency mutation terminal call은 Hermes 기본 180초 timeout을 상속하지 않고 `timeout=600`을 명시한다. 이 예산은 package-manager mutation에만 적용하며 일반 terminal 명령의 기본 timeout은 변경하지 않는다.
 
 ## 1. Dependency Preflight
 
@@ -73,6 +74,7 @@ DEPENDENCY_<N>_MANIFEST_STATE
 DEPENDENCY_<N>_NODE_MODULES_STATE
 INSTALL_REQUIRED
 INSTALL_COMMAND
+INSTALL_TIMEOUT_SECONDS
 STATUS=pass
 ```
 
@@ -229,7 +231,20 @@ tirith check
 
 ## 6. Dependency Mutation
 
-preflight가 PASS이고 install이 필요할 때만 `INSTALL_COMMAND`를 exact package root에서 **정확히 1회** 실행한다. `PACKAGE_MANAGER_ROOT`가 상위에 있으면 그 경계를 canonical lockfile owner로 유지하며 mutation 뒤 다른 manager/leaf lockfile이 새로 생기지 않았는지 확인한다.
+preflight가 PASS이고 install이 필요할 때만 `INSTALL_COMMAND`를 exact package root에서 **정확히 1회** 실행한다. 이 terminal tool 호출에는 **`timeout=600`**을 명시한다. `PACKAGE_MANAGER_ROOT`가 상위에 있으면 그 경계를 canonical lockfile owner로 유지하며 mutation 뒤 다른 manager/leaf lockfile이 새로 생기지 않았는지 확인한다.
+
+실행 계약:
+
+```text
+command: <INSTALL_COMMAND>        # exact package-manager command
+workdir: <PACKAGE_ROOT>
+timeout: 600
+background: false
+```
+
+Hermes actual terminal guard가 exact package-manager command를 검사해야 하므로 `timeout 600 npm install ...`처럼 shell `timeout` wrapper로 command 문자열을 감싸지 않는다. terminal tool의 호출별 `timeout` 필드를 사용한다. 600초는 현재 foreground timeout 상한 안에서 사용하며, install이 더 빨리 끝나면 즉시 반환된다.
+
+600초 안에 완료되지 않아 timeout/`exit 124`로 종료되면 설치 성공으로 간주하지 않는다. `package.json`/canonical lockfile이 반영되지 않고 `node_modules`만 일부 생성된 상태도 실패다. 동일 exact command를 자동 반복하지 않고 `DEPENDENCY_INSTALL_FAILURE_CLASS=TIMEOUT`으로 BLOCK한 뒤 부분 설치 정리와 재실행 승인을 요구한다.
 
 기본 command:
 
@@ -248,6 +263,7 @@ package manager가 peer conflict/engine incompatibility/security finding으로 �
 
 ```text
 DEPENDENCY_INSTALL_FAILURE_CLASS
+- TIMEOUT
 - COMPATIBILITY
 - SECURITY_INCOMPLETE
 - SECURITY_FINDING
@@ -296,6 +312,7 @@ Tirith Preflight Retry: none | daemon-recheck-pass | daemon-recheck-fail
 Tirith Actual Guard: allow | approval_required | block | not_run
 Tirith Guard Profile Parity: pass | blocked | not_observed
 Install Command: ... | NOT_REQUIRED
+Install Timeout Seconds: 600 | NOT_REQUIRED
 Install Result: PASS | NOT_RUN | BLOCKED
 Manifest Updated: true | false | not_required
 Lockfile Updated: true | false | not_required
@@ -314,4 +331,6 @@ Residual Risk:
 - security incomplete와 실제 security finding을 구분한다.
 - preflight와 actual guard의 profile state를 서로 다른 HOME/HERMES_HOME으로 실행하지 않는다.
 - headless worker가 interactive approval을 기다리며 같은 command를 반복하지 않는다.
+- dependency mutation은 terminal tool `timeout=600`을 사용하고 일반 terminal 기본 timeout은 전역 변경하지 않는다.
+- shell `timeout` wrapper로 package-manager command를 감싸 Tirith actual guard의 exact-command 의미를 바꾸지 않는다.
 - 보안 scanner 문제를 source compatibility 문제로 오분류하지 않는다.
