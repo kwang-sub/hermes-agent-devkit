@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 단일 Work Unit 계획·API 규격·Infrastructure Desired State·workspace·branch·Coder 모델과 capability 계약을 최초 등록 알림과 함께 Kanban으로 인계한다.
-version: 0.15.0
+version: 0.15.1
 author: local
 platforms: [linux]
 metadata:
@@ -187,7 +187,9 @@ task read-back
 → NOTIFY_REGISTRATION_EVENT=queued
 ```
 
-`registered` event는 Task별 1회만 enqueue하는 idempotent 계약이다. 알림 활성 환경에서 helper 실패/검증 실패/등록 event 누락 시 절대 unblock하지 않는다.
+`registered` event는 Task별 1회만 enqueue하는 idempotent 계약이다. 알림 활성 환경에서 helper 실패/검증 실패/등록 event 누락/전달 ACK timeout 시 절대 unblock하지 않는다.
+
+알림 Gate 실패 시 Task는 이미 `initial_status="blocked"`이므로 **그 상태를 그대로 유지한다.** 실패를 기록하기 위해 `kanban_block`을 다시 호출하지 않는다. 특히 `goal_mode` Task에 임의의 block `kind`를 추론해 전달하는 것은 금지한다. 필요하면 durable comment로 실패 원인과 `registration_event_id`, 관측된 cursor를 남기고 종료한다. 복구 후에는 기존 Task를 기준으로 별도 승인된 resume 경로를 사용하며, 실패한 Standard Dispatch 안에서 `subscribe_notification.py`나 `prepare_dispatch.py`를 재실행하지 않는다.
 
 호출 횟수 계약:
 
@@ -214,6 +216,7 @@ Infrastructure Impact=YES인데 Desired State persistence 생략
 Plan에 없는 Infrastructure Desired 값을 dispatch 시 재추론
 Infrastructure metadata에 credential/secret 기록
 알림 실패를 warning으로 무시하고 unblock
+알림 Gate 실패 후 이미 blocked인 Task에 kanban_block 재호출
 Coder 모델 승인 없이 create/unblock
 Requirement Delta가 필요한 작업을 승인 없이 create/unblock
 API Spec Gate가 REQUIRED인데 APPROVED 없이 create/unblock
