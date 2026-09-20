@@ -34,6 +34,7 @@ docker run --rm \
     --entrypoint /bin/sh \
     --mount "type=bind,source=$REPO_ROOT/custom-skills,target=/opt/custom-skills,readonly" \
     --mount "type=bind,source=$REPO_ROOT/shared,target=/opt/data/shared,readonly" \
+    --mount "type=bind,source=$REPO_ROOT/scripts,target=/opt/devkit-tests,readonly" \
     "$IMAGE_NAME" \
     -ceu '
         test -x /opt/hermes/.venv/bin/hermes
@@ -88,6 +89,7 @@ PY
         test -f /opt/custom-skills/shared/dev-official-docs-context/scripts/context7_docs.py
         test -f /opt/custom-skills/shared/dev-official-docs-context/scripts/detect_dependency_versions.py
         /opt/hermes/.venv/bin/python /opt/custom-skills/shared/dev-official-docs-context/scripts/context7_docs.py --self-test
+        /opt/hermes/.venv/bin/python /opt/devkit-tests/test_kanban_registered_runtime.py
         test -f /opt/custom-skills/shared/dev-java-guidelines/SKILL.md
         test -f /opt/custom-skills/shared/dev-java-guidelines/references/official-java-practices.md
         test -f /opt/custom-skills/shared/dev-kotlin-guidelines/SKILL.md
