@@ -1,7 +1,7 @@
 ---
 name: dev-project-bootstrap
 description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, Fast Preflight·기술 스택/Infrastructure cache·Java toolchain·EOL·Git ignore·애플리케이션 환경설정 보안·Kanban/Profile/Context/.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
-version: 0.6.2
+version: 0.6.3
 author: local
 platforms: [linux]
 metadata:
@@ -272,7 +272,7 @@ Bootstrap은 한 번만 시작한다.
 
 ## 7. Java 실행 계약
 
-Java 프로젝트에는 Repository 단위 `.hermes/toolchain.env`를 보장한다. Coder/Reviewer는 `hermes-java` launcher를 우선한다.
+Java 프로젝트에는 Repository 단위 `.hermes/toolchain.env`를 보장한다. Coder/Reviewer는 `hermes-java` launcher를 우선한다. linked worktree에서는 별도 `.hermes/toolchain.env` 복사본을 만들지 않고 Git worktree 관계에서 Primary Worktree를 해석해 canonical toolchain을 읽는다. Gradle project-cache/build-output/workspace-lock key는 현재 linked worktree 경로를 기준으로 유지해 작업공간 간 실행 상태를 격리한다.
 
 ```bash
 hermes-java ./gradlew test
