@@ -87,14 +87,27 @@ def patch_catalog(path: Path) -> str:
     if MARKER in text:
         return "already-patched"
 
-    old = '''    for k, info in sorted(_tools_mod("agent.skill_commands").scan_skill_commands().items()):
+    # Hermes <= 2026.9.14 kept the skills loop directly in commands.catalog.
+    legacy_old = '''    for k, info in sorted(_tools_mod("agent.skill_commands").scan_skill_commands().items()):
         cat.pairs.append([k, str(info.get("description", "Skill"))])'''
-    new = '''    for k, info in sorted(_tools_mod("agent.skill_commands").scan_skill_commands().items()):
+    legacy_new = '''    for k, info in sorted(_tools_mod("agent.skill_commands").scan_skill_commands().items()):
         # DEVKIT_SLASH_SUGGEST_V1: commands.catalog is an input suggestion surface, not dispatch.
         if not info.get("slash_suggest", True):
             continue
         cat.pairs.append([k, str(info.get("description", "Skill"))])'''
-    text = _replace_once(text, old, new, "tui_gateway.methods_tools")
+    if legacy_old in text:
+        text = _replace_once(text, legacy_old, legacy_new, "tui_gateway.methods_tools.legacy")
+    else:
+        # Current Hermes extracted catalog construction into _catalog_skills().
+        current_old = '''    for k, info in sorted(sc.scan_skill_commands().items()):
+        cat.pairs.append([k, str(info.get("description", "Skill"))])'''
+        current_new = '''    for k, info in sorted(sc.scan_skill_commands().items()):
+        # DEVKIT_SLASH_SUGGEST_V1: commands.catalog is an input suggestion surface, not dispatch.
+        if not info.get("slash_suggest", True):
+            continue
+        cat.pairs.append([k, str(info.get("description", "Skill"))])'''
+        text = _replace_once(text, current_old, current_new, "tui_gateway.methods_tools.current")
+
     path.write_text(text, encoding="utf-8")
     return "patched"
 
@@ -145,6 +158,22 @@ def self_test() -> None:
         states = patch_root(root)
         if set(states.values()) != {"already-patched"}:
             raise RuntimeError(f"self-test: patch is not idempotent: {states}")
+
+        # Current Hermes extracted the catalog skill loop into _catalog_skills().
+        current_catalog = (root / "tui_gateway" / "methods_tools.py").read_text(encoding="utf-8")
+        legacy_loop = '''    for k, info in sorted(_tools_mod("agent.skill_commands").scan_skill_commands().items()):
+        cat.pairs.append([k, str(info.get("description", "Skill"))])'''
+        current_loop = '''    for k, info in sorted(sc.scan_skill_commands().items()):
+        cat.pairs.append([k, str(info.get("description", "Skill"))])'''
+        (root / "tui_gateway" / "methods_tools.py").write_text(
+            current_catalog.replace(legacy_loop, current_loop, 1), encoding="utf-8"
+        )
+        state = patch_catalog(root / "tui_gateway" / "methods_tools.py")
+        if state != "patched":
+            raise RuntimeError(f"self-test: current Hermes catalog shape was not patched: {state}")
+        current_catalog = (root / "tui_gateway" / "methods_tools.py").read_text(encoding="utf-8")
+        if 'info.get("slash_suggest", True)' not in current_catalog:
+            raise RuntimeError("self-test: current Hermes catalog slash_suggest guard missing")
 
         skill_text = (root / "agent" / "skill_commands.py").read_text(encoding="utf-8")
         completion_text = (root / "hermes_cli" / "commands_completion.py").read_text(encoding="utf-8")
