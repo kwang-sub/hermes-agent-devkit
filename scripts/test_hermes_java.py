@@ -145,6 +145,16 @@ def test_linked_worktree_uses_primary_toolchain_without_local_metadata() -> None
         assert f"/builds/{linked.name}-" in result.stderr, result.stderr
         assert_common_arguments(log.read_text(encoding="utf-8"), Path(env["HERMES_GRADLE_ROOT"]))
 
+        stale = linked / ".hermes/toolchain.env"
+        stale.parent.mkdir()
+        stale.write_text("JAVA_HOME=/definitely/stale-linked-worktree-jdk\n", encoding="utf-8")
+        log.unlink()
+
+        stale_result = run_gradle(linked, env)
+
+        assert stale_result.returncode == 0, stale_result.stderr
+        assert_common_arguments(log.read_text(encoding="utf-8"), Path(env["HERMES_GRADLE_ROOT"]))
+
 
 def test_cache_miss_downloads_and_runs_exact_distribution() -> None:
     with tempfile.TemporaryDirectory() as tmp:
