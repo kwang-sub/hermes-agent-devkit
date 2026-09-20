@@ -189,10 +189,10 @@ if ($NotifyProfileEntry -ne "HERMES_KANBAN_NOTIFY_PROFILE=orchestrator") {
 }
 Write-Host "[OK] Kanban notification owner profile -> orchestrator"
 
-Invoke-DockerCheck -Label "Orchestrator notification Gateway is running" -DockerArgs @(
-    "exec", $Container, "sh", "-lc",
-    "test \"\$(/package/admin/s6/command/s6-svstat -o up /run/service/gateway-orchestrator)\" = true"
-)
+Invoke-DockerExactOutputCheck -Label "Orchestrator notification Gateway is running" -DockerArgs @(
+    "exec", $Container, "/package/admin/s6/command/s6-svstat", "-o", "up",
+    "/run/service/gateway-orchestrator"
+) -Expected "true"
 Invoke-DockerCheck -Label "Tirith routed-profile guard patch" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "sh", "-lc",
     "grep -q DEVKIT_TIRITH_PROFILE_GUARD_V1 /opt/hermes/tools/tirith_security.py"
