@@ -346,7 +346,7 @@ prepare_dispatch PASS
 → dispatch
 ```
 
-Board는 `.hermes/project.yaml`의 managed board만 사용한다. 알림 실패 시 기존 `dev-workspace-dispatch`의 차단 계약을 따른다.
+Board는 `.hermes/project.yaml`의 managed board만 사용한다. 알림 실패 시 기존 `dev-workspace-dispatch`의 차단 계약을 따른다. Task는 `initial_status=blocked` 상태를 유지하며 `kanban_block`을 재호출하지 않는다. `goal_mode`에 맞는 block kind를 임의 추론하지 않고, 필요하면 durable comment로 실패 원인과 registration/cursor 진단값만 기록한 뒤 dispatch를 중단한다.
 
 Coder/Reviewer 모델 전이는 `dev-flow-model-policy`의 `review-enter` / `changes-return` 계약을 사용하며 Reviewer profile DEFAULT를 유지한다.
 
