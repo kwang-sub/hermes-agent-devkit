@@ -263,6 +263,7 @@ package manager가 peer conflict/engine incompatibility/security finding으로 �
 
 ```text
 DEPENDENCY_INSTALL_FAILURE_CLASS
+- TIMEOUT
 - COMPATIBILITY
 - SECURITY_INCOMPLETE
 - SECURITY_FINDING
