@@ -90,7 +90,22 @@ def make_repo(
             "HERMES_JAVA_TEST_LOG": str(log),
         }
     )
+
+    subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Hermes Java Test"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "gradlew", "gradle/wrapper/gradle-wrapper.properties"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
     return repo, env, log, archive
+
+
+def make_linked_worktree(repo: Path, base: Path) -> Path:
+    linked = base / "linked-project"
+    subprocess.run(
+        ["git", "worktree", "add", "-q", "-b", "feature/linked-toolchain-test", str(linked), "HEAD"],
+        cwd=repo,
+        check=True,
+    )
+    return linked
 
 
 def run_gradle(repo: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
@@ -112,6 +127,23 @@ def assert_common_arguments(log: str, gradle_root: Path) -> None:
     assert "test" in log, log
     assert "--tests" in log, log
     assert "*SmfpLog*" in log, log
+
+
+def test_linked_worktree_uses_primary_toolchain_without_local_metadata() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        repo, env, log, _archive = make_repo(base)
+        linked = make_linked_worktree(repo, base)
+
+        assert (repo / ".hermes/toolchain.env").is_file()
+        assert not (linked / ".hermes/toolchain.env").exists()
+
+        result = run_gradle(linked, env)
+
+        assert result.returncode == 0, result.stderr
+        assert "missing canonical" not in result.stderr
+        assert f"/builds/{linked.name}-" in result.stderr, result.stderr
+        assert_common_arguments(log.read_text(encoding="utf-8"), Path(env["HERMES_GRADLE_ROOT"]))
 
 
 def test_cache_miss_downloads_and_runs_exact_distribution() -> None:
@@ -214,6 +246,7 @@ def test_bounded_helper_bypasses_session_guard() -> None:
 
 def main() -> int:
     tests = (
+        test_linked_worktree_uses_primary_toolchain_without_local_metadata,
         test_cache_miss_downloads_and_runs_exact_distribution,
         test_cache_hit_runs_without_source_archive,
         test_crlf_wrapper_properties_are_supported,
