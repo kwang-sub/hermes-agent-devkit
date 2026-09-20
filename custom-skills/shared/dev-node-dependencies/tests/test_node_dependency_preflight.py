@@ -51,6 +51,7 @@ class NodeDependencyPreflightTests(unittest.TestCase):
         self.assertIn("DEPENDENCY_1_NODE_MODULES_STATE=EXTRANEOUS_PRESENT", proc.stdout)
         self.assertIn("INSTALL_REQUIRED=true", proc.stdout)
         self.assertIn("INSTALL_COMMAND=npm install @supabase/ssr", proc.stdout)
+        self.assertIn("INSTALL_TIMEOUT_SECONDS=600", proc.stdout)
         self.assertIn("STATUS=pass", proc.stdout)
 
     def test_declared_dependency_does_not_request_add(self) -> None:
