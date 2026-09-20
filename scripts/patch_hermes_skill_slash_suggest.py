@@ -160,18 +160,20 @@ def self_test() -> None:
             raise RuntimeError(f"self-test: patch is not idempotent: {states}")
 
         # Current Hermes extracted the catalog skill loop into _catalog_skills().
-        current_catalog = (root / "tui_gateway" / "methods_tools.py").read_text(encoding="utf-8")
-        legacy_loop = '''    for k, info in sorted(_tools_mod("agent.skill_commands").scan_skill_commands().items()):
-        cat.pairs.append([k, str(info.get("description", "Skill"))])'''
-        current_loop = '''    for k, info in sorted(sc.scan_skill_commands().items()):
-        cat.pairs.append([k, str(info.get("description", "Skill"))])'''
-        (root / "tui_gateway" / "methods_tools.py").write_text(
-            current_catalog.replace(legacy_loop, current_loop, 1), encoding="utf-8"
+        # Use a fresh fixture file because MARKER is intentionally file-wide:
+        # once the legacy fixture is patched, patch_catalog() must be idempotent
+        # and return already-patched rather than attempting a second layout.
+        current_catalog_path = root / "tui_gateway" / "methods_tools_current.py"
+        current_catalog_path.write_text(
+            '''class Cat:\n    def __init__(self):\n        self.pairs = []\nclass M:\n    @staticmethod\n    def scan_skill_commands():\n        return {}\ndef _tools_mod(name):\n    return M\n\ndef _catalog_skills(cat, skills):\n    sc = _tools_mod("agent.skill_commands")\n    for k, info in sorted(sc.scan_skill_commands().items()):\n        cat.pairs.append([k, str(info.get("description", "Skill"))])\n''',
+            encoding="utf-8",
         )
-        state = patch_catalog(root / "tui_gateway" / "methods_tools.py")
+        state = patch_catalog(current_catalog_path)
         if state != "patched":
             raise RuntimeError(f"self-test: current Hermes catalog shape was not patched: {state}")
-        current_catalog = (root / "tui_gateway" / "methods_tools.py").read_text(encoding="utf-8")
+        if patch_catalog(current_catalog_path) != "already-patched":
+            raise RuntimeError("self-test: current Hermes catalog patch is not idempotent")
+        current_catalog = current_catalog_path.read_text(encoding="utf-8")
         if 'info.get("slash_suggest", True)' not in current_catalog:
             raise RuntimeError("self-test: current Hermes catalog slash_suggest guard missing")
 
