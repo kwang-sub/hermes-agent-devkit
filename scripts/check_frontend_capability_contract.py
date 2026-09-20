@@ -89,6 +89,7 @@ checks = {
         "node_dependency_preflight.py", "tirith_package_preflight.py", "analysis_incomplete", "daemon start --detach",
         "TIRITH_PREFLIGHT=allow", "TIRITH_PREFLIGHT=approval_required", "Hermes actual terminal guard parity",
         "actual terminal guard", "profile state", "preflight allow를 actual guard bypass token으로 사용",
+        "timeout=600", "exit 124", "shell `timeout` wrapper",
         "보안 scanner 문제를 source compatibility 문제로 오분류하지 않는다",
     )),
     "node dependency preflight": (node_preflight, (
@@ -96,7 +97,8 @@ checks = {
         "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "packageManager",
         "resolve_manager_boundary", "PACKAGE_MANAGER_ROOT", "LOCKFILE_PRESENT",
         "conflicting package manager lockfiles", "package manager version mismatch", "EXTRANEOUS_PRESENT",
-        "INSTALL_REQUIRED", "RESTORE_REQUIRED", "INSTALL_COMMAND", "STATUS=pass", "STATUS=blocked",
+        "INSTALL_REQUIRED", "RESTORE_REQUIRED", "INSTALL_COMMAND", "INSTALL_TIMEOUT_SECONDS = 600",
+        "INSTALL_TIMEOUT_SECONDS", "STATUS=pass", "STATUS=blocked",
     )),
     "tirith package preflight": (tirith_preflight, (
         "analysis_incomplete", "daemon", "start", "--detach", "daemon-recheck-pass", "daemon-recheck-fail",
