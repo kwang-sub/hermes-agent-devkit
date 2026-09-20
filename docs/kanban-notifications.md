@@ -10,10 +10,10 @@ HERMES_KANBAN_NOTIFY_PLATFORM=discord
 HERMES_KANBAN_NOTIFY_TARGET=
 HERMES_KANBAN_NOTIFY_DELIVERY_MODE=notify
 HERMES_KANBAN_NOTIFY_CHAT_TYPE=channel
-HERMES_KANBAN_NOTIFY_PROFILE=default
+HERMES_KANBAN_NOTIFY_PROFILE=orchestrator
 ```
 
-`HERMES_KANBAN_NOTIFY_PROFILE`은 실제 알림 adapter를 소유한 Gateway Profile이다. 단일 Gateway로 동작하는 DevKit 기본 구조에서는 `default`를 사용한다. Orchestrator가 구독을 등록하더라도 subscription 소유자는 이 값으로 고정된다.
+`HERMES_KANBAN_NOTIFY_PROFILE`은 실제 알림 adapter를 소유하고 실행 중인 Gateway Profile이다. DevKit의 Standard/Fast Flow 알림 기본 소유자는 `orchestrator`이다. Hermes의 root `gateway-default` slot은 persisted `gateway_state.json`에 따라 정상적으로 DOWN일 수 있으므로 notification owner 기본값으로 사용하지 않는다. 사용자가 별도 Gateway profile을 알림 소유자로 운영하는 경우에만 이 값을 명시적으로 override한다.
 
 기본값은 비활성화이며, 알림 등록 실패는 Coder/Reviewer 작업을 차단하지 않는다.
 
@@ -27,7 +27,7 @@ HERMES_KANBAN_NOTIFY_PLATFORM=discord
 HERMES_KANBAN_NOTIFY_TARGET=<Discord Channel ID>
 HERMES_KANBAN_NOTIFY_DELIVERY_MODE=notify
 HERMES_KANBAN_NOTIFY_CHAT_TYPE=channel
-HERMES_KANBAN_NOTIFY_PROFILE=default
+HERMES_KANBAN_NOTIFY_PROFILE=orchestrator
 DISCORD_BOT_TOKEN=<Discord Bot Token>
 ```
 
