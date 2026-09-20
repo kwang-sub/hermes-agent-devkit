@@ -182,6 +182,17 @@ if ($LASTEXITCODE -ne 0) {
     throw "[FAIL] Discord Kanban notifier registration/msg-scope contract. Re-run .\\update-devkit.ps1 or rebuild/recreate the container."
 }
 Write-Host "[OK] Discord Kanban notifier registration/msg-scope contract"
+
+$NotifyProfileEntry = @($ContainerEnv | Where-Object { $_ -like "HERMES_KANBAN_NOTIFY_PROFILE=*" }) | Select-Object -First 1
+if ($NotifyProfileEntry -ne "HERMES_KANBAN_NOTIFY_PROFILE=orchestrator") {
+    throw "[FAIL] Kanban notification owner profile. Expected 'HERMES_KANBAN_NOTIFY_PROFILE=orchestrator', got '$NotifyProfileEntry'. Rebuild/recreate the DevKit container."
+}
+Write-Host "[OK] Kanban notification owner profile -> orchestrator"
+
+Invoke-DockerExactOutputCheck -Label "Orchestrator notification Gateway is running" -DockerArgs @(
+    "exec", $Container, "/package/admin/s6/command/s6-svstat", "-o", "up",
+    "/run/service/gateway-orchestrator"
+) -Expected "true"
 Invoke-DockerCheck -Label "Tirith routed-profile guard patch" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "sh", "-lc",
     "grep -q DEVKIT_TIRITH_PROFILE_GUARD_V1 /opt/hermes/tools/tirith_security.py"
