@@ -181,6 +181,18 @@ ENV HERMES_GRADLE_LOCK_ROOT=/opt/data/gradle/locks
 ENV HERMES_GRADLE_PROJECT_CACHE_ROOT=/opt/data/gradle/project-cache
 ENV GRADLE_USER_HOME=/opt/data/gradle/user-home
 
+# Node projects use pnpm as the only DevKit package manager. The standalone
+# distribution does not require a preinstalled Node.js runtime; pnpm resolves
+# the project-declared devEngines.runtime and devEngines.packageManager values.
+ENV PNPM_HOME=/opt/pnpm
+ENV HERMES_NODE_ROOT=/opt/data/node
+ENV PATH="/opt/pnpm:${PATH}"
+
+RUN mkdir -p "$PNPM_HOME" "$HERMES_NODE_ROOT" \
+    && curl -fsSL https://get.pnpm.io/install.sh | env PNPM_HOME="$PNPM_HOME" SHELL=/bin/sh sh - \
+    && test -x "$PNPM_HOME/pnpm" \
+    && "$PNPM_HOME/pnpm" --version
+
 RUN ln -sf /opt/jdks/temurin-17/bin/java /usr/local/bin/java \
     && ln -sf /opt/jdks/temurin-17/bin/javac /usr/local/bin/javac \
     && /opt/jdks/temurin-8/bin/java -version \
