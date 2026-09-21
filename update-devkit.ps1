@@ -324,7 +324,7 @@ function Invoke-RuntimeVerification {
     )
 
     try {
-        & $Verifier -Container $ContainerName
+        & $Verifier -Container $ContainerName | Out-Host
         return $true
     }
     catch {

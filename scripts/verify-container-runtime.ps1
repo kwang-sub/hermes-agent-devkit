@@ -157,6 +157,11 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "[OK] s6 dynamic Gateway scandir is hermes-writable"
 
 
+Invoke-DockerCheck -Label "DevKit Kanban notifier dynamic service" -DockerArgs @(
+    "exec", "--user", "root", $Container, "test", "-x",
+    "/run/service/devkit-notifier/run"
+)
+
 Invoke-DockerExactOutputCheck -Label "DevKit Kanban notifier service is running" -DockerArgs @(
     "exec", $Container, "/package/admin/s6/command/s6-svstat", "-o", "up",
     "/run/service/devkit-notifier"
