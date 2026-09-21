@@ -195,7 +195,7 @@ Coder model/provider pin
 Reviewer profile DEFAULT
 initial_status=blocked
 kanban_show read-back
-registration notification
+native notification subscription attempt
 unblock
 ```
 

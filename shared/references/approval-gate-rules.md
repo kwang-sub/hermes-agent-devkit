@@ -275,8 +275,7 @@ NO_EXTRA_KANBAN_CONFIRMATION
 → skill preflight
 → kanban_create
 → kanban_show
-→ notification subscribe
-→ registration notification enqueue
+→ native notification subscription attempt
 → kanban_unblock
 → worker dispatch
 ```

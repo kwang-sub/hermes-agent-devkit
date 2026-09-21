@@ -1,12 +1,12 @@
 ---
 name: dev-workspace-dispatch
-description: 승인된 단일 Work Unit 계획과 Git/Non-Git workspace의 버전관리 계약·Coder 모델·capability를 최초 등록 알림과 함께 Kanban으로 인계한다.
-version: 0.16.0
+description: 승인된 단일 Work Unit 계획과 Git/Non-Git workspace의 버전관리 계약·Coder 모델·capability를 Kanban으로 인계하고 Hermes native 알림 구독을 best-effort로 연결한다.
+version: 0.17.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, work-unit, capability, infrastructure, desired-state, preflight, notification, registration, model, api, spec, performance]
+    tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, work-unit, capability, infrastructure, desired-state, preflight, notification, model, api, spec, performance]
     related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-api-spec, dev-infrastructure, dev-skill-preflight, dev-workflow-orchestrate, dev-flow-model-policy]
     requires_tools: [terminal, skill_view, kanban_create, kanban_show, kanban_unblock, clarify]
 ---
@@ -186,7 +186,7 @@ Data DESIGN + Follow-up MIGRATION
 
 `dev-flow-model-policy`는 runtime pin 필수다. preflight 실패 시 dispatch하지 않는다.
 
-## 7. Kanban 생성·알림 Gate 단일 경로
+## 7. Kanban 생성·Hermes native 알림 단일 경로
 
 ```text
 prepare_dispatch.py 정확히 한 번
@@ -199,27 +199,23 @@ prepare_dispatch.py 정확히 한 번
 → kanban_show 정확히 1회
 → 등록 read-back 계약 검증
 → subscribe_notification.py 정확히 1회
-→ NOTIFY_STATUS=subscribed + NOTIFY_VERIFIED=true + NOTIFY_REGISTRATION_EVENT=queued
-   또는 NOTIFY_STATUS=disabled
-→ kanban_unblock 정확히 1회
+→ NOTIFY_STATUS=subscribed | disabled | warning
+→ kanban_unblock tool 정확히 1회
 → ready 전환 후 worker dispatch
 ```
 
-### 최초 등록 알림
+Kanban **등록 성공 기준은 `kanban_create + kanban_show` read-back**이다. 별도 custom registration event나 Discord 전달 ACK를 만들지 않는다.
 
-알림이 활성화된 환경에서는 `kanban_show` read-back 이후 subscription을 검증하고, 그 다음 `registered` task event를 enqueue해서 **최초 등록 알림**이 subscription cursor보다 과거 event로 사라지지 않게 한다.
+`initial_status="blocked"`는 알림 성공 Gate가 아니다. worker가 terminal event를 만들기 전에 native subscription을 먼저 시도하기 위한 짧은 순서 보장 장치다. 구독 시도가 끝나면 결과가 `subscribed`, `disabled`, `warning` 중 무엇이든 Task를 unblock한다.
 
 ```text
 task read-back
-→ notify-subscribe
-→ subscription verified
-→ registered task_event enqueue
-→ NOTIFY_REGISTRATION_EVENT=queued
+→ Hermes native notify-subscribe
+→ native notify-list read-back (best-effort)
+→ kanban_unblock
 ```
 
-`registered` event는 Task별 1회만 enqueue하는 idempotent 계약이다. 알림 활성 환경에서 helper 실패/검증 실패/등록 event 누락/전달 ACK timeout 시 절대 unblock하지 않는다.
-
-알림 Gate 실패 시 Task는 이미 `initial_status="blocked"`이므로 **그 상태를 그대로 유지한다.** 실패를 기록하기 위해 `kanban_block`을 다시 호출하지 않는다. 특히 `goal_mode` Task에 임의의 block `kind`를 추론해 전달하는 것은 금지한다. 필요하면 durable comment로 실패 원인과 `registration_event_id`, 관측된 cursor를 남기고 종료한다. 복구 후에는 기존 Task를 기준으로 별도 승인된 resume 경로를 사용하며, 실패한 Standard Dispatch 안에서 `subscribe_notification.py`나 `prepare_dispatch.py`를 재실행하지 않는다.
+알림 전달, retry, cursor/dedup은 Hermes Gateway native notifier가 소유한다. 설정 누락, Gateway/adapter 오류, subscription read-back 실패는 `NOTIFY_STATUS=warning`으로 기록하지만 개발 Task lifecycle을 차단하지 않는다.
 
 호출 횟수 계약:
 
@@ -229,7 +225,7 @@ persist_infrastructure_desired.py 0회 또는 정확히 1회
 kanban_create tool 정확히 1회
 kanban_show tool 정확히 1회
 subscribe_notification.py 정확히 1회
-kanban_unblock tool 정확히 1회 (Gate 성공 또는 알림 disabled일 때만)
+kanban_unblock tool 정확히 1회
 ```
 
 금지:
@@ -245,8 +241,11 @@ default/current board fallback
 Infrastructure Impact=YES인데 Desired State persistence 생략
 Plan에 없는 Infrastructure Desired 값을 dispatch 시 재추론
 Infrastructure metadata에 credential/secret 기록
-알림 실패를 warning으로 무시하고 unblock
-알림 Gate 실패 후 이미 blocked인 Task에 kanban_block 재호출
+custom registration event 생성
+registration delivery ACK Gate
+Discord formatter/session-context를 Hermes notifier source에 patch
+알림 warning을 이유로 blocked 상태 유지
+알림 warning 뒤 kanban_block 재호출
 Coder 모델 승인 없이 create/unblock
 Requirement Delta가 필요한 작업을 승인 없이 create/unblock
 API Spec Gate가 REQUIRED인데 APPROVED 없이 create/unblock
@@ -354,6 +353,5 @@ python3 scripts/check_standard_work_unit_contract.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_persist_infrastructure_desired.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py
-python3 shared/scripts/test_kanban_registration_event.py
 python3 shared/scripts/test_flow_model_policy.py
 ```

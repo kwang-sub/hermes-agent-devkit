@@ -31,7 +31,7 @@ START
 → AUTO_DISPATCH_CURRENT_UNIT_ONLY
 → SKILL_PREFLIGHT
 → KANBAN_CREATED
-→ NOTIFY_REGISTRATION_EVENT=queued
+→ NOTIFICATION_SUBSCRIPTION_ATTEMPTED
 → coder ↔ reviewer
 → DONE | BLOCKED
 ```
@@ -179,8 +179,8 @@ NO_EXTRA_KANBAN_CONFIRMATION
 → dev-skill-preflight
 → kanban_create tool 1회
 → kanban_show tool 1회
-→ notification subscribe
-→ NOTIFY_REGISTRATION_EVENT=queued
+→ native notification subscribe (best-effort)
+→ NOTIFY_STATUS=subscribed | disabled | warning
 → unblock / dispatch
 ```
 

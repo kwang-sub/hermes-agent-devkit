@@ -1,8 +1,8 @@
 # Kanban 작업 알림 설정
 
-Hermes 공식 Kanban terminal-event notification을 이용해 작업 완료/차단 등의 상태를 Gateway 플랫폼으로 전달한다.
+Hermes 공식 Kanban terminal-event notification을 이용해 작업 완료/차단/리뷰 등의 상태를 Gateway 플랫폼으로 전달한다.
 
-DevKit은 플랫폼별 코드를 workflow에 하드코딩하지 않고 다음 공통 설정을 사용한다.
+DevKit은 Hermes notifier source를 수정하지 않고 다음 공통 설정만 사용한다.
 
 ```dotenv
 HERMES_KANBAN_NOTIFY_ENABLED=false
@@ -12,13 +12,53 @@ HERMES_KANBAN_NOTIFY_DELIVERY_MODE=notify
 HERMES_KANBAN_NOTIFY_CHAT_TYPE=channel
 ```
 
-DevKit은 Kanban notification의 notifier profile을 `default`로 내부 고정한다. `default` Gateway 하나가 `gateway.multiplex_profiles=true`로 `orchestrator`, `coder`, `reviewer`를 함께 서비스하며, `orchestrator`는 Workflow 역할이지 별도 notification Gateway 소유자가 아니다. 이 값은 사용자 환경에 따라 달라지는 설정이 아니므로 `.env` override를 제공하지 않는다.
+notifier profile은 DevKit 내부의 `default` multiplex Gateway로 고정한다. `orchestrator`는 Workflow 역할이며 별도 notification Gateway 소유자가 아니다.
 
-기본값은 비활성화이며, 알림 등록 실패는 Coder/Reviewer 작업을 차단하지 않는다.
+## 동작 방식
+
+Direct/Standard canonical dispatch는 Task를 잠시 `blocked`로 생성하고 read-back을 확인한 뒤 native subscription을 시도한다.
+
+```text
+kanban_create(initial_status=blocked)
+→ kanban_show
+→ Hermes native notify-subscribe
+→ native notify-list read-back (best-effort)
+→ kanban_unblock
+→ worker dispatch
+```
+
+`blocked`는 notification delivery ACK를 기다리는 Gate가 아니다. 빠른 worker가 subscription 생성보다 먼저 terminal event를 만드는 race를 줄이기 위한 짧은 순서 보장 장치다.
+
+별도 custom registration event를 만들지 않으며, 등록 성공 기준은 `kanban_create + kanban_show` read-back이다.
+
+## Hermes native notifier
+
+terminal event의 메시지 포맷, adapter delivery, retry, cursor/dedup은 Hermes Gateway native notifier가 담당한다. DevKit은 다음을 더 이상 patch하지 않는다.
+
+```text
+Discord 업무용 한국어 formatter
+custom registration event
+registration delivery ACK Gate
+notification용 session/profile/NEW·RESUME 표시
+```
+
+실제 알림 문구는 Hermes upstream 버전에 따라 달라질 수 있다. DevKit은 `completed`, `blocked`, `review_requested`, `changes_requested`, `crashed`, `timed_out` 등 native terminal notification을 그대로 사용한다.
+
+## Kanban 세션 고정
+
+Worker Session Affinity는 알림과 독립적으로 유지한다.
+
+```text
+Task t_3a1bde20
+├─ coder    → session C-001
+└─ reviewer → session R-001
+```
+
+동일 Task/Profile의 재실행에서 workspace, branch, Base SHA, model/provider, reasoning, skills/toolsets, profile config fingerprint가 같으면 기존 worker session을 `--resume`한다. 계약이 달라지면 `NEW` 세션으로 시작한다.
+
+NEW/RESUME 정보는 더 이상 Discord notifier source에 주입하지 않는다. 실행 추적이 필요하면 Kanban run/event metadata, worker log, profile session 기록을 사용한다.
 
 ## Discord 사용
-
-Discord를 사용할 때 로컬 `.env`에 다음 값을 추가한다.
 
 ```dotenv
 HERMES_KANBAN_NOTIFY_ENABLED=true
@@ -29,147 +69,11 @@ HERMES_KANBAN_NOTIFY_CHAT_TYPE=channel
 DISCORD_BOT_TOKEN=<Discord Bot Token>
 ```
 
-`DISCORD_BOT_TOKEN`은 저장소에 커밋하거나 Kanban body/comment에 기록하지 않는다.
-
-설정 변경 후 Compose environment가 갱신되도록 컨테이너를 재생성한다.
-
-```powershell
-docker compose up -d --force-recreate
-```
-
-또는 DevKit 업데이트를 함께 적용하는 경우:
-
-```powershell
-.\update-devkit.ps1
-```
-
-## 동작 방식
-
-Standard Flow:
-
-```text
-dev-workspace-dispatch
-→ kanban_create
-→ kanban_show / pinned skill 검증
-→ notification subscription
-→ Coder / Reviewer
-```
-
-Fast Flow:
-
-```text
-dev-fast-flow
-→ create_fast_task.py
-→ 생성된 Task ID 확보
-→ notification subscription
-→ Interactive Coder 종료
-```
-
-두 Flow 모두 공통 helper를 사용한다.
-
-```bash
-python3 /opt/data/shared/scripts/kanban_notify_subscribe.py --task-id "<TASK_ID>"
-```
-
-내부적으로 Hermes 공식 CLI를 호출한다.
-
-```text
-hermes kanban notify-subscribe <TASK_ID>
-  --platform <platform>
-  --chat-id <target>
-  --delivery-mode <mode>
-  --notifier-profile default
-  [--chat-type <type>]
-```
-
-## Kanban 세션 고정
-
-DevKit의 dispatcher worker는 `Task ID + Profile`을 세션 고정 키로 사용한다. 같은 카드라도 Coder와 Reviewer는 서로 다른 세션을 사용한다.
-
-```text
-Task t_3a1bde20
-├─ coder    → session C-001
-└─ reviewer → session R-001
-```
-
-동일 프로필의 재실행에서 실행 조건이 유지되면 기존 Hermes session을 `--resume`으로 재사용한다. 차단 후 입력 추가, 리뷰 수정 요청 후 재작업처럼 같은 작업 문맥을 이어가는 실행은 기존 조사·판단 컨텍스트를 유지한다.
-
-다음 실행 계약을 fingerprint로 비교한다.
-
-- workspace
-- branch
-- Base SHA
-- model / provider override
-- reasoning effort
-- pinned skills / worker toolsets
-- goal mode
-- 해당 profile의 `config.yaml`
-
-위 계약이 달라지면 같은 카드·프로필이라도 `NEW` 세션으로 시작한다. 특히 profile 기본 모델이나 reasoning 설정이 변경된 뒤 과거 session의 모델 설정이 복원되는 것을 방지하기 위해 profile 설정도 비교 대상에 포함한다.
-
-세션 고정 정보는 Hermes 공식 Kanban DB schema를 수정하지 않고 보드별 `devkit-session-affinity.db`에 별도로 저장한다. 세션 조회나 sidecar DB 접근에 실패하면 dispatch를 차단하지 않고 안전하게 `NEW` 세션으로 폴백한다.
-
-## Discord 알림 포맷
-
-DevKit은 Discord로 전달되는 주요 Kanban terminal event를 업무용 한국어 포맷으로 변환한다. 다른 Gateway 플랫폼에는 Hermes 기본 포맷을 유지한다.
-
-`프로필`은 해당 terminal run을 실제 수행한 Hermes profile, `세션`은 실제 Hermes session ID, `세션 방식`은 `NEW` 또는 `RESUME`을 표시한다. 기존 기록이거나 세션 정보를 확인할 수 없는 경우 `-`로 표시할 수 있다.
-
-차단 예시:
-
-```text
-⛔ 작업 차단
-
-프로젝트  oc-wowsoft-server-setup
-작업      Windows OC APP_SFTP 설치 자동화 구현
-Task      t_3a1bde20
-담당      coder
-프로필    coder
-모델      GPT-5.6 Terra
-세션      20260907_163138_b1481e
-세션 방식 RESUME
-상태      BLOCKED
-
-사유
-Windows 검증 환경이 없어 수동 확인이 필요합니다.
-```
-
-완료 예시:
-
-```text
-✅ 작업 완료
-
-프로젝트  oc-wowsoft-server-setup
-작업      Windows OC APP_SFTP 설치 자동화 구현
-Task      t_3a1bde20
-담당      coder
-프로필    coder
-모델      GPT-5.6 Terra
-세션      20260907_163138_b1481e
-세션 방식 RESUME
-상태      DONE
-```
-
-`review_requested`와 `changes_requested`는 이벤트 provenance를 사용해 상태 전환 후 카드의 현재 담당자가 아니라 해당 terminal event를 실제 수행한 implementer/reviewer profile과 세션을 표시한다.
-
-동일한 형식으로 `gave_up`, `crashed`, `timed_out`, `review_requested`, `changes_requested`, `block_loop_detected`를 구분해 표시한다. 사유/오류/리뷰 내용은 외부 전달용 안전 필터를 거친 뒤 길이를 제한한다.
-
-## 플랫폼 변경
-
-Discord에서 다른 Hermes Gateway 플랫폼으로 변경할 때 workflow/skill 코드를 수정하지 않는다.
-
-예:
-
-```dotenv
-HERMES_KANBAN_NOTIFY_PLATFORM=slack
-HERMES_KANBAN_NOTIFY_TARGET=<Slack Channel ID>
-```
-
-플랫폼 인증 환경변수만 해당 플랫폼 규격에 맞게 구성한다. notifier profile은 플랫폼과 무관하게 `default`로 유지된다. 사용하지 않는 플랫폼의 token은 로컬 `.env`에서 제거하거나 비활성화한다.
+`DISCORD_BOT_TOKEN`은 저장소에 커밋하거나 Kanban body/comment에 기록하지 않는다. 설정 변경 후에는 `.\update-devkit.ps1`로 컨테이너를 재생성한다.
 
 ## 실패 정책
 
-helper 출력:
+helper 출력은 다음 셋이다.
 
 ```text
 NOTIFY_STATUS=subscribed
@@ -177,10 +81,8 @@ NOTIFY_STATUS=disabled
 NOTIFY_STATUS=warning
 ```
 
-- `subscribed`: 정상 구독.
-- `disabled`: 알림 비활성화. 정상 상태.
-- `warning`: 설정 누락, Gateway/CLI 오류, 20초 timeout 등. 개발 Task는 계속 진행.
+- `subscribed`: native subscription 생성과 read-back 확인 성공.
+- `disabled`: 알림 비활성화.
+- `warning`: 설정 누락, Gateway/CLI 오류, subscription read-back 실패 등 observability 저하.
 
-구독 성공 시 고정 소유 profile을 `NOTIFY_PROFILE=default`로 출력한다.
-
-알림 실패 또는 세션 정보 조회 실패를 이유로 Task를 `BLOCKED` 처리하거나 별도 notification Task를 만들지 않는다.
+세 상태 모두 개발 Task lifecycle은 계속 진행한다. 알림 실패를 이유로 Task를 `BLOCKED` 처리하거나 별도 notification Task를 만들지 않는다.
