@@ -126,6 +126,7 @@ FROM hermes-upstream-patched AS hermes-devkit-runtime
 USER root
 
 ARG GIT_VERSION=2.55.0
+ARG PNPM_VERSION=12.5.1
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -182,16 +183,21 @@ ENV HERMES_GRADLE_PROJECT_CACHE_ROOT=/opt/data/gradle/project-cache
 ENV GRADLE_USER_HOME=/opt/data/gradle/user-home
 
 # Node projects use pnpm as the only DevKit package manager. The standalone
-# distribution does not require a preinstalled Node.js runtime; pnpm resolves
-# the project-declared devEngines.runtime and devEngines.packageManager values.
+# bootstrap is pinned for reproducibility; project Node/pnpm versions still come
+# from package.json devEngines and are cached under the persistent /opt/data volume.
 ENV PNPM_HOME=/opt/pnpm
 ENV HERMES_NODE_ROOT=/opt/data/node
-ENV PATH="/opt/pnpm:${PATH}"
+ENV PATH="/usr/local/bin:/opt/pnpm/bin:/opt/pnpm:${PATH}"
 
 RUN mkdir -p "$PNPM_HOME" "$HERMES_NODE_ROOT" \
-    && curl -fsSL https://get.pnpm.io/install.sh | env PNPM_HOME="$PNPM_HOME" ENV="$HOME/.shrc" SHELL="$(command -v sh)" sh - \
-    && test -x "$PNPM_HOME/pnpm" \
-    && "$PNPM_HOME/pnpm" --version
+    && touch /tmp/pnpm-shrc \
+    && curl -fsSL https://get.pnpm.io/install.sh -o /tmp/install-pnpm.sh \
+    && env PNPM_VERSION="$PNPM_VERSION" PNPM_HOME="$PNPM_HOME" ENV=/tmp/pnpm-shrc SHELL="$(command -v sh)" sh /tmp/install-pnpm.sh \
+    && pnpm_target="$(find "$PNPM_HOME" \( -type f -o -type l \) -name pnpm -perm -111 | head -n 1)" \
+    && test -n "$pnpm_target" \
+    && ln -sf "$pnpm_target" /usr/local/bin/pnpm \
+    && test "$(/usr/local/bin/pnpm --version)" = "$PNPM_VERSION" \
+    && rm -f /tmp/pnpm-shrc /tmp/install-pnpm.sh
 
 RUN ln -sf /opt/jdks/temurin-17/bin/java /usr/local/bin/java \
     && ln -sf /opt/jdks/temurin-17/bin/javac /usr/local/bin/javac \
