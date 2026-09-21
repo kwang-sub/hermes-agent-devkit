@@ -395,7 +395,7 @@ Windows source
 .\update-devkit.ps1
 ```
 
-운영 Runtime과 호환성 CI 모두 `nousresearch/hermes-agent:latest`를 기준으로 합니다. `update-devkit.ps1`는 최신 base image를 먼저 build하고, build가 성공한 경우에만 실행 컨테이너를 재생성하므로 upstream 변경으로 patch/build가 깨지면 현재 Runtime은 그대로 유지됩니다.
+운영 Runtime과 호환성 CI 모두 `nousresearch/hermes-agent:latest`를 기준으로 합니다. Hermes base image는 DevKit 내부 계약이라 `.env`에서 변경하지 않습니다. `update-devkit.ps1`는 최신 base image를 먼저 build하고, build가 성공한 경우에만 실행 컨테이너를 재생성하므로 upstream 변경으로 patch/build가 깨지면 현재 Runtime은 그대로 유지됩니다.
 
 기본 흐름:
 

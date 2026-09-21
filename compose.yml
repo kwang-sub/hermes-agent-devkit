@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        HERMES_BASE_IMAGE: ${HERMES_BASE_IMAGE:-nousresearch/hermes-agent:latest}
+        HERMES_BASE_IMAGE: nousresearch/hermes-agent:latest
 
     image: ${HERMES_IMAGE_NAME:-hermes-dev}:${HERMES_IMAGE_TAG:-0.1.0}
     container_name: ${HERMES_CONTAINER_NAME:-hermes-dev}

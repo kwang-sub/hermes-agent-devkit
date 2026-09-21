@@ -50,7 +50,7 @@ def main() -> int:
         (
             '#requires -Version 5.1',
             '[string]$Branch = "dev"',
-            '[string]$HermesBaseImage = "nousresearch/hermes-agent:latest"',
+            '$HermesBaseImage = "nousresearch/hermes-agent:latest"',
             '[switch]$SkipProfileInit',
             'git" -Arguments @("status", "--porcelain=v1"',
             'git" -Arguments @("fetch", "--prune", $Remote)',
@@ -109,15 +109,14 @@ def main() -> int:
         "update-devkit.ps1 empty-change contract",
     )
 
-    require(
+    forbid(
         text,
         (
-            '$PreviousHermesBaseImageExists = Test-Path Env:HERMES_BASE_IMAGE',
-            '$PreviousHermesBaseImage = if ($PreviousHermesBaseImageExists)',
-            'if ($PreviousHermesBaseImageExists)',
-            'Remove-Item Env:HERMES_BASE_IMAGE -ErrorAction SilentlyContinue',
+            '[string]$HermesBaseImage',
+            '$env:HERMES_BASE_IMAGE =',
+            '$PreviousHermesBaseImage',
         ),
-        "update-devkit.ps1 process-local base-image override contract",
+        "update-devkit.ps1 fixed latest base-image contract",
     )
 
     executable = executable_text(text).lower()

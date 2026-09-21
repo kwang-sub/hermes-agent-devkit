@@ -16,7 +16,6 @@ DEFAULTS = {
     "HERMES_IMAGE_NAME": "hermes-dev",
     "HERMES_IMAGE_TAG": "0.1.0",
     "HERMES_DATA_VOLUME_NAME": "hermes-dev-data",
-    "HERMES_BASE_IMAGE": "nousresearch/hermes-agent:latest",
     "HERMES_HOST_WORKSPACE_PATH": "D:/workspace",
     "HERMES_CONTAINER_WORKSPACE_PATH": "/workspace",
     "HERMES_GRADLE_PROJECT_CACHE_ROOT": "/opt/data/gradle/project-cache",
@@ -126,6 +125,12 @@ def main() -> int:
 
     if 'HERMES_DASHBOARD: "1"' not in compose:
         raise SystemExit("compose.yml must keep the baseline dashboard enabled for the healthcheck contract")
+    if "HERMES_BASE_IMAGE: nousresearch/hermes-agent:latest" not in compose:
+        raise SystemExit("compose.yml must pin the internal Hermes base contract to nousresearch/hermes-agent:latest")
+    if "${HERMES_BASE_IMAGE" in compose:
+        raise SystemExit("Hermes base image must not be user-overridable from .env/Compose")
+    if "HERMES_BASE_IMAGE" in sample:
+        raise SystemExit("Hermes base image is a fixed DevKit contract and must not be exposed in sample.env")
     if 'GATEWAY_MULTIPLEX_PROFILES: "true"' not in compose:
         raise SystemExit("compose.yml must pin the DevKit to the default multiplex Gateway topology")
     if 'HERMES_GATEWAY_BOOTSTRAP_STATE: "running"' not in compose:

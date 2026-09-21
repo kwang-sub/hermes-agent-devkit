@@ -26,14 +26,13 @@ Default behavior:
     reconcile profiles and the default Gateway again, then verify once more unless -NoRepair is specified.
 13. Re-apply Git commit identity from .env and ensure persistent GitHub CLI auth.
 
-The process-local overrides are restored before the script exits.
+The process-local Windows Temp override is restored before the script exits.
 #>
 
 param(
     [string]$Branch = "dev",
     [string]$Remote = "origin",
     [string]$Container = "hermes-dev",
-    [string]$HermesBaseImage = "nousresearch/hermes-agent:latest",
     [switch]$NoPull,
     [switch]$ForceRebuild,
     [switch]$NoRepair,
@@ -330,8 +329,7 @@ $ProfilesReconciled = $false
 $AutomaticRepairUsed = $false
 $GitIdentityConfigured = $false
 $GitHubAuthReady = $false
-$PreviousHermesBaseImageExists = Test-Path Env:HERMES_BASE_IMAGE
-$PreviousHermesBaseImage = if ($PreviousHermesBaseImageExists) { $env:HERMES_BASE_IMAGE } else { $null }
+$HermesBaseImage = "nousresearch/hermes-agent:latest"
 $PreviousWindowsTempPathExists = Test-Path Env:HERMES_WINDOWS_TEMP_CONTAINER_PATH
 $PreviousWindowsTempPath = if ($PreviousWindowsTempPathExists) { $env:HERMES_WINDOWS_TEMP_CONTAINER_PATH } else { $null }
 
@@ -441,7 +439,6 @@ try {
         Write-Warning "sample.env changed. Existing .env is intentionally not overwritten; review the new sample manually."
     }
 
-    $env:HERMES_BASE_IMAGE = $HermesBaseImage
     $env:HERMES_WINDOWS_TEMP_CONTAINER_PATH = $WindowsTempContainerPath
 
     Write-Host "Action            : pull latest Hermes base + build + force-recreate + profile reconcile"
@@ -527,13 +524,6 @@ try {
     Write-Host "GITHUB_AUTH_READY=$($GitHubAuthReady.ToString().ToLowerInvariant())"
 }
 finally {
-    if ($PreviousHermesBaseImageExists) {
-        $env:HERMES_BASE_IMAGE = $PreviousHermesBaseImage
-    }
-    else {
-        Remove-Item Env:HERMES_BASE_IMAGE -ErrorAction SilentlyContinue
-    }
-
     if ($PreviousWindowsTempPathExists) {
         $env:HERMES_WINDOWS_TEMP_CONTAINER_PATH = $PreviousWindowsTempPath
     }
