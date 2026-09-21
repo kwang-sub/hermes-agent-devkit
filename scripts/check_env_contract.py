@@ -159,14 +159,14 @@ def main() -> int:
     node_runtime = node_runtime_path.read_text(encoding="utf-8")
     for required in (
         'DEFAULT_ROOT = Path(os.getenv("HERMES_NODE_ROOT", "/opt/data/node"))',
-        '"npm_cache": root / "npm-cache"',
+        '"pnpm_home": root / "pnpm-home"',
         '"pnpm_store": root / "pnpm-store"',
-        '"yarn_cache": root / "yarn-cache"',
-        '"bun_cache": root / "bun-cache"',
-        '"xdg_cache": root / "xdg-cache"',
+        '"xdg_cache": root / "cache"',
         '"tmp": workspace_state / "tmp"',
+        '"HERMES_NEXT_DIST_DIR": ".next-hermes"',
         'lock_path = paths["lock_root"] / f"workspace-{key}.lock"',
-        "reject_dependency_mutation(command)",
+        "resolve_project_toolchain(read_manifest(package_root))",
+        "validate_pnpm_command(command)",
     ):
         if required not in node_runtime:
             raise SystemExit(f"Node runtime missing internal state isolation: {required}")
