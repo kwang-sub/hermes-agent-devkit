@@ -8,7 +8,11 @@ import tempfile
 import unittest
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "bootstrap_preflight.py"
+SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
+
+SCRIPT = SCRIPTS / "bootstrap_preflight.py"
 SPEC = importlib.util.spec_from_file_location("bootstrap_preflight", SCRIPT)
 assert SPEC and SPEC.loader
 bootstrap_preflight = importlib.util.module_from_spec(SPEC)
