@@ -9,7 +9,9 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts/node_runtime.py"
+SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
+RUNTIME = SCRIPTS / "node_runtime.py"
+WORKSPACE_HELPER = SCRIPTS / "node_workspace.py"
 
 
 def make_executable(path: Path, content: str) -> None:
@@ -23,40 +25,72 @@ def workspace_key(workspace: Path) -> str:
     return f"{workspace.name}-{digest}"
 
 
-def package_json() -> dict:
-    return {
-        "name": "frontend",
-        "private": True,
-        "devEngines": {
-            "runtime": {
-                "name": "node",
-                "version": "^24.11.0",
-                "onFail": "download",
-            },
-            "packageManager": {
-                "name": "pnpm",
-                "version": ">=12 <13",
-                "onFail": "download",
-            },
-        },
-    }
+def write_manifest(workspace: Path, *, react_version: str = "19.3.0") -> None:
+    (workspace / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "frontend",
+                "private": True,
+                "devEngines": {
+                    "runtime": {
+                        "name": "node",
+                        "version": "22.23.2",
+                        "onFail": "download",
+                    },
+                    "packageManager": {
+                        "name": "pnpm",
+                        "version": ">=12.0.0 <13.0.0",
+                        "onFail": "download",
+                    },
+                },
+                "dependencies": {"react": react_version},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def write_lock(workspace: Path, marker: str = "one") -> None:
+    (workspace / "pnpm-lock.yaml").write_text(
+        f"lockfileVersion: '9.0'\n# {marker}\n",
+        encoding="utf-8",
+    )
 
 
 def make_workspace(base: Path) -> tuple[Path, dict[str, str], Path]:
     workspace = base / "frontend"
     workspace.mkdir()
-    (workspace / "package.json").write_text(
-        json.dumps(package_json()), encoding="utf-8"
+    write_manifest(workspace)
+    write_lock(workspace)
+    (workspace / "src").mkdir()
+    (workspace / "src" / "index.ts").write_text(
+        "export const value = 1;\n", encoding="utf-8"
     )
+
+    host_next = workspace / ".next" / "dev" / "types"
+    host_next.mkdir(parents=True)
+    (host_next / "stale.d.ts").write_text(
+        "declare const stale: true;\n", encoding="utf-8"
+    )
+    host_modules = workspace / "node_modules"
+    host_modules.mkdir()
+    (host_modules / "windows-host-marker.txt").write_text(
+        "host\n", encoding="utf-8"
+    )
+    (workspace / "tsconfig.tsbuildinfo").write_text(
+        "host-cache\n", encoding="utf-8"
+    )
+
     log = base / "env.log"
-    command = base / "fake-command"
+    fake_pnpm = base / "pnpm"
     make_executable(
-        command,
+        fake_pnpm,
         "#!/usr/bin/env bash\n"
-        'printf "PNPM_HOME=%s\\n" "$PNPM_HOME" > "$NODE_RUNTIME_TEST_LOG"\n'
+        'printf "PWD=%s\\n" "$PWD" > "$NODE_RUNTIME_TEST_LOG"\n'
+        'printf "PNPM_HOME=%s\\n" "$PNPM_HOME" >> "$NODE_RUNTIME_TEST_LOG"\n'
         'printf "PNPM_STORE_DIR=%s\\n" "$PNPM_STORE_DIR" >> "$NODE_RUNTIME_TEST_LOG"\n'
         'printf "npm_config_store_dir=%s\\n" "$npm_config_store_dir" >> "$NODE_RUNTIME_TEST_LOG"\n'
-        'printf "NEXT_DIST_DIR=%s\\n" "$NEXT_DIST_DIR" >> "$NODE_RUNTIME_TEST_LOG"\n'
         'printf "XDG_CACHE_HOME=%s\\n" "$XDG_CACHE_HOME" >> "$NODE_RUNTIME_TEST_LOG"\n'
         'printf "TMPDIR=%s\\n" "$TMPDIR" >> "$NODE_RUNTIME_TEST_LOG"\n'
         'printf "ARGS=%s\\n" "$*" >> "$NODE_RUNTIME_TEST_LOG"\n',
@@ -65,18 +99,22 @@ def make_workspace(base: Path) -> tuple[Path, dict[str, str], Path]:
     env.update(
         {
             "HERMES_NODE_ROOT": str(base / "node-root"),
-            "PNPM_HOME": str(base / "bootstrap-pnpm"),
             "NODE_RUNTIME_TEST_LOG": str(log),
         }
     )
-    return workspace, env, command
+    return workspace, env, fake_pnpm
 
 
-def run_runtime(workspace: Path, env: dict[str, str], command: list[str], timeout: int = 3):
+def run_runtime(
+    workspace: Path,
+    env: dict[str, str],
+    command: list[str],
+    timeout: int = 3,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
             "python3",
-            str(SCRIPT),
+            str(RUNTIME),
             "--workspace",
             str(workspace),
             "--lock-timeout",
@@ -91,34 +129,187 @@ def run_runtime(workspace: Path, env: dict[str, str], command: list[str], timeou
     )
 
 
-def test_pnpm_state_is_outside_workspace_and_next_output_is_separate() -> None:
+def run_workspace_helper(
+    workspace: Path,
+    env: dict[str, str],
+    *,
+    mark: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    command = [
+        "python3",
+        str(WORKSPACE_HELPER),
+        "--workspace",
+        str(workspace),
+    ]
+    if mark:
+        command.append("--mark-restored")
+    return subprocess.run(
+        command,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def output_value(stdout: str, key: str) -> str:
+    prefix = key + "="
+    for line in stdout.splitlines():
+        if line.startswith(prefix):
+            return line[len(prefix):]
+    raise AssertionError(f"missing {key} in output: {stdout}")
+
+
+def prepare_restored_workspace(
+    workspace: Path,
+    env: dict[str, str],
+) -> Path:
+    prepared = run_workspace_helper(workspace, env)
+    assert prepared.returncode == 0, prepared.stderr
+    isolated = Path(output_value(prepared.stdout, "NODE_ISOLATED_PACKAGE_ROOT"))
+    installed = isolated / "node_modules" / "react"
+    installed.mkdir(parents=True)
+    (installed / "package.json").write_text(
+        '{"name":"react"}\n', encoding="utf-8"
+    )
+    marked = run_workspace_helper(workspace, env, mark=True)
+    assert marked.returncode == 0, marked.stderr
+    assert "NODE_DEPENDENCIES_READY=true" in marked.stdout
+    return isolated
+
+
+def test_verification_runs_in_linux_isolated_workspace() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
-        workspace, env, command = make_workspace(base)
-        result = run_runtime(workspace, env, [str(command), "build", "--flag"])
+        workspace, env, fake_pnpm = make_workspace(base)
+        isolated = prepare_restored_workspace(workspace, env)
+
+        result = run_runtime(workspace, env, [str(fake_pnpm), "run", "build"])
         assert result.returncode == 0, result.stderr
+        assert Path(output_value(result.stdout, "NODE_RUNTIME_CWD")) == isolated
+        assert isolated != workspace
+        assert str(isolated).startswith(str(Path(env["HERMES_NODE_ROOT"])))
+        assert (isolated / "src" / "index.ts").read_text(
+            encoding="utf-8"
+        ) == "export const value = 1;\n"
+        assert not (isolated / ".next").exists()
+        assert not (
+            isolated / "node_modules" / "windows-host-marker.txt"
+        ).exists()
+        assert not (isolated / "tsconfig.tsbuildinfo").exists()
+
+        assert (
+            workspace / ".next" / "dev" / "types" / "stale.d.ts"
+        ).is_file()
+        assert (
+            workspace / "node_modules" / "windows-host-marker.txt"
+        ).is_file()
+
         text = Path(env["NODE_RUNTIME_TEST_LOG"]).read_text(encoding="utf-8")
         root = Path(env["HERMES_NODE_ROOT"])
-        key = workspace_key(workspace)
+        assert f"PWD={isolated}" in text
         assert f"PNPM_HOME={root / 'pnpm-home'}" in text
         assert f"PNPM_STORE_DIR={root / 'pnpm-store'}" in text
         assert f"npm_config_store_dir={root / 'pnpm-store'}" in text
-        assert "NEXT_DIST_DIR=.next-hermes" in text
-        assert f"XDG_CACHE_HOME={root / 'xdg-cache'}" in text
-        assert f"TMPDIR={root / 'workspaces' / key / 'tmp'}" in text
-        assert "ARGS=build --flag" in text
+        assert f"XDG_CACHE_HOME={root / 'cache'}" in text
+        assert "ARGS=run build" in text
+        assert "NODE_RUNTIME_NODE_REQUIREMENT=22.23.2" in result.stdout
+        assert (
+            "NODE_RUNTIME_PNPM_REQUIREMENT=>=12.0.0 <13.0.0"
+            in result.stdout
+        )
+        assert (
+            "NODE_RUNTIME_OUTPUT_POLICY=linux-isolated-workspace;workspace-serialized"
+            in result.stdout
+        )
+
+
+def test_internal_node_modules_survive_sync_but_generated_output_is_reset() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        workspace, env, fake_pnpm = make_workspace(base)
+        isolated = prepare_restored_workspace(workspace, env)
+
+        internal_marker = isolated / "node_modules" / "linux-marker.txt"
+        internal_marker.write_text("linux\n", encoding="utf-8")
+        internal_next = isolated / ".next" / "dev" / "types"
+        internal_next.mkdir(parents=True)
+        (internal_next / "old.d.ts").write_text(
+            "declare const old: true;\n", encoding="utf-8"
+        )
+        (isolated / "old.tsbuildinfo").write_text(
+            "old\n", encoding="utf-8"
+        )
+        (workspace / "src" / "index.ts").write_text(
+            "export const value = 2;\n", encoding="utf-8"
+        )
+
+        result = run_runtime(workspace, env, [str(fake_pnpm), "run", "build"])
+        assert result.returncode == 0, result.stderr
+        assert internal_marker.is_file()
+        assert not (isolated / ".next").exists()
+        assert not (isolated / "old.tsbuildinfo").exists()
+        assert (isolated / "src" / "index.ts").read_text(
+            encoding="utf-8"
+        ) == "export const value = 2;\n"
+
+
+def test_dependency_fingerprint_change_invalidates_linux_node_modules() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        workspace, env, fake_pnpm = make_workspace(base)
+        isolated = prepare_restored_workspace(workspace, env)
+        assert (isolated / "node_modules" / "react").is_dir()
+
+        write_manifest(workspace, react_version="19.3.1")
+        write_lock(workspace, marker="two")
+        result = run_runtime(workspace, env, [str(fake_pnpm), "run", "build"])
+
+        assert result.returncode == 2
+        assert "current package.json/pnpm-lock.yaml fingerprint" in result.stderr
+        assert not (isolated / "node_modules").exists()
+
+
+def test_restore_mark_rejects_source_change_after_install() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        workspace, env, _fake_pnpm = make_workspace(base)
+        prepared = run_workspace_helper(workspace, env)
+        assert prepared.returncode == 0, prepared.stderr
+        isolated = Path(
+            output_value(prepared.stdout, "NODE_ISOLATED_PACKAGE_ROOT")
+        )
+        installed = isolated / "node_modules" / "react"
+        installed.mkdir(parents=True)
+        (installed / "package.json").write_text(
+            '{"name":"react"}\n', encoding="utf-8"
+        )
+
+        write_lock(workspace, marker="changed-after-restore")
+        marked = run_workspace_helper(workspace, env, mark=True)
+        assert marked.returncode == 2
+        assert "changed after isolated restore" in marked.stderr
 
 
 def test_workspace_lock_blocks_concurrent_verification() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
-        workspace, env, command = make_workspace(base)
+        workspace, env, fake_pnpm = make_workspace(base)
         root = Path(env["HERMES_NODE_ROOT"])
-        lock_path = root / "locks" / f"workspace-{workspace_key(workspace)}.lock"
+        lock_path = (
+            root / "locks" / f"workspace-{workspace_key(workspace)}.lock"
+        )
         lock_path.parent.mkdir(parents=True)
         with lock_path.open("a+") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            result = run_runtime(workspace, env, [str(command), "test"], timeout=1)
+            fcntl.flock(
+                handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB
+            )
+            result = run_runtime(
+                workspace,
+                env,
+                [str(fake_pnpm), "run", "test"],
+                timeout=1,
+            )
         assert result.returncode == 2
         assert "timed out waiting for Node workspace lock" in result.stderr
 
@@ -126,41 +317,67 @@ def test_workspace_lock_blocks_concurrent_verification() -> None:
 def test_dependency_mutation_is_rejected_to_preserve_tirith_guard() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
-        workspace, env, _command = make_workspace(base)
-        result = run_runtime(workspace, env, ["pnpm", "install"])
+        workspace, env, fake_pnpm = make_workspace(base)
+        result = run_runtime(
+            workspace, env, [str(fake_pnpm), "add", "react"]
+        )
         assert result.returncode == 2
         assert "must run through dev-node-dependencies/Tirith" in result.stderr
 
 
-def test_missing_dev_engines_is_blocked() -> None:
+def test_non_pnpm_command_is_rejected() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
-        workspace, env, command = make_workspace(base)
-        (workspace / "package.json").write_text('{"name":"frontend"}', encoding="utf-8")
-        result = run_runtime(workspace, env, [str(command), "test"])
+        workspace, env, _fake_pnpm = make_workspace(base)
+        result = run_runtime(workspace, env, ["npm", "run", "build"])
         assert result.returncode == 2
-        assert "devEngines is required" in result.stderr
+        assert "only pnpm verification commands are supported" in result.stderr
 
 
-def test_non_pnpm_package_manager_is_blocked() -> None:
+def test_missing_dev_engines_runtime_is_blocked() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
-        workspace, env, command = make_workspace(base)
-        manifest = package_json()
+        workspace, env, fake_pnpm = make_workspace(base)
+        (workspace / "package.json").write_text(
+            '{"name":"frontend","devEngines":{"packageManager":{"name":"pnpm","version":"12.5.1","onFail":"download"}}}\n',
+            encoding="utf-8",
+        )
+        result = run_runtime(
+            workspace, env, [str(fake_pnpm), "run", "build"]
+        )
+        assert result.returncode == 2
+        assert "must declare exactly one Node runtime" in result.stderr
+
+
+def test_non_pnpm_project_is_blocked() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        workspace, env, fake_pnpm = make_workspace(base)
+        manifest = json.loads(
+            (workspace / "package.json").read_text(encoding="utf-8")
+        )
         manifest["devEngines"]["packageManager"]["name"] = "npm"
-        (workspace / "package.json").write_text(json.dumps(manifest), encoding="utf-8")
-        result = run_runtime(workspace, env, [str(command), "test"])
+        (workspace / "package.json").write_text(
+            json.dumps(manifest) + "\n", encoding="utf-8"
+        )
+        result = run_runtime(
+            workspace, env, [str(fake_pnpm), "run", "build"]
+        )
         assert result.returncode == 2
-        assert "must declare pnpm" in result.stderr
+        assert "packageManager.name must be 'pnpm'" in result.stderr
 
 
 def main() -> int:
     tests = (
-        test_pnpm_state_is_outside_workspace_and_next_output_is_separate,
+        test_verification_runs_in_linux_isolated_workspace,
+        test_internal_node_modules_survive_sync_but_generated_output_is_reset,
+        test_dependency_fingerprint_change_invalidates_linux_node_modules,
+        test_restore_mark_rejects_source_change_after_install,
         test_workspace_lock_blocks_concurrent_verification,
         test_dependency_mutation_is_rejected_to_preserve_tirith_guard,
-        test_missing_dev_engines_is_blocked,
-        test_non_pnpm_package_manager_is_blocked,
+        test_non_pnpm_command_is_rejected,
+        test_missing_dev_engines_runtime_is_blocked,
+        test_non_pnpm_project_is_blocked,
     )
     for test in tests:
         test()
