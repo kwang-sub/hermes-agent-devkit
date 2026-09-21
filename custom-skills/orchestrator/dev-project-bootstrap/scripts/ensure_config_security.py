@@ -149,6 +149,18 @@ def relative_depth(root: Path, path: Path) -> int:
     return len(path.relative_to(root).parts)
 
 
+def is_inside_nested_git(path: Path, managed_root: Path) -> bool:
+    current = path.resolve()
+    managed_root = managed_root.resolve()
+    while current != managed_root:
+        if (current / ".git").exists():
+            return True
+        if current.parent == current:
+            break
+        current = current.parent
+    return False
+
+
 def discover_manifest_roots(repo: Path) -> tuple[set[Path], set[Path]]:
     frontend_roots: set[Path] = set()
     backend_roots: set[Path] = set()
@@ -391,6 +403,19 @@ def ensure_configuration_security(
         hardcoded = []
 
     frontend_roots, backend_roots = discover_manifest_roots(repo)
+    if version_control == "none":
+        # A Non-Git managed root may be a composite container for independent
+        # child Git repositories. Project registration must not mutate those
+        # repositories merely because their manifests are discoverable.
+        frontend_roots = {
+            root for root in frontend_roots
+            if not is_inside_nested_git(root, repo)
+        }
+        backend_roots = {
+            root for root in backend_roots
+            if not is_inside_nested_git(root, repo)
+        }
+
     created: list[str] = []
     reused: list[str] = []
 
