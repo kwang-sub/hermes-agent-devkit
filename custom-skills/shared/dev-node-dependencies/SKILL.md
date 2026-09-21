@@ -38,10 +38,6 @@ manifest/lock evidence
 - `package.json.devEngines.packageManager`는 `name=pnpm`, `version`, `onFail=download`를 선언해야 한다.
 - standalone pnpm이 Node runtime을 프로젝트 선언에 맞춰 설치/선택하며, host의 `node --version`은 source of truth가 아니다.
 - canonical lockfile은 항상 `pnpm-lock.yaml`이다.
-- package manager를 임의로 바꾸지 않는다. `npm`, `pnpm`, `yarn`, `bun`은 lockfile과 `packageManager` evidence로 결정한다.
-- monorepo에서는 leaf package root와 상위 package-manager root를 구분한다. leaf에 manager evidence가 없으면 Task workspace 범위 안에서 가장 가까운 상위 `packageManager`/canonical lockfile 경계를 사용한다.
-- mixed/conflicting lockfile이면 자동 정리하거나 하나를 삭제하지 않고 BLOCK한다.
-- package manager major/version mismatch를 무시하고 설치하지 않는다.
 - install 실패를 해결하려고 다른 manager, global install, 임의 `--force`, `--legacy-peer-deps`, lockfile 삭제를 시도하지 않는다.
 - Tirith/approval을 끄거나 `TIRITH_ENABLED=0`, YOLO, approval off, fail-open 강제로 우회하지 않는다.
 - preflight 결과는 진단/사전 준비 evidence이며 실제 command 실행 허가는 Hermes terminal guard가 최종 결정한다.
@@ -288,12 +284,12 @@ Node Dependency Preflight: PASS | BLOCKED
 Package Root: ...
 Package Manager Root: ...
 Package Manager: pnpm
-Package Manager Source: packageManager | lockfile
-Package Manager Version: ...
-Required Package Manager Version: ... | NONE
-Node Version: ...
-Node Requirement: ... | NONE
-Node Requirement Check: pass | manual | blocked
+Package Manager Source: package.json devEngines.packageManager
+Bootstrap pnpm Version: ...
+Required pnpm Version: ...
+Node Version: managed-by-pnpm
+Node Requirement: ...
+Node Requirement Check: pnpm-managed
 Canonical Lockfile: ...
 Lockfile Present Before: true | false
 Dependency State Before:
