@@ -18,15 +18,20 @@ def main() -> int:
             "COPY scripts/hermes-diff-check.py /usr/local/lib/hermes-diff-check.py",
             "exec python3 /usr/local/lib/hermes-diff-check.py",
             "/usr/local/bin/hermes-diff-check --help",
-            "COPY scripts/devkit_kanban_worker_context.py /opt/hermes/hermes_cli/devkit_kanban_worker_context.py",
-            "patch_hermes_codex_kanban_context.py --hermes-root /opt/hermes",
-            'assert "kanban_worker_context" in names',
-            'assert "kanban_worker_context" in EXPOSED_TOOLS',
         ),
         "Dockerfile runtime",
     )
     if "COPY --chmod=0755 scripts/hermes-diff-check.py /usr/local/bin/hermes-diff-check" in dockerfile:
         raise SystemExit("Dockerfile must not execute the checked-out Python file by shebang")
+
+    for obsolete in (
+        "patch_hermes_syntax_warning.py",
+        "patch_hermes_kanban_terminal.py",
+        "patch_hermes_codex_kanban_context.py",
+        "devkit_kanban_worker_context.py",
+    ):
+        if obsolete in dockerfile:
+            raise SystemExit(f"Dockerfile still contains upstream-redundant Hermes runtime: {obsolete}")
 
     implement = (ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md").read_text(encoding="utf-8")
     implement_details = (ROOT / "custom-skills/coder/dev-implement-plan/references/implementation-details.md").read_text(encoding="utf-8")
@@ -46,9 +51,13 @@ def main() -> int:
         implement_details,
         (
             "Worker Context Gate 정확히 1회",
-            "kanban_worker_context MCP tool 정확히 1회",
+            "초기 `kanban_show` 응답을 Worker Context Gate로 정확히 1회 사용",
+            "task.current_run_id",
+            "worker_context",
+            "expected_run_id",
             "verify_worker_context.py",
-            "Codex shell에서 `HERMES_KANBAN_TASK` 등을 수동 주입",
+            "HERMES_KANBAN_RUN_ID",
+            "HERMES_KANBAN_CLAIM_LOCK",
             "첫 Git/workspace terminal command",
             "Git/Workspace 전용 검증기",
             "독립 terminal command로 정확히 1회",
@@ -86,17 +95,28 @@ def main() -> int:
         "non-Codex worker context gate",
     )
 
-    codex_context = (ROOT / "scripts/devkit_kanban_worker_context.py").read_text(encoding="utf-8")
+    for removed in (
+        ROOT / "scripts/devkit_kanban_worker_context.py",
+        ROOT / "scripts/patch_hermes_codex_kanban_context.py",
+        ROOT / "scripts/patch_hermes_syntax_warning.py",
+        ROOT / "scripts/patch_hermes_kanban_terminal.py",
+    ):
+        if removed.exists():
+            raise SystemExit(f"upstream-redundant Hermes patch/runtime still exists: {removed.relative_to(ROOT)}")
+
+    runtime_verifier = (ROOT / "scripts/verify-container-runtime.ps1").read_text(encoding="utf-8-sig")
     require(
-        codex_context,
+        runtime_verifier,
         (
-            "HERMES_KANBAN_RUN_ID",
-            "HERMES_KANBAN_CLAIM_LOCK",
-            "task current_run_id does not match worker run",
-            "task claim_lock does not match worker claim",
-            '"context_source": "hermes-mcp"',
+            "Upstream Codex scoped Kanban MCP contract",
+            "KANBAN_ENV_KEYS",
+            "delegated_child_subprocess_env",
+            "mcp_servers.{HERMES_TOOLS_MCP_SERVER_NAME}.env.{key}",
+            "kanban_show",
+            "expected_run_id",
+            "obsolete DevKit kanban worker-context module still exists",
         ),
-        "Codex MCP worker context gate",
+        "upstream Codex scoped Kanban runtime gate",
     )
 
     gradle_helper = (ROOT / "custom-skills/coder/dev-implement-plan/scripts/gradle_verification.py").read_text(encoding="utf-8")

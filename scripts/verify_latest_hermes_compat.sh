@@ -88,6 +88,56 @@ JSON
         grep -q "def _devkit_run_flow_model_transition" /opt/hermes/tools/kanban_tools.py
         grep -q "MODEL_POLICY_SNAPSHOT_V1" /opt/hermes/tools/kanban_tools.py
 
+        test ! -e /opt/hermes/hermes_cli/devkit_kanban_worker_context.py
+        /opt/hermes/.venv/bin/python - <<"PY"
+from pathlib import Path
+
+from agent.delegation_context import KANBAN_ENV_KEYS, delegated_child_subprocess_env
+from agent.transports.hermes_tools_mcp_server import EXPOSED_TOOLS
+
+required_env = {
+    "HERMES_KANBAN_TASK",
+    "HERMES_KANBAN_RUN_ID",
+    "HERMES_KANBAN_CLAIM_LOCK",
+}
+assert required_env.issubset(set(KANBAN_ENV_KEYS)), KANBAN_ENV_KEYS
+
+scrubbed = delegated_child_subprocess_env({
+    "HERMES_KANBAN_TASK": "t_probe",
+    "HERMES_KANBAN_RUN_ID": "7",
+    "HERMES_KANBAN_CLAIM_LOCK": "claim-probe",
+})
+assert not (required_env & set(scrubbed)), scrubbed
+
+required_tools = {
+    "kanban_show",
+    "kanban_complete",
+    "kanban_block",
+    "kanban_request_review",
+    "kanban_request_changes",
+    "kanban_heartbeat",
+}
+assert required_tools.issubset(set(EXPOSED_TOOLS)), EXPOSED_TOOLS
+assert "kanban_worker_context" not in EXPOSED_TOOLS
+
+codex_source = Path("/opt/hermes/agent/transports/codex_app_server.py").read_text(encoding="utf-8")
+for token in (
+    "KANBAN_ENV_KEYS",
+    "mcp_servers.{HERMES_TOOLS_MCP_SERVER_NAME}.env.{key}",
+    "delegated_child_subprocess_env",
+):
+    assert token in codex_source, token
+
+kanban_source = Path("/opt/hermes/tools/kanban_tools.py").read_text(encoding="utf-8")
+for token in (
+    "HERMES_KANBAN_RUN_ID",
+    "expected_run_id",
+    "kanban_show",
+    "worker_context",
+):
+    assert token in kanban_source, token
+PY
+
         grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/agent/skill_commands.py
         grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/hermes_cli/commands_completion.py
         grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/tui_gateway/methods_tools.py

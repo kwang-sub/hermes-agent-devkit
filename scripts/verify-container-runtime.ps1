@@ -242,11 +242,6 @@ Invoke-DockerCheck -Label "Tirith routed-profile guard patch" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "sh", "-lc",
     "grep -q DEVKIT_TIRITH_PROFILE_GUARD_V1 /opt/hermes/tools/tirith_security.py"
 )
-Invoke-DockerCheck -Label "Codex Kanban worker-context runtime" -DockerArgs @(
-    "exec", "--user", "hermes", $Container,
-    "/opt/hermes/.venv/bin/python", "/opt/hermes/hermes_cli/devkit_kanban_worker_context.py", "--self-test"
-)
-
 $TirithProfileGuardCheck = @'
 import os
 from hermes_constants import reset_hermes_home_override, set_hermes_home_override
@@ -278,28 +273,74 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[OK] Tirith routed-profile guard runtime contract"
 
-$CodexContextRegistryCheck = @'
-import os
-os.environ["HERMES_KANBAN_TASK"] = "t_devkit_registry_check"
-from model_tools import get_tool_definitions
+$UpstreamCodexKanbanContractCheck = @'
+from pathlib import Path
+
+from agent.delegation_context import KANBAN_ENV_KEYS, delegated_child_subprocess_env
 from agent.transports.hermes_tools_mcp_server import EXPOSED_TOOLS
-names = {
-    item["function"]["name"]
-    for item in get_tool_definitions(enabled_toolsets=["kanban"], quiet_mode=True)
-    if isinstance(item, dict) and item.get("type") == "function"
+
+required_env = {
+    "HERMES_KANBAN_TASK",
+    "HERMES_KANBAN_RUN_ID",
+    "HERMES_KANBAN_CLAIM_LOCK",
 }
-if "kanban_worker_context" not in names:
-    raise SystemExit(f"kanban_worker_context missing from Hermes registry: {sorted(names)!r}")
-if "kanban_worker_context" not in EXPOSED_TOOLS:
-    raise SystemExit("kanban_worker_context missing from Codex Hermes MCP EXPOSED_TOOLS")
-print("Codex Kanban worker-context registry/MCP contract valid")
+missing_env = sorted(required_env - set(KANBAN_ENV_KEYS))
+if missing_env:
+    raise SystemExit(f"upstream scoped Kanban env keys missing: {missing_env}")
+
+probe_env = {
+    "HERMES_KANBAN_TASK": "t_probe",
+    "HERMES_KANBAN_RUN_ID": "7",
+    "HERMES_KANBAN_CLAIM_LOCK": "claim-probe",
+}
+scrubbed = delegated_child_subprocess_env(probe_env)
+leaked = sorted(key for key in required_env if key in scrubbed)
+if leaked:
+    raise SystemExit(f"Codex/delegate native child leaked Kanban ownership env: {leaked}")
+
+required_tools = {
+    "kanban_show",
+    "kanban_complete",
+    "kanban_block",
+    "kanban_request_review",
+    "kanban_request_changes",
+    "kanban_heartbeat",
+}
+missing_tools = sorted(required_tools - set(EXPOSED_TOOLS))
+if missing_tools:
+    raise SystemExit(f"upstream Hermes MCP Kanban tools missing: {missing_tools}")
+if "kanban_worker_context" in EXPOSED_TOOLS:
+    raise SystemExit("obsolete DevKit kanban_worker_context is still exposed")
+if Path("/opt/hermes/hermes_cli/devkit_kanban_worker_context.py").exists():
+    raise SystemExit("obsolete DevKit kanban worker-context module still exists")
+
+codex_source = Path("/opt/hermes/agent/transports/codex_app_server.py").read_text(encoding="utf-8")
+for token in (
+    "KANBAN_ENV_KEYS",
+    "mcp_servers.{HERMES_TOOLS_MCP_SERVER_NAME}.env.{key}",
+    "delegated_child_subprocess_env",
+):
+    if token not in codex_source:
+        raise SystemExit(f"upstream Codex scoped-MCP contract missing: {token}")
+
+kanban_source = Path("/opt/hermes/tools/kanban_tools.py").read_text(encoding="utf-8")
+for token in (
+    "HERMES_KANBAN_RUN_ID",
+    "expected_run_id",
+    "kanban_show",
+    "worker_context",
+):
+    if token not in kanban_source:
+        raise SystemExit(f"upstream Kanban stale-worker/show contract missing: {token}")
+
+print("Upstream Codex scoped Kanban MCP contract valid")
 '@
 
-$CodexContextRegistryCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
+$UpstreamCodexKanbanContractCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
 if ($LASTEXITCODE -ne 0) {
-    throw "[FAIL] Codex Hermes MCP worker-context registry contract. Re-run .\update-devkit.ps1 or rebuild/recreate the container."
+    throw "[FAIL] Upstream Codex scoped Kanban MCP contract. Re-run .\update-devkit.ps1 or rebuild/recreate the container."
 }
-Write-Host "[OK] Codex Hermes MCP worker-context registry contract"
+Write-Host "[OK] Upstream Codex scoped Kanban MCP contract"
 
 Invoke-DockerCheck -Label "Shared custom skill root" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "test", "-d", "/opt/custom-skills/shared"

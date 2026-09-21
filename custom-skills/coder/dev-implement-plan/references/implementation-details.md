@@ -35,18 +35,17 @@ kanban_show
 
 Task body의 `Coder Provider` snapshot을 기준으로 검증 경로를 분리한다.
 
-**`openai-codex` Worker**는 Codex native shell에 Kanban ownership 환경변수를 노출하지 않는 Hermes 보안 경계를 그대로 유지한다.
+**`openai-codex` Worker**는 Codex native shell에 Kanban ownership 환경변수를 노출하지 않는 upstream Hermes 보안 경계를 그대로 유지한다. 실행 순서의 **초기 `kanban_show` 응답을 Worker Context Gate로 정확히 1회 사용**하며 같은 목적으로 별도 context tool을 추가 호출하지 않는다.
 
 ```text
-kanban_worker_context MCP tool 정확히 1회
-→ status == valid
-→ task_id == 현재 Task
-→ board == 현재 Board
-→ task_status == running
-→ claim_bound == true
+초기 kanban_show 정확히 1회
+→ task.id == 현재 Task
+→ task.status == running
+→ task.current_run_id 존재
+→ worker_context 존재
 ```
 
-`kanban_worker_context`가 없거나 호출 실패/`status != valid`이면 `CAPABILITY` 또는 context blocker로 `kanban_block`하고 종료한다. Codex shell에서 `HERMES_KANBAN_TASK` 등을 수동 주입하거나 `verify_worker_context.py`로 우회하지 않는다.
+`kanban_show`가 없거나 호출 실패, Task 불일치, `running`이 아니거나 run/context 정보가 없으면 `CAPABILITY` 또는 context blocker로 `kanban_block`하고 종료한다. Codex shell에서 `HERMES_KANBAN_TASK`/`HERMES_KANBAN_RUN_ID`/`HERMES_KANBAN_CLAIM_LOCK` 등을 수동 주입하거나 `verify_worker_context.py`로 우회하지 않는다. 실제 lifecycle mutation의 stale-worker 차단은 upstream의 run-id/`expected_run_id` 계약을 따른다.
 
 **그 외 Hermes Worker**는 아래 helper를 첫 terminal command로 정확히 1회 실행한다.
 

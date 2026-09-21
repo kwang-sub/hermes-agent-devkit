@@ -285,7 +285,6 @@ run_check "Gradle launcher isolation contract" python3 scripts/check_gradle_laun
 run_check "Standard Flow Work Unit boundary contract" python3 scripts/check_standard_work_unit_contract.py
 run_check "Markdown API specification contract" python3 scripts/check_api_spec_contract.py
 run_check "DevKit updater contract" python3 scripts/check_update_devkit_contract.py
-run_check "Hermes CLI SyntaxWarning patch and strict compile" python3 scripts/patch_hermes_syntax_warning.py --self-test
 run_check "Hermes TUI semantic input discovery patch" python3 scripts/patch_hermes_tui_semantic_input.py --self-test
 run_check "Kanban task/profile session-affinity runtime" python3 scripts/devkit_session_affinity.py --self-test
 run_check "DevKit Kanban notification bridge" python3 scripts/devkit_kanban_notifier.py --self-test
