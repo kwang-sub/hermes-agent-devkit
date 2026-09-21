@@ -12,6 +12,8 @@ DOCKERFILE = ROOT / "Dockerfile"
 TIRITH_PATCH = ROOT / "scripts/patch_hermes_tirith_profile_guard.py"
 LATEST_COMPAT_SCRIPT = ROOT / "scripts/verify_latest_hermes_compat.sh"
 LATEST_COMPAT_WORKFLOW = ROOT / ".github/workflows/latest-hermes-compat.yml"
+INIT_PROFILES = ROOT / "init-profiles.ps1"
+NOTIFIER_POLICY = ROOT / "docker/cont-init.d/019-devkit-kanban-notifier-policy"
 
 
 def require(text: str, terms: tuple[str, ...], label: str) -> None:
@@ -165,8 +167,8 @@ def main() -> int:
             '_devkit_only_analysis_incomplete',
             'process-global environment',
             'Shared Node dependency capability',
-            'Hermes native Kanban notifier contract',
-            'DevKit Discord formatter patch is still installed',
+            'DevKit Kanban notifier service is running',
+            'DevKit Kanban notifier ownership contract',
             'GATEWAY_MULTIPLEX_PROFILES=true',
             'Default multiplex Gateway service is running',
             '/run/service/gateway-default',
@@ -187,6 +189,31 @@ def main() -> int:
             'Orchestrator notification Gateway is running',
         ),
         "Windows PowerShell-safe runtime Git and fixed multiplex verification",
+    )
+
+    init_profiles = read_required(INIT_PROFILES, "init-profiles.ps1")
+    require(
+        init_profiles,
+        (
+            "function Ensure-KanbanNotificationOwnership",
+            '"config", "set", "kanban.notify_in_gateway", "false"',
+            '"config", "set", "kanban.auto_subscribe_on_create", "false"',
+            "Ensure-KanbanNotificationOwnership",
+        ),
+        "DevKit Notification Bridge profile ownership",
+    )
+
+    notifier_policy = read_required(NOTIFIER_POLICY, "DevKit notifier boot policy")
+    require(
+        notifier_policy,
+        (
+            "kanban.notify_in_gateway false",
+            "kanban.auto_subscribe_on_create false",
+            'for profile_dir in /opt/data/profiles/*',
+            'HERMES_KANBAN_NOTIFY_ENABLED controls only the bridge delivery loop',
+            'devkit_kanban_notifier.py --initialize-state',
+        ),
+        "DevKit Notification Bridge boot ownership",
     )
 
     tirith_patch = read_required(TIRITH_PATCH, "Hermes Tirith routed-profile patch")
@@ -227,6 +254,11 @@ def main() -> int:
             'patch_hermes_tirith_profile_guard.py /opt/hermes/tools/tirith_security.py',
             "grep -q 'DEVKIT_TIRITH_PROFILE_GUARD_V1' /opt/hermes/tools/tirith_security.py",
             '/opt/hermes/tools/tirith_security.py',
+            'scripts/devkit_kanban_notifier.py /opt/devkit/bin/devkit_kanban_notifier.py',
+            'docker/cont-init.d/019-devkit-kanban-notifier-policy',
+            'docker/devkit-s6-rc.d/',
+            '/opt/devkit/bin/devkit_kanban_notifier.py --self-test',
+            '/opt/hermes/.venv/bin/hermes send --help',
             'patch_hermes_kanban_model_transition.py --self-test',
             "grep -q 'def _devkit_run_flow_model_transition' /opt/hermes/tools/kanban_tools.py",
             '/opt/hermes/.venv/bin/python -m py_compile',
@@ -249,6 +281,10 @@ def main() -> int:
         ROOT / "scripts/test_kanban_registered_runtime.py",
         ROOT / "shared/scripts/kanban_registration_event.py",
         ROOT / "shared/scripts/test_kanban_registration_event.py",
+        ROOT / "shared/scripts/kanban_notify_subscribe.py",
+        ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/scripts/subscribe_notification.py",
+        ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py",
+        ROOT / "scripts/test_native_kanban_notification_runtime.py",
     ):
         if removed_notification_runtime.exists():
             raise SystemExit(
@@ -281,7 +317,9 @@ def main() -> int:
             '_devkit_tirith_subprocess_env',
             '_devkit_only_analysis_incomplete',
             '/opt/hermes/.venv/bin/hermes --help',
-            'test_native_kanban_notification_runtime.py',
+            '/opt/devkit/bin/devkit_kanban_notifier.py --self-test',
+            '/opt/hermes/.venv/bin/hermes send --help',
+            '/etc/s6-overlay/s6-rc.d/devkit-notifier/run',
             '/opt/custom-skills/shared/dev-api-spec/SKILL.md',
             '/opt/custom-skills/shared/dev-node-dependencies/SKILL.md',
             '/opt/data/shared/scripts/flow_model_policy.py',
@@ -306,7 +344,7 @@ def main() -> int:
         "latest Hermes compatibility workflow",
     )
 
-    print("[PASS] DevKit updater + runtime verifier + latest Hermes CI + pinned Git/pnpm runtime + Tirith routed-profile compatibility contract verified.")
+    print("[PASS] DevKit updater + runtime verifier + Notification Bridge + latest Hermes CI + pinned Git/pnpm runtime + Tirith routed-profile compatibility contract verified.")
     return 0
 
 

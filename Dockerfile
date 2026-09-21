@@ -107,6 +107,17 @@ FROM hermes-upstream-patched AS hermes-devkit-runtime
 
 USER root
 
+# DevKit notification bridge: one additional s6-supervised process in the same
+# container. It reads Hermes Kanban task_events without modifying Hermes source,
+# formats developer-facing messages, and delivers through the official
+# `hermes send` scripting surface.
+COPY --chmod=0755 scripts/devkit_kanban_notifier.py /opt/devkit/bin/devkit_kanban_notifier.py
+COPY --chmod=0755 docker/cont-init.d/019-devkit-kanban-notifier-policy /etc/cont-init.d/019-devkit-kanban-notifier-policy
+COPY docker/devkit-s6-rc.d/ /etc/s6-overlay/s6-rc.d/
+RUN chmod 0755 /etc/s6-overlay/s6-rc.d/devkit-notifier/run \
+    && /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_notifier.py --self-test \
+    && /opt/hermes/.venv/bin/hermes send --help >/dev/null
+
 ARG GIT_VERSION=2.55.0
 ARG PNPM_VERSION=12.5.1
 

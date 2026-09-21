@@ -29,7 +29,7 @@ User request
 → DONE | CHANGES_REQUESTED | BLOCKED
 ```
 
-Direct에서 생략하는 것은 `dev-breakdown`의 광범위한 planning 단계와 Standard의 선택형 Workspace/Branch 설계다. 구현·검증·Capability Preflight·모델 pin·등록 알림·Reviewer는 생략하지 않는다.
+Direct에서 생략하는 것은 `dev-breakdown`의 광범위한 planning 단계와 Standard의 선택형 Workspace/Branch 설계다. 구현·검증·Capability Preflight·모델 pin·Reviewer는 생략하지 않는다. 알림은 Flow와 독립된 DevKit Notification Bridge가 관찰한다.
 
 ## 1. 진입 불변식
 
@@ -195,8 +195,8 @@ Coder model/provider pin
 Reviewer profile DEFAULT
 initial_status=blocked
 kanban_show read-back
-native notification subscription attempt
 unblock
+DevKit Notification Bridge 비동기 관찰
 ```
 
 Direct 전용 Kanban 생성 helper, 별도 board 탐색, global safe.directory 변경을 만들지 않는다.

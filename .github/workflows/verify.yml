@@ -121,9 +121,9 @@ jobs:
         shell: bash
         run: python3 shared/scripts/test_flow_model_policy.py
 
-      - name: Verify Kanban notification helper
+      - name: Verify DevKit Kanban notification bridge
         shell: bash
-        run: python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py
+        run: python3 scripts/devkit_kanban_notifier.py --self-test
 
       - name: Verify runtime validation contracts
         shell: bash
