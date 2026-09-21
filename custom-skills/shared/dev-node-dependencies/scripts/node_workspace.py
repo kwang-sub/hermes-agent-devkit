@@ -212,18 +212,57 @@ def prepare_isolated_package(
     }
 
 
-def mark_dependencies_restored(paths: dict[str, Path | str | bool]) -> None:
-    isolated = Path(paths["isolated_package_root"])
+def mark_dependencies_restored(
+    workspace: Path,
+    package_root: Path,
+    *,
+    root: Path,
+) -> dict[str, Path | str | bool]:
+    paths = internal_paths(root, workspace, package_root)
+    isolated = paths["isolated_package_root"]
+    if not isolated.is_dir():
+        raise WorkspaceError(
+            f"isolated package root does not exist; prepare/restore it first: {isolated}"
+        )
+
+    source_fingerprint = dependency_fingerprint(package_root)
+    isolated_fingerprint = dependency_fingerprint(isolated)
+    if source_fingerprint != isolated_fingerprint:
+        raise WorkspaceError(
+            "source package.json/pnpm-lock.yaml changed after isolated restore; rerun preflight/restore before marking"
+        )
+
+    manifest = package_root / "package.json"
+    try:
+        import json
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise WorkspaceError(f"cannot validate package.json before restore mark: {exc}") from exc
+
+    dependency_sections = (
+        "dependencies",
+        "devDependencies",
+        "optionalDependencies",
+        "peerDependencies",
+    )
+    requires_modules = any(
+        isinstance(data.get(section), dict) and bool(data.get(section))
+        for section in dependency_sections
+    )
     modules = isolated / "node_modules"
-    if not modules.is_dir():
+    if requires_modules and not modules.is_dir():
         raise WorkspaceError(
             f"cannot mark dependencies restored before node_modules exists: {modules}"
         )
-    marker = Path(paths["dependency_fingerprint"])
-    marker.write_text(
-        str(paths["current_dependency_fingerprint"]) + "\n",
-        encoding="utf-8",
-    )
+
+    marker = paths["dependency_fingerprint"]
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(source_fingerprint + "\n", encoding="utf-8")
+    return {
+        **paths,
+        "current_dependency_fingerprint": source_fingerprint,
+        "dependencies_ready": True,
+    }
 
 
 def main() -> int:
@@ -246,11 +285,14 @@ def main() -> int:
         cwd = resolve_cwd(workspace, args.cwd)
         package_root = resolve_package_root(workspace, cwd)
         root = Path(os.getenv("HERMES_NODE_ROOT", str(DEFAULT_ROOT))).expanduser().resolve()
-        paths = prepare_isolated_package(workspace, package_root, root=root)
-
         if args.mark_restored:
-            mark_dependencies_restored(paths)
-            paths["dependencies_ready"] = True
+            paths = mark_dependencies_restored(
+                workspace,
+                package_root,
+                root=root,
+            )
+        else:
+            paths = prepare_isolated_package(workspace, package_root, root=root)
 
         print(f"NODE_WORKSPACE={workspace}")
         print(f"NODE_SOURCE_PACKAGE_ROOT={package_root}")
