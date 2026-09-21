@@ -150,13 +150,15 @@ def main() -> int:
             'Relative Git worktree paths',
             '"/usr/local/bin/git", "config", "--system", "--bool", "--get", "worktree.useRelativePaths"',
             '-Expected "true"',
+            'Standalone pnpm 12.5.1 runtime',
+            '"/usr/local/bin/pnpm", "--version"',
+            '-Expected "12.5.1"',
             'Tirith routed-profile guard patch',
             'DEVKIT_TIRITH_PROFILE_GUARD_V1',
             '_devkit_tirith_subprocess_env',
             '_devkit_only_analysis_incomplete',
             'process-global environment',
             'Shared Node dependency capability',
-            'Standalone pnpm runtime',
         ),
         "update-devkit runtime Git/Tirith verification",
     )
@@ -193,6 +195,11 @@ def main() -> int:
             'FROM ${HERMES_BASE_IMAGE} AS hermes-upstream-patched',
             'FROM hermes-upstream-patched AS hermes-devkit-runtime',
             'ARG GIT_VERSION=2.55.0',
+            'ARG PNPM_VERSION=12.5.1',
+            'ENV PNPM_HOME=/opt/pnpm',
+            'https://get.pnpm.io/install.sh',
+            'PNPM_VERSION="${PNPM_VERSION}"',
+            '/usr/local/bin/pnpm --version',
             'mkdir -p /tmp/git-worktree-check',
             'git -C /tmp/git-worktree-check init -q',
             'git -C /tmp/git-worktree-check worktree repair --relative-paths',
@@ -205,9 +212,6 @@ def main() -> int:
             'patch_hermes_kanban_model_transition.py --self-test',
             "grep -q 'def _devkit_run_flow_model_transition' /opt/hermes/tools/kanban_tools.py",
             '/opt/hermes/.venv/bin/python -m py_compile',
-            'ENV PNPM_HOME=/opt/pnpm',
-            'ENV HERMES_NODE_ROOT=/opt/data/node',
-            'https://get.pnpm.io/install.sh',
         ),
         "Dockerfile latest-Hermes/Git compatibility stage",
     )
@@ -227,6 +231,10 @@ def main() -> int:
             '--pull',
             '/usr/local/bin/git --version',
             'worktree.useRelativePaths',
+            '/usr/local/bin/pnpm --version',
+            'runtime-smoke',
+            '22.23.2',
+            'pnpm install --lockfile-only',
             'def _devkit_run_flow_model_transition',
             'MODEL_POLICY_SNAPSHOT_V1',
             'DEVKIT_TIRITH_PROFILE_GUARD_V1',
@@ -257,7 +265,7 @@ def main() -> int:
         "latest Hermes compatibility workflow",
     )
 
-    print("[PASS] DevKit updater + runtime verifier + latest Hermes CI + pinned Git relative-worktree + Tirith routed-profile compatibility contract verified.")
+    print("[PASS] DevKit updater + runtime verifier + latest Hermes CI + pinned Git/pnpm runtime + Tirith routed-profile compatibility contract verified.")
     return 0
 
 
