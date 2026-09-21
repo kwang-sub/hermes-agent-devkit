@@ -10,6 +10,7 @@ UPDATER = ROOT / "update-devkit.ps1"
 RUNTIME_VERIFIER = ROOT / "scripts/verify-container-runtime.ps1"
 DOCKERFILE = ROOT / "Dockerfile"
 TIRITH_PATCH = ROOT / "scripts/patch_hermes_tirith_profile_guard.py"
+TUI_SEMANTIC_PATCH = ROOT / "scripts/patch_hermes_tui_semantic_input.py"
 LATEST_COMPAT_SCRIPT = ROOT / "scripts/verify_latest_hermes_compat.sh"
 LATEST_COMPAT_WORKFLOW = ROOT / ".github/workflows/latest-hermes-compat.yml"
 INIT_PROFILES = ROOT / "init-profiles.ps1"
@@ -286,6 +287,20 @@ def main() -> int:
         "DevKit Notification Bridge boot ownership",
     )
 
+    tui_semantic_patch = read_required(TUI_SEMANTIC_PATCH, "Hermes TUI semantic-input patch")
+    require(
+        tui_semantic_patch,
+        (
+            "def discover_source_paths",
+            "def resolve_source_paths",
+            "--search-root",
+            "_is_tui_candidate",
+            "_is_session_candidate",
+            "cannot uniquely discover Hermes Clarify sources",
+        ),
+        "Hermes TUI semantic-input discovery",
+    )
+
     tirith_patch = read_required(TIRITH_PATCH, "Hermes Tirith routed-profile patch")
     require(
         tirith_patch,
@@ -330,6 +345,9 @@ def main() -> int:
             'git -C /tmp/git-worktree-check worktree repair --relative-paths',
             'git config --system worktree.useRelativePaths true',
             'git config --system --bool --get worktree.useRelativePaths',
+            'patch_hermes_tui_semantic_input.py --self-test',
+            'patch_hermes_tui_semantic_input.py --search-root /opt/hermes',
+            'patch_hermes_tui_semantic_input.py --check-only --search-root /opt/hermes',
             'patch_hermes_tirith_profile_guard.py --self-test',
             'patch_hermes_tirith_profile_guard.py /opt/hermes/tools/tirith_security.py',
             "grep -q 'DEVKIT_TIRITH_PROFILE_GUARD_V1' /opt/hermes/tools/tirith_security.py",
@@ -353,8 +371,11 @@ def main() -> int:
         (
             "patch_hermes_discord_kanban_notify.py",
             "patch_hermes_discord_kanban_session.py",
+            "patch_hermes_tui_file_signature.py",
+            "/opt/hermes/hermes_cli/cli_tui_mixin.py",
+            "/opt/hermes/hermes_cli/cli_session_mixin.py",
         ),
-        "Dockerfile native Kanban notification contract",
+        "Dockerfile thin/upstream-layout-independent patch contract",
     )
 
     for removed_notification_runtime in (
@@ -367,6 +388,7 @@ def main() -> int:
         ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/scripts/subscribe_notification.py",
         ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py",
         ROOT / "scripts/test_native_kanban_notification_runtime.py",
+        ROOT / "scripts/patch_hermes_tui_file_signature.py",
         ROOT / "docker/devkit-s6-rc.d",
     ):
         if removed_notification_runtime.exists():

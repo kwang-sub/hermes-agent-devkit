@@ -14,22 +14,12 @@ COPY scripts/patch_hermes_syntax_warning.py /tmp/patch_hermes_syntax_warning.py
 RUN python3 /tmp/patch_hermes_syntax_warning.py /opt/hermes/hermes_cli/update_cmd.py \
     && rm /tmp/patch_hermes_syntax_warning.py
 
-# Current rolling Hermes can call utils.file_signature from the TUI config watcher
-# without importing it. Keep this patch idempotent so an upstream-fixed image is accepted.
-COPY scripts/patch_hermes_tui_file_signature.py /tmp/patch_hermes_tui_file_signature.py
-RUN python3 /tmp/patch_hermes_tui_file_signature.py --self-test \
-    && python3 /tmp/patch_hermes_tui_file_signature.py /opt/hermes/hermes_cli/cli_tui_mixin.py \
-    && rm /tmp/patch_hermes_tui_file_signature.py
-
 # Keep reasoning dim while making user-input surfaces visually distinct: cyan for
 # Clarify interaction and green for the recommended choice / recommendation label.
 COPY scripts/patch_hermes_tui_semantic_input.py /tmp/patch_hermes_tui_semantic_input.py
 RUN python3 /tmp/patch_hermes_tui_semantic_input.py --self-test \
-    && python3 /tmp/patch_hermes_tui_semantic_input.py \
-       --tui-path /opt/hermes/hermes_cli/cli_tui_mixin.py \
-       --session-path /opt/hermes/hermes_cli/cli_session_mixin.py \
-    && grep -q 'DEVKIT_TUI_SEMANTIC_INPUT_V1' /opt/hermes/hermes_cli/cli_tui_mixin.py \
-    && grep -q 'DEVKIT_TUI_SEMANTIC_INPUT_V1' /opt/hermes/hermes_cli/cli_session_mixin.py \
+    && python3 /tmp/patch_hermes_tui_semantic_input.py --search-root /opt/hermes \
+    && python3 /tmp/patch_hermes_tui_semantic_input.py --check-only --search-root /opt/hermes \
     && rm /tmp/patch_hermes_tui_semantic_input.py
 
 # Keep every skill directly invokable and visible to runtime/management, but allow
@@ -94,12 +84,9 @@ RUN test -x /opt/hermes/.venv/bin/hermes \
        /opt/hermes/tools/tirith_security.py \
        /opt/hermes/tools/kanban_tools.py \
        /opt/hermes/hermes_cli/devkit_session_affinity.py \
-       /opt/hermes/hermes_cli/cli_tui_mixin.py \
-       /opt/hermes/hermes_cli/cli_session_mixin.py \
        /opt/hermes/agent/skill_commands.py \
        /opt/hermes/hermes_cli/commands_completion.py \
-       /opt/hermes/tui_gateway/methods_tools.py \
-    && HERMES_DEFER_AGENT_STARTUP=1 /opt/hermes/.venv/bin/python -c 'from pathlib import Path; import hermes_cli.config as cfg; p=Path("/tmp/devkit-tui-config.yaml"); p.write_text("{}\n", encoding="utf-8"); cfg.get_config_path=lambda:p; from hermes_cli.cli_tui_mixin import CLITuiMixin; Smoke=type("Smoke", (CLITuiMixin,), {"config": {}}); Smoke()._tui_init_run_state(); p.unlink()'
+       /opt/hermes/tui_gateway/methods_tools.py
 
 # The production DevKit image continues from the exact upstream-patched stage
 # validated by CI, then adds local Git/JDK/build tooling.
