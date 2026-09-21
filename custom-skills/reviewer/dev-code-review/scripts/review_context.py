@@ -190,9 +190,10 @@ def handoff_gate(root: Path, current_paths: list[str], current_hash: str) -> tup
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--base-branch", required=True)
-    ap.add_argument("--base-sha", required=True)
-    ap.add_argument("--expected-branch", required=True)
+    ap.add_argument("--version-control", choices=("git", "none"), default="git")
+    ap.add_argument("--base-branch")
+    ap.add_argument("--base-sha")
+    ap.add_argument("--expected-branch")
     ap.add_argument("--workspace")
     ap.add_argument("--expected-workspace")
     ap.add_argument("--include", action="append", default=[])
@@ -204,12 +205,62 @@ def main() -> int:
     args = ap.parse_args()
 
     root = Path(args.workspace or ".").resolve()
+    if not root.is_dir():
+        raise ReviewError(f"workspace does not exist or is not a directory: {root}")
+    if args.expected_workspace and root != Path(args.expected_workspace).resolve():
+        raise ReviewError(
+            f"workspace mismatch: expected={Path(args.expected_workspace).resolve()}, actual={root}"
+        )
+
+    if args.version_control == "none":
+        includes, external = split_includes(root, args.include)
+        if not includes and not external:
+            raise ReviewError(
+                "declared --include paths from the coder handoff are required for a Non-Git workspace; "
+                "Hermes does not infer or snapshot Non-Git changes"
+            )
+        declared = [*includes, *external]
+        print(f"WORKSPACE={root}")
+        print("VERSION_CONTROL=none")
+        print("BRANCH=NONE")
+        print("BASE_BRANCH=NONE")
+        print("BASE_BRANCH_SHA=NONE")
+        print("BASE_SHA=NONE")
+        print("BASE_BRANCH_DRIFTED=unknown")
+        print("SCAN_MODE=unsupported-non-git")
+        print(f"SCOPE={','.join(args.include)}")
+        print(f"PRIMARY_SCOPE={','.join(includes) if includes else 'NONE'}")
+        print("CHANGE_TRACKING=unsupported")
+        print(f"DECLARED_CHANGED_COUNT={len(declared)}")
+        for index, path in enumerate(declared, 1):
+            print(f"DECLARED_CHANGED_{index}={path}")
+        print("TRACKED_CHANGED_COUNT=-1")
+        print("EOL_ONLY_COUNT=-1")
+        print("UNTRACKED_COUNT=-1")
+        print("CODER_HANDOFF_GATE=NOT_APPLICABLE")
+        print("CODER_HANDOFF_GATE_REASON=non-git")
+        print("VERIFICATION_REUSE_ELIGIBLE=false")
+        print("REVIEWER_TEST_RERUN_REQUIRED=true")
+        print(f"EXTERNAL_INCLUDE_COUNT={len(external)}")
+        for index, path in enumerate(external, 1):
+            print(f"EXTERNAL_INCLUDE_{index}={path}")
+        print("RERUN_POLICY=minimal-once;no-rerun-tasks-for-confidence")
+        print("DIFF_CHECK=NOT_APPLICABLE")
+        print("GIT_SAFE_DIRECTORY=false")
+        print("STATUS=valid")
+        return 0
+
+    if not args.base_branch:
+        raise ReviewError("--base-branch is required for a Git workspace")
+    if not args.base_sha:
+        raise ReviewError("--base-sha is required for a Git workspace")
+    if not args.expected_branch:
+        raise ReviewError("--expected-branch is required for a Git workspace")
+
     ensure_safe_directory(root)
     top = Path(run(["git", "-C", str(root), "rev-parse", "--show-toplevel"]).stdout.strip()).resolve()
     if top != root:
         raise ReviewError(f"review must start at workspace root: workspace={root}, root={top}")
-    if args.expected_workspace and root != Path(args.expected_workspace).resolve():
-        raise ReviewError(f"workspace mismatch: expected={Path(args.expected_workspace).resolve()}, actual={root}")
 
     branch = run(["git", "-C", str(root), "branch", "--show-current"]).stdout.strip()
     if branch != args.expected_branch:
@@ -242,6 +293,7 @@ def main() -> int:
     check_whitespace(root, base_sha, effective_tracked, untracked)
 
     print(f"WORKSPACE={root}")
+    print("VERSION_CONTROL=git")
     print(f"BRANCH={branch}")
     print(f"BASE_BRANCH={args.base_branch}")
     print(f"BASE_BRANCH_SHA={base_branch_sha}")
