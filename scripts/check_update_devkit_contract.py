@@ -58,7 +58,6 @@ def main() -> int:
             '$ImageBuildInputs = @(',
             '"Dockerfile"',
             '"scripts/hermes-java"',
-            '$env:HERMES_BASE_IMAGE = $HermesBaseImage',
             'docker" -Arguments @("compose", "build", "--pull")',
             'docker" -Arguments @("compose", "up", "-d", "--force-recreate")',
             'function Invoke-ProfileInitialization',
