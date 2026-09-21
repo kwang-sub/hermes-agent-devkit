@@ -127,6 +127,7 @@ def main()->int:
     require_terms(dispatch,"dev-workspace-dispatch fast path",(
         "--confirmed-dirty","repository-wide dirty/EOL/untracked 분류를 **생략**","WORKSPACE_CHANGE_SCAN_MODE=skipped-approved-preservation","*_COUNT=-1","git diff --name-only -z HEAD",'initial_status="blocked"',
         "kanban_show 정확히 1회","subscribe_notification.py 정확히 1회",
+        '--board "${BOARD}"','--task-id "${TASK_ID}"',
         "NOTIFY_STATUS=subscribed | disabled | warning","등록 read-back 계약 검증","Hermes native","kanban_unblock tool 정확히 1회","board == BOARD","HERMES_KANBAN_BOARD"))
     forbid_terms(dispatch,"legacy custom registration notification",(
         "NOTIFY_REGISTRATION_EVENT","registered task_event","전달 ACK timeout","최초 등록 알림"))

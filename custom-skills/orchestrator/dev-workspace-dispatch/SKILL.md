@@ -198,7 +198,7 @@ prepare_dispatch.py 정확히 한 번
 → kanban_create(board=BOARD, initial_status="blocked", model=MODEL, provider=PROVIDER, skills=VALIDATED_SKILLS + dev-flow-model-policy)
 → kanban_show 정확히 1회
 → 등록 read-back 계약 검증
-→ subscribe_notification.py 정확히 1회
+→ subscribe_notification.py 정확히 1회 (--board BOARD --task-id TASK)
 → NOTIFY_STATUS=subscribed | disabled | warning
 → kanban_unblock tool 정확히 1회
 → ready 전환 후 worker dispatch
@@ -216,6 +216,14 @@ task read-back
 ```
 
 알림 전달, retry, cursor/dedup은 Hermes Gateway native notifier가 소유한다. 설정 누락, Gateway/adapter 오류, subscription read-back 실패는 `NOTIFY_STATUS=warning`으로 기록하지만 개발 Task lifecycle을 차단하지 않는다.
+
+helper 호출은 반드시 아래 형식을 그대로 사용한다. `--board`와 `--task-id`는 둘 다 필수이며 positional argument나 ambient/default board fallback으로 바꾸지 않는다.
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/subscribe_notification.py" \
+  --board "${BOARD}" \
+  --task-id "${TASK_ID}"
+```
 
 호출 횟수 계약:
 
