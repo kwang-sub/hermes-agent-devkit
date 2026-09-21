@@ -14,6 +14,7 @@ TRUE_VALUES = {"1", "true", "yes", "on"}
 ALLOWED_DELIVERY_MODES = {"notify", "wake", "notify+wake"}
 DEFAULT_REGISTRATION_HELPER = Path(__file__).resolve().with_name("kanban_registration_event.py")
 DEFAULT_HERMES_PYTHON = Path("/opt/hermes/.venv/bin/python")
+NOTIFIER_PROFILE = "default"
 REGISTRATION_ACK_TIMEOUT_ENV = "HERMES_KANBAN_NOTIFY_REGISTRATION_ACK_TIMEOUT_SECONDS"
 REGISTRATION_ACK_POLL_ENV = "HERMES_KANBAN_NOTIFY_REGISTRATION_ACK_POLL_SECONDS"
 DEFAULT_REGISTRATION_ACK_TIMEOUT_SECONDS = 20.0
@@ -286,14 +287,13 @@ def main() -> int:
     target = (os.getenv("HERMES_KANBAN_NOTIFY_TARGET") or "").strip()
     delivery_mode = (os.getenv("HERMES_KANBAN_NOTIFY_DELIVERY_MODE") or "notify").strip()
     chat_type = (os.getenv("HERMES_KANBAN_NOTIFY_CHAT_TYPE") or "").strip()
-    notifier_profile = (os.getenv("HERMES_KANBAN_NOTIFY_PROFILE") or "default").strip()
+    notifier_profile = NOTIFIER_PROFILE
 
     missing = [
         name
         for name, value in (
             ("HERMES_KANBAN_NOTIFY_PLATFORM", platform),
             ("HERMES_KANBAN_NOTIFY_TARGET", target),
-            ("HERMES_KANBAN_NOTIFY_PROFILE", notifier_profile),
         )
         if not value
     ]

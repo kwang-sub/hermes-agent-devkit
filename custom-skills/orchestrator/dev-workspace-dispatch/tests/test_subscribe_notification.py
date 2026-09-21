@@ -139,7 +139,6 @@ class SubscribeNotificationTests(unittest.TestCase):
             "HERMES_KANBAN_NOTIFY_TARGET": "123456789",
             "HERMES_KANBAN_NOTIFY_DELIVERY_MODE": "notify",
             "HERMES_KANBAN_NOTIFY_CHAT_TYPE": "channel",
-            "HERMES_KANBAN_NOTIFY_PROFILE": "default",
             "HERMES_KANBAN_REGISTRATION_EVENT_HELPER": str(registration),
             "HERMES_KANBAN_NOTIFY_REGISTRATION_ACK_TIMEOUT_SECONDS": "0.1",
             "HERMES_KANBAN_NOTIFY_REGISTRATION_ACK_POLL_SECONDS": "0.01",
@@ -212,14 +211,18 @@ class SubscribeNotificationTests(unittest.TestCase):
                 [["--board", "wow-batch", "--task-id", "t_test123"]],
             )
 
-    def test_default_notifier_profile_is_default_gateway(self) -> None:
+    def test_notifier_profile_is_fixed_to_default_gateway(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             fake, log = self.make_fake_cli(root)
             registration, _ = self.make_registration_helper(root)
-            env = self.notification_env(fake, registration)
-            env.pop("HERMES_KANBAN_NOTIFY_PROFILE")
-            proc = self.run_helper(env)
+            proc = self.run_helper(
+                self.notification_env(
+                    fake,
+                    registration,
+                    HERMES_KANBAN_NOTIFY_PROFILE="orchestrator",
+                )
+            )
             self.assertEqual(proc.returncode, 0, proc.stderr)
             subscribe = self.read_log(log)[1]
             idx = subscribe.index("--notifier-profile")

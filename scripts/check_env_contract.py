@@ -47,7 +47,6 @@ DEFAULTS = {
     "HERMES_KANBAN_NOTIFY_TARGET": "",
     "HERMES_KANBAN_NOTIFY_DELIVERY_MODE": "notify",
     "HERMES_KANBAN_NOTIFY_CHAT_TYPE": "channel",
-    "HERMES_KANBAN_NOTIFY_PROFILE": "orchestrator",
     "HERMES_WORK_ITEM_DIR": "/opt/data/work-items",
 }
 
@@ -127,6 +126,12 @@ def main() -> int:
 
     if 'HERMES_DASHBOARD: "1"' not in compose:
         raise SystemExit("compose.yml must keep the baseline dashboard enabled for the healthcheck contract")
+    if 'GATEWAY_MULTIPLEX_PROFILES: "true"' not in compose:
+        raise SystemExit("compose.yml must pin the DevKit to the default multiplex Gateway topology")
+    if 'HERMES_GATEWAY_BOOTSTRAP_STATE: "running"' not in compose:
+        raise SystemExit("compose.yml must bootstrap a fresh default Gateway as running")
+    if "${GATEWAY_MULTIPLEX_PROFILES" in compose or "${HERMES_GATEWAY_BOOTSTRAP_STATE" in compose:
+        raise SystemExit("fixed Gateway topology/bootstrap values must not be user-overridable Compose variables")
     if "HERMES_DASHBOARD_ENABLED" in compose or "HERMES_DASHBOARD_ENABLED" in sample:
         raise SystemExit("dashboard enabled toggle must not diverge from the baseline healthcheck contract")
     if re.search(r"^\s*source:\s*D:/workspace\s*$", compose, re.MULTILINE):
@@ -207,6 +212,19 @@ def main() -> int:
         if "${" + internal_key in compose:
             raise SystemExit(f"internal runtime key must not be exposed in compose.yml: {internal_key}")
 
+    for removed_profile_key in (
+        "HERMES_KANBAN_NOTIFY_PROFILE",
+        "HERMES_KANBAN_ORCHESTRATOR_PROFILE",
+    ):
+        if removed_profile_key in sample:
+            raise SystemExit(f"fixed DevKit profile key must not be exposed in sample.env: {removed_profile_key}")
+        if removed_profile_key in compose:
+            raise SystemExit(f"fixed DevKit profile key must not be exposed in compose.yml: {removed_profile_key}")
+
+    for fixed_gateway_key in ("GATEWAY_MULTIPLEX_PROFILES", "HERMES_GATEWAY_BOOTSTRAP_STATE"):
+        if fixed_gateway_key in sample:
+            raise SystemExit(f"fixed Gateway contract must not be exposed in sample.env: {fixed_gateway_key}")
+
     for required in (
         "${HERMES_DASHBOARD_USERNAME:?Set HERMES_DASHBOARD_USERNAME in .env}",
         "${HERMES_DASHBOARD_PASSWORD:?Set HERMES_DASHBOARD_PASSWORD in .env}",
@@ -253,7 +271,6 @@ def main() -> int:
         "HERMES_KANBAN_NOTIFY_TARGET: ${HERMES_KANBAN_NOTIFY_TARGET:-}",
         "HERMES_KANBAN_NOTIFY_DELIVERY_MODE: ${HERMES_KANBAN_NOTIFY_DELIVERY_MODE:-notify}",
         "HERMES_KANBAN_NOTIFY_CHAT_TYPE: ${HERMES_KANBAN_NOTIFY_CHAT_TYPE:-channel}",
-        "HERMES_KANBAN_NOTIFY_PROFILE: ${HERMES_KANBAN_NOTIFY_PROFILE:-orchestrator}",
         "DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}",
     ):
         if required not in compose:

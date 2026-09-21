@@ -65,6 +65,9 @@ def main() -> int:
             'init-profiles.ps1',
             'Profile/skill reconciliation',
             'PROFILES_RECONCILED=',
+            'function Ensure-DefaultMultiplexGateway',
+            'Ensure-DefaultMultiplexGateway -ContainerName $Container',
+            '"/opt/hermes/.venv/bin/hermes", "gateway", "start"',
             'scripts\\verify-container-runtime.ps1',
             'Runtime verification failed. Performing one cached rebuild + force-recreate repair.',
             'sample.env changed. Existing .env is intentionally not overwritten',
@@ -78,6 +81,11 @@ def main() -> int:
 
     if "Profile initialization is intentionally not run automatically" in text:
         raise SystemExit("update-devkit.ps1 still documents manual-only profile initialization")
+
+    if text.count("Ensure-DefaultMultiplexGateway -ContainerName $Container") < 2:
+        raise SystemExit(
+            "update-devkit.ps1 must reconcile the default Gateway on both normal and repair paths"
+        )
 
     require(
         text,
@@ -159,8 +167,14 @@ def main() -> int:
             '_devkit_only_analysis_incomplete',
             'process-global environment',
             'Shared Node dependency capability',
+            'GATEWAY_MULTIPLEX_PROFILES=true',
+            'Default multiplex Gateway service is running',
+            '/run/service/gateway-default',
+            'default_gateway_multiplexes',
+            'recorded_served_profiles',
+            '{"default", "coder", "orchestrator", "reviewer"}',
         ),
-        "update-devkit runtime Git/Tirith verification",
+        "update-devkit runtime Git/Tirith/multiplex verification",
     )
 
     forbid(
@@ -168,8 +182,11 @@ def main() -> int:
         (
             '$(/usr/local/bin/git --version)',
             '$(/usr/local/bin/git config --system --bool --get worktree.useRelativePaths)',
+            'HERMES_KANBAN_NOTIFY_PROFILE=orchestrator',
+            '/run/service/gateway-orchestrator',
+            'Orchestrator notification Gateway is running',
         ),
-        "Windows PowerShell-safe runtime Git verification",
+        "Windows PowerShell-safe runtime Git and fixed multiplex verification",
     )
 
     tirith_patch = read_required(TIRITH_PATCH, "Hermes Tirith routed-profile patch")

@@ -186,16 +186,44 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[OK] Discord Kanban notifier registration/msg-scope contract"
 
-$NotifyProfileEntry = @($ContainerEnv | Where-Object { $_ -like "HERMES_KANBAN_NOTIFY_PROFILE=*" }) | Select-Object -First 1
-if ($NotifyProfileEntry -ne "HERMES_KANBAN_NOTIFY_PROFILE=orchestrator") {
-    throw "[FAIL] Kanban notification owner profile. Expected 'HERMES_KANBAN_NOTIFY_PROFILE=orchestrator', got '$NotifyProfileEntry'. Rebuild/recreate the DevKit container."
+$MultiplexEnvEntry = @($ContainerEnv | Where-Object { $_ -like "GATEWAY_MULTIPLEX_PROFILES=*" }) | Select-Object -First 1
+if ($MultiplexEnvEntry -ne "GATEWAY_MULTIPLEX_PROFILES=true") {
+    throw "[FAIL] DevKit Gateway topology. Expected 'GATEWAY_MULTIPLEX_PROFILES=true', got '$MultiplexEnvEntry'. Rebuild/recreate the DevKit container."
 }
-Write-Host "[OK] Kanban notification owner profile -> orchestrator"
+Write-Host "[OK] DevKit Gateway topology -> default multiplex"
 
-Invoke-DockerExactOutputCheck -Label "Orchestrator notification Gateway is running" -DockerArgs @(
+Invoke-DockerExactOutputCheck -Label "Default multiplex Gateway service is running" -DockerArgs @(
     "exec", $Container, "/package/admin/s6/command/s6-svstat", "-o", "up",
-    "/run/service/gateway-orchestrator"
+    "/run/service/gateway-default"
 ) -Expected "true"
+
+$MultiplexRuntimeCheck = @'
+import time
+
+from hermes_cli.gateway_multiplex_mode import default_gateway_multiplexes
+from hermes_cli.gateway_multiplex_served import recorded_served_profiles
+
+required = {"default", "coder", "orchestrator", "reviewer"}
+last = []
+for _ in range(20):
+    served = recorded_served_profiles()
+    last = list(served or [])
+    if default_gateway_multiplexes() and required.issubset(set(last)):
+        print("true")
+        raise SystemExit(0)
+    time.sleep(0.5)
+
+raise SystemExit(
+    "default gateway is not serving the required DevKit profiles: "
+    f"required={sorted(required)!r}, served={last!r}"
+)
+'@
+
+$MultiplexRuntimeCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
+if ($LASTEXITCODE -ne 0) {
+    throw "[FAIL] Default multiplex Gateway served-profile contract. Re-run .\update-devkit.ps1 or rebuild/recreate the container."
+}
+Write-Host "[OK] Default multiplex Gateway serves default/coder/orchestrator/reviewer"
 Invoke-DockerCheck -Label "Tirith routed-profile guard patch" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "sh", "-lc",
     "grep -q DEVKIT_TIRITH_PROFILE_GUARD_V1 /opt/hermes/tools/tirith_security.py"
