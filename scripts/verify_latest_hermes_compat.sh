@@ -6,8 +6,10 @@ cd "$REPO_ROOT"
 
 BASE_IMAGE="${HERMES_BASE_IMAGE:-nousresearch/hermes-agent:latest}"
 IMAGE_NAME="${HERMES_COMPAT_IMAGE:-hermes-devkit:latest-compat}"
+CONTAINER_NAME="${HERMES_COMPAT_CONTAINER:-hermes-devkit-latest-compat}"
 
 cleanup() {
+    docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
     docker image rm -f "$IMAGE_NAME" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -128,9 +130,9 @@ PY
         test -x /opt/devkit/bin/devkit_kanban_notifier.py
         /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_notifier.py --self-test
         /opt/hermes/.venv/bin/hermes send --help >/dev/null
-        test -f /etc/s6-overlay/s6-rc.d/devkit-notifier/run
-        test -f /etc/s6-overlay/s6-rc.d/user/contents.d/devkit-notifier
+        test -x /opt/devkit/svscan/devkit-notifier/run
         test -x /etc/cont-init.d/019-devkit-kanban-notifier-policy
+        test ! -e /etc/s6-overlay/s6-rc.d/devkit-notifier
         test -f /opt/custom-skills/shared/dev-java-guidelines/SKILL.md
         test -f /opt/custom-skills/shared/dev-java-guidelines/references/official-java-practices.md
         test -f /opt/custom-skills/shared/dev-kotlin-guidelines/SKILL.md
@@ -150,4 +152,32 @@ PY
         test -f /opt/data/shared/scripts/flow_model_policy.py
     '
 
-printf '[PASS] Latest Hermes base image, pinned Git/pnpm bootstrap, project Node runtime, and DevKit patches are compatible.\n'
+printf '[RUN ] Latest Hermes live s6 notifier smoke\n'
+docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+docker run -d \
+    --name "$CONTAINER_NAME" \
+    -e HERMES_KANBAN_NOTIFY_ENABLED=false \
+    "$IMAGE_NAME" \
+    sleep infinity >/dev/null
+
+ready=0
+for _ in $(seq 1 60); do
+    if docker exec "$CONTAINER_NAME" /command/s6-svstat -o up /run/service/devkit-notifier 2>/dev/null | grep -qx true; then
+        ready=1
+        break
+    fi
+    sleep 0.5
+done
+
+if [ "$ready" -ne 1 ]; then
+    docker logs "$CONTAINER_NAME" >&2 || true
+    docker exec "$CONTAINER_NAME" ls -la /run/service >&2 || true
+    exit 1
+fi
+
+docker exec "$CONTAINER_NAME" test -x /run/service/devkit-notifier/run
+test "$(docker exec "$CONTAINER_NAME" cat /proc/1/comm | tr -d '\r')" = "s6-svscan"
+docker exec --user hermes "$CONTAINER_NAME" \
+    /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_notifier.py --self-test
+
+printf '[PASS] Latest Hermes base image, pinned Git/pnpm bootstrap, project Node runtime, DevKit patches, and live dynamic notifier supervision are compatible.\n'
