@@ -1,12 +1,12 @@
 ---
 name: dev-node-dependencies
-description: Node.js 프로젝트의 dependency 추가·삭제·복원에서 package root/manager/version/lockfile 호환성을 먼저 검증하고 Tirith threat-intelligence incomplete를 보안 우회 없이 처리하는 공통 capability skill.
+description: pnpm 기반 Node.js 프로젝트의 dependency 추가·삭제·복원에서 package.json Node/pnpm runtime 계약과 pnpm-lock.yaml을 검증하고 Tirith threat-intelligence incomplete를 보안 우회 없이 처리하는 공통 capability skill.
 version: 0.1.3
 author: local
 platforms: [linux]
 metadata:
   hermes:
-    tags: [dev, node, npm, pnpm, yarn, bun, dependency, package-manager, lockfile, tirith, security, headless]
+    tags: [dev, node, pnpm, dependency, package-manager, lockfile, runtime, tirith, security, headless]
     related_skills: [dev-frontend-feature, dev-typescript-guidelines, dev-nextjs-feature, dev-frontend-test]
     requires_tools: [terminal]
 ---
@@ -32,7 +32,12 @@ manifest/lock evidence
 ```
 
 - `node_modules`에 package가 존재한다는 이유만으로 설치 완료로 간주하지 않는다.
-- `node_modules`에는 있지만 `package.json`/canonical lockfile에 없으면 `EXTRANEOUS_PRESENT`다.
+- `node_modules`에는 있지만 `package.json`/`pnpm-lock.yaml`에 없으면 `EXTRANEOUS_PRESENT`다.
+- DevKit의 Node package manager는 **pnpm 하나만 지원**한다. npm/yarn/bun 호환 분기나 자동 판정은 하지 않는다.
+- `package.json.devEngines.runtime`은 `name=node`, `version`, `onFail=download`를 선언해야 한다.
+- `package.json.devEngines.packageManager`는 `name=pnpm`, `version`, `onFail=download`를 선언해야 한다.
+- standalone pnpm이 Node runtime을 프로젝트 선언에 맞춰 설치/선택하며, host의 `node --version`은 source of truth가 아니다.
+- canonical lockfile은 항상 `pnpm-lock.yaml`이다.
 - package manager를 임의로 바꾸지 않는다. `npm`, `pnpm`, `yarn`, `bun`은 lockfile과 `packageManager` evidence로 결정한다.
 - monorepo에서는 leaf package root와 상위 package-manager root를 구분한다. leaf에 manager evidence가 없으면 Task workspace 범위 안에서 가장 가까운 상위 `packageManager`/canonical lockfile 경계를 사용한다.
 - mixed/conflicting lockfile이면 자동 정리하거나 하나를 삭제하지 않고 BLOCK한다.
@@ -80,45 +85,37 @@ STATUS=pass
 
 `STATUS=blocked`이면 install command를 실행하지 않는다.
 
-## 2. Package Manager 판정
+## 2. pnpm / Node Runtime 계약
 
-우선순위:
+Node 프로젝트는 별도 Hermes 전용 버전 파일 대신 기존 `package.json`을 source of truth로 사용한다.
 
-```text
-leaf package root의 packageManager / canonical lockfile
-→ 가장 가까운 상위 package-manager root의 packageManager / canonical lockfile
-→ BLOCK (Task workspace 안에서 evidence 없음)
+```json
+{
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "^24.11.0",
+      "onFail": "download"
+    },
+    "packageManager": {
+      "name": "pnpm",
+      "version": ">=12 <13",
+      "onFail": "download"
+    }
+  }
+}
 ```
 
-canonical mapping:
+규칙:
 
-```text
-package-lock.json / npm-shrinkwrap.json → npm
-pnpm-lock.yaml                          → pnpm
-yarn.lock                               → yarn
-bun.lock / bun.lockb                    → bun
-```
-
-`packageManager`와 같은 경계의 lockfile manager가 다르면 BLOCK한다. 같은 경계에 서로 다른 manager의 lockfile이 2종 이상이면 BLOCK한다.
-
-`packageManager`가 version을 pin하면 현재 실행 가능한 manager version과 일치해야 한다. mismatch면 environment compatibility blocker로 분류하고 dependency mutation을 하지 않는다.
-
-lockfile이 아직 없지만 `packageManager`가 authoritative evidence이면 manager별 기본 lockfile 경로를 `CANONICAL_LOCKFILE`로 예측하고 `LOCKFILE_PRESENT=false`를 출력한다. mutation 성공 후 해당 canonical lockfile이 생성/갱신됐는지 확인한다.
-
-## 3. Node Version Evidence
-
-다음을 evidence로 수집한다.
-
-```text
-package.json engines.node
-package.json volta.node
-상위 package-manager root의 engines.node / volta.node
-.nvmrc
-.node-version
-현재 node --version
-```
-
-명시적 major/exact requirement와 현재 Node major가 명백히 충돌하면 `NODE_VERSION_MISMATCH`로 BLOCK한다. 복잡한 semver expression을 helper가 완전히 판정하지 못하면 추측해서 통과시키지 않고 `NODE_REQUIREMENT_CHECK=manual` evidence를 남긴다. 실제 manager가 engine mismatch를 오류로 반환하면 이를 source 문제로 바꾸지 않는다.
+- `devEngines.runtime`이 없거나 Node가 아니면 BLOCK한다.
+- `devEngines.packageManager`가 없거나 pnpm이 아니면 BLOCK한다.
+- npm/yarn/bun lockfile 또는 manager를 fallback으로 선택하지 않는다.
+- `pnpm install`이 runtime version range를 resolve하고 exact runtime/checksum을 `pnpm-lock.yaml`에 기록하도록 맡긴다.
+- DevKit의 standalone pnpm은 bootstrap 역할만 하며 프로젝트의 Node runtime은 이미지에 고정하지 않는다.
+- 검증 명령은 가능한 한 `pnpm run <script>` / `pnpm exec <tool>` 형태로 실행하여 project runtime pin을 따른다.
+- Node/pnpm cache와 runtime state는 `/opt/data/node` 아래 persistent volume을 사용한다.
+- Next.js 프로젝트는 `NEXT_DIST_DIR=.next-hermes`를 받아 `.next`와 Hermes build 산출물을 분리하도록 project config를 구성한다.
 
 ## 4. node_modules / Manifest 계약
 
@@ -249,14 +246,8 @@ Hermes actual terminal guard가 exact package-manager command를 검사해야 �
 기본 command:
 
 ```text
-npm  prod → npm install <pkg...>
-npm  dev  → npm install --save-dev <pkg...>
 pnpm prod → pnpm add <pkg...>
 pnpm dev  → pnpm add -D <pkg...>
-yarn prod → yarn add <pkg...>
-yarn dev  → yarn add -D <pkg...>
-bun  prod → bun add <pkg...>
-bun  dev  → bun add -d <pkg...>
 ```
 
 package manager가 peer conflict/engine incompatibility/security finding으로 실패하면 자동 flag 추가로 밀어붙이지 않는다. 원인을 분류한다.
@@ -296,7 +287,7 @@ package manager의 install/resolve 결과 성공
 Node Dependency Preflight: PASS | BLOCKED
 Package Root: ...
 Package Manager Root: ...
-Package Manager: npm | pnpm | yarn | bun
+Package Manager: pnpm
 Package Manager Source: packageManager | lockfile
 Package Manager Version: ...
 Required Package Manager Version: ... | NONE
@@ -326,7 +317,7 @@ Residual Risk:
 
 - dependency 변경이 아닌 Task에서 편의상 package를 추가하지 않는다.
 - Task에서 승인되지 않은 library/framework 교체는 Standard Flow Requirement Delta 대상이다.
-- 기존 package manager/lockfile convention을 유지한다.
+- package manager/lockfile은 pnpm + pnpm-lock.yaml 단일 convention을 유지한다.
 - `node_modules`는 source of truth가 아니다.
 - security incomplete와 실제 security finding을 구분한다.
 - preflight와 actual guard의 profile state를 서로 다른 HOME/HERMES_HOME으로 실행하지 않는다.
