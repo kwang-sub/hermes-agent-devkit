@@ -74,7 +74,8 @@ LINKED_WORKTREE=true | false
 
 - `PROJECT_VERSION_CONTROL=git`: Workspace는 같은 Git common-dir에 속해야 한다.
 - `PROJECT_VERSION_CONTROL=none + WORKSPACE_VERSION_CONTROL=git`: child Git Repository가 자신의 branch/Base SHA/diff/toolchain을 소유한다.
-- `WORKSPACE_VERSION_CONTROL=none`: `branch-mode=none`, Branch/Base SHA는 `NONE`, Git change scan은 `unsupported-non-git`이다. Hermes는 snapshot을 생성하지 않는다.
+- `PROJECT_VERSION_CONTROL=none + child Non-Git Workspace`: `branch-mode=none`을 사용하며, Project root와 다른 실행 Workspace라면 해당 child 기준 Java toolchain을 준비한다.
+- `WORKSPACE_VERSION_CONTROL=none`: Branch/Base SHA는 `NONE`, Git change scan은 `unsupported-non-git`이다. Hermes는 snapshot을 생성하지 않는다.
 - linked worktree의 stale `.hermes/project.yaml`은 기존처럼 `WORKSPACE_METADATA_IGNORED`로 처리한다.
 - process-local `safe.directory`만 사용하며 global safe.directory 변경은 금지한다.
 
@@ -134,7 +135,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/prepare_dispatch.py" \
   --branch-mode none
 ```
 
-Non-Git 상위 Project 아래 child Git Repository를 선택한 경우에는 `--repo <MANAGED_PROJECT_ROOT>`를 함께 전달하고 `--branch-mode current|create`를 사용한다. Dispatch가 해당 child Workspace의 Java toolchain을 독립적으로 준비한다.
+Non-Git 상위 Project 아래 child Git Repository를 선택한 경우에는 `--repo <MANAGED_PROJECT_ROOT>`를 함께 전달하고 `--branch-mode current|create`를 사용한다. child Non-Git directory를 선택하면 동일하게 `--repo`를 전달하되 `--branch-mode none`을 사용한다. 두 경우 모두 Project root와 다른 실행 Workspace면 Dispatch가 해당 child Workspace의 Java toolchain을 독립적으로 준비한다.
 
 Helper 출력의 `BOARD`는 Managed Project root `.hermes/project.yaml`의 `kanban.board`이며 유일한 board source다.
 
