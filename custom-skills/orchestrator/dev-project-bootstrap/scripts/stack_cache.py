@@ -11,7 +11,7 @@ from typing import Any
 
 
 MANAGED_MARKER = "# managed-by: dev-project-bootstrap"
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 TECHNOLOGY_KEY = "technology"
 
 
