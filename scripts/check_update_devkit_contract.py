@@ -50,7 +50,7 @@ def main() -> int:
         (
             '#requires -Version 5.1',
             '[string]$Branch = "dev"',
-            '[string]$HermesBaseImage = "nousresearch/hermes-agent:latest"',
+            '[string]$HermesBaseImage = "nousresearch/hermes-agent:v2026.9.14"',
             '[switch]$SkipProfileInit',
             'git" -Arguments @("status", "--porcelain=v1"',
             'git" -Arguments @("fetch", "--prune", $Remote)',
@@ -209,6 +209,7 @@ def main() -> int:
     require(
         dockerfile,
         (
+            'ARG HERMES_BASE_IMAGE=nousresearch/hermes-agent:v2026.9.14',
             'FROM ${HERMES_BASE_IMAGE} AS hermes-upstream-patched',
             'FROM hermes-upstream-patched AS hermes-devkit-runtime',
             'ARG GIT_VERSION=2.55.0',

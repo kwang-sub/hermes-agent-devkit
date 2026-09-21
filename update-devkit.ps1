@@ -3,7 +3,7 @@
 <#
 .SYNOPSIS
 Updates the local Hermes Agent DevKit checkout, refreshes the DevKit image from
-the latest Hermes Agent base image, recreates the runtime, and reconciles profiles.
+the pinned stable Hermes Agent base image, recreates the runtime, and reconciles profiles.
 
 .DESCRIPTION
 The script keeps the persistent hermes-data volume intact. It never runs
@@ -15,8 +15,8 @@ Default behavior:
 2. Fetch the remote and fast-forward the current branch.
 3. Classify changed files for warnings and runtime context.
 4. Derive the Hermes-visible Windows Temp path from LOCALAPPDATA.
-5. Temporarily override HERMES_BASE_IMAGE with nousresearch/hermes-agent:latest.
-6. Build with `docker compose build --pull` so the latest Hermes base image is checked.
+5. Temporarily override HERMES_BASE_IMAGE with nousresearch/hermes-agent:v2026.9.14.
+6. Build with `docker compose build --pull` so the pinned stable Hermes base image is refreshed.
 7. Force-recreate the container only after the build succeeds.
 8. Keep the existing hermes-data volume and profile/OAuth/session state intact.
 9. Run init-profiles.ps1 to reconcile the role profile and skill contract.
@@ -33,7 +33,7 @@ param(
     [string]$Branch = "dev",
     [string]$Remote = "origin",
     [string]$Container = "hermes-dev",
-    [string]$HermesBaseImage = "nousresearch/hermes-agent:latest",
+    [string]$HermesBaseImage = "nousresearch/hermes-agent:v2026.9.14",
     [switch]$NoPull,
     [switch]$ForceRebuild,
     [switch]$NoRepair,
@@ -444,7 +444,7 @@ try {
     $env:HERMES_BASE_IMAGE = $HermesBaseImage
     $env:HERMES_WINDOWS_TEMP_CONTAINER_PATH = $WindowsTempContainerPath
 
-    Write-Host "Action            : pull latest Hermes base + build + force-recreate + profile reconcile"
+    Write-Host "Action            : pull pinned Hermes v2026.9.14 base + build + force-recreate + profile reconcile"
     Invoke-Native -FilePath "docker" -Arguments @("compose", "config", "--quiet")
 
     Write-Host "[RUN ] docker compose build --pull"

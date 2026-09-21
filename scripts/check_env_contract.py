@@ -16,7 +16,7 @@ DEFAULTS = {
     "HERMES_IMAGE_NAME": "hermes-dev",
     "HERMES_IMAGE_TAG": "0.1.0",
     "HERMES_DATA_VOLUME_NAME": "hermes-dev-data",
-    "HERMES_BASE_IMAGE": "nousresearch/hermes-agent:v2026.8.16.2",
+    "HERMES_BASE_IMAGE": "nousresearch/hermes-agent:v2026.9.14",
     "HERMES_HOST_WORKSPACE_PATH": "D:/workspace",
     "HERMES_CONTAINER_WORKSPACE_PATH": "/workspace",
     "HERMES_GRADLE_PROJECT_CACHE_ROOT": "/opt/data/gradle/project-cache",
