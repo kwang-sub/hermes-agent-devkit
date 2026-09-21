@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
-description: 승인된 단일 Work Unit 계획·API 규격·Infrastructure Desired State·workspace·branch·Coder 모델과 capability 계약을 최초 등록 알림과 함께 Kanban으로 인계한다.
-version: 0.15.1
+description: 승인된 단일 Work Unit 계획과 Git/Non-Git workspace의 버전관리 계약·Coder 모델·capability를 최초 등록 알림과 함께 Kanban으로 인계한다.
+version: 0.16.0
 author: local
 platforms: [linux]
 metadata:
@@ -13,7 +13,7 @@ metadata:
 
 # dev-workspace-dispatch
 
-사용자 승인까지 완료된 READY **단일 Work Unit** 계획을 승인된 Git workspace/branch 및 Coder model snapshot과 함께 Kanban으로 인계한다. 이 Skill이 신규 Standard Dispatch의 표준이다.
+사용자 승인까지 완료된 READY **단일 Work Unit** 계획을 승인된 workspace와 Coder model snapshot과 함께 Kanban으로 인계한다. Git Workspace는 branch/diff 계약을 유지하고, 승인된 Non-Git Workspace는 branch/diff를 `N/A`로 처리한다. 이 Skill이 신규 Standard Dispatch의 표준이다.
 
 `/opt/data/shared/references/standard-work-unit-rules.md`를 적용한다.
 
@@ -26,11 +26,13 @@ metadata:
 - `API Spec Gate: REQUIRED`이면 `API Spec Status: APPROVED` 및 승인된 Markdown snapshot 확보
 - `API Spec Gate: NOT_REQUIRED`이면 Mode가 `SOURCE_SYNC | AUDIT | NOT_REQUIRED` 중 하나임을 확인
 - `Infrastructure Impact: YES`이면 승인된 Infrastructure Desired State snapshot 확보
-- workspace/current 또는 create branch 승인 완료
-- 기존 변경이 있을 수 있는 workspace라면 reset/restore/stash 없이 전부 보존할지 승인 완료
+- workspace 승인 완료
+- Git Workspace면 current 또는 create branch 승인 완료
+- Non-Git Workspace면 Project 등록 시 `non_git_write_acknowledged=true`가 확인되어 Branch Gate/기존 Git 변경 보존 Gate가 `NOT_REQUIRED`
+- Git Workspace에 기존 변경이 있을 수 있다면 reset/restore/stash 없이 전부 보존할지 승인 완료
 - Coder Model Tier(DEFAULT|PREMIUM) 승인 완료
 - 승인 Tier를 `flow_model_policy.py resolve`로 해석한 `MODEL/PROVIDER` snapshot 확보
-- Primary Repository의 `.hermes/project.yaml` managed metadata 존재
+- Managed Project root의 `.hermes/project.yaml` metadata 존재
 
 Reviewer는 별도 모델 승인을 받지 않고 항상 Reviewer profile DEFAULT를 사용한다.
 
@@ -38,33 +40,47 @@ Reviewer는 별도 모델 승인을 받지 않고 항상 Reviewer profile DEFAUL
 
 ## 2. Project / Workspace 분리 계약
 
-```text
-Project = Primary Repository
-  /workspace/chagok
-  └─ .hermes/project.yaml  ← canonical metadata
+Project와 Workspace의 Version Control을 별도로 판정한다.
 
+```text
+A. 기존 Git Project
+Project = Git Primary Repository
 Workspace = Primary 또는 linked worktree
-  /workspace/chagok
-  /workspace/.worktrees/chagok/investment-data-model
+
+B. Composite Project
+Project = Non-Git managed root
+├─ docs/                    ← Non-Git
+├─ old/service-a/.git       ← nested Git
+└─ new/service-a/.git       ← nested Git
+
+Workspace = 승인된 child Git root 또는 승인된 Non-Git directory
 ```
 
-`prepare_dispatch.py`는 승인된 Workspace에서 `git worktree list --porcelain`로 Primary Worktree를 해석하고 Primary Repository의 `.hermes/project.yaml`만 읽는다. linked worktree마다 별도 Project/Board/Infrastructure metadata를 생성하거나 요구하지 않는다.
+Managed Project root의 `.hermes/project.yaml`이 Project/Board의 canonical metadata다. Git Project에서는 기존처럼 `git worktree list --porcelain`로 Primary Worktree를 해석한다. Non-Git Project에서는 승인 Workspace가 Project root 하위인지 확인하고, Workspace 자체가 정확한 Git root이면 Git branch/diff/toolchain 계약을 사용한다.
 
 Helper 경계:
 
 ```text
-PROJECT_REPOSITORY=<primary worktree>
-PROJECT_METADATA_FILE=<primary>/.hermes/project.yaml
-PROJECT_CONTEXT_SOURCE=primary-worktree
-WORKSPACE_PATH=<approved primary or linked worktree>
+PROJECT_ROOT=<managed project root>
+PROJECT_REPOSITORY=<managed project root>   # legacy compatibility output
+PROJECT_VERSION_CONTROL=git | none
+NON_GIT_WRITE_ACKNOWLEDGED=true | false
+
+WORKSPACE_PATH=<approved workspace>
+WORKSPACE_VERSION_CONTROL=git | none
+NESTED_GIT_WORKSPACE=true | false
 LINKED_WORKTREE=true | false
 ```
 
-linked worktree의 stale `.hermes/project.yaml`은 `WORKSPACE_METADATA_IGNORED`로 처리한다. Git ownership이 달라도 승인 Workspace와 Primary Repository만 process-local `safe.directory`로 신뢰하며 global safe.directory 변경은 금지한다.
+- `PROJECT_VERSION_CONTROL=git`: Workspace는 같은 Git common-dir에 속해야 한다.
+- `PROJECT_VERSION_CONTROL=none + WORKSPACE_VERSION_CONTROL=git`: child Git Repository가 자신의 branch/Base SHA/diff/toolchain을 소유한다.
+- `WORKSPACE_VERSION_CONTROL=none`: `branch-mode=none`, Branch/Base SHA는 `NONE`, Git change scan은 `unsupported-non-git`이다. Hermes는 snapshot을 생성하지 않는다.
+- linked worktree의 stale `.hermes/project.yaml`은 기존처럼 `WORKSPACE_METADATA_IGNORED`로 처리한다.
+- process-local `safe.directory`만 사용하며 global safe.directory 변경은 금지한다.
 
-## 3. 대형 Workspace Fast Path
+## 3. 대형 Git Workspace Fast Path
 
-사용자가 기존 변경 전체 보존을 이미 승인한 경우:
+Git Workspace에서 사용자가 기존 변경 전체 보존을 이미 승인한 경우:
 
 ```text
 prepare_dispatch.py --confirmed-dirty
@@ -107,7 +123,20 @@ python3 "${HERMES_SKILL_DIR}/scripts/prepare_dispatch.py" \
   [--confirmed-dirty]
 ```
 
-Helper 출력의 `BOARD`는 Primary Repository `.hermes/project.yaml`의 `kanban.board`이며 유일한 board source다.
+
+Non-Git Managed Project / Workspace:
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/prepare_dispatch.py" \
+  --task-key "<TASK-KEY>" \
+  --repo "<MANAGED_PROJECT_ROOT>" \
+  --workspace "<APPROVED_WORKSPACE>" \
+  --branch-mode none
+```
+
+Non-Git 상위 Project 아래 child Git Repository를 선택한 경우에는 `--repo <MANAGED_PROJECT_ROOT>`를 함께 전달하고 `--branch-mode current|create`를 사용한다. Dispatch가 해당 child Workspace의 Java toolchain을 독립적으로 준비한다.
+
+Helper 출력의 `BOARD`는 Managed Project root `.hermes/project.yaml`의 `kanban.board`이며 유일한 board source다.
 
 모델은 승인 직후 정확히 1회 해석한다.
 
@@ -250,13 +279,17 @@ Work Unit:
 
 Workspace:
 - Kanban board: <BOARD>
+- Project root: <PROJECT_ROOT>
+- Project version control: git | none
+- Non-Git write acknowledged: true | false
 - Workspace: <WORKSPACE_PATH>
-- Branch mode: current | create
-- Expected branch: <BRANCH>
-- Base branch: <BASE_BRANCH>
-- Base SHA: <BASE_SHA>
-- Existing changes preservation approved: true | false
-- Workspace change scan mode: full | skipped-approved-preservation
+- Workspace version control: git | none
+- Branch mode: current | create | none
+- Expected branch: <BRANCH | NONE>
+- Base branch: <BASE_BRANCH | NONE>
+- Base SHA: <BASE_SHA | NONE>
+- Existing changes preservation approved: true | false | NOT_REQUIRED
+- Workspace change scan mode: full | skipped-approved-preservation | unsupported-non-git
 
 API Specification:
 - API Spec Mode: DESIGN_FIRST | SOURCE_SYNC | AUDIT | NOT_REQUIRED
