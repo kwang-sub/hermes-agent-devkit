@@ -129,41 +129,36 @@ Invoke-DockerCheck -Label "Hermes CLI stable path" -DockerArgs @(
 )
 
 
-$NativeKanbanNotifierCheck = @'
-from gateway import kanban_watchers_notifier as notifier
+Invoke-DockerExactOutputCheck -Label "DevKit Kanban notifier service is running" -DockerArgs @(
+    "exec", $Container, "/package/admin/s6/command/s6-svstat", "-o", "up",
+    "/run/service/devkit-notifier"
+) -Expected "true"
 
-required = {
-    "completed",
-    "blocked",
-    "gave_up",
-    "crashed",
-    "timed_out",
-    "review_requested",
-    "changes_requested",
-    "block_loop_detected",
-}
-terminal = set(getattr(notifier, "TERMINAL_KINDS", ()))
-formatters = set(getattr(notifier, "_EVENT_FORMATTERS", {}).keys())
-missing_terminal = sorted(required - terminal)
-missing_formatters = sorted(required - formatters)
-if missing_terminal:
-    raise SystemExit(f"native notifier missing terminal kinds: {missing_terminal}")
-if missing_formatters:
-    raise SystemExit(f"native notifier missing event formatters: {missing_formatters}")
-if hasattr(notifier, "_devkit_discord_kanban_message"):
-    raise SystemExit("DevKit Discord formatter patch is still installed")
-source = open(notifier.__file__, encoding="utf-8").read()
-for forbidden in ("notification_session_context(", "_devkit_discord_kanban_message("):
-    if forbidden in source:
-        raise SystemExit(f"DevKit notification patch marker remains in native notifier: {forbidden}")
-print("Hermes native Kanban notifier contract valid")
+Invoke-DockerCheck -Label "DevKit Kanban notifier self-test" -DockerArgs @(
+    "exec", "--user", "hermes", $Container,
+    "/opt/hermes/.venv/bin/python", "/opt/devkit/bin/devkit_kanban_notifier.py", "--self-test"
+)
+
+$NotifierOwnershipCheck = @'
+import os
+from hermes_cli.config import load_config
+
+enabled = (os.getenv("HERMES_KANBAN_NOTIFY_ENABLED") or "").strip().lower() in {"1", "true", "yes", "on"}
+if enabled:
+    cfg = load_config()
+    kanban = cfg.get("kanban", {}) if isinstance(cfg, dict) else {}
+    if kanban.get("notify_in_gateway", True) is not False:
+        raise SystemExit("native Hermes Kanban notifier must be disabled when DevKit bridge is enabled")
+    if kanban.get("auto_subscribe_on_create", True) is not False:
+        raise SystemExit("native Hermes Kanban auto-subscribe must be disabled when DevKit bridge is enabled")
+print("DevKit Kanban notifier ownership contract valid")
 '@
 
-$NativeKanbanNotifierCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
+$NotifierOwnershipCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
 if ($LASTEXITCODE -ne 0) {
-    throw "[FAIL] Hermes native Kanban notifier contract. Re-run .\update-devkit.ps1 or rebuild/recreate the container."
+    throw "[FAIL] DevKit Kanban notifier ownership contract. Re-run .\update-devkit.ps1 or rebuild/recreate the container."
 }
-Write-Host "[OK] Hermes native Kanban notifier contract"
+Write-Host "[OK] DevKit Kanban notifier ownership contract"
 
 $MultiplexEnvEntry = @($ContainerEnv | Where-Object { $_ -like "GATEWAY_MULTIPLEX_PROFILES=*" }) | Select-Object -First 1
 if ($MultiplexEnvEntry -ne "GATEWAY_MULTIPLEX_PROFILES=true") {

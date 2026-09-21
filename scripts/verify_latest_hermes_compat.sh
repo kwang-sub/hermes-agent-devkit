@@ -125,7 +125,12 @@ PY
         test -f /opt/custom-skills/shared/dev-official-docs-context/scripts/context7_docs.py
         test -f /opt/custom-skills/shared/dev-official-docs-context/scripts/detect_dependency_versions.py
         /opt/hermes/.venv/bin/python /opt/custom-skills/shared/dev-official-docs-context/scripts/context7_docs.py --self-test
-        /opt/hermes/.venv/bin/python /opt/devkit-tests/test_native_kanban_notification_runtime.py
+        test -x /opt/devkit/bin/devkit_kanban_notifier.py
+        /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_notifier.py --self-test
+        /opt/hermes/.venv/bin/hermes send --help >/dev/null
+        test -f /etc/s6-overlay/s6-rc.d/devkit-notifier/run
+        test -f /etc/s6-overlay/s6-rc.d/user/contents.d/devkit-notifier
+        test -x /etc/cont-init.d/019-devkit-kanban-notifier-policy
         test -f /opt/custom-skills/shared/dev-java-guidelines/SKILL.md
         test -f /opt/custom-skills/shared/dev-java-guidelines/references/official-java-practices.md
         test -f /opt/custom-skills/shared/dev-kotlin-guidelines/SKILL.md

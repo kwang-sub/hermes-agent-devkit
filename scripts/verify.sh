@@ -287,6 +287,9 @@ run_check "Markdown API specification contract" python3 scripts/check_api_spec_c
 run_check "DevKit updater contract" python3 scripts/check_update_devkit_contract.py
 run_check "Hermes CLI SyntaxWarning patch and strict compile" python3 scripts/patch_hermes_syntax_warning.py --self-test
 run_check "Kanban task/profile session-affinity runtime" python3 scripts/devkit_session_affinity.py --self-test
+run_check "DevKit Kanban notification bridge" python3 scripts/devkit_kanban_notifier.py --self-test
+run_check "DevKit notifier s6 run syntax" sh -n docker/devkit-s6-rc.d/devkit-notifier/run
+run_check "DevKit notifier boot policy syntax" sh -n docker/cont-init.d/019-devkit-kanban-notifier-policy
 run_check "Kanban worker session-affinity patch" python3 scripts/patch_hermes_kanban_session_affinity.py --self-test
 run_check "dev-workspace-dispatch regression tests" python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
 run_check "dev-implement-plan workspace verification tests" python3 custom-skills/coder/dev-implement-plan/tests/test_verify_workspace.py

@@ -165,8 +165,8 @@ def main() -> int:
             '_devkit_only_analysis_incomplete',
             'process-global environment',
             'Shared Node dependency capability',
-            'Hermes native Kanban notifier contract',
-            'DevKit Discord formatter patch is still installed',
+            'DevKit Kanban notifier service is running',
+            'DevKit Kanban notifier ownership contract',
             'GATEWAY_MULTIPLEX_PROFILES=true',
             'Default multiplex Gateway service is running',
             '/run/service/gateway-default',
@@ -227,6 +227,11 @@ def main() -> int:
             'patch_hermes_tirith_profile_guard.py /opt/hermes/tools/tirith_security.py',
             "grep -q 'DEVKIT_TIRITH_PROFILE_GUARD_V1' /opt/hermes/tools/tirith_security.py",
             '/opt/hermes/tools/tirith_security.py',
+            'scripts/devkit_kanban_notifier.py /opt/devkit/bin/devkit_kanban_notifier.py',
+            'docker/cont-init.d/019-devkit-kanban-notifier-policy',
+            'docker/devkit-s6-rc.d/',
+            '/opt/devkit/bin/devkit_kanban_notifier.py --self-test',
+            '/opt/hermes/.venv/bin/hermes send --help',
             'patch_hermes_kanban_model_transition.py --self-test',
             "grep -q 'def _devkit_run_flow_model_transition' /opt/hermes/tools/kanban_tools.py",
             '/opt/hermes/.venv/bin/python -m py_compile',
@@ -281,7 +286,9 @@ def main() -> int:
             '_devkit_tirith_subprocess_env',
             '_devkit_only_analysis_incomplete',
             '/opt/hermes/.venv/bin/hermes --help',
-            'test_native_kanban_notification_runtime.py',
+            '/opt/devkit/bin/devkit_kanban_notifier.py --self-test',
+            '/opt/hermes/.venv/bin/hermes send --help',
+            '/etc/s6-overlay/s6-rc.d/devkit-notifier/run',
             '/opt/custom-skills/shared/dev-api-spec/SKILL.md',
             '/opt/custom-skills/shared/dev-node-dependencies/SKILL.md',
             '/opt/data/shared/scripts/flow_model_policy.py',
@@ -306,7 +313,7 @@ def main() -> int:
         "latest Hermes compatibility workflow",
     )
 
-    print("[PASS] DevKit updater + runtime verifier + latest Hermes CI + pinned Git/pnpm runtime + Tirith routed-profile compatibility contract verified.")
+    print("[PASS] DevKit updater + runtime verifier + Notification Bridge + latest Hermes CI + pinned Git/pnpm runtime + Tirith routed-profile compatibility contract verified.")
     return 0
 
 
