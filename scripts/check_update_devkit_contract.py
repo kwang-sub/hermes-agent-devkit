@@ -198,7 +198,7 @@ def main() -> int:
             'ARG PNPM_VERSION=12.5.1',
             'ENV PNPM_HOME=/opt/pnpm',
             'https://get.pnpm.io/install.sh',
-            'PNPM_VERSION="${PNPM_VERSION}"',
+            'PNPM_VERSION="$PNPM_VERSION"',
             '/usr/local/bin/pnpm --version',
             'mkdir -p /tmp/git-worktree-check',
             'git -C /tmp/git-worktree-check init -q',
