@@ -12,6 +12,8 @@ DOCKERFILE = ROOT / "Dockerfile"
 TIRITH_PATCH = ROOT / "scripts/patch_hermes_tirith_profile_guard.py"
 LATEST_COMPAT_SCRIPT = ROOT / "scripts/verify_latest_hermes_compat.sh"
 LATEST_COMPAT_WORKFLOW = ROOT / ".github/workflows/latest-hermes-compat.yml"
+INIT_PROFILES = ROOT / "init-profiles.ps1"
+NOTIFIER_POLICY = ROOT / "docker/cont-init.d/019-devkit-kanban-notifier-policy"
 
 
 def require(text: str, terms: tuple[str, ...], label: str) -> None:
@@ -187,6 +189,30 @@ def main() -> int:
             'Orchestrator notification Gateway is running',
         ),
         "Windows PowerShell-safe runtime Git and fixed multiplex verification",
+    )
+
+    init_profiles = read_required(INIT_PROFILES, "init-profiles.ps1")
+    require(
+        init_profiles,
+        (
+            "function Ensure-KanbanNotificationOwnership",
+            '"config", "set", "kanban.notify_in_gateway", "false"',
+            '"config", "set", "kanban.auto_subscribe_on_create", "false"',
+            "Ensure-KanbanNotificationOwnership",
+        ),
+        "DevKit Notification Bridge profile ownership",
+    )
+
+    notifier_policy = read_required(NOTIFIER_POLICY, "DevKit notifier boot policy")
+    require(
+        notifier_policy,
+        (
+            "kanban.notify_in_gateway false",
+            "kanban.auto_subscribe_on_create false",
+            'for profile_dir in /opt/data/profiles/*',
+            'HERMES_KANBAN_NOTIFY_ENABLED controls only the bridge delivery loop',
+        ),
+        "DevKit Notification Bridge boot ownership",
     )
 
     tirith_patch = read_required(TIRITH_PATCH, "Hermes Tirith routed-profile patch")

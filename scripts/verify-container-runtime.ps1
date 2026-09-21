@@ -140,17 +140,24 @@ Invoke-DockerCheck -Label "DevKit Kanban notifier self-test" -DockerArgs @(
 )
 
 $NotifierOwnershipCheck = @'
-import os
-from hermes_cli.config import load_config
+from pathlib import Path
+import yaml
 
-enabled = (os.getenv("HERMES_KANBAN_NOTIFY_ENABLED") or "").strip().lower() in {"1", "true", "yes", "on"}
-if enabled:
-    cfg = load_config()
-    kanban = cfg.get("kanban", {}) if isinstance(cfg, dict) else {}
-    if kanban.get("notify_in_gateway", True) is not False:
-        raise SystemExit("native Hermes Kanban notifier must be disabled when DevKit bridge is enabled")
-    if kanban.get("auto_subscribe_on_create", True) is not False:
-        raise SystemExit("native Hermes Kanban auto-subscribe must be disabled when DevKit bridge is enabled")
+configs = {
+    "default": Path("/opt/data/config.yaml"),
+    "orchestrator": Path("/opt/data/profiles/orchestrator/config.yaml"),
+    "coder": Path("/opt/data/profiles/coder/config.yaml"),
+    "reviewer": Path("/opt/data/profiles/reviewer/config.yaml"),
+}
+for profile, path in configs.items():
+    if not path.is_file():
+        raise SystemExit(f"{profile}: missing config {path}")
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    kanban = data.get("kanban", {}) if isinstance(data, dict) else {}
+    if kanban.get("notify_in_gateway") is not False:
+        raise SystemExit(f"{profile}: kanban.notify_in_gateway must be false")
+    if kanban.get("auto_subscribe_on_create") is not False:
+        raise SystemExit(f"{profile}: kanban.auto_subscribe_on_create must be false")
 print("DevKit Kanban notifier ownership contract valid")
 '@
 

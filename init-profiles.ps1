@@ -307,6 +307,46 @@ function Ensure-Profile {
     )
 }
 
+function Ensure-KanbanNotificationOwnership {
+    Write-Host "[KANBAN] Enforce DevKit Notification Bridge ownership"
+
+    Run-Docker -Args @(
+        "exec",
+        "--user", "hermes",
+        $Container,
+        $HermesCliPath,
+        "config", "set", "kanban.notify_in_gateway", "false"
+    )
+    Run-Docker -Args @(
+        "exec",
+        "--user", "hermes",
+        $Container,
+        $HermesCliPath,
+        "config", "set", "kanban.auto_subscribe_on_create", "false"
+    )
+
+    foreach ($Profile in @("orchestrator", "coder", "reviewer")) {
+        Run-Docker -Args @(
+            "exec",
+            "--user", "hermes",
+            $Container,
+            $HermesCliPath,
+            "-p", $Profile,
+            "config", "set", "kanban.notify_in_gateway", "false"
+        )
+        Run-Docker -Args @(
+            "exec",
+            "--user", "hermes",
+            $Container,
+            $HermesCliPath,
+            "-p", $Profile,
+            "config", "set", "kanban.auto_subscribe_on_create", "false"
+        )
+    }
+
+    Write-Host "[OK] DevKit Notification Bridge owns Kanban notifications"
+}
+
 function Ensure-BundledSkillOptOut {
     param(
         [Parameter(Mandatory = $true)]
@@ -814,6 +854,11 @@ Ensure-Profile `
 Ensure-Profile `
     -Name "reviewer" `
     -Description "Reviews implementation changes and requests corrections or approves the task."
+
+Write-Host ""
+Write-Host "=== Configure Kanban Notification Ownership ==="
+
+Ensure-KanbanNotificationOwnership
 
 Write-Host ""
 Write-Host "=== Apply Profile Skill Policy ==="

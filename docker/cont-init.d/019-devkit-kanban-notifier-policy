@@ -2,11 +2,6 @@
 # shellcheck shell=sh
 set -eu
 
-case "${HERMES_KANBAN_NOTIFY_ENABLED:-false}" in
-    1|true|TRUE|True|yes|YES|Yes) ;;
-    *) exit 0 ;;
-esac
-
 export HOME=/opt/data
 export HERMES_HOME=/opt/data
 HERMES_CLI=/opt/hermes/.venv/bin/hermes
@@ -19,16 +14,18 @@ set_config() {
     fi
 }
 
-# DevKit Notification Bridge owns Kanban delivery when enabled.
-# Disable Hermes' native notifier and automatic per-session subscriptions before
-# the gateway profile slots are reconciled/started.
+# DevKit owns Kanban notification delivery through the separate
+# devkit-notifier process. Keep Hermes' native notifier and automatic
+# session subscriptions disabled even when user-facing notifications are off;
+# HERMES_KANBAN_NOTIFY_ENABLED controls only the bridge delivery loop.
 set_config "$HERMES_CLI" config set kanban.notify_in_gateway false >/dev/null
 set_config "$HERMES_CLI" config set kanban.auto_subscribe_on_create false >/dev/null
 
 for profile_dir in /opt/data/profiles/*; do
     [ -d "$profile_dir" ] || continue
     profile="$(basename "$profile_dir")"
+    set_config "$HERMES_CLI" -p "$profile" config set kanban.notify_in_gateway false >/dev/null
     set_config "$HERMES_CLI" -p "$profile" config set kanban.auto_subscribe_on_create false >/dev/null
 done
 
-echo "[devkit-notifier] native Kanban notifier disabled; DevKit bridge owns delivery"
+echo "[devkit-notifier] native Kanban notifier/auto-subscribe disabled; DevKit bridge owns delivery"

@@ -31,7 +31,7 @@ DISCORD_BOT_TOKEN=<Discord Bot Token>
 .\update-devkit.ps1
 ```
 
-Bridge가 활성화되면 boot policy가 Hermes native `kanban.notify_in_gateway`와 `kanban.auto_subscribe_on_create`를 끈다. 따라서 한 Task에 Native 알림과 DevKit 알림이 중복 전달되지 않는다.
+DevKit boot/profile-init policy는 Hermes native `kanban.notify_in_gateway`와 `kanban.auto_subscribe_on_create`를 항상 `false`로 유지한다. `HERMES_KANBAN_NOTIFY_ENABLED`는 오직 `devkit-notifier`의 실제 전송 여부만 제어하므로 Native/Bridge 중복 알림이 생기지 않는다.
 
 ## 이벤트
 
