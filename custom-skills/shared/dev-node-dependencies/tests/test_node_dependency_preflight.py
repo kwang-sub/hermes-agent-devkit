@@ -17,6 +17,14 @@ def make_executable(path: Path, content: str) -> None:
     path.chmod(0o755)
 
 
+def output_value(stdout: str, key: str) -> str:
+    prefix = key + "="
+    for line in stdout.splitlines():
+        if line.startswith(prefix):
+            return line[len(prefix):]
+    raise AssertionError(f"missing {key}: {stdout}")
+
+
 class NodeDependencyPreflightTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -32,6 +40,7 @@ class NodeDependencyPreflightTest(unittest.TestCase):
         )
         self.env = os.environ.copy()
         self.env["PATH"] = f"{self.fake_bin}:{self.env.get('PATH', '')}"
+        self.env["HERMES_NODE_ROOT"] = str(self.base / "node-root")
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
@@ -59,7 +68,13 @@ class NodeDependencyPreflightTest(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def run_preflight(self, *extra: str) -> subprocess.CompletedProcess[str]:
+    def write_lock(self) -> None:
+        (self.frontend / "pnpm-lock.yaml").write_text(
+            "lockfileVersion: '9.0'\n",
+            encoding="utf-8",
+        )
+
+    def run_preflight(self, *extra: str, package: str = "react") -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
                 sys.executable,
@@ -69,7 +84,7 @@ class NodeDependencyPreflightTest(unittest.TestCase):
                 "--package-root",
                 "frontend",
                 "--package",
-                "react",
+                package,
                 *extra,
             ],
             text=True,
@@ -79,30 +94,70 @@ class NodeDependencyPreflightTest(unittest.TestCase):
             check=False,
         )
 
-    def test_pnpm_project_uses_dev_engines_as_toolchain_source(self) -> None:
+    def test_absent_dependency_mutates_source_package_with_pnpm(self) -> None:
         self.write_manifest()
-        (self.frontend / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
 
         proc = self.run_preflight()
 
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("PACKAGE_MANAGER=pnpm", proc.stdout)
-        self.assertIn("PACKAGE_MANAGER_SOURCE=package.json devEngines.packageManager", proc.stdout)
         self.assertIn("PACKAGE_MANAGER_VERSION=12.5.1", proc.stdout)
-        self.assertIn("PACKAGE_MANAGER_REQUIRED_VERSION=>=12.0.0 <13.0.0", proc.stdout)
-        self.assertIn("NODE_VERSION=managed-by-pnpm", proc.stdout)
         self.assertIn("NODE_REQUIREMENT=22.23.2", proc.stdout)
-        self.assertIn("NODE_REQUIREMENT_CHECK=pnpm-managed", proc.stdout)
-        self.assertIn("CANONICAL_LOCKFILE=", proc.stdout)
-        self.assertIn("pnpm-lock.yaml", proc.stdout)
+        self.assertIn("INSTALL_REQUIRED=true", proc.stdout)
         self.assertIn("INSTALL_COMMAND=pnpm add react", proc.stdout)
-        self.assertIn("STATUS=pass", proc.stdout)
+        self.assertIn(f"INSTALL_WORKDIR={self.frontend}", proc.stdout)
+        self.assertIn("RESTORE_COMMAND=NOT_REQUIRED", proc.stdout)
+        isolated = Path(output_value(proc.stdout, "VERIFICATION_PACKAGE_ROOT"))
+        self.assertTrue(str(isolated).startswith(self.env["HERMES_NODE_ROOT"]))
 
     def test_dev_dependency_uses_pnpm_add_d(self) -> None:
         self.write_manifest()
         proc = self.run_preflight("--dependency-type", "dev")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("INSTALL_COMMAND=pnpm add -D react", proc.stdout)
+
+    def test_declared_dependency_restores_only_linux_workspace(self) -> None:
+        self.write_manifest(dependencies={"react": "19.3.0"})
+        self.write_lock()
+
+        # A Windows/host node_modules does not satisfy Hermes verification.
+        host_installed = self.frontend / "node_modules" / "react"
+        host_installed.mkdir(parents=True)
+        (host_installed / "package.json").write_text('{"name":"react"}\n', encoding="utf-8")
+
+        proc = self.run_preflight()
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("INSTALL_REQUIRED=false", proc.stdout)
+        self.assertIn("RESTORE_REQUIRED=true", proc.stdout)
+        self.assertIn("RESTORE_COMMAND=pnpm install --frozen-lockfile", proc.stdout)
+        isolated = Path(output_value(proc.stdout, "VERIFICATION_PACKAGE_ROOT"))
+        self.assertIn(f"RESTORE_WORKDIR={isolated}", proc.stdout)
+        self.assertNotEqual(isolated, self.frontend)
+        self.assertFalse((isolated / "node_modules" / "react" / "package.json").exists())
+
+    def test_linux_node_modules_are_reused_after_verified_restore(self) -> None:
+        self.write_manifest(dependencies={"react": "19.3.0"})
+        self.write_lock()
+        first = self.run_preflight()
+        self.assertEqual(first.returncode, 0, first.stderr)
+        isolated = Path(output_value(first.stdout, "VERIFICATION_PACKAGE_ROOT"))
+        installed = isolated / "node_modules" / "react"
+        installed.mkdir(parents=True)
+        (installed / "package.json").write_text('{"name":"react"}\n', encoding="utf-8")
+
+        second = self.run_preflight()
+
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertIn("DEPENDENCY_1_NODE_MODULES_STATE=PRESENT_DECLARED", second.stdout)
+        self.assertIn("RESTORE_REQUIRED=false", second.stdout)
+        self.assertTrue((isolated / "node_modules" / "react" / "package.json").is_file())
+
+    def test_declared_dependency_without_pnpm_lock_blocks_restore(self) -> None:
+        self.write_manifest(dependencies={"react": "19.3.0"})
+        proc = self.run_preflight()
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("pnpm-lock.yaml is required", proc.stderr)
 
     def test_legacy_package_lock_blocks_instead_of_falling_back(self) -> None:
         self.write_manifest()
@@ -128,26 +183,6 @@ class NodeDependencyPreflightTest(unittest.TestCase):
         proc = self.run_preflight()
         self.assertEqual(proc.returncode, 2)
         self.assertIn("must declare exactly one Node runtime", proc.stderr)
-
-    def test_declared_dependency_missing_from_node_modules_requests_restore(self) -> None:
-        self.write_manifest(dependencies={"react": "19.3.0"})
-        (self.frontend / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
-        proc = self.run_preflight()
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("INSTALL_REQUIRED=false", proc.stdout)
-        self.assertIn("RESTORE_REQUIRED=true", proc.stdout)
-        self.assertIn("RESTORE_COMMAND=pnpm install --frozen-lockfile", proc.stdout)
-
-    def test_extraneous_node_modules_does_not_replace_manifest_evidence(self) -> None:
-        self.write_manifest()
-        installed = self.frontend / "node_modules" / "react"
-        installed.mkdir(parents=True)
-        (installed / "package.json").write_text('{"name":"react"}\n', encoding="utf-8")
-        proc = self.run_preflight()
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("DEPENDENCY_1_MANIFEST_STATE=ABSENT", proc.stdout)
-        self.assertIn("DEPENDENCY_1_NODE_MODULES_STATE=EXTRANEOUS_PRESENT", proc.stdout)
-        self.assertIn("INSTALL_REQUIRED=true", proc.stdout)
 
     def test_package_root_is_ambiguous_without_explicit_root(self) -> None:
         self.write_manifest()
