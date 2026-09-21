@@ -99,7 +99,10 @@ USER root
 COPY --chmod=0755 scripts/devkit_kanban_notifier.py /opt/devkit/bin/devkit_kanban_notifier.py
 COPY --chmod=0755 docker/cont-init.d/019-devkit-kanban-notifier-policy /etc/cont-init.d/019-devkit-kanban-notifier-policy
 COPY --chmod=0755 docker/devkit-svscan.d/devkit-notifier/run /opt/devkit/svscan/devkit-notifier/run
-RUN sed -i 's/\r$//' /opt/devkit/svscan/devkit-notifier/run \
+RUN sed -i 's/\r$//' \
+        /etc/cont-init.d/019-devkit-kanban-notifier-policy \
+        /opt/devkit/svscan/devkit-notifier/run \
+    && sh -n /etc/cont-init.d/019-devkit-kanban-notifier-policy \
     && sh -n /opt/devkit/svscan/devkit-notifier/run \
     && /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_notifier.py --self-test \
     && /opt/hermes/.venv/bin/hermes send --help >/dev/null
