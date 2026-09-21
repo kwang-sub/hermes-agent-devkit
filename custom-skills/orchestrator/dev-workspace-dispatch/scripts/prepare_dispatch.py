@@ -425,9 +425,8 @@ def main() -> int:
         repo = project_root
 
     workspace_toolchain = "not-required"
-    if project_version_control == "none" and version_control == "git":
-        assert workspace_git is not None
-        workspace_toolchain = ensure_executable_workspace_toolchain(workspace_git)
+    if project_version_control == "none" and workspace.resolve() != project_root.resolve():
+        workspace_toolchain = ensure_executable_workspace_toolchain(workspace)
 
     if version_control == "none":
         if args.branch_mode != "none":
