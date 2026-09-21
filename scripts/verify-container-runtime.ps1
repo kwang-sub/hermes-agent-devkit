@@ -94,6 +94,9 @@ Invoke-DockerExactOutputCheck -Label "Relative Git worktree paths" -DockerArgs @
     "exec", "--user", "hermes", $Container,
     "/usr/local/bin/git", "config", "--system", "--bool", "--get", "worktree.useRelativePaths"
 ) -Expected "true"
+Invoke-DockerExactOutputCheck -Label "Pinned pnpm standalone runtime" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "/usr/local/bin/pnpm", "--version"
+) -Expected "12.5.1"
 Invoke-DockerCheck -Label "Default Java 17 command" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "/usr/local/bin/java", "-version"
 )
