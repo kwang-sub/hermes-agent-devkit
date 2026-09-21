@@ -261,6 +261,7 @@ def main() -> int:
             'mcp_servers.{HERMES_TOOLS_MCP_SERVER_NAME}.env.{key}',
             'kanban_show',
             'expected_run_id',
+            'obsolete DevKit kanban worker-context module still exists',
         ),
         "update-devkit runtime Git/Tirith/multiplex verification",
     )
@@ -273,7 +274,6 @@ def main() -> int:
             'HERMES_KANBAN_NOTIFY_PROFILE=orchestrator',
             '/run/service/gateway-orchestrator',
             'Orchestrator notification Gateway is running',
-            'devkit_kanban_worker_context.py',
             'kanban_worker_context missing from Hermes registry',
         ),
         "Windows PowerShell-safe runtime Git and fixed multiplex verification",
