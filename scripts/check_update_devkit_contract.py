@@ -156,6 +156,7 @@ def main() -> int:
             '_devkit_only_analysis_incomplete',
             'process-global environment',
             'Shared Node dependency capability',
+            'Standalone pnpm runtime',
         ),
         "update-devkit runtime Git/Tirith verification",
     )
@@ -204,6 +205,9 @@ def main() -> int:
             'patch_hermes_kanban_model_transition.py --self-test',
             "grep -q 'def _devkit_run_flow_model_transition' /opt/hermes/tools/kanban_tools.py",
             '/opt/hermes/.venv/bin/python -m py_compile',
+            'ENV PNPM_HOME=/opt/pnpm',
+            'ENV HERMES_NODE_ROOT=/opt/data/node',
+            'https://get.pnpm.io/install.sh',
         ),
         "Dockerfile latest-Hermes/Git compatibility stage",
     )
