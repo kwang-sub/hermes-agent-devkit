@@ -10,10 +10,9 @@ HERMES_KANBAN_NOTIFY_PLATFORM=discord
 HERMES_KANBAN_NOTIFY_TARGET=
 HERMES_KANBAN_NOTIFY_DELIVERY_MODE=notify
 HERMES_KANBAN_NOTIFY_CHAT_TYPE=channel
-HERMES_KANBAN_NOTIFY_PROFILE=orchestrator
 ```
 
-`HERMES_KANBAN_NOTIFY_PROFILE`은 실제 알림 adapter를 소유하고 실행 중인 Gateway Profile이다. DevKit의 Standard/Fast Flow 알림 기본 소유자는 `orchestrator`이다. Hermes의 root `gateway-default` slot은 persisted `gateway_state.json`에 따라 정상적으로 DOWN일 수 있으므로 notification owner 기본값으로 사용하지 않는다. 사용자가 별도 Gateway profile을 알림 소유자로 운영하는 경우에만 이 값을 명시적으로 override한다.
+DevKit은 Kanban notification의 notifier profile을 `default`로 내부 고정한다. `default` Gateway 하나가 `gateway.multiplex_profiles=true`로 `orchestrator`, `coder`, `reviewer`를 함께 서비스하며, `orchestrator`는 Workflow 역할이지 별도 notification Gateway 소유자가 아니다. 이 값은 사용자 환경에 따라 달라지는 설정이 아니므로 `.env` override를 제공하지 않는다.
 
 기본값은 비활성화이며, 알림 등록 실패는 Coder/Reviewer 작업을 차단하지 않는다.
 
@@ -27,7 +26,6 @@ HERMES_KANBAN_NOTIFY_PLATFORM=discord
 HERMES_KANBAN_NOTIFY_TARGET=<Discord Channel ID>
 HERMES_KANBAN_NOTIFY_DELIVERY_MODE=notify
 HERMES_KANBAN_NOTIFY_CHAT_TYPE=channel
-HERMES_KANBAN_NOTIFY_PROFILE=orchestrator
 DISCORD_BOT_TOKEN=<Discord Bot Token>
 ```
 
@@ -80,7 +78,7 @@ hermes kanban notify-subscribe <TASK_ID>
   --platform <platform>
   --chat-id <target>
   --delivery-mode <mode>
-  --notifier-profile <profile>
+  --notifier-profile default
   [--chat-type <type>]
 ```
 
@@ -165,10 +163,9 @@ Discord에서 다른 Hermes Gateway 플랫폼으로 변경할 때 workflow/skill
 ```dotenv
 HERMES_KANBAN_NOTIFY_PLATFORM=slack
 HERMES_KANBAN_NOTIFY_TARGET=<Slack Channel ID>
-HERMES_KANBAN_NOTIFY_PROFILE=<Slack adapter를 소유한 Gateway Profile>
 ```
 
-플랫폼 인증 환경변수만 해당 플랫폼 규격에 맞게 구성한다. 사용하지 않는 플랫폼의 token은 로컬 `.env`에서 제거하거나 비활성화한다.
+플랫폼 인증 환경변수만 해당 플랫폼 규격에 맞게 구성한다. notifier profile은 플랫폼과 무관하게 `default`로 유지된다. 사용하지 않는 플랫폼의 token은 로컬 `.env`에서 제거하거나 비활성화한다.
 
 ## 실패 정책
 
@@ -184,6 +181,6 @@ NOTIFY_STATUS=warning
 - `disabled`: 알림 비활성화. 정상 상태.
 - `warning`: 설정 누락, Gateway/CLI 오류, 20초 timeout 등. 개발 Task는 계속 진행.
 
-구독 성공 시 실제 소유 profile도 `NOTIFY_PROFILE=<profile>`로 출력한다.
+구독 성공 시 고정 소유 profile을 `NOTIFY_PROFILE=default`로 출력한다.
 
 알림 실패 또는 세션 정보 조회 실패를 이유로 Task를 `BLOCKED` 처리하거나 별도 notification Task를 만들지 않는다.
