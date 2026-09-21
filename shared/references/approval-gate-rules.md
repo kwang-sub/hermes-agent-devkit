@@ -275,8 +275,8 @@ NO_EXTRA_KANBAN_CONFIRMATION
 → skill preflight
 → kanban_create
 → kanban_show
-→ native notification subscription attempt
 → kanban_unblock
+→ DevKit Notification Bridge 비동기 관찰
 → worker dispatch
 ```
 

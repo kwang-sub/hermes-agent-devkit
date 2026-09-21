@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
-description: 승인된 단일 Work Unit 계획과 Git/Non-Git workspace의 버전관리 계약·Coder 모델·capability를 Kanban으로 인계하고 Hermes native 알림 구독을 best-effort로 연결한다.
-version: 0.17.0
+description: 승인된 단일 Work Unit 계획과 Git/Non-Git workspace의 버전관리 계약·Coder 모델·capability를 Kanban으로 인계한다. 알림은 동일 컨테이너의 DevKit Notification Bridge가 task_events를 비동기로 관찰한다.
+version: 0.18.0
 author: local
 platforms: [linux]
 metadata:
@@ -186,7 +186,7 @@ Data DESIGN + Follow-up MIGRATION
 
 `dev-flow-model-policy`는 runtime pin 필수다. preflight 실패 시 dispatch하지 않는다.
 
-## 7. Kanban 생성·Hermes native 알림 단일 경로
+## 7. Kanban 생성·Dispatch 단일 경로
 
 ```text
 prepare_dispatch.py 정확히 한 번
@@ -198,41 +198,31 @@ prepare_dispatch.py 정확히 한 번
 → kanban_create(board=BOARD, initial_status="blocked", model=MODEL, provider=PROVIDER, skills=VALIDATED_SKILLS + dev-flow-model-policy)
 → kanban_show 정확히 1회
 → 등록 read-back 계약 검증
-→ subscribe_notification.py 정확히 1회 (--board BOARD --task-id TASK)
-→ NOTIFY_STATUS=subscribed | disabled | warning
 → kanban_unblock tool 정확히 1회
 → ready 전환 후 worker dispatch
 ```
 
-Kanban **등록 성공 기준은 `kanban_create + kanban_show` read-back**이다. 별도 custom registration event나 Discord 전달 ACK를 만들지 않는다.
+Kanban 등록 성공 기준은 `kanban_create + kanban_show` read-back이다. `initial_status="blocked"`는 알림 Gate가 아니라 **검증 완료 전 worker claim을 막는 짧은 dispatch barrier**다.
 
-`initial_status="blocked"`는 알림 성공 Gate가 아니다. worker가 terminal event를 만들기 전에 native subscription을 먼저 시도하기 위한 짧은 순서 보장 장치다. 구독 시도가 끝나면 결과가 `subscribed`, `disabled`, `warning` 중 무엇이든 Task를 unblock한다.
+알림은 dispatch와 독립적이다. 같은 `hermes-dev` 컨테이너에서 s6가 감독하는 `devkit-notifier` 프로세스가 Hermes의 기존 `task_events`를 read-only로 관찰한다.
 
 ```text
-task read-back
-→ Hermes native notify-subscribe
-→ native notify-list read-back (best-effort)
-→ kanban_unblock
+Hermes task_events
+→ DevKit Notification Bridge
+→ 업무용 한국어 formatter
+→ hermes send
+→ Discord / configured platform
 ```
 
-알림 전달, retry, cursor/dedup은 Hermes Gateway native notifier가 소유한다. 설정 누락, Gateway/adapter 오류, subscription read-back 실패는 `NOTIFY_STATUS=warning`으로 기록하지만 개발 Task lifecycle을 차단하지 않는다.
-
-helper 호출은 반드시 아래 형식을 그대로 사용한다. `--board`와 `--task-id`는 둘 다 필수이며 positional argument나 ambient/default board fallback으로 바꾸지 않는다.
-
-```bash
-python3 "${HERMES_SKILL_DIR}/scripts/subscribe_notification.py" \
-  --board "${BOARD}" \
-  --task-id "${TASK_ID}"
-```
+Bridge는 Hermes source를 patch하거나 custom task event를 삽입하지 않는다. 최초 카드 등록은 Hermes가 원래 기록하는 `created` event로 알리고, `initial_status` 때문에 생성되는 내부 `blocked` event는 알림에서 제외한다. Bridge 전송 실패는 개발 Task lifecycle을 차단하지 않으며 자체 cursor를 성공 전송 뒤에만 전진시켜 재시도한다.
 
 호출 횟수 계약:
 
 ```text
-prepare_dispatch.py 정확히 1회
+prepare_dispatch.py 정확히 한 번
 persist_infrastructure_desired.py 0회 또는 정확히 1회
 kanban_create tool 정확히 1회
 kanban_show tool 정확히 1회
-subscribe_notification.py 정확히 1회
 kanban_unblock tool 정확히 1회
 ```
 
@@ -249,11 +239,11 @@ default/current board fallback
 Infrastructure Impact=YES인데 Desired State persistence 생략
 Plan에 없는 Infrastructure Desired 값을 dispatch 시 재추론
 Infrastructure metadata에 credential/secret 기록
+native notify-subscribe를 DevKit dispatch 경로에서 호출
 custom registration event 생성
 registration delivery ACK Gate
 Discord formatter/session-context를 Hermes notifier source에 patch
-알림 warning을 이유로 blocked 상태 유지
-알림 warning 뒤 kanban_block 재호출
+알림 전송 실패를 이유로 blocked 상태 유지
 Coder 모델 승인 없이 create/unblock
 Requirement Delta가 필요한 작업을 승인 없이 create/unblock
 API Spec Gate가 REQUIRED인데 APPROVED 없이 create/unblock
@@ -360,6 +350,5 @@ python3 scripts/check_infrastructure_capability_contract.py
 python3 scripts/check_standard_work_unit_contract.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
 python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_persist_infrastructure_desired.py
-python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py
 python3 shared/scripts/test_flow_model_policy.py
 ```

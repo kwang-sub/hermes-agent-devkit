@@ -31,7 +31,6 @@ START
 → AUTO_DISPATCH_CURRENT_UNIT_ONLY
 → SKILL_PREFLIGHT
 → KANBAN_CREATED
-→ NOTIFICATION_SUBSCRIPTION_ATTEMPTED
 → coder ↔ reviewer
 → DONE | BLOCKED
 ```
@@ -179,9 +178,8 @@ NO_EXTRA_KANBAN_CONFIRMATION
 → dev-skill-preflight
 → kanban_create tool 1회
 → kanban_show tool 1회
-→ native notification subscribe (best-effort)
-→ NOTIFY_STATUS=subscribed | disabled | warning
 → unblock / dispatch
+→ DevKit Notification Bridge는 task_events를 비동기로 관찰
 ```
 
 승인 Gate 중 working-tree 전체 scan을 하지 않는다. 기존 변경 보존 승인 시 `skipped-approved-preservation`을 사용한다. Coder는 `change_summary.py --include`, Reviewer는 `review_context.py --include`로 bounded scope만 본다. 세부 성능 규칙은 `references/dispatch-efficiency.md`를 따른다.
