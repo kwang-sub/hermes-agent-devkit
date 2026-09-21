@@ -85,27 +85,37 @@ def parse_args() -> argparse.Namespace:
             "and report existing tracked/hardcoded configuration without rewriting it."
         )
     )
-    parser.add_argument("--repo", required=True, help="Absolute path to a Git repository root")
+    parser.add_argument("--repo", required=True, help="Absolute path to a project root")
+    parser.add_argument(
+        "--allow-non-git",
+        action="store_true",
+        help="Allow security inspection without Git tracked-file evidence after explicit acknowledgement.",
+    )
     return parser.parse_args()
 
 
-def resolve_repo(path_text: str) -> Path:
+def resolve_project_root(path_text: str, *, allow_non_git: bool) -> tuple[Path, str]:
     requested = Path(path_text)
     if not requested.is_absolute():
         raise ConfigSecurityError(f"--repo must be absolute: {requested}")
     if not requested.is_dir():
-        raise ConfigSecurityError(f"repository path does not exist or is not a directory: {requested}")
+        raise ConfigSecurityError(f"project path does not exist or is not a directory: {requested}")
 
+    requested = requested.resolve()
     result = run(["git", "-C", str(requested), "rev-parse", "--show-toplevel"], check=False)
     if result.returncode != 0:
-        raise ConfigSecurityError(f"not a Git repository: {requested}")
+        if not allow_non_git:
+            raise ConfigSecurityError(
+                "project is not a Git repository; explicit Non-Git acknowledgement is required"
+            )
+        return requested, "none"
 
     root = Path(result.stdout.strip()).resolve()
-    if root != requested.resolve():
+    if root != requested:
         raise ConfigSecurityError(
-            f"--repo must point at the Git repository root; requested={requested.resolve()}, root={root}"
+            f"--repo must point at the Git repository root; requested={requested}, root={root}"
         )
-    return root
+    return root, "git"
 
 
 def tracked_paths(repo: Path) -> set[str]:
@@ -339,8 +349,8 @@ def key_requires_externalization(key: str) -> bool:
     return False
 
 
-def hardcoded_spring_config(repo: Path) -> list[str]:
-    tracked = tracked_paths(repo)
+def hardcoded_spring_config(repo: Path, *, tracked: set[str] | None = None) -> list[str]:
+    tracked = tracked_paths(repo) if tracked is None else tracked
     findings: list[str] = []
     for relative in sorted(tracked):
         name = Path(relative).name
@@ -362,12 +372,23 @@ def hardcoded_spring_config(repo: Path) -> list[str]:
     return findings
 
 
-def ensure_configuration_security(repo: Path) -> dict[str, object]:
+def ensure_configuration_security(
+    repo: Path,
+    *,
+    version_control: str = "git",
+) -> dict[str, object]:
     # Existing projects are preserve-first. Security findings are reported, but
     # bootstrap does not rewrite, untrack, or block legacy configuration solely
     # because it is already committed.
-    tracked_protected = protected_tracked_paths(repo)
-    hardcoded = hardcoded_spring_config(repo)
+    if version_control == "git":
+        tracked = tracked_paths(repo)
+        tracked_protected = sorted(
+            path for path in tracked if is_protected_runtime_file(path)
+        )
+        hardcoded = hardcoded_spring_config(repo, tracked=tracked)
+    else:
+        tracked_protected = []
+        hardcoded = []
 
     frontend_roots, backend_roots = discover_manifest_roots(repo)
     created: list[str] = []
@@ -394,6 +415,8 @@ def ensure_configuration_security(repo: Path) -> dict[str, object]:
         *(f"tracked-protected:{path}" for path in tracked_protected),
         *(f"hardcoded-spring:{item}" for item in hardcoded),
     ]
+    if version_control == "none":
+        warnings.append("version-control:none-tracked-file-audit-unavailable")
 
     return {
         "frontend_roots": sorted(str(path.relative_to(repo) or Path(".")) for path in frontend_roots),
@@ -403,13 +426,20 @@ def ensure_configuration_security(repo: Path) -> dict[str, object]:
         "tracked_protected": tracked_protected,
         "hardcoded_spring": hardcoded,
         "warnings": warnings,
+        "version_control": version_control,
     }
 
 
 def main() -> int:
     args = parse_args()
-    repo = resolve_repo(args.repo)
-    result = ensure_configuration_security(repo)
+    repo, version_control = resolve_project_root(
+        args.repo,
+        allow_non_git=args.allow_non_git,
+    )
+    result = ensure_configuration_security(
+        repo,
+        version_control=version_control,
+    )
 
     for path in result["tracked_protected"]:
         print(
@@ -422,7 +452,15 @@ def main() -> int:
             file=sys.stderr,
         )
 
+    if version_control == "none":
+        print(
+            "[WARN] Non-Git project: tracked secret/config audit is unavailable; "
+            "runtime configuration discovery continues without Git evidence.",
+            file=sys.stderr,
+        )
+
     warning_count = len(result["warnings"])
+    print(f"VERSION_CONTROL={version_control}")
     print(f"CONFIG_SECURITY={'warn' if warning_count else 'pass'}")
     print(f"CONFIG_SECURITY_WARNING_COUNT={warning_count}")
     print(f"CONFIG_FRONTEND_ROOTS={len(result['frontend_roots'])}")
