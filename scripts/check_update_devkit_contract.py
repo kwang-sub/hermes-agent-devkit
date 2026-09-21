@@ -90,7 +90,7 @@ def main() -> int:
     if "Profile initialization is intentionally not run automatically" in text:
         raise SystemExit("update-devkit.ps1 still documents manual-only profile initialization")
 
-    if text.count('Restart-UpdatedUpdater \`') != 1:
+    if text.count("        Restart-UpdatedUpdater `") != 1:
         raise SystemExit(
             "update-devkit.ps1 must re-exec exactly once when its own file changes"
         )
