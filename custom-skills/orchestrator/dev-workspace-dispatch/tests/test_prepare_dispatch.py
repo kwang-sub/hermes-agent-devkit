@@ -414,5 +414,32 @@ profiles:
         self.assertIn("--branch-mode none", proc.stderr)
 
 
+    def test_non_git_project_can_dispatch_nested_non_git_workspace(self) -> None:
+        project = Path(self.tempdir.name) / "aggregate-non-git"
+        child = project / "legacy" / "service"
+        child.mkdir(parents=True)
+        write_non_git_metadata(project)
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--task-key", "LEGACY-CHILD-001",
+                "--repo", str(project),
+                "--workspace", str(child),
+                "--branch-mode", "none",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("PROJECT_VERSION_CONTROL=none", proc.stdout)
+        self.assertIn("WORKSPACE_VERSION_CONTROL=none", proc.stdout)
+        self.assertIn("WORKSPACE_TOOLCHAIN=none", proc.stdout)
+        self.assertIn("BRANCH=NONE", proc.stdout)
+        self.assertIn("EXISTING_CHANGES_PRESERVATION_APPROVED=NOT_REQUIRED", proc.stdout)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
