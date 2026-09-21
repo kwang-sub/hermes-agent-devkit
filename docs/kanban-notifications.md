@@ -74,7 +74,9 @@ Worker Session Affinity는 알림과 독립적으로 유지한다. 동일 Task/P
 
 ## Cursor / Retry
 
-최초 도입 시 기존 board의 현재 최대 event id를 기준점으로 잡아 과거 알림을 재생하지 않는다. 이후 생성된 새 event부터 처리한다.
+컨테이너 boot의 `019-devkit-kanban-notifier-policy`가 Gateway profile reconciliation보다 먼저 persistent cursor를 seed한다. 따라서 최초 도입 이전의 과거 event는 재생하지 않으면서, 그 boot barrier 뒤에 생성되는 첫 `created` event부터 놓치지 않는다.
+
+`HERMES_KANBAN_NOTIFY_ENABLED=false`인 동안에도 Bridge 프로세스는 전송만 생략하고 cursor는 계속 따라간다. 나중에 다시 활성화해도 비활성 기간의 과거 이벤트를 몰아서 재생하지 않는다.
 
 ```text
 event 읽기

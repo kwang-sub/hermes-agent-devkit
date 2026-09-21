@@ -211,6 +211,7 @@ def main() -> int:
             "kanban.auto_subscribe_on_create false",
             'for profile_dir in /opt/data/profiles/*',
             'HERMES_KANBAN_NOTIFY_ENABLED controls only the bridge delivery loop',
+            'devkit_kanban_notifier.py --initialize-state',
         ),
         "DevKit Notification Bridge boot ownership",
     )

@@ -375,6 +375,7 @@ def process_board(
     platform: str,
     target: str,
     hermes_cli: str,
+    deliver_enabled: bool,
 ) -> tuple[int, bool, str]:
     cursor = cursor_for_board(state, board, db_path)
     try:
@@ -384,11 +385,12 @@ def process_board(
     processed = 0
     for event in events:
         event_id = int(event["event_id"])
-        message = format_message(board, event)
-        if message is not None:
-            ok, detail = send_message(message, platform=platform, target=target, hermes_cli=hermes_cli)
-            if not ok:
-                return processed, False, f"{board}: delivery failed event={event_id} kind={event.get('kind')}: {detail}"
+        if deliver_enabled:
+            message = format_message(board, event)
+            if message is not None:
+                ok, detail = send_message(message, platform=platform, target=target, hermes_cli=hermes_cli)
+                if not ok:
+                    return processed, False, f"{board}: delivery failed event={event_id} kind={event.get('kind')}: {detail}"
         advance_cursor(state, board, db_path, event_id)
         processed += 1
     return processed, True, ""
@@ -397,6 +399,17 @@ def process_board(
 def _stop(_signum: int, _frame: Any) -> None:
     global _STOP
     _STOP = True
+
+
+def initialize_persistent_state() -> Path:
+    home = hermes_home()
+    path = state_db_path(home)
+    state = open_state(path)
+    try:
+        initialize_state(state, discover_boards(home))
+    finally:
+        state.close()
+    return path
 
 
 def run_forever() -> int:
@@ -408,31 +421,36 @@ def run_forever() -> int:
     poll = _float_env("DEVKIT_KANBAN_NOTIFIER_POLL_SECONDS", DEFAULT_POLL_SECONDS, 0.2)
     retry_max = _float_env("DEVKIT_KANBAN_NOTIFIER_RETRY_MAX_SECONDS", DEFAULT_RETRY_MAX_SECONDS, 1.0)
 
-    if not enabled_flag:
-        print("[devkit-notifier] disabled via HERMES_KANBAN_NOTIFY_ENABLED", flush=True)
-        while not _STOP:
-            time.sleep(60)
-        return 0
-    if not platform or not target:
-        print("[devkit-notifier] enabled but platform/target is missing", file=sys.stderr, flush=True)
-        while not _STOP:
-            time.sleep(60)
-        return 0
-
     state_path = state_db_path(home)
     state = open_state(state_path)
     retry = 1.0
-    print(f"[devkit-notifier] started platform={platform} target={target} state={state_path}", flush=True)
     try:
         initialize_state(state, discover_boards(home))
+        if enabled_flag and (not platform or not target):
+            print("[devkit-notifier] enabled but platform/target is missing", file=sys.stderr, flush=True)
+            while not _STOP:
+                time.sleep(60)
+            return 0
+
+        mode = "delivery" if enabled_flag else "cursor-only"
+        print(
+            f"[devkit-notifier] started mode={mode} platform={platform} target={target or '-'} state={state_path}",
+            flush=True,
+        )
         while not _STOP:
             any_failure = False
             for board, db_path in discover_boards(home):
                 processed, ok, error = process_board(
-                    state, board, db_path, platform=platform, target=target, hermes_cli=hermes_cli
+                    state,
+                    board,
+                    db_path,
+                    platform=platform,
+                    target=target,
+                    hermes_cli=hermes_cli,
+                    deliver_enabled=enabled_flag,
                 )
                 if processed:
-                    print(f"[devkit-notifier] board={board} processed={processed}", flush=True)
+                    print(f"[devkit-notifier] board={board} processed={processed} mode={mode}", flush=True)
                 if not ok:
                     any_failure = True
                     print(f"[devkit-notifier] {error}", file=sys.stderr, flush=True)
@@ -445,7 +463,6 @@ def run_forever() -> int:
     finally:
         state.close()
     return 0
-
 
 def self_test() -> None:
     import tempfile
@@ -520,6 +537,18 @@ def self_test() -> None:
         assert "프로필    coder" in msg
         assert "openai / gpt-test" in msg
 
+        processed, ok, error = process_board(
+            state,
+            "demo",
+            board_db,
+            platform="discord",
+            target="unused",
+            hermes_cli="/does/not/matter",
+            deliver_enabled=False,
+        )
+        assert ok and not error and processed == 1
+        assert cursor_for_board(state, "demo", board_db) == 3
+
         created = {
             "kind": "created",
             "task_id": "t_2",
@@ -546,9 +575,14 @@ def self_test() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="DevKit Kanban event notification bridge.")
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--initialize-state", action="store_true")
     args = parser.parse_args()
     if args.self_test:
         self_test()
+        return 0
+    if args.initialize_state:
+        path = initialize_persistent_state()
+        print(f"[devkit-notifier] state initialized: {path}")
         return 0
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)

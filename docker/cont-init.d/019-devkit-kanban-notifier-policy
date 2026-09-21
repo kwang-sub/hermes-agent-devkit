@@ -6,7 +6,7 @@ export HOME=/opt/data
 export HERMES_HOME=/opt/data
 HERMES_CLI=/opt/hermes/.venv/bin/hermes
 
-set_config() {
+run_as_hermes() {
     if [ "$(id -u)" = 0 ]; then
         s6-setuidgid hermes "$@"
     else
@@ -18,14 +18,19 @@ set_config() {
 # devkit-notifier process. Keep Hermes' native notifier and automatic
 # session subscriptions disabled even when user-facing notifications are off;
 # HERMES_KANBAN_NOTIFY_ENABLED controls only the bridge delivery loop.
-set_config "$HERMES_CLI" config set kanban.notify_in_gateway false >/dev/null
-set_config "$HERMES_CLI" config set kanban.auto_subscribe_on_create false >/dev/null
+run_as_hermes "$HERMES_CLI" config set kanban.notify_in_gateway false >/dev/null
+run_as_hermes "$HERMES_CLI" config set kanban.auto_subscribe_on_create false >/dev/null
 
 for profile_dir in /opt/data/profiles/*; do
     [ -d "$profile_dir" ] || continue
     profile="$(basename "$profile_dir")"
-    set_config "$HERMES_CLI" -p "$profile" config set kanban.notify_in_gateway false >/dev/null
-    set_config "$HERMES_CLI" -p "$profile" config set kanban.auto_subscribe_on_create false >/dev/null
+    run_as_hermes "$HERMES_CLI" -p "$profile" config set kanban.notify_in_gateway false >/dev/null
+    run_as_hermes "$HERMES_CLI" -p "$profile" config set kanban.auto_subscribe_on_create false >/dev/null
 done
 
-echo "[devkit-notifier] native Kanban notifier/auto-subscribe disabled; DevKit bridge owns delivery"
+# Seed the persistent cursor before profile gateway reconciliation starts.
+# Existing historical events are skipped exactly once; events created after
+# this boot barrier are observed by the bridge.
+run_as_hermes /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_notifier.py --initialize-state >/dev/null
+
+echo "[devkit-notifier] native Kanban notifier/auto-subscribe disabled; bridge cursor seeded"
