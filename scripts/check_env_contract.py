@@ -159,13 +159,14 @@ def main() -> int:
     node_runtime = node_runtime_path.read_text(encoding="utf-8")
     for required in (
         'DEFAULT_ROOT = Path(os.getenv("HERMES_NODE_ROOT", "/opt/data/node"))',
-        '"npm_cache": root / "npm-cache"',
         '"pnpm_store": root / "pnpm-store"',
-        '"yarn_cache": root / "yarn-cache"',
-        '"bun_cache": root / "bun-cache"',
+        '"pnpm_home": root / "pnpm-home"',
         '"xdg_cache": root / "xdg-cache"',
         '"tmp": workspace_state / "tmp"',
+        '"NEXT_DIST_DIR": ".next-hermes"',
+        '"HERMES_NEXT_DIST_DIR": ".next-hermes"',
         'lock_path = paths["lock_root"] / f"workspace-{key}.lock"',
+        "require_pnpm_contract(read_manifest(cwd))",
         "reject_dependency_mutation(command)",
     ):
         if required not in node_runtime:
