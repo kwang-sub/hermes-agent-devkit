@@ -348,6 +348,7 @@ profiles:
         self.assertIn("BRANCH=NONE", proc.stdout)
         self.assertIn("BASE_SHA=NONE", proc.stdout)
         self.assertIn("WORKSPACE_CHANGE_SCAN_MODE=unsupported-non-git", proc.stdout)
+        self.assertIn("EXISTING_CHANGES_PRESERVATION_APPROVED=NOT_REQUIRED", proc.stdout)
         self.assertIn("STATUS=prepared", proc.stdout)
 
     def test_non_git_project_can_dispatch_nested_git_workspace(self) -> None:
