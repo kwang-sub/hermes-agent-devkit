@@ -32,18 +32,18 @@ def run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess[st
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Prepare an approved Git workspace/branch for Hermes Kanban dispatch."
+        description="Prepare an approved Git or acknowledged Non-Git workspace for Hermes Kanban dispatch."
     )
     p.add_argument("--task-key", required=True)
-    p.add_argument("--workspace", help="Approved Git workspace path. Default: current working directory.")
+    p.add_argument("--workspace", help="Approved workspace path. Default: current working directory.")
     p.add_argument(
         "--repo",
         help=(
-            "Managed source repository root. A linked worktree path is accepted only when it belongs "
-            "to the same repository and is canonicalized to the primary worktree."
+            "Managed project root containing .hermes/project.yaml. For legacy Git projects, "
+            "a linked worktree path is canonicalized to the primary worktree."
         ),
     )
-    p.add_argument("--branch-mode", choices=("current", "create"), required=True, help="User-approved branch strategy.")
+    p.add_argument("--branch-mode", choices=("current", "create", "none"), required=True, help="User-approved branch strategy. Use none only for a Non-Git workspace.")
     p.add_argument("--branch", help="Branch to verify in current mode or create in create mode. Default in create mode: feature/<TASK-KEY>.")
     p.add_argument("--start-point", help="Start point for --branch-mode create. Default: current HEAD.")
     p.add_argument(
@@ -138,27 +138,72 @@ def resolve_project_repository(workspace: Path, explicit_repo: str | None) -> Pa
 def parse_managed_metadata(path: Path) -> dict[str, str]:
     if not path.is_file():
         raise DispatchError(
-            f"project metadata is missing from primary repository: {path}\n"
-            "Run dev-project-bootstrap for the primary repository; linked worktrees do not need their own .hermes/project.yaml."
+            f"project metadata is missing: {path}\n"
+            "Run dev-project-bootstrap for the managed project root first."
         )
     text = path.read_text(encoding="utf-8")
     if MANAGED_MARKER not in text.splitlines()[:5]:
         raise DispatchError(f"project metadata is not managed by dev-project-bootstrap: {path}")
 
-    def field(pattern: str, name: str) -> str:
+    def field(pattern: str, name: str, *, default: str | None = None) -> str:
         m = re.search(pattern, text, flags=re.MULTILINE)
         if not m:
+            if default is not None:
+                return default
             raise DispatchError(f"required metadata field is missing: {name}")
         return m.group(1).strip().strip("'\"")
+
+    version_control = field(
+        r"^version_control:\s*\n(?:.*\n)*?\s{2}type:\s*(.+?)\s*$",
+        "version_control.type",
+        default="git",
+    ).casefold()
+    if version_control not in {"git", "none"}:
+        raise DispatchError(f"unsupported project version_control.type: {version_control}")
+
+    acknowledgement = field(
+        r"^version_control:\s*\n(?:.*\n)*?\s{2}non_git_write_acknowledged:\s*(.+?)\s*$",
+        "version_control.non_git_write_acknowledged",
+        default="false",
+    ).casefold()
 
     return {
         "project_id": field(r"^\s{2}id:\s*(.+?)\s*$", "project.id"),
         "repository": field(r"^\s{2}repository:\s*(.+?)\s*$", "project.repository"),
         "board": field(r"^kanban:\s*\n\s{2}board:\s*(.+?)\s*$", "kanban.board"),
-        "base": field(r"^git:\s*\n\s{2}default_base_branch:\s*(.+?)\s*$", "git.default_base_branch"),
+        "version_control": version_control,
+        "non_git_acknowledged": acknowledgement,
+        "base": field(
+            r"^git:\s*\n\s{2}default_base_branch:\s*(.*?)\s*$",
+            "git.default_base_branch",
+            default="",
+        ),
         "coder": field(r"^profiles:\s*\n(?:.*\n)*?\s{2}coder:\s*(.+?)\s*$", "profiles.coder"),
         "reviewer": field(r"^profiles:\s*\n(?:.*\n)*?\s{2}reviewer:\s*(.+?)\s*$", "profiles.reviewer"),
     }
+
+
+def exact_git_root(path: Path) -> Path | None:
+    add_process_safe_directory(path)
+    result = run(["git", "-C", str(path), "rev-parse", "--show-toplevel"], check=False)
+    if result.returncode != 0:
+        return None
+    root = Path(result.stdout.strip()).resolve()
+    if root != path.resolve():
+        raise DispatchError(
+            f"approved workspace must be a Git repository root or a Non-Git directory: "
+            f"workspace={path.resolve()}, git_root={root}"
+        )
+    add_process_safe_directory(root)
+    return root
+
+
+def is_within(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
 
 
 def current_branch(repo: Path) -> str:
@@ -299,76 +344,160 @@ def main() -> int:
     args = parse_args()
     validate_task_key(args.task_key)
 
-    workspace_start = Path(args.workspace).expanduser().resolve() if args.workspace else Path.cwd().resolve()
-    add_process_safe_directory(workspace_start)
-    workspace = resolve_git_root(workspace_start, "workspace")
-    add_process_safe_directory(workspace)
-    if workspace != workspace_start:
-        raise DispatchError(f"approved workspace must be the Git repository root: workspace={workspace_start}, root={workspace}")
+    workspace = Path(args.workspace).expanduser().resolve() if args.workspace else Path.cwd().resolve()
+    if not workspace.is_dir():
+        raise DispatchError(f"approved workspace does not exist or is not a directory: {workspace}")
 
-    repo = resolve_project_repository(workspace, args.repo)
-    metadata_path = repo / ".hermes" / "project.yaml"
+    workspace_git = exact_git_root(workspace)
+
+    if args.repo:
+        requested_project = Path(args.repo).expanduser().resolve()
+        if not requested_project.is_dir():
+            raise DispatchError(f"managed project root does not exist: {requested_project}")
+        project_git = exact_git_root(requested_project)
+        project_root = primary_worktree(project_git) if project_git else requested_project
+    else:
+        if workspace_git:
+            project_root = primary_worktree(workspace_git)
+        else:
+            project_root = workspace
+
+    metadata_path = project_root / ".hermes" / "project.yaml"
     meta = parse_managed_metadata(metadata_path)
+    configured_project = Path(meta["repository"]).expanduser().resolve()
+    if configured_project != project_root:
+        raise DispatchError(
+            f"project metadata root mismatch: metadata={configured_project}, actual={project_root}"
+        )
 
-    configured_repo = Path(meta["repository"]).expanduser().resolve()
-    if configured_repo != repo:
-        raise DispatchError(f"project metadata repository mismatch: metadata={configured_repo}, primary={repo}")
+    project_version_control = meta["version_control"]
+    if project_version_control == "git":
+        project_git = exact_git_root(project_root)
+        if project_git is None:
+            raise DispatchError(
+                f"managed project metadata declares Git but the project root is not a Git repository: {project_root}"
+            )
+        if workspace_git is None:
+            raise DispatchError("Git managed project requires a Git workspace")
+        if common_git_dir(workspace_git) != common_git_dir(project_git):
+            raise DispatchError(
+                "approved workspace does not belong to the managed Git project: "
+                f"workspace={workspace}, project={project_root}"
+            )
+        version_control = "git"
+        repo = project_root
+    else:
+        if meta["non_git_acknowledged"] != "true":
+            raise DispatchError(
+                "Non-Git managed project is missing explicit write acknowledgement; rerun dev-project-bootstrap approval"
+            )
+        if not is_within(workspace, project_root):
+            raise DispatchError(
+                f"approved workspace must stay inside the managed Non-Git project: "
+                f"workspace={workspace}, project={project_root}"
+            )
+        version_control = "git" if workspace_git else "none"
+        repo = project_root
 
-    if common_git_dir(workspace) != common_git_dir(repo):
-        raise DispatchError(f"approved workspace does not belong to the managed repository: workspace={workspace}, repo={repo}")
+    if version_control == "none":
+        if args.branch_mode != "none":
+            raise DispatchError("Non-Git workspace requires --branch-mode none")
+        if args.branch or args.start_point:
+            raise DispatchError("--branch/--start-point are not applicable to a Non-Git workspace")
 
-    base = meta["base"]
-    base_sha = rev_parse(repo, base)
-    before_branch = current_branch(workspace)
-
-    changes: dict[str, list[str]] | None
-    timings: dict[str, float] | None
-    if args.confirmed_dirty:
-        # The user already approved preserving all existing workspace changes.
-        # Repository-wide dirty/EOL/untracked classification is not required for
-        # safe dispatch and can be prohibitively slow on Windows bind mounts.
+        base = "NONE"
+        base_sha = "NONE"
+        before_branch = "NONE"
+        branch = "NONE"
+        created_branch = False
         changes = None
         timings = None
-        scan_mode = "skipped-approved-preservation"
+        scan_mode = "unsupported-non-git"
+        linked_worktree = False
     else:
-        changes, timings = classify_workspace_changes(workspace)
-        scan_mode = "full"
-        if changes["effective"]:
-            summary = "\n".join(change_summary_lines(changes) + timing_summary_lines(timings))
+        assert workspace_git is not None
+        if args.branch_mode == "none":
+            raise DispatchError("Git workspace requires --branch-mode current or create")
+
+        before_branch = current_branch(workspace_git)
+        if project_version_control == "git":
+            base = meta["base"]
+            if not base:
+                raise DispatchError("Git managed project metadata is missing git.default_base_branch")
+            base_sha = rev_parse(project_root, base)
+        else:
+            # Composite/Non-Git project: the selected child Git repository owns
+            # its branch/base lifecycle. Capture the approved workspace state
+            # at dispatch instead of inventing a project-level Git base.
+            base = before_branch
+            base_sha = rev_parse(workspace_git, "HEAD")
+
+        if args.confirmed_dirty:
+            changes = None
+            timings = None
+            scan_mode = "skipped-approved-preservation"
+        else:
+            changes, timings = classify_workspace_changes(workspace_git)
+            scan_mode = "full"
+            if changes["effective"]:
+                summary = "\n".join(change_summary_lines(changes) + timing_summary_lines(timings))
+                raise DispatchError(
+                    "approved workspace has existing effective project changes; "
+                    "show the exact change counts/paths to the user and rerun with --confirmed-dirty if they approve.\n"
+                    + summary
+                )
+
+        created_branch = False
+        if args.branch_mode == "current":
+            if args.branch and args.branch != before_branch:
+                raise DispatchError(
+                    f"current branch mismatch: expected current branch {before_branch}, requested {args.branch}"
+                )
+            branch = before_branch
+        else:
+            branch = args.branch or f"feature/{args.task_key}"
+            check_branch_name(branch)
+            if ref_exists(workspace_git, branch):
+                raise DispatchError(
+                    f"branch already exists; choose current mode or another branch: {branch}"
+                )
+            start_point = args.start_point or "HEAD"
+            start_sha = rev_parse(workspace_git, start_point)
+            if project_version_control == "none":
+                base = start_point
+                base_sha = start_sha
+            run(["git", "-C", str(workspace_git), "checkout", "-b", branch, start_sha])
+            created_branch = True
+
+        final_branch = current_branch(workspace_git)
+        if final_branch != branch:
             raise DispatchError(
-                "approved workspace has existing effective project changes; "
-                "show the exact change counts/paths to the user and rerun with --confirmed-dirty if they approve.\n"
-                + summary
+                f"branch verification failed: expected={branch}, actual={final_branch}"
             )
 
-    created_branch = False
-    if args.branch_mode == "current":
-        if args.branch and args.branch != before_branch:
-            raise DispatchError(f"current branch mismatch: expected current branch {before_branch}, requested {args.branch}")
-        branch = before_branch
-    else:
-        branch = args.branch or f"feature/{args.task_key}"
-        check_branch_name(branch)
-        if ref_exists(workspace, branch):
-            raise DispatchError(f"branch already exists; choose current mode or another branch: {branch}")
-        start_point = args.start_point or "HEAD"
-        start_sha = rev_parse(workspace, start_point)
-        run(["git", "-C", str(workspace), "checkout", "-b", branch, start_sha])
-        created_branch = True
+        linked_worktree = (
+            project_version_control == "git"
+            and workspace_git.resolve() != project_root.resolve()
+        )
 
-    final_branch = current_branch(workspace)
-    if final_branch != branch:
-        raise DispatchError(f"branch verification failed: expected={branch}, actual={final_branch}")
-
-    linked_worktree = workspace != repo
     workspace_metadata = workspace / ".hermes" / "project.yaml"
 
     print(f"PROJECT_ID={meta['project_id']}")
+    print(f"PROJECT_ROOT={project_root}")
     print(f"REPO_ROOT={repo}")
-    print(f"PROJECT_REPOSITORY={repo}")
+    print(f"PROJECT_REPOSITORY={project_root}")
     print(f"PROJECT_METADATA_FILE={metadata_path}")
-    print(f"PROJECT_CONTEXT_SOURCE=primary-worktree")
+    print(
+        "PROJECT_CONTEXT_SOURCE="
+        + ("primary-worktree" if project_version_control == "git" else "managed-project-root")
+    )
+    print(f"PROJECT_VERSION_CONTROL={project_version_control}")
+    print(f"NON_GIT_WRITE_ACKNOWLEDGED={meta['non_git_acknowledged']}")
+    print(f"WORKSPACE_VERSION_CONTROL={version_control}")
     print(f"LINKED_WORKTREE={'true' if linked_worktree else 'false'}")
+    print(
+        f"NESTED_GIT_WORKSPACE={'true' if project_version_control == 'none' and version_control == 'git' else 'false'}"
+    )
     if linked_worktree and workspace_metadata.is_file():
         print(f"WORKSPACE_METADATA_IGNORED={workspace_metadata}")
     else:
@@ -386,7 +515,9 @@ def main() -> int:
     print(f"PREVIOUS_BRANCH={before_branch}")
     print(f"CREATED_BRANCH={'true' if created_branch else 'false'}")
     print(f"WORKSPACE_CHANGE_SCAN_MODE={scan_mode}")
-    print(f"EXISTING_CHANGES_PRESERVATION_APPROVED={'true' if args.confirmed_dirty else 'false'}")
+    print(
+        f"EXISTING_CHANGES_PRESERVATION_APPROVED={'true' if args.confirmed_dirty else 'false'}"
+    )
 
     if changes is None:
         print("WORKSPACE_DIRTY=unknown")
@@ -398,7 +529,9 @@ def main() -> int:
     else:
         raw_dirty = any(changes.values())
         print(f"WORKSPACE_DIRTY={'true' if raw_dirty else 'false'}")
-        print(f"WORKSPACE_EFFECTIVE_DIRTY={'true' if bool(changes['effective']) else 'false'}")
+        print(
+            f"WORKSPACE_EFFECTIVE_DIRTY={'true' if bool(changes['effective']) else 'false'}"
+        )
         for line in change_summary_lines(changes):
             print(line)
         assert timings is not None
