@@ -126,6 +126,10 @@ FROM hermes-upstream-patched AS hermes-devkit-runtime
 USER root
 
 ARG GIT_VERSION=2.55.0
+ARG PNPM_VERSION=12.5.1
+
+ENV PNPM_HOME=/opt/pnpm
+ENV PATH="${PNPM_HOME}:${PATH}"
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -162,6 +166,17 @@ RUN apt-get update && \
     && rm -rf /tmp/git-src /tmp/git-worktree-check /tmp/git.tar.xz \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# pnpm 12 standalone is the canonical Node package/runtime bootstrap. Node itself
+# is intentionally not pinned in the image: each project declares its runtime in
+# package.json devEngines.runtime and pnpm resolves/downloads that version.
+RUN touch /tmp/pnpm-shrc \\
+    && curl -fsSL https://get.pnpm.io/install.sh \\
+       | env PNPM_VERSION="${PNPM_VERSION}" PNPM_HOME="${PNPM_HOME}" ENV=/tmp/pnpm-shrc SHELL=/bin/sh sh - \\
+    && test -x "${PNPM_HOME}/pnpm" \\
+    && ln -sf "${PNPM_HOME}/pnpm" /usr/local/bin/pnpm \\
+    && test "$(/usr/local/bin/pnpm --version)" = "${PNPM_VERSION}" \\
+    && rm -f /tmp/pnpm-shrc
 
 COPY --from=jdk8 /opt/java/openjdk /opt/jdks/temurin-8
 COPY --from=jdk17 /opt/java/openjdk /opt/jdks/temurin-17
