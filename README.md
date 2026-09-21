@@ -340,6 +340,41 @@ Stack Detection
 
 사용하지 않는 기술의 Skill을 미리 만들지 않고, 실제 프로젝트에서 필요할 때 Capability를 추가하는 방식으로 확장합니다.
 
+### Node / pnpm Toolchain
+
+DevKit의 Node package manager는 pnpm으로 고정합니다. Image에는 Node를 고정 설치하지 않고 pnpm standalone만 포함하며, 프로젝트의 `package.json`이 Node/pnpm version의 source of truth입니다.
+
+```json
+{
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "22.23.2",
+      "onFail": "download"
+    },
+    "packageManager": {
+      "name": "pnpm",
+      "version": ">=12.0.0 <13.0.0",
+      "onFail": "download"
+    }
+  }
+}
+```
+
+`pnpm install`은 선언된 Node runtime을 자동 준비하고 resolved version/checksum을 `pnpm-lock.yaml`에 기록합니다. DevKit은 npm/yarn/bun lockfile을 병행 지원하지 않습니다.
+
+Node/frontend 검증의 pnpm store/cache는 Linux named volume의 `/opt/data/node`에 두어 Windows host cache와 분리합니다.
+
+Next.js 프로젝트는 host의 `.next`와 Hermes generated output이 충돌하지 않도록 다음 convention을 사용합니다.
+
+```ts
+const nextConfig: NextConfig = {
+  distDir: process.env.HERMES_NEXT_DIST_DIR || ".next",
+};
+```
+
+Hermes runtime에서는 `HERMES_NEXT_DIST_DIR=.next-hermes`가 주입되며 `.next-hermes/`는 Git에서 제외합니다.
+
 ---
 
 # 6. DevKit 업데이트
