@@ -174,5 +174,47 @@ class BootstrapLauncherTest(unittest.TestCase):
             self.assertIn(str(repo.resolve()), safe_values)
 
 
+    def test_non_git_project_requires_explicit_acknowledgement(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "legacy"
+            project.mkdir()
+            with self.assertRaises(bootstrap.BootstrapLauncherError):
+                bootstrap.resolve_project_workspace(
+                    str(project),
+                    env=os.environ.copy(),
+                    allow_non_git=False,
+                )
+
+            resolved, is_git = bootstrap.resolve_project_workspace(
+                str(project),
+                env=os.environ.copy(),
+                allow_non_git=True,
+            )
+            self.assertEqual(resolved, project.resolve())
+            self.assertFalse(is_git)
+
+    def test_recorded_non_git_acknowledgement_is_reused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "legacy"
+            metadata = project / ".hermes" / "project.yaml"
+            metadata.parent.mkdir(parents=True)
+            metadata.write_text(
+                "# managed-by: dev-project-bootstrap\n"
+                "version: 4\n\n"
+                "version_control:\n"
+                "  type: \"none\"\n"
+                "  non_git_write_acknowledged: true\n",
+                encoding="utf-8",
+            )
+
+            resolved, is_git = bootstrap.resolve_project_workspace(
+                str(project),
+                env=os.environ.copy(),
+                allow_non_git=False,
+            )
+            self.assertEqual(resolved, project.resolve())
+            self.assertFalse(is_git)
+
+
 if __name__ == "__main__":
     unittest.main()
