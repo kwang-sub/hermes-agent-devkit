@@ -113,8 +113,8 @@ USER root
 # `hermes send` scripting surface.
 COPY --chmod=0755 scripts/devkit_kanban_notifier.py /opt/devkit/bin/devkit_kanban_notifier.py
 COPY --chmod=0755 docker/cont-init.d/019-devkit-kanban-notifier-policy /etc/cont-init.d/019-devkit-kanban-notifier-policy
-COPY docker/devkit-s6-rc.d/ /etc/s6-overlay/s6-rc.d/
-RUN chmod 0755 /etc/s6-overlay/s6-rc.d/devkit-notifier/run \
+COPY --chmod=0755 docker/devkit-svscan.d/devkit-notifier/run /opt/devkit/svscan/devkit-notifier/run
+RUN sh -n /opt/devkit/svscan/devkit-notifier/run \
     && /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_notifier.py --self-test \
     && /opt/hermes/.venv/bin/hermes send --help >/dev/null
 

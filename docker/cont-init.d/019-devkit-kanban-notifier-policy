@@ -33,4 +33,29 @@ done
 # this boot barrier are observed by the bridge.
 run_as_hermes /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_notifier.py --initialize-state >/dev/null
 
-echo "[devkit-notifier] native Kanban notifier/auto-subscribe disabled; bridge cursor seeded"
+# Publish the notifier through PID 1 s6-svscan's actual runtime surface.
+# Build in a dot-prefixed sibling so s6-svscan never observes a half-written service.
+NOTIFIER_SERVICE_DIR=/run/service/devkit-notifier
+NOTIFIER_TMP_DIR=/run/service/.devkit-notifier.tmp
+NOTIFIER_RUN_TEMPLATE=/opt/devkit/svscan/devkit-notifier/run
+
+if [ ! -d "$NOTIFIER_SERVICE_DIR" ]; then
+    rm -rf "$NOTIFIER_TMP_DIR"
+    mkdir -p "$NOTIFIER_TMP_DIR"
+    cp "$NOTIFIER_RUN_TEMPLATE" "$NOTIFIER_TMP_DIR/run"
+    chmod 0755 "$NOTIFIER_TMP_DIR/run"
+    mv "$NOTIFIER_TMP_DIR" "$NOTIFIER_SERVICE_DIR"
+    /command/s6-svscanctl -a /run/service
+fi
+
+attempt=0
+while ! /command/s6-svstat "$NOTIFIER_SERVICE_DIR" >/dev/null 2>&1; do
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge 50 ]; then
+        echo "[devkit-notifier] s6-supervise did not register $NOTIFIER_SERVICE_DIR" >&2
+        exit 1
+    fi
+    sleep 0.1
+done
+
+echo "[devkit-notifier] native Kanban notifier/auto-subscribe disabled; dynamic s6 service registered"

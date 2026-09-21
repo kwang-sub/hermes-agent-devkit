@@ -93,6 +93,14 @@ def main() -> int:
         "update-devkit.ps1",
     )
 
+    require(
+        text,
+        (
+            '& $Verifier -Container $ContainerName | Out-Host',
+        ),
+        "update-devkit runtime verification output isolation",
+    )
+
     if "Profile initialization is intentionally not run automatically" in text:
         raise SystemExit("update-devkit.ps1 still documents manual-only profile initialization")
 
@@ -223,6 +231,7 @@ def main() -> int:
             'Shared Node dependency capability',
             's6 dynamic Gateway scandir hermes-write contract',
             '".devkit-runtime-write-check"',
+            'DevKit Kanban notifier dynamic service',
             'DevKit Kanban notifier service is running',
             'DevKit Kanban notifier ownership contract',
             'GATEWAY_MULTIPLEX_PROFILES=true',
@@ -268,6 +277,10 @@ def main() -> int:
             'for profile_dir in /opt/data/profiles/*',
             'HERMES_KANBAN_NOTIFY_ENABLED controls only the bridge delivery loop',
             'devkit_kanban_notifier.py --initialize-state',
+            'NOTIFIER_SERVICE_DIR=/run/service/devkit-notifier',
+            'NOTIFIER_TMP_DIR=/run/service/.devkit-notifier.tmp',
+            '/command/s6-svscanctl -a /run/service',
+            '/command/s6-svstat "$NOTIFIER_SERVICE_DIR"',
         ),
         "DevKit Notification Bridge boot ownership",
     )
@@ -312,7 +325,7 @@ def main() -> int:
             '/opt/hermes/tools/tirith_security.py',
             'scripts/devkit_kanban_notifier.py /opt/devkit/bin/devkit_kanban_notifier.py',
             'docker/cont-init.d/019-devkit-kanban-notifier-policy',
-            'docker/devkit-s6-rc.d/',
+            'docker/devkit-svscan.d/devkit-notifier/run /opt/devkit/svscan/devkit-notifier/run',
             '/opt/devkit/bin/devkit_kanban_notifier.py --self-test',
             '/opt/hermes/.venv/bin/hermes send --help',
             'patch_hermes_kanban_model_transition.py --self-test',
@@ -341,6 +354,7 @@ def main() -> int:
         ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/scripts/subscribe_notification.py",
         ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py",
         ROOT / "scripts/test_native_kanban_notification_runtime.py",
+        ROOT / "docker/devkit-s6-rc.d",
     ):
         if removed_notification_runtime.exists():
             raise SystemExit(
@@ -375,7 +389,13 @@ def main() -> int:
             '/opt/hermes/.venv/bin/hermes --help',
             '/opt/devkit/bin/devkit_kanban_notifier.py --self-test',
             '/opt/hermes/.venv/bin/hermes send --help',
-            '/etc/s6-overlay/s6-rc.d/devkit-notifier/run',
+            '/opt/devkit/svscan/devkit-notifier/run',
+            'Latest Hermes live s6 notifier smoke',
+            'HERMES_COMPAT_DATA_VOLUME',
+            'docker volume create "$DATA_VOLUME"',
+            'type=volume,source=$DATA_VOLUME,target=/opt/data',
+            '/run/service/devkit-notifier',
+            '/command/s6-svstat -o up',
             '/opt/custom-skills/shared/dev-api-spec/SKILL.md',
             '/opt/custom-skills/shared/dev-node-dependencies/SKILL.md',
             '/opt/data/shared/scripts/flow_model_policy.py',
