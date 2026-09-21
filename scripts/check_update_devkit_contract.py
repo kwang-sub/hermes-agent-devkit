@@ -71,8 +71,11 @@ def main() -> int:
             'function Test-ContainerPathExists',
             'function Remove-ContainerProbePath',
             'function Ensure-S6GatewayRuntimePermissions',
+            'function Test-S6ServiceRegistered',
+            'function Ensure-DevKitKanbanNotifierRuntime',
             'function Ensure-DefaultMultiplexGateway',
             'Ensure-S6GatewayRuntimePermissions -ContainerName $ContainerName',
+            'Ensure-DevKitKanbanNotifierRuntime -ContainerName $ContainerName',
             'Ensure-DefaultMultiplexGateway -ContainerName $Container',
             '"chown", "hermes:hermes", "/run/service"',
             '"/run/service/.s6-svscan/control"',
@@ -85,7 +88,7 @@ def main() -> int:
             '"exec", "--user", "hermes", $ContainerName',
             '"/opt/hermes/.venv/bin/hermes", "gateway", "start"',
             'scripts\\verify-container-runtime.ps1',
-            'Runtime verification failed. Performing one cached rebuild + force-recreate repair.',
+            'Runtime verification failed. Recreating once from the already-built image; the mutable latest base is not resolved again.',
             'sample.env changed. Existing .env is intentionally not overwritten',
             'HERMES_BASE_IMAGE=$HermesBaseImage',
             'IMAGE_REBUILT=',
@@ -114,6 +117,16 @@ def main() -> int:
     if text.count("Ensure-DefaultMultiplexGateway -ContainerName $Container") < 2:
         raise SystemExit(
             "update-devkit.ps1 must reconcile the default Gateway on both normal and repair paths"
+        )
+
+    if text.count("Ensure-DevKitKanbanNotifierRuntime -ContainerName $ContainerName") != 1:
+        raise SystemExit(
+            "update-devkit.ps1 must reconcile the dynamic notifier before starting the default Gateway"
+        )
+
+    if '"/command/s6-svscanctl", "-a", "/run/service"' not in text:
+        raise SystemExit(
+            "update-devkit.ps1 must explicitly rescan /run/service after notifier reconciliation"
         )
 
     if 'manager.register_profile_gateway("default", start_now=False)' in text:
@@ -206,9 +219,9 @@ def main() -> int:
             "update-devkit.ps1 must have exactly one planned pull-build path"
         )
 
-    if text.count('docker" -Arguments @("compose", "build")') < 1:
+    if text.count('docker" -Arguments @("compose", "build")') != 0:
         raise SystemExit(
-            "update-devkit.ps1 must keep one cached repair build path"
+            "update-devkit.ps1 must not re-resolve mutable latest during automatic repair"
         )
 
     runtime_verifier = read_required(RUNTIME_VERIFIER, "runtime verifier")
@@ -355,7 +368,9 @@ def main() -> int:
             'scripts/devkit_kanban_notifier.py /opt/devkit/bin/devkit_kanban_notifier.py',
             'docker/cont-init.d/019-devkit-kanban-notifier-policy',
             'docker/devkit-svscan.d/devkit-notifier/run /opt/devkit/svscan/devkit-notifier/run',
-            "sed -i 's/\\r$//' /opt/devkit/svscan/devkit-notifier/run",
+            "/etc/cont-init.d/019-devkit-kanban-notifier-policy \\\\",
+            "/opt/devkit/svscan/devkit-notifier/run \\\\",
+            'sh -n /etc/cont-init.d/019-devkit-kanban-notifier-policy',
             'sh -n /opt/devkit/svscan/devkit-notifier/run',
             '/opt/devkit/bin/devkit_kanban_notifier.py --self-test',
             '/opt/hermes/.venv/bin/hermes send --help',
