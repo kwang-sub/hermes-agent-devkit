@@ -102,6 +102,58 @@ function Test-AnyPathMatch {
     return $false
 }
 
+function Restart-UpdatedUpdater {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ScriptPath,
+        [Parameter(Mandatory = $true)]
+        [string]$BranchName,
+        [Parameter(Mandatory = $true)]
+        [string]$RemoteName,
+        [Parameter(Mandatory = $true)]
+        [string]$ContainerName,
+        [switch]$ForceRebuildRequested,
+        [switch]$NoRepairRequested,
+        [switch]$SkipVerifyRequested,
+        [switch]$SkipProfileInitRequested,
+        [switch]$SkipGitHubAuthRequested
+    )
+
+    $PowerShellExecutable = if ($PSVersionTable.PSEdition -eq "Core") {
+        Join-Path $PSHOME "pwsh.exe"
+    }
+    else {
+        Join-Path $PSHOME "powershell.exe"
+    }
+
+    if (-not (Test-Path -LiteralPath $PowerShellExecutable -PathType Leaf)) {
+        throw "Current PowerShell executable was not found for updater restart: $PowerShellExecutable"
+    }
+
+    $RestartArgs = @(
+        "-NoLogo",
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $ScriptPath,
+        "-Branch", $BranchName,
+        "-Remote", $RemoteName,
+        "-Container", $ContainerName,
+        "-NoPull"
+    )
+    if ($ForceRebuildRequested) { $RestartArgs += "-ForceRebuild" }
+    if ($NoRepairRequested) { $RestartArgs += "-NoRepair" }
+    if ($SkipVerifyRequested) { $RestartArgs += "-SkipVerify" }
+    if ($SkipProfileInitRequested) { $RestartArgs += "-SkipProfileInit" }
+    if ($SkipGitHubAuthRequested) { $RestartArgs += "-SkipGitHubAuth" }
+
+    Write-Host "[RESTART] update-devkit.ps1 changed during fast-forward. Re-executing the updated script with -NoPull."
+    & $PowerShellExecutable @RestartArgs
+    $RestartExitCode = $LASTEXITCODE
+    if ($RestartExitCode -ne 0) {
+        throw "Updated updater failed. ExitCode=$RestartExitCode"
+    }
+}
+
 function Get-HermesWindowsTempContainerPath {
     $LocalAppData = [Environment]::GetEnvironmentVariable("LOCALAPPDATA", "Process")
     if ([string]::IsNullOrWhiteSpace($LocalAppData)) {
@@ -308,25 +360,66 @@ function Invoke-ProfileInitialization {
     }
 }
 
-function Test-ContainerDirectory {
+function Ensure-S6GatewayRuntimePermissions {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$ContainerName,
-        [Parameter(Mandatory = $true)]
-        [string]$Path
+        [string]$ContainerName
     )
 
-    $PreviousPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = "SilentlyContinue"
-        & docker exec $ContainerName test -d $Path 1>$null 2>$null
-        $ExitCode = $LASTEXITCODE
-    }
-    finally {
-        $ErrorActionPreference = $PreviousPreference
-    }
+    Write-Host "[RUN ] Ensure s6 dynamic Gateway scandir permissions"
 
-    return ($ExitCode -eq 0)
+    $RepairPermissions = @'
+set -eu
+chown hermes:hermes /run/service
+
+if [ -d /run/service/.s6-svscan ]; then
+    for entry in control lock; do
+        if [ -e "/run/service/.s6-svscan/$entry" ]; then
+            chown hermes:hermes "/run/service/.s6-svscan/$entry"
+        fi
+    done
+fi
+'@
+
+    # Mirrors Hermes upstream docker/cont-init.d/02-reconcile-profiles. Root is
+    # used only to repair the ephemeral s6 scandir/control ownership; no Gateway
+    # process or persistent Hermes state is run/written as root.
+    Invoke-Native -FilePath "docker" -Arguments @(
+        "exec", "--user", "root", $ContainerName,
+        "sh", "-ceu", $RepairPermissions
+    )
+
+    $HermesWriteProbe = @'
+from pathlib import Path
+import os
+
+root = Path("/run/service")
+probe = root / ".devkit-hermes-write-check"
+if probe.exists():
+    if probe.is_dir():
+        probe.rmdir()
+    else:
+        probe.unlink()
+probe.mkdir()
+probe.rmdir()
+
+svscan = root / ".s6-svscan"
+for name in ("control", "lock"):
+    path = svscan / name
+    if path.exists() and not os.access(path, os.W_OK):
+        raise SystemExit(f"hermes cannot write {path}")
+
+print("true")
+'@
+
+    $Probe = Get-CapturedText -Output (Invoke-NativeCapture -FilePath "docker" -Arguments @(
+        "exec", "--user", "hermes", $ContainerName,
+        "/opt/hermes/.venv/bin/python", "-c", $HermesWriteProbe
+    ))
+    if ($Probe -ne "true") {
+        throw "Hermes s6 scandir permission verification failed. Expected 'true', got '$Probe'."
+    }
+    Write-Host "[OK] s6 dynamic Gateway scandir is hermes-writable"
 }
 
 function Ensure-DefaultMultiplexGateway {
@@ -335,49 +428,7 @@ function Ensure-DefaultMultiplexGateway {
         [string]$ContainerName
     )
 
-    $ServicePath = "/run/service/gateway-default"
-
-    # docker compose up -d returns as soon as the container starts, while s6
-    # cont-init may still be reconciling the dynamic gateway slots as root.
-    # Give the upstream boot reconciler a bounded chance to publish the default
-    # slot before falling back to an explicit privileged registration.
-    Write-Host "[WAIT] Default multiplex Gateway s6 slot"
-    for ($Attempt = 0; $Attempt -lt 40; $Attempt++) {
-        if (Test-ContainerDirectory -ContainerName $ContainerName -Path $ServicePath) {
-            break
-        }
-        Start-Sleep -Milliseconds 500
-    }
-
-    if (-not (Test-ContainerDirectory -ContainerName $ContainerName -Path $ServicePath)) {
-        Write-Warning "Default Gateway s6 slot was not registered by container boot. Registering the volatile slot as root before starting the Gateway."
-
-        $RegisterDefaultGatewaySlot = @'
-from pathlib import Path
-from hermes_cli.service_manager import get_service_manager
-
-path = Path("/run/service/gateway-default")
-if not path.exists():
-    manager = get_service_manager()
-    try:
-        manager.register_profile_gateway("default", start_now=False)
-    except ValueError:
-        # The boot reconciler may win the race between the exists() check and
-        # registration. Accept only that exact successful-race outcome.
-        if not path.exists():
-            raise
-'@
-
-        # Root privilege is limited to creating the volatile /run/service slot.
-        # The actual Hermes Gateway lifecycle remains owned by the hermes user.
-        Invoke-Native -FilePath "docker" -Arguments @(
-            "exec", "--user", "root",
-            "-e", "HOME=/opt/data",
-            "-e", "HERMES_HOME=/opt/data",
-            $ContainerName,
-            "/opt/hermes/.venv/bin/python", "-c", $RegisterDefaultGatewaySlot
-        )
-    }
+    Ensure-S6GatewayRuntimePermissions -ContainerName $ContainerName
 
     Write-Host "[RUN ] Ensure default multiplex Gateway is running"
     Invoke-Native -FilePath "docker" -Arguments @(
@@ -470,6 +521,20 @@ try {
                 ForEach-Object { ([string]$_).Trim() } |
                 Where-Object { $_ -ne "" }
         )
+    }
+
+    if (-not $NoPull -and $ChangedFiles -contains "update-devkit.ps1") {
+        Restart-UpdatedUpdater `
+            -ScriptPath $MyInvocation.MyCommand.Path `
+            -BranchName $Branch `
+            -RemoteName $Remote `
+            -ContainerName $Container `
+            -ForceRebuildRequested:$ForceRebuild `
+            -NoRepairRequested:$NoRepair `
+            -SkipVerifyRequested:$SkipVerify `
+            -SkipProfileInitRequested:$SkipProfileInit `
+            -SkipGitHubAuthRequested:$SkipGitHubAuth
+        return
     }
 
     $WindowsTempContainerPath = Get-HermesWindowsTempContainerPath
