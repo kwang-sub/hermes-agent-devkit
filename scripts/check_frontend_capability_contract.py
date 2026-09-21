@@ -20,9 +20,11 @@ node_dependencies = (ROOT / "custom-skills/shared/dev-node-dependencies/SKILL.md
 node_preflight = (ROOT / "custom-skills/shared/dev-node-dependencies/scripts/node_dependency_preflight.py").read_text(encoding="utf-8")
 tirith_preflight = (ROOT / "custom-skills/shared/dev-node-dependencies/scripts/tirith_package_preflight.py").read_text(encoding="utf-8")
 node_runtime_path = ROOT / "custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py"
-if not node_runtime_path.is_file():
-    raise SystemExit("Node runtime isolation helper is missing")
+node_workspace_path = ROOT / "custom-skills/shared/dev-node-dependencies/scripts/node_workspace.py"
+if not node_runtime_path.is_file() or not node_workspace_path.is_file():
+    raise SystemExit("Node runtime/workspace isolation helper is missing")
 node_runtime = node_runtime_path.read_text(encoding="utf-8")
+node_workspace = node_workspace_path.read_text(encoding="utf-8")
 design = (ROOT / "custom-skills/shared/dev-design-reference/SKILL.md").read_text(encoding="utf-8")
 design_template_path = ROOT / "custom-skills/shared/dev-design-reference/references/screen-spec-template.md"
 design_guard_path = ROOT / "custom-skills/shared/dev-design-reference/scripts/screen_spec_guard.py"
@@ -88,25 +90,31 @@ checks = {
         "pnpm-lock.yaml", "package-lock.json", "migration blocker", "PACKAGE_MANAGER_ROOT",
         "node_dependency_preflight.py", "tirith_package_preflight.py", "analysis_incomplete",
         "TIRITH_PREFLIGHT=allow", "TIRITH_PREFLIGHT=approval_required", "actual Hermes terminal guard",
-        "timeout=600", "shell `timeout` wrapper", "HERMES_NEXT_DIST_DIR=.next-hermes",
-        "distDir: process.env.HERMES_NEXT_DIST_DIR", "별도 Hermes 전용 Node version 설정 파일을 만들지 않는다",
+        "timeout=600", "shell `timeout` wrapper", "Linux named volume의 격리 workspace",
+        "RESTORE_WORKDIR", "별도 Hermes 전용 Node version 설정 파일을 만들지 않는다",
     )),
     "node dependency preflight": (node_preflight, (
         "PNPM_LOCKFILE", "LEGACY_LOCKFILES", "os.walk", "SKIP_DIRS",
         "package-lock.json", "pnpm-lock.yaml", "devEngines", "resolve_dev_engines",
         "PACKAGE_MANAGER_ROOT", "LOCKFILE_PRESENT", "legacy package-manager lockfile detected",
-        "EXTRANEOUS_PRESENT", "INSTALL_REQUIRED", "RESTORE_REQUIRED", "INSTALL_COMMAND",
-        "RESTORE_COMMAND", "INSTALL_TIMEOUT_SECONDS = 600", "STATUS=pass", "STATUS=blocked",
+        "EXTRANEOUS_PRESENT", "VERIFICATION_PACKAGE_ROOT", "INSTALL_REQUIRED", "INSTALL_WORKDIR",
+        "RESTORE_REQUIRED", "RESTORE_COMMAND", "RESTORE_WORKDIR",
+        "INSTALL_TIMEOUT_SECONDS = 600", "STATUS=pass", "STATUS=blocked",
     )),
     "tirith package preflight": (tirith_preflight, (
         "analysis_incomplete", "daemon", "start", "--detach", "daemon-recheck-pass", "daemon-recheck-fail",
         "approval_required", "Hermes terminal guard remains authoritative", "do not execute install",
     )),
     "node runtime": (node_runtime, (
-        'HERMES_NODE_ROOT", "/opt/data/node"', "pnpm-home", "pnpm-store", "HERMES_NEXT_DIST_DIR",
-        "devEngines", "packageManager.name must be 'pnpm'", "TMPDIR", "workspace-", "fcntl.flock",
-        "validate_pnpm_command", "timed out waiting for Node workspace lock",
-        "pnpm-managed;workspace-serialized;next-dist-isolated",
+        "prepare_isolated_package", "NODE_RUNTIME_SOURCE_PACKAGE_ROOT", "NODE_RUNTIME_CWD",
+        "pnpm_home", "pnpm_store", "devEngines", "packageManager.name must be 'pnpm'",
+        "fcntl.flock", "validate_pnpm_command", "timed out waiting for Node workspace lock",
+        "linux-isolated-workspace;workspace-serialized",
+    )),
+    "node workspace": (node_workspace, (
+        'HERMES_NODE_ROOT", "/opt/data/node"', "GENERATED_NAMES", "PRESERVE_DEST_NAMES",
+        '"node_modules"', '".next"', '".test-build"', '".tsbuildinfo"',
+        "prepare_isolated_package", "isolated_package_root", "NODE_WORKSPACE_SYNC=ready",
     )),
     "design reference": (design, (
         "Design Source", "IMAGE", "FIGMA", "DRAFT", "REFERENCE", "APPROVED",
@@ -133,7 +141,7 @@ checks = {
         "Approved Implementation", "Browser Screenshot Golden", "toHaveScreenshot",
         "NOT_AVAILABLE", "자동 설치하지 않는다", "Hermes Node Runtime Isolation", "node_runtime.py",
         "/opt/data/node", "workspace lock", "devEngines.runtime", "devEngines.packageManager",
-        ".next-hermes", "distDir: process.env.HERMES_NEXT_DIST_DIR", "Tirith actual guard",
+        "Linux 격리 workspace", "host node_modules/.next", "검증 시작마다 초기화", "Tirith actual guard",
     )),
     "typescript skill": (typescript, (
         "Version Gate", "TypeScript 7 Gate", "Strictness Gate", "useUnknownInCatchVariables",
