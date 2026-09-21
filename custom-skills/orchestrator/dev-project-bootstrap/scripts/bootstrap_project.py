@@ -85,6 +85,27 @@ def require_tool(name: str) -> None:
         raise BootstrapError(f"required tool is not available on PATH: {name}")
 
 
+def recorded_non_git_acknowledgement(project_root: Path) -> bool:
+    metadata = project_root / ".hermes" / "project.yaml"
+    if not metadata.is_file():
+        return False
+    try:
+        text = metadata.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if MANAGED_MARKER not in text.splitlines()[:5]:
+        return False
+    type_match = re.search(
+        r"(?ms)^version_control:\s*\n(?:^[ \t]+.*\n)*?^\s{2}type:\s*['\"]?none['\"]?\s*$",
+        text,
+    )
+    ack_match = re.search(
+        r"(?ms)^version_control:\s*\n(?:^[ \t]+.*\n)*?^\s{2}non_git_write_acknowledged:\s*true\s*$",
+        text,
+    )
+    return bool(type_match and ack_match)
+
+
 def resolve_project_root(path_text: str, *, allow_non_git: bool) -> tuple[Path, str]:
     requested = Path(path_text)
     if not requested.is_absolute():
@@ -97,7 +118,8 @@ def resolve_project_root(path_text: str, *, allow_non_git: bool) -> tuple[Path, 
     requested_resolved = requested.resolve()
     result = run(["git", "-C", str(requested_resolved), "rev-parse", "--show-toplevel"], check=False)
     if result.returncode != 0:
-        if not allow_non_git:
+        acknowledged = allow_non_git or recorded_non_git_acknowledgement(requested_resolved)
+        if not acknowledged:
             raise BootstrapError(
                 "project is not a Git repository. Explicit user acknowledgement is required; "
                 "rerun with --allow-non-git after approval, initialize Git, or cancel: "
@@ -546,7 +568,15 @@ def project_context_block(
     orchestrator: str,
     coder: str,
     reviewer: str,
+    version_control_type: str,
+    non_git_acknowledged: bool,
 ) -> str:
+    vcs_guidance = (
+        "개발 작업은 프로젝트 metadata를 먼저 확인하고, 구현용 Worktree는 원본 checkout 외부에 생성한다."
+        if version_control_type == "git"
+        else
+        "이 프로젝트는 사용자 승인 하에 Git 없이 관리된다. Branch/Worktree/Git diff/Git rollback을 전제로 하지 않고 직접 파일 변경을 허용한다."
+    )
     return "\n".join([
         PROJECT_START,
         "",
@@ -559,8 +589,10 @@ def project_context_block(
         f"- Project Name: `{name}`",
         f"- Repository: `{repository}`",
         f"- Kanban Board: `{board}`",
-        f"- Default Base Branch: `{base}`",
-        f"- Worktree Root: `{worktree_root}`",
+        f"- Version Control: `{version_control_type}`",
+        f"- Non-Git Write Acknowledged: `{str(non_git_acknowledged).lower()}`",
+        f"- Default Base Branch: `{base or 'N/A'}`",
+        f"- Worktree Root: `{worktree_root or 'N/A'}`",
         f"- Orchestrator Profile: `{orchestrator}`",
         f"- Coder Profile: `{coder}`",
         f"- Reviewer Profile: `{reviewer}`",
@@ -568,8 +600,7 @@ def project_context_block(
         "`resolver:` 값은 사용자가 직접 관리한다. "
         "Agent는 Bootstrap 중 resolver alias/module/file/path를 추측해서 기록하지 않는다.",
         "",
-        "개발 작업은 프로젝트 metadata를 먼저 확인하고, "
-        "구현용 Worktree는 원본 checkout 외부에 생성한다.",
+        vcs_guidance,
         "",
         PROJECT_END,
     ])
@@ -588,6 +619,8 @@ def apply_context(
     orchestrator: str,
     coder: str,
     reviewer: str,
+    version_control_type: str,
+    non_git_acknowledged: bool,
 ) -> None:
     common_text = common_path.read_text(encoding="utf-8")
     common_block = extract_block(common_text, COMMON_START, COMMON_END)
@@ -615,6 +648,8 @@ def apply_context(
         orchestrator=orchestrator,
         coder=coder,
         reviewer=reviewer,
+        version_control_type=version_control_type,
+        non_git_acknowledged=non_git_acknowledged,
     )
     updated = replace_or_append_block(
         updated,
@@ -636,7 +671,11 @@ def main() -> int:
     for tool in ("git", "hermes", "python3"):
         require_tool(tool)
 
-    repo = resolve_repo(args.repo)
+    repo, version_control_type = resolve_project_root(
+        args.repo,
+        allow_non_git=args.allow_non_git,
+    )
+    non_git_acknowledged = version_control_type == "none"
 
     common_path = Path(args.common_context)
     if not common_path.is_file():
@@ -710,34 +749,46 @@ def main() -> int:
             f"existing={existing['board']}, requested={board}"
         )
 
-    if args.base:
-        base = args.base
-    elif existing.get("base"):
-        base = str(existing["base"])
-    else:
-        branch = run([
-            "git", "-C", str(repo),
-            "branch", "--show-current",
-        ]).stdout.strip()
-        if not branch:
-            raise BootstrapError(
-                "repository is detached; specify --base"
-            )
-        base = branch
-
-    base_check = run([
-        "git", "-C", str(repo),
-        "rev-parse", "--verify", f"{base}^{{commit}}",
-    ], check=False)
-    if base_check.returncode != 0:
+    existing_vcs = str(existing.get("version_control_type") or "").strip()
+    if existing_vcs and existing_vcs != version_control_type:
         raise BootstrapError(
-            f"base branch/ref does not resolve to a commit: {base}"
+            "managed metadata version-control conflict: "
+            f"existing={existing_vcs}, detected={version_control_type}"
         )
 
-    worktree_root = str(
-        existing.get("worktree_root")
-        or (Path("/workspace/.worktrees") / repo.name)
-    )
+    if version_control_type == "git":
+        if args.base:
+            base = args.base
+        elif existing.get("base"):
+            base = str(existing["base"])
+        else:
+            branch = run([
+                "git", "-C", str(repo),
+                "branch", "--show-current",
+            ]).stdout.strip()
+            if not branch:
+                raise BootstrapError(
+                    "repository is detached; specify --base"
+                )
+            base = branch
+
+        base_check = run([
+            "git", "-C", str(repo),
+            "rev-parse", "--verify", f"{base}^{{commit}}",
+        ], check=False)
+        if base_check.returncode != 0:
+            raise BootstrapError(
+                f"base branch/ref does not resolve to a commit: {base}"
+            )
+        worktree_root = str(
+            existing.get("worktree_root")
+            or (Path("/workspace/.worktrees") / repo.name)
+        )
+    else:
+        if args.base:
+            raise BootstrapError("--base is not applicable to a Non-Git project")
+        base = ""
+        worktree_root = ""
 
     description = args.description or f"{name} application development"
 
@@ -747,6 +798,7 @@ def main() -> int:
     print(f"Board      : {board}")
     print(f"Base       : {base}")
     print(f"Profiles   : {','.join(profiles)}")
+    print(f"VCS        : {version_control_type}")
     print("Resolver   : user-managed")
 
     # Board first so bind-board never writes a dangling board binding.
@@ -767,6 +819,8 @@ def main() -> int:
         orchestrator=orchestrator,
         coder=coder,
         reviewer=reviewer,
+        version_control_type=version_control_type,
+        non_git_acknowledged=non_git_acknowledged,
     )
 
     if resolver_created:
@@ -795,6 +849,8 @@ def main() -> int:
         orchestrator=orchestrator,
         coder=coder,
         reviewer=reviewer,
+        version_control_type=version_control_type,
+        non_git_acknowledged=non_git_acknowledged,
     )
 
     # Final checks.
@@ -848,8 +904,10 @@ def main() -> int:
     print(f"PROJECT_ID={project_id}")
     print(f"REPOSITORY={repo}")
     print(f"BOARD={board}")
-    print(f"BASE_BRANCH={base}")
-    print(f"WORKTREE_ROOT={worktree_root}")
+    print(f"VERSION_CONTROL={version_control_type}")
+    print(f"NON_GIT_WRITE_ACKNOWLEDGED={'true' if non_git_acknowledged else 'false'}")
+    print(f"BASE_BRANCH={base or 'NONE'}")
+    print(f"WORKTREE_ROOT={worktree_root or 'NONE'}")
     print(f"CONTEXT_FILE={context_path}")
     print(f"METADATA_FILE={metadata_path}")
     print(f"PROFILES={','.join(profiles)}")
