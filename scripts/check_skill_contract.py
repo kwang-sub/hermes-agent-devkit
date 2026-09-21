@@ -93,11 +93,11 @@ def main()->int:
         "한 번의 사용자 확인에서는 하나의 의사결정만 요청한다","clarify","choices","선택지는 질문 본문에 번호로 쓰지 않고",
         "[Project 선택]","[Workspace 선택]","[Branch 선택]","[Coder 모델 선택]","[작업 계획 승인]",
         "DEFAULT | PREMIUM","같은 Gate를 다시 출력","NO_EXTRA_KANBAN_CONFIRMATION","AUTO_DISPATCH_CURRENT_UNIT_ONLY",
-        "NOTIFY_REGISTRATION_EVENT=queued"))
+        "NOTIFICATION_SUBSCRIPTION_ATTEMPTED"))
     require_terms(approval,"shared approval gate rules",(
         "clarify","choices","↑/↓ 이동 + Enter 선택","Other (type your answer)","Workspace와 Branch는 서로 다른 Gate다",
         "[추가 요구사항 확인]","requirement_delta_approved","Requirement Delta",
-        "AUTO_DISPATCH","NO_EXTRA_KANBAN_CONFIRMATION","Kanban 작업 카드를 등록할까요?","registration notification enqueue"))
+        "AUTO_DISPATCH","NO_EXTRA_KANBAN_CONFIRMATION","Kanban 작업 카드를 등록할까요?","native notification subscription attempt"))
     forbid_terms(workflow,"number-list approval UX",("1. PREMIUM","2. DEFAULT","번호 또는 요구사항을 입력해주세요."))
 
     plan_gate_literal=(
@@ -127,7 +127,9 @@ def main()->int:
     require_terms(dispatch,"dev-workspace-dispatch fast path",(
         "--confirmed-dirty","repository-wide dirty/EOL/untracked 분류를 **생략**","WORKSPACE_CHANGE_SCAN_MODE=skipped-approved-preservation","*_COUNT=-1","git diff --name-only -z HEAD",'initial_status="blocked"',
         "kanban_show 정확히 1회","subscribe_notification.py 정확히 1회",
-        "NOTIFY_STATUS=subscribed + NOTIFY_VERIFIED=true + NOTIFY_REGISTRATION_EVENT=queued","등록 read-back 계약 검증","등록 event","kanban_unblock 정확히 1회","board == BOARD","HERMES_KANBAN_BOARD"))
+        "NOTIFY_STATUS=subscribed | disabled | warning","등록 read-back 계약 검증","Hermes native","kanban_unblock tool 정확히 1회","board == BOARD","HERMES_KANBAN_BOARD"))
+    forbid_terms(dispatch,"legacy custom registration notification",(
+        "NOTIFY_REGISTRATION_EVENT","registered task_event","전달 ACK timeout","최초 등록 알림"))
     efficiency=(workflow_file.parent/"references"/"dispatch-efficiency.md").read_text(encoding="utf-8")
     require_terms(efficiency,"dispatch-efficiency reference",("skipped-approved-preservation","change_summary.py --include","review_context.py --include","큰 파일을 임의의 MB threshold로 제외하지 않는다","hermes project list","Kanban body 임시 파일","hermes project --help","CLI body-file capability probing","CLI fallback"))
     for cap in ("dev-java-guidelines","dev-spring-guidelines","dev-spring-feature","dev-spring-data","dev-spring-test","dev-api-docs"):

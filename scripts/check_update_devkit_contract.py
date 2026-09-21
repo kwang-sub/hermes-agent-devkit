@@ -247,6 +247,8 @@ def main() -> int:
         ROOT / "scripts/patch_hermes_discord_kanban_notify.py",
         ROOT / "scripts/patch_hermes_discord_kanban_session.py",
         ROOT / "scripts/test_kanban_registered_runtime.py",
+        ROOT / "shared/scripts/kanban_registration_event.py",
+        ROOT / "shared/scripts/test_kanban_registration_event.py",
     ):
         if removed_notification_runtime.exists():
             raise SystemExit(
