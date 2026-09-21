@@ -1,4 +1,4 @@
-ARG HERMES_BASE_IMAGE=nousresearch/hermes-agent:v2026.9.14
+ARG HERMES_BASE_IMAGE=nousresearch/hermes-agent:latest
 
 FROM eclipse-temurin:8-jdk-jammy AS jdk8
 FROM eclipse-temurin:17-jdk-jammy AS jdk17

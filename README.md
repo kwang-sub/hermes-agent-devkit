@@ -389,19 +389,19 @@ Windows source
 
 # 6. DevKit 업데이트
 
-기존 환경에 최신 DevKit과 고정된 안정 Hermes Runtime(`v2026.9.14`)을 반영합니다.
+기존 환경에 최신 DevKit과 현재 `nousresearch/hermes-agent:latest` Hermes Runtime을 반영합니다.
 
 ```powershell
 .\update-devkit.ps1
 ```
 
-운영 Runtime은 `v2026.9.14`로 고정하고, 별도 GitHub Actions에서 `nousresearch/hermes-agent:latest` 호환성을 계속 검증합니다.
+운영 Runtime과 호환성 CI 모두 `nousresearch/hermes-agent:latest`를 기준으로 합니다. `update-devkit.ps1`는 최신 base image를 먼저 build하고, build가 성공한 경우에만 실행 컨테이너를 재생성하므로 upstream 변경으로 patch/build가 깨지면 현재 Runtime은 그대로 유지됩니다.
 
 기본 흐름:
 
 ```text
 Git fast-forward
-→ Hermes v2026.9.14 base image 검증
+→ 최신 Hermes base image pull / patch compatibility build
 → Docker build
 → Container recreate
 → Profile reconcile
