@@ -258,7 +258,7 @@ pnpm version               → package.json devEngines.packageManager
 
 isolated `node_modules`가 아직 준비되지 않았다면 `dev-node-dependencies` preflight가 반환한 `RESTORE_WORKDIR`에서 exact `pnpm install --frozen-lockfile`을 Tirith actual guard를 거쳐 실행한 뒤 검증한다.
 
-dependency 추가/삭제는 source package root에서 exact `pnpm add/remove`를 수행하여 `package.json`과 `pnpm-lock.yaml`을 갱신한다.
+dependency 추가는 source package root에서 exact `pnpm add --lockfile-only ...`를 수행해 `package.json`과 `pnpm-lock.yaml`만 갱신한다. 실제 dependency tree는 isolated workspace의 frozen restore가 소유한다.
 
 ## Handoff
 
