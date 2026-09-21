@@ -161,5 +161,30 @@ class ChangeSummaryTests(unittest.TestCase):
         self.assertIn("summarize each Git workspace separately", proc.stderr)
 
 
+    def test_non_git_summary_uses_declared_paths_without_snapshot(self) -> None:
+        workspace = Path(self.tmp.name) / "non-git"
+        workspace.mkdir()
+        (workspace / "app.txt").write_text("changed\n", encoding="utf-8")
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--workspace", str(workspace),
+                "--version-control", "none",
+                "--include", "app.txt",
+            ],
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("VERSION_CONTROL=none", proc.stdout)
+        self.assertIn("SCAN_MODE=unsupported-non-git", proc.stdout)
+        self.assertIn("CHANGE_TRACKING=unsupported", proc.stdout)
+        self.assertIn("DECLARED_CHANGED_COUNT=1", proc.stdout)
+        self.assertIn("DECLARED_CHANGED_1=app.txt", proc.stdout)
+        self.assertIn("HANDOFF_GATE=NOT_APPLICABLE", proc.stdout)
+        self.assertNotIn("EFFECTIVE_SCOPE_SHA256=", proc.stdout)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
