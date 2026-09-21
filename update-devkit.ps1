@@ -102,6 +102,58 @@ function Test-AnyPathMatch {
     return $false
 }
 
+function Restart-UpdatedUpdater {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ScriptPath,
+        [Parameter(Mandatory = $true)]
+        [string]$BranchName,
+        [Parameter(Mandatory = $true)]
+        [string]$RemoteName,
+        [Parameter(Mandatory = $true)]
+        [string]$ContainerName,
+        [switch]$ForceRebuildRequested,
+        [switch]$NoRepairRequested,
+        [switch]$SkipVerifyRequested,
+        [switch]$SkipProfileInitRequested,
+        [switch]$SkipGitHubAuthRequested
+    )
+
+    $PowerShellExecutable = if ($PSVersionTable.PSEdition -eq "Core") {
+        Join-Path $PSHOME "pwsh.exe"
+    }
+    else {
+        Join-Path $PSHOME "powershell.exe"
+    }
+
+    if (-not (Test-Path -LiteralPath $PowerShellExecutable -PathType Leaf)) {
+        throw "Current PowerShell executable was not found for updater restart: $PowerShellExecutable"
+    }
+
+    $RestartArgs = @(
+        "-NoLogo",
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $ScriptPath,
+        "-Branch", $BranchName,
+        "-Remote", $RemoteName,
+        "-Container", $ContainerName,
+        "-NoPull"
+    )
+    if ($ForceRebuildRequested) { $RestartArgs += "-ForceRebuild" }
+    if ($NoRepairRequested) { $RestartArgs += "-NoRepair" }
+    if ($SkipVerifyRequested) { $RestartArgs += "-SkipVerify" }
+    if ($SkipProfileInitRequested) { $RestartArgs += "-SkipProfileInit" }
+    if ($SkipGitHubAuthRequested) { $RestartArgs += "-SkipGitHubAuth" }
+
+    Write-Host "[RESTART] update-devkit.ps1 changed during fast-forward. Re-executing the updated script with -NoPull."
+    & $PowerShellExecutable @RestartArgs
+    $RestartExitCode = $LASTEXITCODE
+    if ($RestartExitCode -ne 0) {
+        throw "Updated updater failed. ExitCode=$RestartExitCode"
+    }
+}
+
 function Get-HermesWindowsTempContainerPath {
     $LocalAppData = [Environment]::GetEnvironmentVariable("LOCALAPPDATA", "Process")
     if ([string]::IsNullOrWhiteSpace($LocalAppData)) {
@@ -469,6 +521,20 @@ try {
                 ForEach-Object { ([string]$_).Trim() } |
                 Where-Object { $_ -ne "" }
         )
+    }
+
+    if (-not $NoPull -and $ChangedFiles -contains "update-devkit.ps1") {
+        Restart-UpdatedUpdater `
+            -ScriptPath $MyInvocation.MyCommand.Path `
+            -BranchName $Branch `
+            -RemoteName $Remote `
+            -ContainerName $Container `
+            -ForceRebuildRequested:$ForceRebuild `
+            -NoRepairRequested:$NoRepair `
+            -SkipVerifyRequested:$SkipVerify `
+            -SkipProfileInitRequested:$SkipProfileInit `
+            -SkipGitHubAuthRequested:$SkipGitHubAuth
+        return
     }
 
     $WindowsTempContainerPath = Get-HermesWindowsTempContainerPath

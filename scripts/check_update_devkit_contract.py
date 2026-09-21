@@ -90,6 +90,11 @@ def main() -> int:
     if "Profile initialization is intentionally not run automatically" in text:
         raise SystemExit("update-devkit.ps1 still documents manual-only profile initialization")
 
+    if text.count('Restart-UpdatedUpdater \`') != 1:
+        raise SystemExit(
+            "update-devkit.ps1 must re-exec exactly once when its own file changes"
+        )
+
     if text.count("Ensure-DefaultMultiplexGateway -ContainerName $Container") < 2:
         raise SystemExit(
             "update-devkit.ps1 must reconcile the default Gateway on both normal and repair paths"
@@ -114,6 +119,15 @@ def main() -> int:
     require(
         text,
         (
+            'function Restart-UpdatedUpdater',
+            '[RESTART] update-devkit.ps1 changed during fast-forward',
+            '-NoPull',
+            '$ChangedFiles -contains "update-devkit.ps1"',
+            '-ForceRebuildRequested:$ForceRebuild',
+            '-NoRepairRequested:$NoRepair',
+            '-SkipVerifyRequested:$SkipVerify',
+            '-SkipProfileInitRequested:$SkipProfileInit',
+            '-SkipGitHubAuthRequested:$SkipGitHubAuth',
             'function Get-CapturedText',
             '[AllowNull()]',
             'if ($null -eq $Output)',
