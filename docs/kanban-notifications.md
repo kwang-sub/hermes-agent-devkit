@@ -1,88 +1,96 @@
 # Kanban 작업 알림 설정
 
-Hermes 공식 Kanban terminal-event notification을 이용해 작업 완료/차단/리뷰 등의 상태를 Gateway 플랫폼으로 전달한다.
+DevKit은 Hermes Kanban DB에 이미 기록되는 `task_events`를 읽어 개발 업무용 알림을 만든다. Hermes의 notifier Python source는 수정하지 않는다.
 
-DevKit은 Hermes notifier source를 수정하지 않고 다음 공통 설정만 사용한다.
-
-```dotenv
-HERMES_KANBAN_NOTIFY_ENABLED=false
-HERMES_KANBAN_NOTIFY_PLATFORM=discord
-HERMES_KANBAN_NOTIFY_TARGET=
-HERMES_KANBAN_NOTIFY_DELIVERY_MODE=notify
-HERMES_KANBAN_NOTIFY_CHAT_TYPE=channel
-```
-
-notifier profile은 DevKit 내부의 `default` multiplex Gateway로 고정한다. `orchestrator`는 Workflow 역할이며 별도 notification Gateway 소유자가 아니다.
-
-## 동작 방식
-
-Direct/Standard canonical dispatch는 Task를 잠시 `blocked`로 생성하고 read-back을 확인한 뒤 native subscription을 시도한다.
+## 구조
 
 ```text
-kanban_create(initial_status=blocked)
-→ kanban_show
-→ Hermes native notify-subscribe
-→ native notify-list read-back (best-effort)
-→ kanban_unblock
-→ worker dispatch
+hermes-dev container
+├─ gateway-default
+├─ devkit-notifier        ← s6 longrun
+├─ coder/reviewer workers
+└─ /opt/data
+   ├─ kanban.db / kanban/boards/*/kanban.db
+   └─ devkit-notifier/state.db
 ```
 
-`blocked`는 notification delivery ACK를 기다리는 Gate가 아니다. 빠른 worker가 subscription 생성보다 먼저 terminal event를 만드는 race를 줄이기 위한 짧은 순서 보장 장치다.
+`devkit-notifier`는 read-only로 Hermes의 task/event/run 정보를 조회하고, 자체 cursor만 `/opt/data/devkit-notifier/state.db`에 저장한다. 메시지는 Hermes 공식 scripting surface인 `hermes send`로 전송한다.
 
-별도 custom registration event를 만들지 않으며, 등록 성공 기준은 `kanban_create + kanban_show` read-back이다.
-
-## Hermes native notifier
-
-terminal event의 메시지 포맷, adapter delivery, retry, cursor/dedup은 Hermes Gateway native notifier가 담당한다. DevKit은 다음을 더 이상 patch하지 않는다.
-
-```text
-Discord 업무용 한국어 formatter
-custom registration event
-registration delivery ACK Gate
-notification용 session/profile/NEW·RESUME 표시
-```
-
-실제 알림 문구는 Hermes upstream 버전에 따라 달라질 수 있다. DevKit은 `completed`, `blocked`, `review_requested`, `changes_requested`, `crashed`, `timed_out` 등 native terminal notification을 그대로 사용한다.
-
-## Kanban 세션 고정
-
-Worker Session Affinity는 알림과 독립적으로 유지한다.
-
-```text
-Task t_3a1bde20
-├─ coder    → session C-001
-└─ reviewer → session R-001
-```
-
-동일 Task/Profile의 재실행에서 workspace, branch, Base SHA, model/provider, reasoning, skills/toolsets, profile config fingerprint가 같으면 기존 worker session을 `--resume`한다. 계약이 달라지면 `NEW` 세션으로 시작한다.
-
-NEW/RESUME 정보는 더 이상 Discord notifier source에 주입하지 않는다. 실행 추적이 필요하면 Kanban run/event metadata, worker log, profile session 기록을 사용한다.
-
-## Discord 사용
+## 설정
 
 ```dotenv
 HERMES_KANBAN_NOTIFY_ENABLED=true
 HERMES_KANBAN_NOTIFY_PLATFORM=discord
 HERMES_KANBAN_NOTIFY_TARGET=<Discord Channel ID>
-HERMES_KANBAN_NOTIFY_DELIVERY_MODE=notify
-HERMES_KANBAN_NOTIFY_CHAT_TYPE=channel
 DISCORD_BOT_TOKEN=<Discord Bot Token>
 ```
 
-`DISCORD_BOT_TOKEN`은 저장소에 커밋하거나 Kanban body/comment에 기록하지 않는다. 설정 변경 후에는 `.\update-devkit.ps1`로 컨테이너를 재생성한다.
+기본값은 비활성화다. 설정 변경 후:
 
-## 실패 정책
-
-helper 출력은 다음 셋이다.
-
-```text
-NOTIFY_STATUS=subscribed
-NOTIFY_STATUS=disabled
-NOTIFY_STATUS=warning
+```powershell
+.\update-devkit.ps1
 ```
 
-- `subscribed`: native subscription 생성과 read-back 확인 성공.
-- `disabled`: 알림 비활성화.
-- `warning`: 설정 누락, Gateway/CLI 오류, subscription read-back 실패 등 observability 저하.
+Bridge가 활성화되면 boot policy가 Hermes native `kanban.notify_in_gateway`와 `kanban.auto_subscribe_on_create`를 끈다. 따라서 한 Task에 Native 알림과 DevKit 알림이 중복 전달되지 않는다.
 
-세 상태 모두 개발 Task lifecycle은 계속 진행한다. 알림 실패를 이유로 Task를 `BLOCKED` 처리하거나 별도 notification Task를 만들지 않는다.
+## 이벤트
+
+| Hermes event | DevKit 알림 |
+|---|---|
+| `created` | 🆕 작업 등록 |
+| `review_requested` | 🔎 리뷰 요청 |
+| `changes_requested` | 🛠️ 수정 요청 |
+| `completed` | ✅ 작업 완료 |
+| `blocked` | ⛔ 작업 차단 |
+| `gave_up` | ❌ 작업 실패 |
+| `crashed` | 💥 작업 비정상 종료 |
+| `timed_out` | ⏱️ 작업 시간 초과 |
+| `block_loop_detected` | ⚠️ 반복 차단 감지 |
+
+Standard/Direct Flow가 Task를 `initial_status=blocked`로 만드는 내부 barrier는 실제 장애가 아니므로 payload의 `reason=initial_status`인 `blocked` event는 알림에서 제외한다.
+
+## 포맷
+
+예:
+
+```text
+🆕 작업 등록
+
+프로젝트  hdc-218
+작업      docs/test.txt 생성 및 성공 문구 기록
+Task      t_8fc8b512
+담당      coder
+프로필    orchestrator
+모델      openai-codex / gpt-5.6-terra
+상태      REGISTERED
+
+등록
+Coder 작업 대기열에 등록되었습니다.
+```
+
+리뷰/완료/차단도 같은 필드 구조를 사용하고 event payload의 summary/reason/result를 최대 길이로 제한해 붙인다.
+
+Worker Session Affinity는 알림과 독립적으로 유지한다. 동일 Task/Profile의 실행 fingerprint가 같으면 기존 worker session을 `--resume`하고 달라지면 `NEW`로 시작한다. 현재 알림에는 NEW/RESUME을 다시 주입하지 않는다.
+
+## Cursor / Retry
+
+최초 도입 시 기존 board의 현재 최대 event id를 기준점으로 잡아 과거 알림을 재생하지 않는다. 이후 생성된 새 event부터 처리한다.
+
+```text
+event 읽기
+→ formatter
+→ hermes send
+→ 성공: cursor advance
+→ 실패: cursor 유지 + bounded backoff retry
+```
+
+따라서 알림 실패는 Coder/Reviewer 실행을 막지 않는다. 프로세스가 재시작돼도 persistent cursor에서 이어간다.
+
+## 검증
+
+```bash
+python3 scripts/devkit_kanban_notifier.py --self-test
+hermes send --help
+```
+
+컨테이너에서는 `/run/service/devkit-notifier`가 s6에 의해 감독된다.
