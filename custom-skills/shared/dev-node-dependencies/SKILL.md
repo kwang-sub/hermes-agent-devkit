@@ -203,11 +203,11 @@ actual Hermes terminal guard가 최종 authority다.
 
 ## Dependency Mutation
 
-preflight PASS + Tirith 허용 이후 exact package manager command를 **정확히 1회** 실행한다.
+preflight PASS + Tirith 허용 이후 exact package manager command를 **정확히 1회** 실행한다. Source package에서는 `--lockfile-only`를 사용해 `package.json`과 `pnpm-lock.yaml`만 갱신하고 Windows bind workspace의 `node_modules`는 생성·변경하지 않는다.
 
 ```text
-prod → pnpm add <pkg...>
-dev  → pnpm add -D <pkg...>
+prod → pnpm add --lockfile-only <pkg...>
+dev  → pnpm add --lockfile-only -D <pkg...>
 ```
 
 terminal timeout:
