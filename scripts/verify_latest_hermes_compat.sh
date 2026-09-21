@@ -44,6 +44,37 @@ docker run --rm \
         test "$(/usr/local/bin/git config --system --bool --get worktree.useRelativePaths)" = "true"
         test "$(/usr/local/bin/pnpm --version)" = "12.5.1"
 
+        runtime_smoke=/tmp/devkit-pnpm-runtime-smoke
+        runtime_home=/tmp/devkit-pnpm-home
+        mkdir -p "$runtime_smoke" "$runtime_home"
+        cat > "$runtime_smoke/package.json" <<"JSON"
+{
+  "name": "devkit-pnpm-runtime-smoke",
+  "private": true,
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "22.23.2",
+      "onFail": "download"
+    },
+    "packageManager": {
+      "name": "pnpm",
+      "version": ">=12.0.0 <13.0.0",
+      "onFail": "download"
+    }
+  }
+}
+JSON
+        (
+          cd "$runtime_smoke"
+          export PNPM_HOME="$runtime_home"
+          export PATH="$PNPM_HOME:$PATH"
+          /usr/local/bin/pnpm install --lockfile-only
+          test -f pnpm-lock.yaml
+          test "$(node --version)" = "v22.23.2"
+        )
+        rm -rf "$runtime_smoke" "$runtime_home"
+
         test -f /opt/hermes/hermes_cli/devkit_session_affinity.py
         test -f /opt/hermes/tools/kanban_tools.py
         grep -q "def _devkit_run_flow_model_transition" /opt/hermes/tools/kanban_tools.py
