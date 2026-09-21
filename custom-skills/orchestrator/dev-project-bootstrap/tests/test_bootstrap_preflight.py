@@ -38,7 +38,7 @@ class BootstrapGitScanTest(unittest.TestCase):
             raise RuntimeError(result.stderr or result.stdout)
         return repo
 
-    def test_fast_scan_ignores_crlf_only_tracked_noise(self) -> None:
+    def test_full_classifier_separates_crlf_only_tracked_noise(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = self.make_repo(Path(tmp))
             (repo / "app.txt").write_bytes(b"baseline\r\n")
@@ -48,10 +48,10 @@ class BootstrapGitScanTest(unittest.TestCase):
             )
 
             self.assertEqual([], effective)
-            self.assertEqual([], eol_only)
-            self.assertIsNone(untracked_count)
+            self.assertEqual(["app.txt"], eol_only)
+            self.assertEqual(0, untracked_count)
 
-    def test_fast_scan_keeps_real_tracked_and_staged_changes(self) -> None:
+    def test_full_classifier_keeps_real_tracked_and_staged_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = self.make_repo(Path(tmp))
             (repo / "app.txt").write_text("real change\n", encoding="utf-8")
@@ -62,7 +62,7 @@ class BootstrapGitScanTest(unittest.TestCase):
 
             self.assertEqual(["app.txt", "staged.txt"], effective)
 
-    def test_fast_scan_skips_untracked_changes(self) -> None:
+    def test_full_classifier_includes_untracked_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = self.make_repo(Path(tmp))
             (repo / "untracked.bin").write_bytes(b"x" * 1024)
@@ -71,8 +71,8 @@ class BootstrapGitScanTest(unittest.TestCase):
                 bootstrap_preflight.inspect_git_changes(repo)
             )
 
-            self.assertEqual([], effective)
-            self.assertIsNone(untracked_count)
+            self.assertEqual(["untracked.bin"], effective)
+            self.assertEqual(1, untracked_count)
 
     def test_full_scan_counts_eol_noise_and_untracked_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -81,7 +81,7 @@ class BootstrapGitScanTest(unittest.TestCase):
             (repo / "new.txt").write_text("new\n", encoding="utf-8")
 
             effective, eol_only, untracked_count = (
-                bootstrap_preflight.inspect_git_changes(repo, full_scan=True)
+                bootstrap_preflight.inspect_git_changes(repo)
             )
 
             self.assertEqual(["new.txt"], effective)
