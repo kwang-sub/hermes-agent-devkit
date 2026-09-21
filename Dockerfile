@@ -189,7 +189,7 @@ ENV HERMES_NODE_ROOT=/opt/data/node
 ENV PATH="/opt/pnpm:${PATH}"
 
 RUN mkdir -p "$PNPM_HOME" "$HERMES_NODE_ROOT" \
-    && curl -fsSL https://get.pnpm.io/install.sh | env PNPM_HOME="$PNPM_HOME" SHELL=/bin/sh sh - \
+    && curl -fsSL https://get.pnpm.io/install.sh | env PNPM_HOME="$PNPM_HOME" ENV="$HOME/.shrc" SHELL="$(command -v sh)" sh - \
     && test -x "$PNPM_HOME/pnpm" \
     && "$PNPM_HOME/pnpm" --version
 
