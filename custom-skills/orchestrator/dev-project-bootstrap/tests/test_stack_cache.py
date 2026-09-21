@@ -67,7 +67,7 @@ dependencies { runtimeOnly "com.microsoft.sqlserver:mssql-jdbc:12.8.1.jre11" }
         status1, result1 = MODULE.resolve(repo)
         text1 = meta.read_text(encoding="utf-8")
         assert status1 == "created"
-        assert "version: 3" in text1
+        assert "version: 4" in text1
         assert "technology:" in text1
         assert '    - "java"' in text1
         assert '    - "spring"' in text1
