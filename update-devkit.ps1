@@ -22,8 +22,9 @@ Default behavior:
 9. Run init-profiles.ps1 to reconcile the role profile and skill contract.
 10. Ensure the default multiplex Gateway is running.
 11. Verify the running container contract.
-12. If verification fails, perform one normal cached rebuild + recreate repair,
-    reconcile profiles and the default Gateway again, then verify once more unless -NoRepair is specified.
+12. If verification fails, perform one force-recreate repair from the image that
+    already passed the planned pull-build, reconcile profiles/runtime services and the
+    default Gateway again, then verify once more unless -NoRepair is specified.
 13. Re-apply Git commit identity from .env and ensure persistent GitHub CLI auth.
 
 The process-local Windows Temp override is restored before the script exits.
@@ -463,6 +464,93 @@ function Ensure-S6GatewayRuntimePermissions {
     Write-Host "[OK] s6 dynamic Gateway scandir is hermes-writable"
 }
 
+function Test-S6ServiceRegistered {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ContainerName,
+        [Parameter(Mandatory = $true)]
+        [string]$ServicePath
+    )
+
+    $PreviousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        & docker exec --user root $ContainerName /command/s6-svstat $ServicePath 1>$null 2>$null
+        $ExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $PreviousPreference
+    }
+
+    return ($ExitCode -eq 0)
+}
+
+function Ensure-DevKitKanbanNotifierRuntime {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ContainerName
+    )
+
+    Write-Host "[RUN ] Ensure DevKit Kanban notifier dynamic service"
+
+    $ServiceDir = "/run/service/devkit-notifier"
+    $RunPath = "$ServiceDir/run"
+    $TempDir = "/run/service/.devkit-notifier.update"
+    $RunTemplate = "/opt/devkit/svscan/devkit-notifier/run"
+
+    if (-not (Test-ContainerPathExists -ContainerName $ContainerName -Path $RunPath)) {
+        foreach ($Path in @($TempDir, $ServiceDir)) {
+            if (Test-ContainerPathExists -ContainerName $ContainerName -Path $Path) {
+                Invoke-Native -FilePath "docker" -Arguments @(
+                    "exec", "--user", "root", $ContainerName,
+                    "rm", "-rf", $Path
+                )
+            }
+        }
+
+        Invoke-Native -FilePath "docker" -Arguments @(
+            "exec", "--user", "root", $ContainerName,
+            "mkdir", "-p", $TempDir
+        )
+        Invoke-Native -FilePath "docker" -Arguments @(
+            "exec", "--user", "root", $ContainerName,
+            "cp", $RunTemplate, "$TempDir/run"
+        )
+        Invoke-Native -FilePath "docker" -Arguments @(
+            "exec", "--user", "root", $ContainerName,
+            "chmod", "0755", "$TempDir/run"
+        )
+        Invoke-Native -FilePath "docker" -Arguments @(
+            "exec", "--user", "root", $ContainerName,
+            "mv", $TempDir, $ServiceDir
+        )
+    }
+
+    Invoke-Native -FilePath "docker" -Arguments @(
+        "exec", "--user", "root", $ContainerName,
+        "/command/s6-svscanctl", "-a", "/run/service"
+    )
+
+    $Registered = $false
+    for ($Attempt = 0; $Attempt -lt 50; $Attempt++) {
+        if (Test-S6ServiceRegistered -ContainerName $ContainerName -ServicePath $ServiceDir) {
+            $Registered = $true
+            break
+        }
+        Start-Sleep -Milliseconds 100
+    }
+
+    if (-not $Registered) {
+        throw "DevKit Kanban notifier was not registered by s6-svscan: $ServiceDir"
+    }
+
+    Invoke-Native -FilePath "docker" -Arguments @(
+        "exec", "--user", "root", $ContainerName,
+        "test", "-x", $RunPath
+    )
+    Write-Host "[OK] DevKit Kanban notifier dynamic service registered"
+}
+
 function Ensure-DefaultMultiplexGateway {
     param(
         [Parameter(Mandatory = $true)]
@@ -470,6 +558,7 @@ function Ensure-DefaultMultiplexGateway {
     )
 
     Ensure-S6GatewayRuntimePermissions -ContainerName $ContainerName
+    Ensure-DevKitKanbanNotifierRuntime -ContainerName $ContainerName
 
     Write-Host "[RUN ] Ensure default multiplex Gateway is running"
     Invoke-Native -FilePath "docker" -Arguments @(
@@ -654,10 +743,8 @@ try {
                 throw "Runtime verification failed and automatic repair is disabled by -NoRepair."
             }
 
-            Write-Warning "Runtime verification failed. Performing one cached rebuild + force-recreate repair."
+            Write-Warning "Runtime verification failed. Recreating once from the already-built image; the mutable latest base is not resolved again."
             $AutomaticRepairUsed = $true
-            Invoke-Native -FilePath "docker" -Arguments @("compose", "build")
-            $ImageRebuilt = $true
             Invoke-Native -FilePath "docker" -Arguments @("compose", "up", "-d", "--force-recreate")
             $ContainerRecreated = $true
 
