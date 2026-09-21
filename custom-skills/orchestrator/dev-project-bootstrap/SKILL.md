@@ -93,7 +93,7 @@ git:
   worktree_root: ""
 ```
 
-상위 Project가 Non-Git이어도 하위에 독립 Git Repository가 여러 개 존재할 수 있다. 이 경우 Project 등록은 상위 metadata를 기준으로 하고, 실제 Standard Flow Workspace가 하위 Git root이면 해당 Workspace의 branch/diff/toolchain 계약을 사용한다. 완전 Non-Git Workspace만 Git 관련 계약을 `N/A`로 처리한다.
+상위 Project가 Non-Git이어도 하위에 독립 Git Repository 또는 독립 Non-Git 프로젝트가 여러 개 존재할 수 있다. Project 등록은 상위 metadata를 기준으로 하고, 실제 Standard Flow Workspace가 하위 Git root이면 해당 Workspace의 branch/diff/toolchain 계약을 사용한다. 하위 Non-Git Workspace는 branch/diff를 `N/A`로 처리하되 실행 Workspace별 toolchain을 준비할 수 있다.
 
 
 예:
@@ -239,10 +239,11 @@ python3 "${HERMES_SKILL_DIR}/scripts/refresh_stacks.py" \
 5. Fast 모드에서는 repository-wide Git change scan 생략
 6. bounded manifest에서 Gradle/Maven build root 탐색
 7. Gradle/Maven multi-module root와 sibling build root 구분
-8. 각 JVM build root의 Java target/runtime 선택
-9. compatible JVM roots이면 Repository .hermes/toolchain.env ensure
-10. .gitattributes ensure
-11. 각 build root의 gradlew/mvnw EOL 확인
+8. 단일 실행 영역이면 JVM build root의 Java target/runtime 선택
+9. Non-Git 상위 Project에서 독립 JVM build root가 여러 개면 toolchain 결정을 Workspace 선택 시점으로 지연
+10. Git Project 또는 단일 Non-Git 실행 영역이면 .hermes/toolchain.env ensure
+11. Git Project만 .gitattributes ensure
+12. 각 root-owned build root의 gradlew/mvnw EOL 확인
 ```
 
 Build root 출력 예:
@@ -309,7 +310,7 @@ Bootstrap은 한 번만 시작한다.
 
 ## 7. Java 실행 계약
 
-Java 프로젝트에는 실행 Workspace에 적용 가능한 `.hermes/toolchain.env`를 보장한다. Coder/Reviewer는 `hermes-java` launcher를 우선한다. Git linked worktree에서는 기존처럼 Primary Worktree의 canonical toolchain을 읽는다. Non-Git Project에서는 가장 가까운 상위 `.hermes/toolchain.env`를 사용하며, 상위 Non-Git Project 아래 독립 Git Repository는 선택된 Workspace별 toolchain을 별도로 준비한다. Gradle project-cache/build-output/workspace-lock은 Workspace 경로 기준으로 격리한다.
+Java 프로젝트에는 실행 Workspace에 적용 가능한 `.hermes/toolchain.env`를 보장한다. Coder/Reviewer는 `hermes-java` launcher를 우선한다. Git linked worktree에서는 기존처럼 Primary Worktree의 canonical toolchain을 읽는다. Non-Git Project에서는 가장 가까운 상위 `.hermes/toolchain.env`를 사용한다. 상위 Non-Git Project 아래 독립 child Workspace가 Git이든 Non-Git이든, Project root와 다른 실행 Workspace가 선택되면 해당 Workspace 기준으로 toolchain을 별도 준비한다. Gradle project-cache/build-output/workspace-lock은 Workspace 경로 기준으로 격리한다.
 
 ```bash
 hermes-java ./gradlew test
@@ -342,7 +343,7 @@ repo/
 
 Gradle/Maven multi-module의 nested module manifest는 동일 ancestor build root 아래 하나의 build project로 취급한다. 반대로 sibling Gradle/Maven root는 독립 build project로 유지한다.
 
-하나의 Git Repository 또는 하나의 Non-Git 실행 영역 안에서 독립 JVM build project가 여러 개이고 모두 동일 target/runtime을 요구하면 `.hermes/toolchain.env`를 공유한다. 서로 다른 toolchain이 필요하면 자동 선택하지 않고 Block한다. 단, Non-Git 상위 Project 아래의 독립 Git Repository들은 하나의 toolchain으로 합치지 않고 각 선택 Workspace가 자신의 toolchain을 가진다.
+하나의 Git Repository 안에서 독립 JVM build project가 여러 개이면 기존 계약대로 동일 target/runtime일 때만 `.hermes/toolchain.env`를 공유하고 서로 다르면 Block한다. Non-Git Managed Project에서는 독립 JVM build root가 2개 이상이면 Project 등록 단계에서 하나의 Java 버전을 강제하지 않고 `TOOLCHAIN_FILE=deferred-workspace`로 기록한다. 이후 승인된 child Workspace가 자신의 toolchain을 결정한다. 단일 Non-Git 실행 영역은 기존처럼 하나의 `.hermes/toolchain.env`를 사용한다.
 
 Frontend-only `package.json` 등은 Java build root로 취급하지 않는다.
 
