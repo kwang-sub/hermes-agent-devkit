@@ -360,6 +360,49 @@ function Invoke-ProfileInitialization {
     }
 }
 
+function Test-ContainerPathExists {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ContainerName,
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $PreviousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        & docker exec --user root $ContainerName test -e $Path 1>$null 2>$null
+        $ExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $PreviousPreference
+    }
+
+    return ($ExitCode -eq 0)
+}
+
+function Remove-ContainerProbePath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ContainerName,
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (-not (Test-ContainerPathExists -ContainerName $ContainerName -Path $Path)) {
+        return
+    }
+
+    $PreviousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        & docker exec --user root $ContainerName rmdir $Path 1>$null 2>$null
+    }
+    finally {
+        $ErrorActionPreference = $PreviousPreference
+    }
+}
+
 function Ensure-S6GatewayRuntimePermissions {
     param(
         [Parameter(Mandatory = $true)]
@@ -368,57 +411,55 @@ function Ensure-S6GatewayRuntimePermissions {
 
     Write-Host "[RUN ] Ensure s6 dynamic Gateway scandir permissions"
 
-    $RepairPermissions = @'
-set -eu
-chown hermes:hermes /run/service
-
-if [ -d /run/service/.s6-svscan ]; then
-    for entry in control lock; do
-        if [ -e "/run/service/.s6-svscan/$entry" ]; then
-            chown hermes:hermes "/run/service/.s6-svscan/$entry"
-        fi
-    done
-fi
-'@
-
-    # Mirrors Hermes upstream docker/cont-init.d/02-reconcile-profiles. Root is
-    # used only to repair the ephemeral s6 scandir/control ownership; no Gateway
-    # process or persistent Hermes state is run/written as root.
+    # Keep this path shell-free. Windows PowerShell 5.1 does not reliably
+    # preserve multiline script arguments passed through docker exec sh -c /
+    # python -c. Use one native argv per operation instead.
     Invoke-Native -FilePath "docker" -Arguments @(
         "exec", "--user", "root", $ContainerName,
-        "sh", "-ceu", $RepairPermissions
+        "chown", "hermes:hermes", "/run/service"
     )
 
-    $HermesWriteProbe = @'
-from pathlib import Path
-import os
-
-root = Path("/run/service")
-probe = root / ".devkit-hermes-write-check"
-if probe.exists():
-    if probe.is_dir():
-        probe.rmdir()
-    else:
-        probe.unlink()
-probe.mkdir()
-probe.rmdir()
-
-svscan = root / ".s6-svscan"
-for name in ("control", "lock"):
-    path = svscan / name
-    if path.exists() and not os.access(path, os.W_OK):
-        raise SystemExit(f"hermes cannot write {path}")
-
-print("true")
-'@
-
-    $Probe = Get-CapturedText -Output (Invoke-NativeCapture -FilePath "docker" -Arguments @(
-        "exec", "--user", "hermes", $ContainerName,
-        "/opt/hermes/.venv/bin/python", "-c", $HermesWriteProbe
-    ))
-    if ($Probe -ne "true") {
-        throw "Hermes s6 scandir permission verification failed. Expected 'true', got '$Probe'."
+    foreach ($ControlPath in @(
+        "/run/service/.s6-svscan/control",
+        "/run/service/.s6-svscan/lock"
+    )) {
+        if (Test-ContainerPathExists -ContainerName $ContainerName -Path $ControlPath) {
+            Invoke-Native -FilePath "docker" -Arguments @(
+                "exec", "--user", "root", $ContainerName,
+                "chown", "hermes:hermes", $ControlPath
+            )
+        }
     }
+
+    $ProbePath = "/run/service/.devkit-hermes-write-check"
+    Remove-ContainerProbePath -ContainerName $ContainerName -Path $ProbePath
+
+    try {
+        Invoke-Native -FilePath "docker" -Arguments @(
+            "exec", "--user", "hermes", $ContainerName,
+            "mkdir", $ProbePath
+        )
+        Invoke-Native -FilePath "docker" -Arguments @(
+            "exec", "--user", "hermes", $ContainerName,
+            "rmdir", $ProbePath
+        )
+    }
+    finally {
+        Remove-ContainerProbePath -ContainerName $ContainerName -Path $ProbePath
+    }
+
+    foreach ($ControlPath in @(
+        "/run/service/.s6-svscan/control",
+        "/run/service/.s6-svscan/lock"
+    )) {
+        if (Test-ContainerPathExists -ContainerName $ContainerName -Path $ControlPath) {
+            Invoke-Native -FilePath "docker" -Arguments @(
+                "exec", "--user", "hermes", $ContainerName,
+                "test", "-w", $ControlPath
+            )
+        }
+    }
+
     Write-Host "[OK] s6 dynamic Gateway scandir is hermes-writable"
 }
 

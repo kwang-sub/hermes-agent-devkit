@@ -66,13 +66,19 @@ def main() -> int:
             'init-profiles.ps1',
             'Profile/skill reconciliation',
             'PROFILES_RECONCILED=',
+            'function Test-ContainerPathExists',
+            'function Remove-ContainerProbePath',
             'function Ensure-S6GatewayRuntimePermissions',
             'function Ensure-DefaultMultiplexGateway',
             'Ensure-S6GatewayRuntimePermissions -ContainerName $ContainerName',
             'Ensure-DefaultMultiplexGateway -ContainerName $Container',
-            'chown hermes:hermes /run/service',
-            'chown hermes:hermes "/run/service/.s6-svscan/$entry"',
-            '".devkit-hermes-write-check"',
+            '"chown", "hermes:hermes", "/run/service"',
+            '"/run/service/.s6-svscan/control"',
+            '"/run/service/.s6-svscan/lock"',
+            '$ProbePath = "/run/service/.devkit-hermes-write-check"',
+            '"mkdir", $ProbePath',
+            '"rmdir", $ProbePath',
+            '"test", "-w", $ControlPath',
             '"exec", "--user", "root", $ContainerName',
             '"exec", "--user", "hermes", $ContainerName',
             '"/opt/hermes/.venv/bin/hermes", "gateway", "start"',
@@ -105,6 +111,17 @@ def main() -> int:
             "update-devkit.ps1 must repair the upstream /run/service ownership contract "
             "instead of registering the default Gateway slot as root"
         )
+
+    forbid(
+        text,
+        (
+            '"sh", "-ceu"',
+            '$RepairPermissions',
+            '$HermesWriteProbe',
+            '"/opt/hermes/.venv/bin/python", "-c"',
+        ),
+        "Windows PowerShell-safe s6 permission repair",
+    )
 
     root_gateway_start = (
         '"exec", "--user", "root", $ContainerName,\n'
