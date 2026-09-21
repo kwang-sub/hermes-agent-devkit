@@ -368,8 +368,6 @@ def main() -> int:
             'scripts/devkit_kanban_notifier.py /opt/devkit/bin/devkit_kanban_notifier.py',
             'docker/cont-init.d/019-devkit-kanban-notifier-policy',
             'docker/devkit-svscan.d/devkit-notifier/run /opt/devkit/svscan/devkit-notifier/run',
-            "/etc/cont-init.d/019-devkit-kanban-notifier-policy \\\\",
-            "/opt/devkit/svscan/devkit-notifier/run \\\\",
             'sh -n /etc/cont-init.d/019-devkit-kanban-notifier-policy',
             'sh -n /opt/devkit/svscan/devkit-notifier/run',
             '/opt/devkit/bin/devkit_kanban_notifier.py --self-test',
@@ -380,6 +378,11 @@ def main() -> int:
         ),
         "Dockerfile latest-Hermes/Git compatibility stage",
     )
+
+    if dockerfile.count("/etc/cont-init.d/019-devkit-kanban-notifier-policy") < 3:
+        raise SystemExit(
+            "Dockerfile must copy, CRLF-normalize, and syntax-check the notifier boot policy"
+        )
 
     forbid(
         dockerfile,
