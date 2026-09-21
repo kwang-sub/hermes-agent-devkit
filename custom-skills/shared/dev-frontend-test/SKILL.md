@@ -1,7 +1,7 @@
 ---
 name: dev-frontend-test
 description: frontend 변경에서 기존 Vitest/Jest/Testing Library/Storybook/Playwright/Cypress stack을 감지해 functional·component·e2e·design conformance·visual regression 검증을 선택하는 capability skill.
-version: 0.3.1
+version: 0.3.2
 author: local
 platforms: [linux]
 metadata:
@@ -215,13 +215,15 @@ Visual Regression: PASS | FAIL | NOT_RUN | NOT_REQUIRED
 
 ## Hermes Node Runtime Isolation
 
-Windows bind-mounted workspace에서 `.next`, `dist`, `build`, `coverage` 같은 출력이 동시 실행이나 권한 문제로 충돌하지 않도록, Hermes가 수행하는 Node/frontend **검증 명령**은 다음 runtime helper를 사용한다.
+Hermes Agent DevKit의 Node package manager는 pnpm으로 고정한다. Node/pnpm 버전은 별도 Hermes 파일이 아니라 프로젝트 `package.json`의 `devEngines.runtime` / `devEngines.packageManager`를 사용한다.
+
+Windows bind-mounted source에서 frontend 검증을 직접 실행하지 않는다. `node_runtime.py`가 package source를 `/opt/data/node/workspaces/.../source`로 동기화한 뒤 Linux 격리 workspace에서 test/lint/typecheck/build를 실행한다.
 
 ```bash
 python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py \
   --workspace "<Task Workspace>" \
   [--cwd "<package root relative to workspace>"] \
-  -- <기존 project verification command>
+  -- pnpm run <script>
 ```
 
 예:
@@ -229,26 +231,35 @@ python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py 
 ```bash
 python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py \
   --workspace "$WORKSPACE" \
-  -- npm run test
+  --cwd "chagok-frontend" \
+  -- pnpm run typecheck
 
 python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py \
   --workspace "$WORKSPACE" \
-  -- npm run build
+  --cwd "chagok-frontend" \
+  -- pnpm run build
 ```
 
 runtime helper 계약:
 
 ```text
-npm/pnpm/yarn/bun cache → /opt/data/node
-XDG cache              → /opt/data/node
-TMPDIR                  → /opt/data/node/workspaces/<workspace-id>/tmp
-동일 workspace 명령      → workspace lock으로 직렬화
-.next/dist/build 등       → project 설정을 임의 변경하지 않음
+package source             → Linux isolated workspace로 sync
+host node_modules/.next    → sync 제외
+host *.tsbuildinfo         → sync 제외
+isolated node_modules      → dependency fingerprint 동일 시에만 재사용
+package/lock fingerprint 변경 → 기존 isolated node_modules 폐기 + frozen restore
+isolated framework output  → 검증 시작마다 초기화
+pnpm home/store            → /opt/data/node
+동일 Task workspace 명령    → workspace lock으로 직렬화
+Node runtime               → package.json devEngines.runtime
+pnpm version               → package.json devEngines.packageManager
 ```
 
-Next/Vite/Storybook 등의 build output 경로를 DevKit이 일괄 override하지 않는다. framework마다 output 계약이 다르고 프로젝트의 deploy/CI script가 해당 경로를 직접 참조할 수 있기 때문이다. 대신 동일 Task workspace에 대한 Hermes build/test 실행을 직렬화한다.
+따라서 Windows에서 같은 worktree의 `next dev`가 실행 중이어도 host `.next/dev/types`와 Hermes `.next/types`가 하나의 TypeScript program에 섞이지 않는다. Next.js `distDir` 같은 프로젝트 전용 우회 설정은 필요하지 않다.
 
-`node_runtime.py`는 dependency 추가/삭제/복원용이 아니다. `npm install`, `pnpm add`, `yarn add`, `bun add`, `npx` 등 package acquisition/mutation은 `dev-node-dependencies`의 exact command + Tirith actual guard 계약을 그대로 사용한다. helper가 해당 명령을 감싸 보안 검사를 우회해서는 안 된다.
+isolated `node_modules`가 아직 준비되지 않았거나 dependency fingerprint가 바뀌었다면 `dev-node-dependencies` preflight가 반환한 `RESTORE_WORKDIR`에서 exact `pnpm install --frozen-lockfile`을 Tirith actual guard를 거쳐 실행한다. 성공 후 `RESTORE_MARK_COMMAND`를 실행해 현재 `package.json + pnpm-lock.yaml` fingerprint를 기록한 뒤 검증한다.
+
+dependency 추가는 source package root에서 exact `pnpm add --lockfile-only ...`를 수행해 `package.json`과 `pnpm-lock.yaml`만 갱신한다. 실제 dependency tree는 isolated workspace의 frozen restore가 소유한다.
 
 ## Handoff
 

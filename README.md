@@ -340,6 +340,51 @@ Stack Detection
 
 사용하지 않는 기술의 Skill을 미리 만들지 않고, 실제 프로젝트에서 필요할 때 Capability를 추가하는 방식으로 확장합니다.
 
+
+### Node / pnpm Toolchain
+
+DevKit의 Node package manager는 pnpm으로 고정합니다. Image에는 Node를 고정 설치하지 않고 pnpm standalone만 포함하며, 프로젝트의 `package.json`이 Node/pnpm version의 source of truth입니다.
+
+```json
+{
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "22.23.2",
+      "onFail": "download"
+    },
+    "packageManager": {
+      "name": "pnpm",
+      "version": ">=12.0.0 <13.0.0",
+      "onFail": "download"
+    }
+  }
+}
+```
+
+`pnpm install`은 선언된 Node runtime을 자동 준비하고 resolved version/checksum을 `pnpm-lock.yaml`에 기록합니다. DevKit은 npm/yarn/bun lockfile을 병행 지원하지 않습니다.
+
+Node/frontend 검증의 pnpm store/cache는 Linux named volume의 `/opt/data/node`에 두어 Windows host cache와 분리합니다.
+
+검증 명령은 Windows bind-mounted 프로젝트에서 직접 실행하지 않습니다. 현재 package source를 `/opt/data/node/workspaces/<workspace-id>/packages/<package-id>/source`로 동기화한 뒤 그 Linux 격리 workspace에서 실행합니다.
+
+```text
+Windows source
+├─ node_modules    (복사 안 함)
+├─ .next           (복사 안 함)
+└─ *.tsbuildinfo   (복사 안 함)
+        │ source/config/manifest만 sync
+        ▼
+/opt/data/node/workspaces/.../source
+├─ node_modules    (Linux 전용, dependency fingerprint 동일 시 유지)
+└─ .next/build/... (Linux 전용, 검증 시작마다 초기화)
+```
+
+이 때문에 Windows에서 같은 worktree의 `next dev`를 실행 중이어도 Hermes의 Next/TypeScript build와 generated type 경로를 공유하지 않습니다. Next.js `distDir` 같은 프로젝트별 우회 설정은 필요하지 않습니다.
+
+
+`package.json + pnpm-lock.yaml` fingerprint가 바뀌면 기존 Linux `node_modules`를 폐기하고 `pnpm install --frozen-lockfile`을 다시 요구합니다. restore 성공 후 fingerprint marker를 기록하므로 오래된 dependency tree를 재사용하지 않습니다.
+
 ---
 
 # 6. DevKit 업데이트

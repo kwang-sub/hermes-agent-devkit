@@ -121,6 +121,9 @@ Invoke-DockerCheck -Label "Temurin JDK 21 javac" -DockerArgs @(
 Invoke-DockerCheck -Label "hermes-java launcher" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "test", "-x", "/usr/local/bin/hermes-java"
 )
+Invoke-DockerExactOutputCheck -Label "Standalone pnpm 12.5.1 runtime" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "/usr/local/bin/pnpm", "--version"
+) -Expected "12.5.1"
 Invoke-DockerCheck -Label "Hermes CLI stable path" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "/usr/local/bin/hermes", "--help"
 )

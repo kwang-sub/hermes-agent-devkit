@@ -154,22 +154,44 @@ def main() -> int:
         ROOT
         / "custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py"
     )
-    if not node_runtime_path.is_file():
-        raise SystemExit(f"missing Node runtime isolation helper: {node_runtime_path}")
+    node_workspace_path = (
+        ROOT
+        / "custom-skills/shared/dev-node-dependencies/scripts/node_workspace.py"
+    )
+    if not node_runtime_path.is_file() or not node_workspace_path.is_file():
+        raise SystemExit("missing Node runtime/workspace isolation helper")
     node_runtime = node_runtime_path.read_text(encoding="utf-8")
+    node_workspace = node_workspace_path.read_text(encoding="utf-8")
     for required in (
-        'DEFAULT_ROOT = Path(os.getenv("HERMES_NODE_ROOT", "/opt/data/node"))',
-        '"npm_cache": root / "npm-cache"',
-        '"pnpm_store": root / "pnpm-store"',
-        '"yarn_cache": root / "yarn-cache"',
-        '"bun_cache": root / "bun-cache"',
-        '"xdg_cache": root / "xdg-cache"',
-        '"tmp": workspace_state / "tmp"',
-        'lock_path = paths["lock_root"] / f"workspace-{key}.lock"',
-        "reject_dependency_mutation(command)",
+        "prepare_isolated_package",
+        '"pnpm_home"',
+        '"pnpm_store"',
+        '"xdg_cache"',
+        '"tmp"',
+        'lock_path = root / "locks" / f"workspace-{key}.lock"',
+        "resolve_project_toolchain",
+        "validate_pnpm_command(command)",
+        "current_dependency_fingerprint",
+        "dependencies_ready",
+        "linux-isolated-workspace;workspace-serialized",
     ):
         if required not in node_runtime:
             raise SystemExit(f"Node runtime missing internal state isolation: {required}")
+    for required in (
+        'DEFAULT_ROOT = Path(os.getenv("HERMES_NODE_ROOT", "/opt/data/node"))',
+        "GENERATED_NAMES",
+        "PRESERVE_DEST_NAMES",
+        '"node_modules"',
+        '".next"',
+        '".tsbuildinfo"',
+        '"isolated_package_root": package_state / "source"',
+        "DEPENDENCY_FINGERPRINT_FILE",
+        "dependency_fingerprint",
+        "mark_dependencies_restored",
+        "prepare_isolated_package",
+    ):
+        if required not in node_workspace:
+            raise SystemExit(f"Node workspace missing bind-mount isolation: {required}")
 
     # Gradle build-output and Node runtime roots are DevKit implementation details.
     # Keep them out of sample.env / Compose public configuration unless a future
