@@ -250,6 +250,7 @@ run_check "Kanban worker session-affinity patch" python3 scripts/patch_hermes_ka
 run_check "Discord Kanban session-context patch" python3 scripts/patch_hermes_discord_kanban_session.py --self-test
 run_check "dev-workspace-dispatch regression tests" python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
 run_check "dev-implement-plan workspace verification tests" python3 custom-skills/coder/dev-implement-plan/tests/test_verify_workspace.py
+run_check "dev-implement-plan change summary tests" python3 custom-skills/coder/dev-implement-plan/tests/test_change_summary.py
 run_check "dev-code-review context tests" python3 custom-skills/reviewer/dev-code-review/tests/test_review_context.py
 run_check "dev-review-cycle contract" python3 scripts/check_review_cycle_contract.py
 run_check "dev-project-bootstrap launcher tests" python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_bootstrap_launcher.py
