@@ -365,15 +365,21 @@ DevKit의 Node package manager는 pnpm으로 고정합니다. Image에는 Node�
 
 Node/frontend 검증의 pnpm store/cache는 Linux named volume의 `/opt/data/node`에 두어 Windows host cache와 분리합니다.
 
-Next.js 프로젝트는 host의 `.next`와 Hermes generated output이 충돌하지 않도록 다음 convention을 사용합니다.
+검증 명령은 Windows bind-mounted 프로젝트에서 직접 실행하지 않습니다. 현재 package source를 `/opt/data/node/workspaces/<workspace-id>/packages/<package-id>/source`로 동기화한 뒤 그 Linux 격리 workspace에서 실행합니다.
 
-```ts
-const nextConfig: NextConfig = {
-  distDir: process.env.HERMES_NEXT_DIST_DIR || ".next",
-};
+```text
+Windows source
+├─ node_modules    (복사 안 함)
+├─ .next           (복사 안 함)
+└─ *.tsbuildinfo   (복사 안 함)
+        │ source/config/manifest만 sync
+        ▼
+/opt/data/node/workspaces/.../source
+├─ node_modules    (Linux 전용, 유지)
+└─ .next/build/... (Linux 전용, 검증 시작마다 초기화)
 ```
 
-Hermes runtime에서는 `HERMES_NEXT_DIST_DIR=.next-hermes`가 주입되며 `.next-hermes/`는 Git에서 제외합니다.
+이 때문에 Windows에서 같은 worktree의 `next dev`를 실행 중이어도 Hermes의 Next/TypeScript build와 generated type 경로를 공유하지 않습니다. Next.js `distDir` 같은 프로젝트별 우회 설정은 필요하지 않습니다.
 
 ---
 
