@@ -5,6 +5,7 @@ from contextlib import contextmanager
 import fcntl
 import hashlib
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -211,6 +212,22 @@ def resolve_primary_repository(requested: str, *, env: dict[str, str]) -> Path:
     return primary
 
 
+def recorded_non_git_acknowledgement(project_root: Path) -> bool:
+    metadata = project_root / ".hermes" / "project.yaml"
+    if not metadata.is_file():
+        return False
+    try:
+        text = metadata.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if "# managed-by: dev-project-bootstrap" not in text.splitlines()[:5]:
+        return False
+    return bool(
+        re.search(r"(?m)^\s{2}type:\s*['\"]?none['\"]?\s*$", text)
+        and re.search(r"(?m)^\s{2}non_git_write_acknowledged:\s*true\s*$", text)
+    )
+
+
 def resolve_project_workspace(
     requested: str,
     *,
@@ -229,7 +246,8 @@ def resolve_project_workspace(
     if root_result.returncode == 0:
         return resolve_primary_repository(str(requested_path), env=env), True
 
-    if not allow_non_git:
+    acknowledged = allow_non_git or recorded_non_git_acknowledgement(requested_path)
+    if not acknowledged:
         detail = (root_result.stderr or root_result.stdout).strip()
         suffix = f"\n{detail}" if detail else ""
         raise BootstrapLauncherError(
