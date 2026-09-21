@@ -255,6 +255,12 @@ def main() -> int:
             'default_gateway_multiplexes',
             'recorded_served_profiles',
             '{"default", "coder", "orchestrator", "reviewer"}',
+            'Upstream Codex scoped Kanban MCP contract',
+            'KANBAN_ENV_KEYS',
+            'delegated_child_subprocess_env',
+            'mcp_servers.{HERMES_TOOLS_MCP_SERVER_NAME}.env.{key}',
+            'kanban_show',
+            'expected_run_id',
         ),
         "update-devkit runtime Git/Tirith/multiplex verification",
     )
@@ -267,6 +273,8 @@ def main() -> int:
             'HERMES_KANBAN_NOTIFY_PROFILE=orchestrator',
             '/run/service/gateway-orchestrator',
             'Orchestrator notification Gateway is running',
+            'devkit_kanban_worker_context.py',
+            'kanban_worker_context missing from Hermes registry',
         ),
         "Windows PowerShell-safe runtime Git and fixed multiplex verification",
     )
@@ -390,6 +398,10 @@ def main() -> int:
             "patch_hermes_discord_kanban_notify.py",
             "patch_hermes_discord_kanban_session.py",
             "patch_hermes_tui_file_signature.py",
+            "patch_hermes_syntax_warning.py",
+            "patch_hermes_kanban_terminal.py",
+            "patch_hermes_codex_kanban_context.py",
+            "devkit_kanban_worker_context.py",
             "/opt/hermes/hermes_cli/cli_tui_mixin.py",
             "/opt/hermes/hermes_cli/cli_session_mixin.py",
         ),
@@ -413,6 +425,18 @@ def main() -> int:
             raise SystemExit(
                 "obsolete DevKit notification runtime patch/test must be removed: "
                 + str(removed_notification_runtime.relative_to(ROOT))
+            )
+
+    for removed_upstream_redundant_patch in (
+        ROOT / "scripts/patch_hermes_syntax_warning.py",
+        ROOT / "scripts/patch_hermes_kanban_terminal.py",
+        ROOT / "scripts/patch_hermes_codex_kanban_context.py",
+        ROOT / "scripts/devkit_kanban_worker_context.py",
+    ):
+        if removed_upstream_redundant_patch.exists():
+            raise SystemExit(
+                "upstream-redundant Hermes patch/runtime must be removed: "
+                + str(removed_upstream_redundant_patch.relative_to(ROOT))
             )
 
     if "git worktree repair -h 2>&1 | grep -q -- '--relative-paths'" in dockerfile:
@@ -452,6 +476,13 @@ def main() -> int:
             '/opt/custom-skills/shared/dev-api-spec/SKILL.md',
             '/opt/custom-skills/shared/dev-node-dependencies/SKILL.md',
             '/opt/data/shared/scripts/flow_model_policy.py',
+            'test ! -e /opt/hermes/hermes_cli/devkit_kanban_worker_context.py',
+            'agent/transports/codex_app_server.py',
+            'KANBAN_ENV_KEYS',
+            'delegated_child_subprocess_env',
+            'mcp_servers.{HERMES_TOOLS_MCP_SERVER_NAME}.env.{key}',
+            'kanban_show',
+            'expected_run_id',
         ),
         "latest Hermes compatibility smoke",
     )
@@ -473,7 +504,7 @@ def main() -> int:
         "latest Hermes compatibility workflow",
     )
 
-    print("[PASS] DevKit updater + runtime verifier + Notification Bridge + latest Hermes CI + pinned Git/pnpm runtime + Tirith routed-profile compatibility contract verified.")
+    print("[PASS] DevKit updater + runtime verifier + Notification Bridge + latest Hermes CI + upstream scoped Kanban MCP + pinned Git/pnpm runtime + Tirith routed-profile compatibility contract verified.")
     return 0
 
 
