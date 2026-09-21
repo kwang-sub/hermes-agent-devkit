@@ -42,6 +42,7 @@ docker run --rm \
 
         test "$(/usr/local/bin/git --version)" = "git version 2.55.0"
         test "$(/usr/local/bin/git config --system --bool --get worktree.useRelativePaths)" = "true"
+        test "$(/usr/local/bin/pnpm --version)" = "12.5.1"
 
         test -f /opt/hermes/hermes_cli/devkit_session_affinity.py
         test -f /opt/hermes/tools/kanban_tools.py
@@ -109,4 +110,4 @@ PY
         test -f /opt/data/shared/scripts/flow_model_policy.py
     '
 
-printf '[PASS] Latest Hermes base image, pinned Git runtime, and DevKit patches are compatible.\n'
+printf '[PASS] Latest Hermes base image, pinned Git/pnpm runtime, and DevKit patches are compatible.\n'
