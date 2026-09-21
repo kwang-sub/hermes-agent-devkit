@@ -15,7 +15,7 @@ Default behavior:
 2. Fetch the remote and fast-forward the current branch.
 3. Classify changed files for warnings and runtime context.
 4. Derive the Hermes-visible Windows Temp path from LOCALAPPDATA.
-5. Temporarily override HERMES_BASE_IMAGE with nousresearch/hermes-agent:latest.
+5. Use the DevKit-internal Hermes base contract: nousresearch/hermes-agent:latest.
 6. Build with `docker compose build --pull` so the current latest Hermes base image is refreshed.
 7. Force-recreate the container only after the build succeeds.
 8. Keep the existing hermes-data volume and profile/OAuth/session state intact.
