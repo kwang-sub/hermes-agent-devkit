@@ -128,6 +128,34 @@ Invoke-DockerCheck -Label "Hermes CLI stable path" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "/usr/local/bin/hermes", "--help"
 )
 
+$S6ScandirWriteProbe = @'
+from pathlib import Path
+import os
+
+root = Path("/run/service")
+probe = root / ".devkit-runtime-write-check"
+if probe.exists():
+    if probe.is_dir():
+        probe.rmdir()
+    else:
+        probe.unlink()
+probe.mkdir()
+probe.rmdir()
+
+for name in ("control", "lock"):
+    path = root / ".s6-svscan" / name
+    if path.exists() and not os.access(path, os.W_OK):
+        raise SystemExit(f"hermes cannot write {path}")
+
+print("true")
+'@
+
+$S6ScandirWriteProbe | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
+if ($LASTEXITCODE -ne 0) {
+    throw "[FAIL] s6 dynamic Gateway scandir hermes-write contract. Re-run .\update-devkit.ps1 or rebuild/recreate the container."
+}
+Write-Host "[OK] s6 dynamic Gateway scandir is hermes-writable"
+
 
 Invoke-DockerExactOutputCheck -Label "DevKit Kanban notifier service is running" -DockerArgs @(
     "exec", $Container, "/package/admin/s6/command/s6-svstat", "-o", "up",

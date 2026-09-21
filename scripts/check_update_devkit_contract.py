@@ -66,15 +66,15 @@ def main() -> int:
             'init-profiles.ps1',
             'Profile/skill reconciliation',
             'PROFILES_RECONCILED=',
-            'function Test-ContainerDirectory',
+            'function Ensure-S6GatewayRuntimePermissions',
             'function Ensure-DefaultMultiplexGateway',
+            'Ensure-S6GatewayRuntimePermissions -ContainerName $ContainerName',
             'Ensure-DefaultMultiplexGateway -ContainerName $Container',
-            '$ServicePath = "/run/service/gateway-default"',
-            'Start-Sleep -Milliseconds 500',
-            'manager.register_profile_gateway("default", start_now=False)',
-            '"exec", "--user", "root"',
-            '"HOME=/opt/data"',
-            '"HERMES_HOME=/opt/data"',
+            'chown hermes:hermes /run/service',
+            'chown hermes:hermes "/run/service/.s6-svscan/$entry"',
+            '".devkit-hermes-write-check"',
+            '"exec", "--user", "root", $ContainerName',
+            '"exec", "--user", "hermes", $ContainerName',
             '"/opt/hermes/.venv/bin/hermes", "gateway", "start"',
             'scripts\\verify-container-runtime.ps1',
             'Runtime verification failed. Performing one cached rebuild + force-recreate repair.',
@@ -95,13 +95,19 @@ def main() -> int:
             "update-devkit.ps1 must reconcile the default Gateway on both normal and repair paths"
         )
 
+    if 'manager.register_profile_gateway("default", start_now=False)' in text:
+        raise SystemExit(
+            "update-devkit.ps1 must repair the upstream /run/service ownership contract "
+            "instead of registering the default Gateway slot as root"
+        )
+
     root_gateway_start = (
         '"exec", "--user", "root", $ContainerName,\n'
         '        "/opt/hermes/.venv/bin/hermes", "gateway", "start"'
     )
     if root_gateway_start in text:
         raise SystemExit(
-            "update-devkit.ps1 may use root only to register the volatile s6 slot; "
+            "update-devkit.ps1 may use root only for ephemeral s6 permission repair; "
             "the Hermes Gateway itself must start as user hermes"
         )
 
@@ -184,6 +190,8 @@ def main() -> int:
             '_devkit_only_analysis_incomplete',
             'process-global environment',
             'Shared Node dependency capability',
+            's6 dynamic Gateway scandir hermes-write contract',
+            '".devkit-runtime-write-check"',
             'DevKit Kanban notifier service is running',
             'DevKit Kanban notifier ownership contract',
             'GATEWAY_MULTIPLEX_PROFILES=true',
