@@ -240,7 +240,44 @@ pnpm-lock.yaml 있음
 
 ## Hermes Runtime Isolation
 
-test/lint/typecheck/build 같은 검증은 dependency mutation과 분리한다.
+test/lint/typecheck/build 같은 검증은 Windows bind-mounted source에서 직접 실행하지 않는다. 현재 package source를 Linux named volume의 격리 workspace로 동기화한 뒤 그 복사본에서 실행한다.
+
+격리 workspace 준비:
+
+```bash
+python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_workspace.py \
+  --workspace "<Task Workspace>" \
+  [--cwd "<package root>"]
+```
+
+출력의 `NODE_ISOLATED_PACKAGE_ROOT`가 실제 Hermes Node execution root다.
+
+동기화 정책:
+
+```text
+source code / package.json / pnpm-lock.yaml
+→ Windows bind workspace에서 Linux isolated workspace로 동기화
+
+Windows node_modules / .next / dist / build / coverage / *.tsbuildinfo
+→ 복사하지 않음
+
+Linux isolated node_modules
+→ 검증 간 유지
+
+Linux .next / dist / build / coverage / *.tsbuildinfo
+→ 각 검증 시작 전에 제거
+```
+
+따라서 host에서 `next dev`가 실행 중이거나 `.next/dev/types`가 남아 있어도 Hermes typecheck/build 입력에 포함되지 않는다.
+
+dependency가 이미 manifest/lockfile에 있고 isolated `node_modules`가 없으면 exact command를 **isolated workdir**에서 Tirith actual guard를 거쳐 실행한다.
+
+```text
+RESTORE_COMMAND=pnpm install --frozen-lockfile
+RESTORE_WORKDIR=<NODE_ISOLATED_PACKAGE_ROOT>
+```
+
+검증:
 
 ```bash
 python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py \
@@ -249,24 +286,16 @@ python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py 
   -- pnpm run <script>
 ```
 
-runtime helper는:
+runtime helper는 source를 다시 동기화한 후:
 
 ```text
-pnpm store/cache → /opt/data/node
+pnpm home/store  → /opt/data/node
 TMP/XDG cache    → /opt/data/node
+execution cwd    → /opt/data/node/workspaces/<workspace-id>/packages/<package-id>/source
 workspace command → lock으로 직렬화
-HERMES_NEXT_DIST_DIR=.next-hermes
 ```
 
-를 적용한다.
-
-Next.js 프로젝트는 `next.config.*`에서 다음 convention을 사용한다.
-
-```ts
-distDir: process.env.HERMES_NEXT_DIST_DIR || ".next"
-```
-
-따라서 Windows host의 `next dev`는 기본 `.next`를 사용하고 Hermes build/typecheck는 `.next-hermes`를 사용해 generated type/output 충돌을 피한다. `.next-hermes/`는 반드시 `.gitignore` 대상이다.
+를 적용한다. Next.js/Vite 등 framework-specific output 설정을 프로젝트에 추가로 강제하지 않는다. 격리의 경계는 framework output directory가 아니라 **execution workspace 자체**다.
 
 ## Mutation Verification
 
@@ -296,7 +325,10 @@ Lockfile Present Before: true | false
 Tirith Preflight: allow | approval_required | unavailable
 Tirith Actual Guard: allow | approval_required | block | not_run
 Install Command: ... | NOT_REQUIRED
+Install Workdir: ... | NOT_REQUIRED
 Restore Command: ... | NOT_REQUIRED
+Restore Workdir: ... | NOT_REQUIRED
+Verification Package Root: ...
 Install Timeout Seconds: 600 | NOT_REQUIRED
 Manifest Updated: true | false | not_required
 Lockfile Updated: true | false | not_required
