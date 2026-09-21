@@ -85,11 +85,13 @@ profiles:
             orchestrator="orchestrator",
             coder="coder",
             reviewer="reviewer",
+            version_control_type="git",
+            non_git_acknowledged=False,
         )
 
         text = metadata.read_text(encoding="utf-8")
         assert created is False
-        assert "version: 2" in text
+        assert "version: 4" in text
         assert original_resolver.rstrip() in text
         assert original_jira.rstrip() in text
         assert original_custom.rstrip() in text
@@ -111,6 +113,8 @@ profiles:
             orchestrator="orchestrator",
             coder="coder",
             reviewer="reviewer",
+            version_control_type="git",
+            non_git_acknowledged=False,
         )
         second_resolver = m.section_map(metadata.read_text(encoding="utf-8"))["resolver"]
         assert created2 is False
@@ -131,6 +135,8 @@ profiles:
             orchestrator="orchestrator",
             coder="coder",
             reviewer="reviewer",
+            version_control_type="git",
+            non_git_acknowledged=False,
         )
         new_text = new_meta.read_text(encoding="utf-8")
         assert created3 is True
@@ -138,6 +144,31 @@ profiles:
         assert "resolver:\n  aliases: []\n  modules: []\n  files: []\n  paths: []" in new_text
         assert "\njira:" not in new_text
         assert "\nwork_sources:" not in new_text
+        assert 'version_control:\n  type: "git"\n  non_git_write_acknowledged: false' in new_text
+
+        # Non-Git metadata records the one-time write acknowledgement and has no Git base/worktree.
+        non_git_meta = base / "non-git" / ".hermes" / "project.yaml"
+        existing_non_git = m.read_managed_metadata(non_git_meta)
+        m.write_metadata(
+            non_git_meta,
+            existing=existing_non_git,
+            project_id="non-git",
+            name="non-git",
+            repository=str(base / "non-git"),
+            board="non-git",
+            base="",
+            worktree_root="",
+            orchestrator="orchestrator",
+            coder="coder",
+            reviewer="reviewer",
+            version_control_type="none",
+            non_git_acknowledged=True,
+        )
+        non_git_text = non_git_meta.read_text(encoding="utf-8")
+        assert 'type: "none"' in non_git_text
+        assert "non_git_write_acknowledged: true" in non_git_text
+        assert 'default_base_branch: ""' in non_git_text
+        assert 'worktree_root: ""' in non_git_text
 
         print("TEST_STATUS=PASS")
         return 0
