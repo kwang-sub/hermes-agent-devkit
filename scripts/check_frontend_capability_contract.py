@@ -84,7 +84,7 @@ checks = {
         "DEPENDENCY_DECLARATION_COMPATIBILITY", "compiler/typecheck/test/build",
     )),
     "node dependency skill": (node_dependencies, (
-        "Node 프로젝트는 **pnpm 하나만 사용한다**", "devEngines.runtime", "devEngines.packageManager",
+        "pnpm 하나만 사용한다", "devEngines.runtime", "devEngines.packageManager",
         "pnpm-lock.yaml", "package-lock.json", "migration blocker", "PACKAGE_MANAGER_ROOT",
         "node_dependency_preflight.py", "tirith_package_preflight.py", "analysis_incomplete",
         "TIRITH_PREFLIGHT=allow", "TIRITH_PREFLIGHT=approval_required", "actual Hermes terminal guard",
