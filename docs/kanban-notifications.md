@@ -7,7 +7,7 @@ DevKit은 Hermes Kanban DB에 이미 기록되는 `task_events`를 읽어 개발
 ```text
 hermes-dev container
 ├─ gateway-default
-├─ devkit-notifier        ← s6 longrun
+├─ devkit-notifier        ← /run/service dynamic s6-svscan longrun
 ├─ coder/reviewer workers
 └─ /opt/data
    ├─ kanban.db / kanban/boards/*/kanban.db
@@ -95,4 +95,4 @@ python3 scripts/devkit_kanban_notifier.py --self-test
 hermes send --help
 ```
 
-컨테이너에서는 `/run/service/devkit-notifier`가 s6에 의해 감독된다.
+컨테이너에서는 boot policy가 `/run/service/devkit-notifier`를 atomic publish하고 PID 1 `s6-svscan`이 직접 감독한다. DevKit은 이 Bridge에 대해 정적 `/etc/s6-overlay/s6-rc.d` user bundle 활성 여부에 의존하지 않는다.
