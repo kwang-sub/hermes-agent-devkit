@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -164,13 +165,32 @@ def dependency_fingerprint(package_root: Path) -> str:
     return digest.hexdigest()
 
 
+def _manifest_requires_node_modules(package_root: Path) -> bool:
+    manifest = package_root / "package.json"
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise WorkspaceError(f"cannot inspect package.json dependency sections: {exc}") from exc
+    dependency_sections = (
+        "dependencies",
+        "devDependencies",
+        "optionalDependencies",
+        "peerDependencies",
+    )
+    return any(
+        isinstance(data.get(section), dict) and bool(data.get(section))
+        for section in dependency_sections
+    )
+
+
 def dependency_state(paths: dict[str, Path]) -> tuple[str, bool]:
     isolated = paths["isolated_package_root"]
     current = dependency_fingerprint(isolated)
     marker = paths["dependency_fingerprint"]
     stored = marker.read_text(encoding="utf-8").strip() if marker.is_file() else ""
     modules = isolated / "node_modules"
-    ready = bool(stored and stored == current and modules.is_dir())
+    modules_ready = modules.is_dir() or not _manifest_requires_node_modules(isolated)
+    ready = bool(stored and stored == current and modules_ready)
     if modules.exists() and not ready:
         _remove(modules)
     return current, ready
@@ -232,23 +252,7 @@ def mark_dependencies_restored(
             "source package.json/pnpm-lock.yaml changed after isolated restore; rerun preflight/restore before marking"
         )
 
-    manifest = package_root / "package.json"
-    try:
-        import json
-        data = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise WorkspaceError(f"cannot validate package.json before restore mark: {exc}") from exc
-
-    dependency_sections = (
-        "dependencies",
-        "devDependencies",
-        "optionalDependencies",
-        "peerDependencies",
-    )
-    requires_modules = any(
-        isinstance(data.get(section), dict) and bool(data.get(section))
-        for section in dependency_sections
-    )
+    requires_modules = _manifest_requires_node_modules(package_root)
     modules = isolated / "node_modules"
     if requires_modules and not modules.is_dir():
         raise WorkspaceError(
