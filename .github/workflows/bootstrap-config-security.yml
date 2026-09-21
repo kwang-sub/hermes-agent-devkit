@@ -7,9 +7,13 @@ on:
       - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/ensure_gitignore.py'
       - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/ensure_config_security.py'
       - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/bootstrap.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/bootstrap_preflight.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/project_builds.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/ensure_workspace_toolchain.py'
       - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_ensure_gitignore.py'
       - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_config_security.py'
       - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_bootstrap_launcher.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_bootstrap_preflight.py'
       - 'custom-skills/shared/references/application-configuration-security.md'
       - 'custom-skills/shared/dev-infrastructure/SKILL.md'
       - '.github/workflows/bootstrap-config-security.yml'
@@ -20,9 +24,13 @@ on:
       - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/ensure_gitignore.py'
       - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/ensure_config_security.py'
       - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/bootstrap.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/bootstrap_preflight.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/project_builds.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/scripts/ensure_workspace_toolchain.py'
       - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_ensure_gitignore.py'
       - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_config_security.py'
       - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_bootstrap_launcher.py'
+      - 'custom-skills/orchestrator/dev-project-bootstrap/tests/test_bootstrap_preflight.py'
       - 'custom-skills/shared/references/application-configuration-security.md'
       - 'custom-skills/shared/dev-infrastructure/SKILL.md'
       - '.github/workflows/bootstrap-config-security.yml'
@@ -43,6 +51,8 @@ jobs:
         run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_config_security.py
       - name: Bootstrap launcher regression
         run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_bootstrap_launcher.py
+      - name: Bootstrap fast preflight regression
+        run: python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_bootstrap_preflight.py
       - name: Infrastructure regression
         run: |
           python3 custom-skills/shared/dev-infrastructure/tests/test_detect_infrastructure.py
