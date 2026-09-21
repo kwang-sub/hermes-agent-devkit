@@ -104,7 +104,7 @@ class NodeDependencyPreflightTest(unittest.TestCase):
         self.assertIn("PACKAGE_MANAGER_VERSION=12.5.1", proc.stdout)
         self.assertIn("NODE_REQUIREMENT=22.23.2", proc.stdout)
         self.assertIn("INSTALL_REQUIRED=true", proc.stdout)
-        self.assertIn("INSTALL_COMMAND=pnpm add react", proc.stdout)
+        self.assertIn("INSTALL_COMMAND=pnpm add --lockfile-only react", proc.stdout)
         self.assertIn(f"INSTALL_WORKDIR={self.frontend}", proc.stdout)
         self.assertIn("RESTORE_COMMAND=NOT_REQUIRED", proc.stdout)
         isolated = Path(output_value(proc.stdout, "VERIFICATION_PACKAGE_ROOT"))
@@ -114,7 +114,7 @@ class NodeDependencyPreflightTest(unittest.TestCase):
         self.write_manifest()
         proc = self.run_preflight("--dependency-type", "dev")
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("INSTALL_COMMAND=pnpm add -D react", proc.stdout)
+        self.assertIn("INSTALL_COMMAND=pnpm add --lockfile-only -D react", proc.stdout)
 
     def test_declared_dependency_restores_only_linux_workspace(self) -> None:
         self.write_manifest(dependencies={"react": "19.3.0"})
