@@ -100,19 +100,6 @@ def _open_affinity(kanban_db_path: str) -> sqlite3.Connection:
         )
         """
     )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS session_runs (
-            run_id INTEGER PRIMARY KEY,
-            task_id TEXT NOT NULL,
-            profile TEXT NOT NULL,
-            mode TEXT NOT NULL,
-            session_id TEXT,
-            workspace TEXT NOT NULL,
-            started_at REAL NOT NULL
-        )
-        """
-    )
     conn.commit()
     return conn
 
@@ -129,7 +116,7 @@ def _open_state_readonly(profile_home: Optional[str]) -> Optional[sqlite3.Connec
     if path is None:
         return None
     # URI read-only mode avoids accidentally creating/migrating a profile DB
-    # from the dispatcher/notifier path.
+    # from the dispatcher path.
     uri = f"file:{path.as_posix()}?mode=ro"
     conn = sqlite3.connect(uri, uri=True, timeout=0.5)
     conn.row_factory = sqlite3.Row
@@ -265,15 +252,6 @@ def choose_worker_session(
             """,
             (task_id, profile, fingerprint, session_id if mode == SESSION_MODE_RESUME else None, workspace, now),
         )
-        run_id = getattr(task, "current_run_id", None)
-        if run_id is not None:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO session_runs(run_id, task_id, profile, mode, session_id, workspace, started_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (int(run_id), task_id, profile, mode, session_id, workspace, now),
-            )
         conn.commit()
     except (OSError, sqlite3.Error, TypeError, ValueError):
         mode = SESSION_MODE_NEW
@@ -282,119 +260,6 @@ def choose_worker_session(
         if conn is not None:
             conn.close()
     return SessionChoice(mode, session_id, fingerprint)
-
-
-def _execution_profile(kind: str, task: Any, payload: dict[str, Any]) -> str:
-    if kind == "review_requested":
-        return _text(payload.get("implementer")) or _text(getattr(task, "assignee", ""))
-    if kind == "changes_requested":
-        return _text(payload.get("reviewer")) or _text(getattr(task, "assignee", ""))
-    return _text(getattr(task, "assignee", ""))
-
-
-def _resolve_profile_home(profile: str) -> Optional[str]:
-    if not profile:
-        return None
-    try:
-        from hermes_cli.profiles import resolve_profile_env
-
-        return resolve_profile_env(profile)
-    except Exception:
-        return None
-
-
-def notification_session_context(
-    *,
-    kind: str,
-    task: Any,
-    event: Any,
-    kanban_db_path: str,
-) -> tuple[str, str, str]:
-    """Resolve ``(profile, session_id, mode)`` for a terminal notification."""
-    payload = getattr(event, "payload", None) or {}
-    if not isinstance(payload, dict):
-        payload = {}
-    task_id = _text(getattr(task, "id", ""))
-    profile = _execution_profile(kind, task, payload)
-    profile_home = _resolve_profile_home(profile)
-    workspace = _text(getattr(task, "workspace_path", ""))
-    event_run_id = getattr(event, "run_id", None) or payload.get("run_id")
-
-    mode = "-"
-    stored_session: Optional[str] = None
-    run_started_at: Optional[float] = None
-    conn = None
-    try:
-        conn = _open_affinity(kanban_db_path)
-        row = None
-        if event_run_id is not None:
-            try:
-                row = conn.execute(
-                    "SELECT mode, session_id, workspace, started_at FROM session_runs WHERE run_id = ? AND task_id = ?",
-                    (int(event_run_id), task_id),
-                ).fetchone()
-            except (TypeError, ValueError):
-                row = None
-        if row is None and task_id and profile:
-            row = conn.execute(
-                """
-                SELECT mode, session_id, workspace, started_at
-                  FROM session_runs
-                 WHERE task_id = ? AND profile = ?
-                 ORDER BY started_at DESC LIMIT 1
-                """,
-                (task_id, profile),
-            ).fetchone()
-        if row is not None:
-            mode = _text(row["mode"]) or "-"
-            stored_session = _text(row["session_id"]) or None
-            workspace = _text(row["workspace"]) or workspace
-            try:
-                run_started_at = float(row["started_at"])
-            except (TypeError, ValueError):
-                run_started_at = None
-    except (OSError, sqlite3.Error):
-        pass
-    finally:
-        if conn is not None:
-            conn.close()
-
-    if task_id and profile:
-        min_started_at = run_started_at if mode == SESSION_MODE_NEW and run_started_at else None
-        current_session = _find_task_session(
-            profile_home, task_id, workspace, min_started_at=min_started_at
-        )
-    else:
-        current_session = None
-    session_id = current_session or stored_session or "-"
-
-    # Best-effort backfill so the next dispatcher spawn can resume even when
-    # the terminal notification was the first place the fresh session id was
-    # observable outside the worker process.
-    if current_session and task_id and profile:
-        conn = None
-        try:
-            conn = _open_affinity(kanban_db_path)
-            conn.execute(
-                "UPDATE session_affinity SET session_id = ?, updated_at = ? WHERE task_id = ? AND profile = ?",
-                (current_session, time.time(), task_id, profile),
-            )
-            if event_run_id is not None:
-                try:
-                    conn.execute(
-                        "UPDATE session_runs SET session_id = ? WHERE run_id = ? AND task_id = ?",
-                        (current_session, int(event_run_id), task_id),
-                    )
-                except (TypeError, ValueError):
-                    pass
-            conn.commit()
-        except (OSError, sqlite3.Error):
-            pass
-        finally:
-            if conn is not None:
-                conn.close()
-
-    return profile or "-", session_id, mode
 
 
 def self_test() -> None:
@@ -520,8 +385,8 @@ def self_test() -> None:
         )
         assert third.mode == SESSION_MODE_NEW and third.session_id is None
 
-        # Restore the original contract and verify notification lookup exposes
-        # both the executing profile and the durable session id/mode.
+        # Restoring an older execution contract after a fingerprint change
+        # starts a fresh session; affinity never resurrects a stale runtime.
         task.model_override = "model-a"
         task.current_run_id = 4
         fourth = choose_worker_session(
@@ -532,18 +397,7 @@ def self_test() -> None:
             kanban_db_path=str(kanban),
             worker_toolsets=["terminal"],
         )
-        # The immediately preceding contract was different, so this run is NEW.
-        assert fourth.mode == SESSION_MODE_NEW
-        globals()["_resolve_profile_home"] = lambda profile: str(profile_home)
-        profile, session_id, mode = notification_session_context(
-            kind="blocked",
-            task=task,
-            event=SimpleNamespace(payload={}, run_id=4),
-            kanban_db_path=str(kanban),
-        )
-        assert profile == "coder"
-        assert session_id == "-"
-        assert mode == SESSION_MODE_NEW
+        assert fourth.mode == SESSION_MODE_NEW and fourth.session_id is None
 
     print("Hermes Kanban session-affinity runtime self-test passed")
 

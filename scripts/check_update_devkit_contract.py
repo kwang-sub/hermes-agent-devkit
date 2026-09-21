@@ -165,6 +165,8 @@ def main() -> int:
             '_devkit_only_analysis_incomplete',
             'process-global environment',
             'Shared Node dependency capability',
+            'Hermes native Kanban notifier contract',
+            'DevKit Discord formatter patch is still installed',
             'GATEWAY_MULTIPLEX_PROFILES=true',
             'Default multiplex Gateway service is running',
             '/run/service/gateway-default',
@@ -232,6 +234,26 @@ def main() -> int:
         "Dockerfile latest-Hermes/Git compatibility stage",
     )
 
+    forbid(
+        dockerfile,
+        (
+            "patch_hermes_discord_kanban_notify.py",
+            "patch_hermes_discord_kanban_session.py",
+        ),
+        "Dockerfile native Kanban notification contract",
+    )
+
+    for removed_notification_runtime in (
+        ROOT / "scripts/patch_hermes_discord_kanban_notify.py",
+        ROOT / "scripts/patch_hermes_discord_kanban_session.py",
+        ROOT / "scripts/test_kanban_registered_runtime.py",
+    ):
+        if removed_notification_runtime.exists():
+            raise SystemExit(
+                "obsolete DevKit notification runtime patch/test must be removed: "
+                + str(removed_notification_runtime.relative_to(ROOT))
+            )
+
     if "git worktree repair -h 2>&1 | grep -q -- '--relative-paths'" in dockerfile:
         raise SystemExit(
             "Dockerfile must verify relative-worktree support by executing repair --relative-paths, not by grepping short help"
@@ -257,6 +279,7 @@ def main() -> int:
             '_devkit_tirith_subprocess_env',
             '_devkit_only_analysis_incomplete',
             '/opt/hermes/.venv/bin/hermes --help',
+            'test_native_kanban_notification_runtime.py',
             '/opt/custom-skills/shared/dev-api-spec/SKILL.md',
             '/opt/custom-skills/shared/dev-node-dependencies/SKILL.md',
             '/opt/data/shared/scripts/flow_model_policy.py',

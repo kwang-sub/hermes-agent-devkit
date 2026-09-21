@@ -125,7 +125,7 @@ PY
         test -f /opt/custom-skills/shared/dev-official-docs-context/scripts/context7_docs.py
         test -f /opt/custom-skills/shared/dev-official-docs-context/scripts/detect_dependency_versions.py
         /opt/hermes/.venv/bin/python /opt/custom-skills/shared/dev-official-docs-context/scripts/context7_docs.py --self-test
-        /opt/hermes/.venv/bin/python /opt/devkit-tests/test_kanban_registered_runtime.py
+        /opt/hermes/.venv/bin/python /opt/devkit-tests/test_native_kanban_notification_runtime.py
         test -f /opt/custom-skills/shared/dev-java-guidelines/SKILL.md
         test -f /opt/custom-skills/shared/dev-java-guidelines/references/official-java-practices.md
         test -f /opt/custom-skills/shared/dev-kotlin-guidelines/SKILL.md

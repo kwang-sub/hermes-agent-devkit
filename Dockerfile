@@ -80,24 +80,6 @@ RUN python3 /tmp/patch_hermes_kanban_model_transition.py --self-test \
     && grep -q 'def _devkit_run_flow_model_transition' /opt/hermes/tools/kanban_tools.py \
     && rm /tmp/patch_hermes_kanban_model_transition.py
 
-COPY scripts/patch_hermes_discord_kanban_notify.py /tmp/patch_hermes_discord_kanban_notify.py
-RUN python3 /tmp/patch_hermes_discord_kanban_notify.py --self-test \
-    && if [ -f /opt/hermes/gateway/kanban_watchers_notifier.py ]; then \
-         python3 /tmp/patch_hermes_discord_kanban_notify.py /opt/hermes/gateway/kanban_watchers_notifier.py; \
-       else \
-         python3 /tmp/patch_hermes_discord_kanban_notify.py /opt/hermes/gateway/kanban_watchers.py; \
-       fi \
-    && rm /tmp/patch_hermes_discord_kanban_notify.py
-
-COPY scripts/patch_hermes_discord_kanban_session.py /tmp/patch_hermes_discord_kanban_session.py
-RUN python3 /tmp/patch_hermes_discord_kanban_session.py --self-test \
-    && if [ -f /opt/hermes/gateway/kanban_watchers_notifier.py ]; then \
-         python3 /tmp/patch_hermes_discord_kanban_session.py /opt/hermes/gateway/kanban_watchers_notifier.py; \
-       else \
-         python3 /tmp/patch_hermes_discord_kanban_session.py /opt/hermes/gateway/kanban_watchers.py; \
-       fi \
-    && rm /tmp/patch_hermes_discord_kanban_session.py
-
 # Fail the upstream compatibility stage immediately if a patched Hermes module no
 # longer compiles or the canonical CLI entry point disappears.
 RUN test -x /opt/hermes/.venv/bin/hermes \

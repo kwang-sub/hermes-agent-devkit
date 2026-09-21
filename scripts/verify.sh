@@ -286,10 +286,8 @@ run_check "Standard Flow Work Unit boundary contract" python3 scripts/check_stan
 run_check "Markdown API specification contract" python3 scripts/check_api_spec_contract.py
 run_check "DevKit updater contract" python3 scripts/check_update_devkit_contract.py
 run_check "Hermes CLI SyntaxWarning patch and strict compile" python3 scripts/patch_hermes_syntax_warning.py --self-test
-run_check "Hermes Discord Kanban notification patch" python3 scripts/patch_hermes_discord_kanban_notify.py --self-test
 run_check "Kanban task/profile session-affinity runtime" python3 scripts/devkit_session_affinity.py --self-test
 run_check "Kanban worker session-affinity patch" python3 scripts/patch_hermes_kanban_session_affinity.py --self-test
-run_check "Discord Kanban session-context patch" python3 scripts/patch_hermes_discord_kanban_session.py --self-test
 run_check "dev-workspace-dispatch regression tests" python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
 run_check "dev-implement-plan workspace verification tests" python3 custom-skills/coder/dev-implement-plan/tests/test_verify_workspace.py
 run_check "dev-implement-plan change summary tests" python3 custom-skills/coder/dev-implement-plan/tests/test_change_summary.py
