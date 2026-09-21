@@ -180,7 +180,7 @@ def assert_pnpm_only(package_root: Path) -> None:
 
 def build_install_command(dependency_type: str, packages: list[str]) -> str:
     quoted = " ".join(shlex.quote(value) for value in packages)
-    prefix = "pnpm add -D" if dependency_type == "dev" else "pnpm add"
+    prefix = "pnpm add --lockfile-only -D" if dependency_type == "dev" else "pnpm add --lockfile-only"
     return f"{prefix} {quoted}".strip()
 
 
