@@ -1,0 +1,10 @@
+#!/command/with-contenv sh
+# shellcheck shell=sh
+export HOME=/opt/data
+export HERMES_HOME=/opt/data
+cd /opt/data
+
+if [ "$(id -u)" = 0 ]; then
+    exec s6-setuidgid hermes /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_notifier.py
+fi
+exec /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_notifier.py
