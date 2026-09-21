@@ -18,12 +18,12 @@ Reviewer는 같은 Workspace의 미커밋 변경을 독립 검토하며 applicat
 ## 실행 계약
 
 1. `kanban_show()`로 requirement/AC, Work Unit Contract, Pattern References, Applied Capability Skills, coder evidence를 읽는다.
-2. Task의 Workspace Version Control을 읽고 `review_context.py --version-control <git|none> --include <Changed Files>`를 한 번 실행한다. Git이면 Base SHA/branch/scope fingerprint를 검증하고, Non-Git이면 Coder가 선언한 Changed Files만 범위로 사용한다.
+2. Task의 Workspace Version Control을 읽고 `review_context.py --version-control <git|none> --include <Changed Files>`를 한 번 실행한다. Git이면 Base SHA/branch/scope fingerprint를 검증하고, Non-Git이면 Coder가 선언한 Changed Files만 범위로 사용한다. Git Workspace의 기존 `review_context.py --include <Changed Files>` scoped review 계약은 그대로 유지한다.
 3. Git은 diff-first, Non-Git은 declared-files-first로 requirement/AC/correctness/compatibility/security/tests를 확인한다.
 4. Capability와 verification evidence를 필요한 범위에서만 검증한다.
 5. P0/P1이면 `kanban_request_changes`, 충분하면 `kanban_complete`, 판단 불가/외부 결정/반복 blocker면 `kanban_block` 중 정확히 하나를 실행한다.
 
-Direct/Standard Flow에서는 scope 없는 review를 하지 않는다. Standard Flow에서는 `--include`를 반드시 제공한다. Git Workspace의 `--allow-full-scan`은 명시적 진단 전용이며 tracked/untracked를 Git pathspec으로 제한한다. Non-Git Workspace는 자동 change discovery/snapshot을 하지 않고 Coder의 선언 scope만 검토한다.
+Direct/Standard Flow에서는 scope 없는 review를 하지 않는다. Standard Flow에서는 `--include`를 반드시 제공한다. Git Workspace의 `--allow-full-scan`은 명시적 진단 전용이며 tracked와 untracked 모두 Git pathspec으로 제한한다. Non-Git Workspace는 자동 change discovery/snapshot을 하지 않고 Coder의 선언 scope만 검토한다.
 
 ## Standard Work Unit Review Gate
 
