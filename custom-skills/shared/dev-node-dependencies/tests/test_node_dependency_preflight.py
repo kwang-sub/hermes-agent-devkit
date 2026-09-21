@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -12,132 +12,187 @@ import unittest
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "node_dependency_preflight.py"
 
 
-class NodeDependencyPreflightTests(unittest.TestCase):
+def make_executable(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8")
+    path.chmod(0o755)
+
+
+class NodeDependencyPreflightTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.tempdir = tempfile.TemporaryDirectory()
-        self.workspace = Path(self.tempdir.name) / "repo"
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name)
+        self.workspace = self.base / "workspace"
         self.frontend = self.workspace / "frontend"
         self.frontend.mkdir(parents=True)
-        self.write_manifest({"name": "fixture", "private": True})
-        (self.frontend / "package-lock.json").write_text("{}\n", encoding="utf-8")
+        self.fake_bin = self.base / "bin"
+        self.fake_bin.mkdir()
+        make_executable(
+            self.fake_bin / "pnpm",
+            "#!/usr/bin/env sh\nprintf '12.5.1\\n'\n",
+        )
+        self.env = os.environ.copy()
+        self.env["PATH"] = f"{self.fake_bin}:{self.env.get('PATH', '')}"
 
     def tearDown(self) -> None:
-        self.tempdir.cleanup()
+        self.tmp.cleanup()
 
-    def write_manifest(self, data: dict) -> None:
-        (self.frontend / "package.json").write_text(json.dumps(data), encoding="utf-8")
+    def write_manifest(self, *, dependencies: dict[str, str] | None = None) -> None:
+        manifest = {
+            "name": "frontend",
+            "private": True,
+            "devEngines": {
+                "runtime": {
+                    "name": "node",
+                    "version": "22.23.2",
+                    "onFail": "download",
+                },
+                "packageManager": {
+                    "name": "pnpm",
+                    "version": ">=12.0.0 <13.0.0",
+                    "onFail": "download",
+                },
+            },
+            "dependencies": dependencies or {},
+        }
+        (self.frontend / "package.json").write_text(
+            json.dumps(manifest) + "\n",
+            encoding="utf-8",
+        )
 
-    def run_helper(self, *extra: str) -> subprocess.CompletedProcess[str]:
+    def run_preflight(self, *extra: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            [sys.executable, str(SCRIPT), "--workspace", str(self.workspace), "--package-root", "frontend", *extra],
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--workspace",
+                str(self.workspace),
+                "--package-root",
+                "frontend",
+                "--package",
+                "react",
+                *extra,
+            ],
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=self.env,
             check=False,
         )
 
-    def test_absent_dependency_with_extraneous_node_modules_requires_install(self) -> None:
-        installed = self.frontend / "node_modules" / "@supabase" / "ssr"
-        installed.mkdir(parents=True)
-        (installed / "package.json").write_text('{"name":"@supabase/ssr"}\n', encoding="utf-8")
+    def test_pnpm_project_uses_dev_engines_as_toolchain_source(self) -> None:
+        self.write_manifest()
+        (self.frontend / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
 
-        proc = self.run_helper("--package", "@supabase/ssr", "--dependency-type", "prod")
+        proc = self.run_preflight()
+
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("PACKAGE_MANAGER=npm", proc.stdout)
-        self.assertIn(f"PACKAGE_MANAGER_ROOT={self.frontend}", proc.stdout)
-        self.assertIn(f"CANONICAL_LOCKFILE={self.frontend / 'package-lock.json'}", proc.stdout)
-        self.assertIn("LOCKFILE_PRESENT=true", proc.stdout)
+        self.assertIn("PACKAGE_MANAGER=pnpm", proc.stdout)
+        self.assertIn("PACKAGE_MANAGER_SOURCE=package.json devEngines.packageManager", proc.stdout)
+        self.assertIn("PACKAGE_MANAGER_VERSION=12.5.1", proc.stdout)
+        self.assertIn("PACKAGE_MANAGER_REQUIRED_VERSION=>=12.0.0 <13.0.0", proc.stdout)
+        self.assertIn("NODE_VERSION=managed-by-pnpm", proc.stdout)
+        self.assertIn("NODE_REQUIREMENT=22.23.2", proc.stdout)
+        self.assertIn("NODE_REQUIREMENT_CHECK=pnpm-managed", proc.stdout)
+        self.assertIn("CANONICAL_LOCKFILE=", proc.stdout)
+        self.assertIn("pnpm-lock.yaml", proc.stdout)
+        self.assertIn("INSTALL_COMMAND=pnpm add react", proc.stdout)
+        self.assertIn("STATUS=pass", proc.stdout)
+
+    def test_dev_dependency_uses_pnpm_add_d(self) -> None:
+        self.write_manifest()
+        proc = self.run_preflight("--dependency-type", "dev")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("INSTALL_COMMAND=pnpm add -D react", proc.stdout)
+
+    def test_legacy_package_lock_blocks_instead_of_falling_back(self) -> None:
+        self.write_manifest()
+        (self.frontend / "package-lock.json").write_text("{}\n", encoding="utf-8")
+        proc = self.run_preflight()
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("legacy package-manager lockfile detected", proc.stderr)
+
+    def test_non_pnpm_manager_blocks(self) -> None:
+        self.write_manifest()
+        manifest = json.loads((self.frontend / "package.json").read_text(encoding="utf-8"))
+        manifest["devEngines"]["packageManager"]["name"] = "npm"
+        (self.frontend / "package.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+        proc = self.run_preflight()
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("packageManager.name must be 'pnpm'", proc.stderr)
+
+    def test_missing_node_runtime_blocks(self) -> None:
+        self.write_manifest()
+        manifest = json.loads((self.frontend / "package.json").read_text(encoding="utf-8"))
+        manifest["devEngines"].pop("runtime")
+        (self.frontend / "package.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+        proc = self.run_preflight()
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("must declare exactly one Node runtime", proc.stderr)
+
+    def test_declared_dependency_missing_from_node_modules_requests_restore(self) -> None:
+        self.write_manifest(dependencies={"react": "19.3.0"})
+        (self.frontend / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
+        proc = self.run_preflight()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("INSTALL_REQUIRED=false", proc.stdout)
+        self.assertIn("RESTORE_REQUIRED=true", proc.stdout)
+        self.assertIn("RESTORE_COMMAND=pnpm install --frozen-lockfile", proc.stdout)
+
+    def test_extraneous_node_modules_does_not_replace_manifest_evidence(self) -> None:
+        self.write_manifest()
+        installed = self.frontend / "node_modules" / "react"
+        installed.mkdir(parents=True)
+        (installed / "package.json").write_text('{"name":"react"}\n', encoding="utf-8")
+        proc = self.run_preflight()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("DEPENDENCY_1_MANIFEST_STATE=ABSENT", proc.stdout)
         self.assertIn("DEPENDENCY_1_NODE_MODULES_STATE=EXTRANEOUS_PRESENT", proc.stdout)
         self.assertIn("INSTALL_REQUIRED=true", proc.stdout)
-        self.assertIn("INSTALL_COMMAND=npm install @supabase/ssr", proc.stdout)
-        self.assertIn("INSTALL_TIMEOUT_SECONDS=600", proc.stdout)
-        self.assertIn("STATUS=pass", proc.stdout)
 
-    def test_declared_dependency_does_not_request_add(self) -> None:
-        self.write_manifest({"name": "fixture", "dependencies": {"react": "19.1.0"}})
-        proc = self.run_helper("--package", "react")
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("DEPENDENCY_1_MANIFEST_STATE=DECLARED_PROD", proc.stdout)
-        self.assertIn("INSTALL_REQUIRED=false", proc.stdout)
-        self.assertIn("INSTALL_COMMAND=NOT_REQUIRED", proc.stdout)
-
-    def test_dev_dependency_command_uses_save_dev(self) -> None:
-        proc = self.run_helper("--package", "vitest", "--dependency-type", "dev")
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("INSTALL_COMMAND=npm install --save-dev vitest", proc.stdout)
-
-    def test_conflicting_lockfiles_block(self) -> None:
-        (self.frontend / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
-        proc = self.run_helper("--package", "react")
-        self.assertEqual(proc.returncode, 2)
-        self.assertIn("conflicting package manager lockfiles", proc.stderr)
-        self.assertIn("STATUS=blocked", proc.stderr)
-
-    def test_package_manager_field_lockfile_mismatch_blocks(self) -> None:
-        self.write_manifest({"name": "fixture", "packageManager": "pnpm@9.0.0"})
-        proc = self.run_helper("--package", "react")
-        self.assertEqual(proc.returncode, 2)
-        self.assertIn("packageManager/lockfile mismatch", proc.stderr)
-
-    def test_obvious_node_major_mismatch_blocks(self) -> None:
-        (self.frontend / ".nvmrc").write_text("999\n", encoding="utf-8")
-        proc = self.run_helper("--package", "react")
-        self.assertEqual(proc.returncode, 2)
-        self.assertIn("node version mismatch", proc.stderr)
-
-    def test_nested_package_inherits_workspace_manager_and_lockfile(self) -> None:
-        (self.frontend / "package-lock.json").unlink()
-        (self.workspace / "package.json").write_text(
-            json.dumps({"name": "root", "private": True, "workspaces": ["frontend"]}),
+    def test_package_root_is_ambiguous_without_explicit_root(self) -> None:
+        self.write_manifest()
+        other = self.workspace / "other"
+        other.mkdir()
+        (other / "package.json").write_text(
+            (self.frontend / "package.json").read_text(encoding="utf-8"),
             encoding="utf-8",
         )
-        (self.workspace / "package-lock.json").write_text("{}\n", encoding="utf-8")
-
-        proc = self.run_helper("--package", "@supabase/ssr")
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("PACKAGE_MANAGER=npm", proc.stdout)
-        self.assertIn(f"PACKAGE_MANAGER_ROOT={self.workspace}", proc.stdout)
-        self.assertIn(f"CANONICAL_LOCKFILE={self.workspace / 'package-lock.json'}", proc.stdout)
-        self.assertIn("LOCKFILE_PRESENT=true", proc.stdout)
-        self.assertIn("INSTALL_COMMAND=npm install @supabase/ssr", proc.stdout)
-
-    def test_package_manager_without_lockfile_reports_expected_canonical_lock(self) -> None:
-        (self.frontend / "package-lock.json").unlink()
-        npm_version = subprocess.run(
-            ["npm", "--version"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True
-        ).stdout.strip()
-        self.write_manifest({"name": "fixture", "packageManager": f"npm@{npm_version}"})
-
-        proc = self.run_helper("--package", "react")
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn(f"CANONICAL_LOCKFILE={self.frontend / 'package-lock.json'}", proc.stdout)
-        self.assertIn("LOCKFILE_PRESENT=false", proc.stdout)
-
-    def test_ambiguous_package_roots_require_explicit_root(self) -> None:
-        other = self.workspace / "admin"
-        other.mkdir()
-        (other / "package.json").write_text('{"name":"admin"}\n', encoding="utf-8")
-        (other / "package-lock.json").write_text("{}\n", encoding="utf-8")
         proc = subprocess.run(
-            [sys.executable, str(SCRIPT), "--workspace", str(self.workspace), "--package", "react"],
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--workspace",
+                str(self.workspace),
+                "--package",
+                "react",
+            ],
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=self.env,
             check=False,
         )
         self.assertEqual(proc.returncode, 2)
         self.assertIn("package root is ambiguous", proc.stderr)
 
     def test_package_discovery_ignores_node_modules_manifests(self) -> None:
+        self.write_manifest()
         nested = self.frontend / "node_modules" / "some-package"
         nested.mkdir(parents=True)
         (nested / "package.json").write_text('{"name":"some-package"}\n', encoding="utf-8")
         proc = subprocess.run(
-            [sys.executable, str(SCRIPT), "--workspace", str(self.workspace), "--package", "react"],
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--workspace",
+                str(self.workspace),
+                "--package",
+                "react",
+            ],
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=self.env,
             check=False,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
