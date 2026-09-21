@@ -130,7 +130,7 @@ def main()->int:
         "kanban_unblock tool 정확히 1회","board == BOARD","HERMES_KANBAN_BOARD"))
     forbid_terms(dispatch,"legacy notification coupling",(
         "NOTIFY_REGISTRATION_EVENT","registered task_event","전달 ACK timeout","최초 등록 알림",
-        "subscribe_notification.py","notify-subscribe"))
+        "subscribe_notification.py","→ Hermes native notify-subscribe","NOTIFY_STATUS=subscribed | disabled | warning"))
     efficiency=(workflow_file.parent/"references"/"dispatch-efficiency.md").read_text(encoding="utf-8")
     require_terms(efficiency,"dispatch-efficiency reference",("skipped-approved-preservation","change_summary.py --include","review_context.py --include","큰 파일을 임의의 MB threshold로 제외하지 않는다","hermes project list","Kanban body 임시 파일","hermes project --help","CLI body-file capability probing","CLI fallback"))
     for cap in ("dev-java-guidelines","dev-spring-guidelines","dev-spring-feature","dev-spring-data","dev-spring-test","dev-api-docs"):
