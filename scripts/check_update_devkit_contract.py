@@ -66,8 +66,15 @@ def main() -> int:
             'init-profiles.ps1',
             'Profile/skill reconciliation',
             'PROFILES_RECONCILED=',
+            'function Test-ContainerDirectory',
             'function Ensure-DefaultMultiplexGateway',
             'Ensure-DefaultMultiplexGateway -ContainerName $Container',
+            '$ServicePath = "/run/service/gateway-default"',
+            'Start-Sleep -Milliseconds 500',
+            'manager.register_profile_gateway("default", start_now=False)',
+            '"exec", "--user", "root"',
+            '"HOME=/opt/data"',
+            '"HERMES_HOME=/opt/data"',
             '"/opt/hermes/.venv/bin/hermes", "gateway", "start"',
             'scripts\\verify-container-runtime.ps1',
             'Runtime verification failed. Performing one cached rebuild + force-recreate repair.',
@@ -86,6 +93,17 @@ def main() -> int:
     if text.count("Ensure-DefaultMultiplexGateway -ContainerName $Container") < 2:
         raise SystemExit(
             "update-devkit.ps1 must reconcile the default Gateway on both normal and repair paths"
+        )
+
+    gateway_start_as_root = re.search(
+        r'"exec"\s*,\s*"--user"\s*,\s*"root"[\s\S]{0,500}?'
+        r'"/opt/hermes/\.venv/bin/hermes"\s*,\s*"gateway"\s*,\s*"start"',
+        text,
+    )
+    if gateway_start_as_root:
+        raise SystemExit(
+            "update-devkit.ps1 may use root only to register the volatile s6 slot; "
+            "the Hermes Gateway itself must start as user hermes"
         )
 
     require(
