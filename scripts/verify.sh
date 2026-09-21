@@ -39,6 +39,35 @@ if legacy in source:
 PYTHON
 }
 
+check_pnpm_contract() {
+    python3 - <<'PYTHON'
+from pathlib import Path
+
+dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
+required = (
+    "ENV PNPM_HOME=/opt/pnpm",
+    "ENV HERMES_NODE_ROOT=/opt/data/node",
+    "https://get.pnpm.io/install.sh",
+    '"$PNPM_HOME/pnpm" --version',
+)
+missing = [term for term in required if term not in dockerfile]
+if missing:
+    raise SystemExit("Dockerfile missing standalone pnpm contract: " + ", ".join(missing))
+
+runtime = Path("custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py").read_text(encoding="utf-8")
+for required in (
+    'DEFAULT_ROOT = Path(os.getenv("HERMES_NODE_ROOT", "/opt/data/node"))',
+    '"pnpm_store": root / "pnpm-store"',
+    '"pnpm_home": root / "pnpm-home"',
+    '"NEXT_DIST_DIR": ".next-hermes"',
+    '"HERMES_NEXT_DIST_DIR": ".next-hermes"',
+    'devEngines.packageManager',
+):
+    if required not in runtime:
+        raise SystemExit(f"Node runtime missing pnpm-only contract: {required}")
+PYTHON
+}
+
 check_multi_jdk_contract() {
     python3 - <<'PYTHON'
 from pathlib import Path
@@ -258,11 +287,13 @@ run_check "dev-project-bootstrap technology stack cache tests" python3 custom-sk
 run_check "dev-project-bootstrap development preflight tests" python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_dev_environment_preflight.py
 run_check "dev-tech-dispatch stack/fingerprint tests" python3 custom-skills/orchestrator/dev-tech-dispatch/tests/test_detect_capabilities.py
 run_check "Node dependency compatibility preflight tests" python3 custom-skills/shared/dev-node-dependencies/tests/test_node_dependency_preflight.py
+run_check "Node runtime isolation tests" python3 custom-skills/shared/dev-node-dependencies/tests/test_node_runtime.py
 run_check "Tirith package security preflight tests" python3 custom-skills/shared/dev-node-dependencies/tests/test_tirith_package_preflight.py
 run_check "dev-project-resolve tests" python3 custom-skills/orchestrator/dev-project-resolve/tests/test_project_resolve.py
 run_check "dev-breakdown shell syntax" bash -n custom-skills/orchestrator/dev-breakdown/scripts/collect_project_context.sh
 run_check "hermes-java shell syntax" bash -n scripts/hermes-java
 run_check "Multi-JDK image contract" check_multi_jdk_contract
+run_check "Standalone pnpm image/runtime contract" check_pnpm_contract
 run_check "Shared capability skill contract" check_shared_capability_skills
 run_check "Deprecated worktree skills removed" check_removed_worktree_skills
 run_check "Post-implementation refactor gate contract" check_refactor_gate_contract
