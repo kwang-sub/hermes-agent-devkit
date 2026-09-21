@@ -68,8 +68,9 @@ def main() -> int:
     total_started = time.monotonic()
     ap = argparse.ArgumentParser()
     ap.add_argument("--task-key", required=True)
-    ap.add_argument("--expected-branch", required=True)
-    ap.add_argument("--base-sha", required=True)
+    ap.add_argument("--version-control", choices=("git", "none"), default="git")
+    ap.add_argument("--expected-branch")
+    ap.add_argument("--base-sha")
     ap.add_argument("--workspace")
     ap.add_argument("--expected-workspace")
     args = ap.parse_args()
@@ -77,6 +78,36 @@ def main() -> int:
     resolve_started = time.monotonic()
     workspace = Path(args.workspace or ".").resolve()
     PHASE_TIMINGS.append(("PATH_RESOLVE", time.monotonic() - resolve_started))
+
+    if not workspace.is_dir():
+        raise GuardError(f"workspace does not exist or is not a directory: {workspace}")
+
+    if args.expected_workspace and workspace != Path(args.expected_workspace).resolve():
+        raise GuardError(
+            f"workspace mismatch: expected={Path(args.expected_workspace).resolve()}, actual={workspace}"
+        )
+
+    if args.version_control == "none":
+        if args.expected_branch not in (None, "", "NONE"):
+            raise GuardError("expected branch is not applicable to a Non-Git workspace")
+        if args.base_sha not in (None, "", "NONE"):
+            raise GuardError("base SHA is not applicable to a Non-Git workspace")
+
+        print(f"WORKSPACE={workspace}")
+        print("VERSION_CONTROL=none")
+        print("BRANCH=NONE")
+        print("BASE_SHA=NONE")
+        print(f"TASK_KEY={args.task_key}")
+        print("GIT_SAFE_DIRECTORY=false")
+        print("GIT_WORKSPACE=false")
+        emit_timings(total_started)
+        print("STATUS=valid")
+        return 0
+
+    if not args.expected_branch:
+        raise GuardError("--expected-branch is required for a Git workspace")
+    if not args.base_sha:
+        raise GuardError("--base-sha is required for a Git workspace")
 
     ensure_safe_directory(workspace)
     top = run(
@@ -86,11 +117,6 @@ def main() -> int:
     root = Path(top).resolve()
     if root != workspace:
         raise GuardError(f"workspace must be the Git repository root: workspace={workspace}, root={root}")
-
-    if args.expected_workspace and root != Path(args.expected_workspace).resolve():
-        raise GuardError(
-            f"workspace mismatch: expected={Path(args.expected_workspace).resolve()}, actual={root}"
-        )
 
     branch = run(
         ["git", "-C", str(root), "branch", "--show-current"],
@@ -118,6 +144,7 @@ def main() -> int:
         raise GuardError((ancestor.stderr or ancestor.stdout).strip() or "cannot compare base SHA to HEAD")
 
     print(f"WORKSPACE={root}")
+    print("VERSION_CONTROL=git")
     print(f"BRANCH={branch}")
     print(f"BASE_SHA={base_sha}")
     print(f"TASK_KEY={args.task_key}")
