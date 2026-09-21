@@ -14,6 +14,7 @@ LATEST_COMPAT_SCRIPT = ROOT / "scripts/verify_latest_hermes_compat.sh"
 LATEST_COMPAT_WORKFLOW = ROOT / ".github/workflows/latest-hermes-compat.yml"
 INIT_PROFILES = ROOT / "init-profiles.ps1"
 NOTIFIER_POLICY = ROOT / "docker/cont-init.d/019-devkit-kanban-notifier-policy"
+GITATTRIBUTES = ROOT / ".gitattributes"
 
 
 def require(text: str, terms: tuple[str, ...], label: str) -> None:
@@ -301,6 +302,16 @@ def main() -> int:
         "Hermes Tirith routed-profile patch",
     )
 
+    gitattributes = read_required(GITATTRIBUTES, ".gitattributes")
+    require(
+        gitattributes,
+        (
+            "docker/**/run text eol=lf",
+            "docker/cont-init.d/* text eol=lf",
+        ),
+        "Docker extensionless shell LF contract",
+    )
+
     dockerfile = read_required(DOCKERFILE, "Dockerfile")
     require(
         dockerfile,
@@ -326,6 +337,8 @@ def main() -> int:
             'scripts/devkit_kanban_notifier.py /opt/devkit/bin/devkit_kanban_notifier.py',
             'docker/cont-init.d/019-devkit-kanban-notifier-policy',
             'docker/devkit-svscan.d/devkit-notifier/run /opt/devkit/svscan/devkit-notifier/run',
+            "sed -i 's/\\r$//' /opt/devkit/svscan/devkit-notifier/run",
+            'sh -n /opt/devkit/svscan/devkit-notifier/run',
             '/opt/devkit/bin/devkit_kanban_notifier.py --self-test',
             '/opt/hermes/.venv/bin/hermes send --help',
             'patch_hermes_kanban_model_transition.py --self-test',

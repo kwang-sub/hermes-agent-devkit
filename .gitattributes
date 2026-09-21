@@ -1,5 +1,7 @@
 *.sh text eol=lf
 scripts/hermes-java text eol=lf
+docker/**/run text eol=lf
+docker/cont-init.d/* text eol=lf
 
 *.bat text eol=crlf
 *.cmd text eol=crlf
