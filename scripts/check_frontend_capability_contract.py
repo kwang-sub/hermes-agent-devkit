@@ -142,7 +142,8 @@ checks = {
         "Approved Implementation", "Browser Screenshot Golden", "toHaveScreenshot",
         "NOT_AVAILABLE", "자동 설치하지 않는다", "Hermes Node Runtime Isolation", "node_runtime.py",
         "/opt/data/node", "workspace lock", "devEngines.runtime", "devEngines.packageManager",
-        "Linux 격리 workspace", "host node_modules/.next", "검증 시작마다 초기화", "Tirith actual guard",
+        "Linux 격리 workspace", "host node_modules/.next", "dependency fingerprint",
+        "RESTORE_MARK_COMMAND", "검증 시작마다 초기화", "Tirith actual guard",
     )),
     "typescript skill": (typescript, (
         "Version Gate", "TypeScript 7 Gate", "Strictness Gate", "useUnknownInCatchVariables",
