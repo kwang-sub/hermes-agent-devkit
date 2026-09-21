@@ -210,10 +210,18 @@ def main() -> int:
             flush=True,
         )
 
-    toolchain_file, warnings = project_builds.configure_java_toolchain(
-        repo,
-        projects,
-    )
+    if version_control == "none" and len(projects) > 1:
+        toolchain_file = "deferred-workspace"
+        warnings = [
+            "Multiple independent Non-Git JVM build projects were detected; "
+            "project-level Java toolchain selection is deferred until an executable workspace is selected."
+        ]
+    else:
+        toolchain_file, warnings = project_builds.configure_java_toolchain(
+            repo,
+            projects,
+        )
+
     if version_control == "none" and nested_projects:
         warnings.append(
             "Nested Git repositories own their Java toolchain independently and are prepared when selected as the executable workspace."
