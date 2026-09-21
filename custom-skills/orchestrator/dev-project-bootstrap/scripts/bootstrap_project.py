@@ -17,13 +17,14 @@ COMMON_END = "<!-- HERMES-COMMON:END -->"
 PROJECT_START = "<!-- HERMES-PROJECT:START -->"
 PROJECT_END = "<!-- HERMES-PROJECT:END -->"
 MANAGED_MARKER = "# managed-by: dev-project-bootstrap"
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "4"
 
 BOOTSTRAP_MANAGED_KEYS = {
     "version",
     "project",
     "kanban",
     "git",
+    "version_control",
     "profiles",
 }
 
@@ -53,9 +54,14 @@ def slugify(value: str) -> str:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Ensure an existing Git repository is bootstrapped for Hermes development."
+        description="Ensure an existing Git or explicitly approved Non-Git project is bootstrapped for Hermes development."
     )
-    p.add_argument("--repo", required=True, help="Absolute path to an existing Git repository root")
+    p.add_argument("--repo", required=True, help="Absolute path to an existing project root")
+    p.add_argument(
+        "--allow-non-git",
+        action="store_true",
+        help="Explicit acknowledgement that this project has no Git change tracking/rollback support.",
+    )
     p.add_argument("--project-id", help="Canonical project id; default: existing metadata or repo directory")
     p.add_argument("--name", help="Human-readable project name; default: existing metadata or project id")
     p.add_argument("--board", help="Kanban board slug; default: existing metadata or project id")
@@ -79,27 +85,33 @@ def require_tool(name: str) -> None:
         raise BootstrapError(f"required tool is not available on PATH: {name}")
 
 
-def resolve_repo(path_text: str) -> Path:
+def resolve_project_root(path_text: str, *, allow_non_git: bool) -> tuple[Path, str]:
     requested = Path(path_text)
     if not requested.is_absolute():
         raise BootstrapError(f"--repo must be absolute: {requested}")
     if not requested.exists():
-        raise BootstrapError(f"repository path does not exist: {requested}")
+        raise BootstrapError(f"project path does not exist: {requested}")
     if not requested.is_dir():
-        raise BootstrapError(f"repository path is not a directory: {requested}")
+        raise BootstrapError(f"project path is not a directory: {requested}")
 
-    result = run(["git", "-C", str(requested), "rev-parse", "--show-toplevel"], check=False)
+    requested_resolved = requested.resolve()
+    result = run(["git", "-C", str(requested_resolved), "rev-parse", "--show-toplevel"], check=False)
     if result.returncode != 0:
-        raise BootstrapError(f"not a Git repository: {requested}")
+        if not allow_non_git:
+            raise BootstrapError(
+                "project is not a Git repository. Explicit user acknowledgement is required; "
+                "rerun with --allow-non-git after approval, initialize Git, or cancel: "
+                f"{requested_resolved}"
+            )
+        return requested_resolved, "none"
 
     root = Path(result.stdout.strip()).resolve()
-    requested_resolved = requested.resolve()
     if root != requested_resolved:
         raise BootstrapError(
             f"--repo must point at the Git repository root; "
             f"requested={requested_resolved}, root={root}"
         )
-    return root
+    return root, "git"
 
 
 def yaml_scalar(value: str) -> str:
@@ -191,6 +203,7 @@ def read_managed_metadata(path: Path) -> dict[str, object]:
     kanban = sections.get("kanban", "")
     git = sections.get("git", "")
     profiles = sections.get("profiles", "")
+    version_control = sections.get("version_control", "")
 
     data["project_id"] = section_scalar(project, "id")
     data["project_name"] = section_scalar(project, "name")
@@ -201,6 +214,8 @@ def read_managed_metadata(path: Path) -> dict[str, object]:
     data["orchestrator"] = section_scalar(profiles, "orchestrator")
     data["coder"] = section_scalar(profiles, "coder")
     data["reviewer"] = section_scalar(profiles, "reviewer")
+    data["version_control_type"] = section_scalar(version_control, "type")
+    data["non_git_acknowledged"] = section_scalar(version_control, "non_git_write_acknowledged")
 
     return data
 
@@ -216,6 +231,8 @@ def core_metadata_text(
     orchestrator: str,
     coder: str,
     reviewer: str,
+    version_control_type: str,
+    non_git_acknowledged: bool,
 ) -> str:
     lines = [
         MANAGED_MARKER,
@@ -228,6 +245,10 @@ def core_metadata_text(
         "",
         "kanban:",
         f"  board: {yaml_scalar(board)}",
+        "",
+        "version_control:",
+        f"  type: {yaml_scalar(version_control_type)}",
+        f"  non_git_write_acknowledged: {str(non_git_acknowledged).lower()}",
         "",
         "git:",
         f"  default_base_branch: {yaml_scalar(base)}",
@@ -272,6 +293,8 @@ def write_metadata(
     orchestrator: str,
     coder: str,
     reviewer: str,
+    version_control_type: str,
+    non_git_acknowledged: bool,
 ) -> tuple[bool, list[str]]:
     """Write bootstrap-managed core and preserve user/legacy top-level sections.
 
@@ -302,6 +325,8 @@ def write_metadata(
             orchestrator=orchestrator,
             coder=coder,
             reviewer=reviewer,
+            version_control_type=version_control_type,
+            non_git_acknowledged=non_git_acknowledged,
         ).rstrip()
     ]
 
