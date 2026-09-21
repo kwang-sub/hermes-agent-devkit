@@ -7,9 +7,11 @@ cd "$REPO_ROOT"
 BASE_IMAGE="${HERMES_BASE_IMAGE:-nousresearch/hermes-agent:latest}"
 IMAGE_NAME="${HERMES_COMPAT_IMAGE:-hermes-devkit:latest-compat}"
 CONTAINER_NAME="${HERMES_COMPAT_CONTAINER:-hermes-devkit-latest-compat}"
+DATA_VOLUME="${HERMES_COMPAT_DATA_VOLUME:-hermes-devkit-latest-compat-data}"
 
 cleanup() {
     docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    docker volume rm -f "$DATA_VOLUME" >/dev/null 2>&1 || true
     docker image rm -f "$IMAGE_NAME" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -154,8 +156,18 @@ PY
 
 printf '[RUN ] Latest Hermes live s6 notifier smoke\n'
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+docker volume rm -f "$DATA_VOLUME" >/dev/null 2>&1 || true
+docker volume create "$DATA_VOLUME" >/dev/null
+
+docker run --rm \
+    --entrypoint /bin/sh \
+    --mount "type=volume,source=$DATA_VOLUME,target=/opt/data" \
+    "$IMAGE_NAME" \
+    -ceu 'chown -R "$(id -u hermes):$(id -g hermes)" /opt/data'
+
 docker run -d \
     --name "$CONTAINER_NAME" \
+    --mount "type=volume,source=$DATA_VOLUME,target=/opt/data" \
     -e HERMES_KANBAN_NOTIFY_ENABLED=false \
     "$IMAGE_NAME" \
     sleep infinity >/dev/null
