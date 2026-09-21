@@ -10,6 +10,8 @@ import shutil
 import subprocess
 import sys
 
+from node_workspace import DEFAULT_ROOT, WorkspaceError, prepare_isolated_package
+
 
 PNPM_LOCKFILE = "pnpm-lock.yaml"
 LEGACY_LOCKFILES = (
@@ -167,30 +169,8 @@ def resolve_dev_engines(manifest: dict) -> tuple[str, str]:
     return node_version, pnpm_version
 
 
-def resolve_pnpm_root(package_root: Path, workspace: Path) -> tuple[Path, dict, str, str]:
-    current = package_root
-    while True:
-        manifest_path = current / "package.json"
-        if manifest_path.is_file():
-            manifest = read_json(manifest_path)
-            try:
-                node_version, pnpm_version = resolve_dev_engines(manifest)
-                return current, manifest, node_version, pnpm_version
-            except PreflightError:
-                if current == package_root:
-                    raise
-        if current == workspace:
-            break
-        if workspace not in current.parents:
-            break
-        current = current.parent
-    raise PreflightError(
-        "pnpm toolchain contract was not found between package root and workspace root"
-    )
-
-
-def assert_pnpm_only(manager_root: Path) -> None:
-    legacy = [name for name in LEGACY_LOCKFILES if (manager_root / name).is_file()]
+def assert_pnpm_only(package_root: Path) -> None:
+    legacy = [name for name in LEGACY_LOCKFILES if (package_root / name).is_file()]
     if legacy:
         raise PreflightError(
             "legacy package-manager lockfile detected; migrate the project to pnpm first: "
@@ -205,7 +185,7 @@ def build_install_command(dependency_type: str, packages: list[str]) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Resolve the canonical pnpm dependency mutation contract")
+    parser = argparse.ArgumentParser(description="Resolve the canonical pnpm dependency mutation/restore contract")
     parser.add_argument("--workspace", required=True)
     parser.add_argument("--package-root")
     parser.add_argument("--dependency-type", choices=("prod", "dev"), default="prod")
@@ -232,41 +212,48 @@ def main() -> int:
                 )
             package_root = roots[0]
 
-        package_manifest = read_json(package_root / "package.json")
-        manager_root, _manager_manifest, node_requirement, pnpm_requirement = resolve_pnpm_root(
-            package_root, workspace
-        )
-        assert_pnpm_only(manager_root)
+        manifest = read_json(package_root / "package.json")
+        node_requirement, pnpm_requirement = resolve_dev_engines(manifest)
+        assert_pnpm_only(package_root)
 
         pnpm_binary = shutil.which("pnpm")
         if not pnpm_binary:
             raise PreflightError("pnpm standalone executable is unavailable in the DevKit image")
-        pnpm_version = run_version([pnpm_binary, "--version"], cwd=manager_root)
+        pnpm_version = run_version([pnpm_binary, "--version"], cwd=package_root)
         if not pnpm_version:
             raise PreflightError("cannot resolve the project pnpm version")
 
-        lock_path = manager_root / PNPM_LOCKFILE
+        lock_path = package_root / PNPM_LOCKFILE
         lock_present = lock_path.is_file()
+
+        root = Path(os.getenv("HERMES_NODE_ROOT", str(DEFAULT_ROOT))).expanduser().resolve()
+        isolated_paths = prepare_isolated_package(workspace, package_root, root=root)
+        isolated_package_root = isolated_paths["isolated_package_root"]
 
         dependency_rows: list[tuple[str, str, str, str]] = []
         for spec in args.packages:
             name = package_name(spec)
-            state = manifest_state(package_manifest, name)
-            modules_state = node_modules_state(package_root, name, state)
+            state = manifest_state(manifest, name)
+            modules_state = node_modules_state(isolated_package_root, name, state)
             dependency_rows.append((spec, name, state, modules_state))
 
         install_required = any(row[2] == "ABSENT" for row in dependency_rows)
         restore_required = any(row[2] != "ABSENT" and row[3] == "ABSENT" for row in dependency_rows)
+
         install_command = build_install_command(args.dependency_type, args.packages) if install_required else "NOT_REQUIRED"
-        restore_command = (
-            "pnpm install --frozen-lockfile"
-            if restore_required and lock_present
-            else "pnpm install" if restore_required else "NOT_REQUIRED"
-        )
+        install_workdir = str(package_root) if install_required else "NOT_REQUIRED"
+
+        if restore_required and not lock_present and not install_required:
+            raise PreflightError(
+                "pnpm-lock.yaml is required before restoring the Linux verification workspace"
+            )
+        restore_command = "pnpm install --frozen-lockfile" if restore_required and lock_present else "NOT_REQUIRED"
+        restore_workdir = str(isolated_package_root) if restore_command != "NOT_REQUIRED" else "NOT_REQUIRED"
 
         print(f"WORKSPACE={workspace}")
         print(f"PACKAGE_ROOT={package_root}")
-        print(f"PACKAGE_MANAGER_ROOT={manager_root}")
+        print(f"PACKAGE_MANAGER_ROOT={package_root}")
+        print(f"VERIFICATION_PACKAGE_ROOT={isolated_package_root}")
         print("PACKAGE_MANAGER=pnpm")
         print("PACKAGE_MANAGER_SOURCE=package.json devEngines.packageManager")
         print(f"PACKAGE_MANAGER_VERSION={pnpm_version}")
@@ -283,13 +270,15 @@ def main() -> int:
             print(f"DEPENDENCY_{index}_MANIFEST_STATE={state}")
             print(f"DEPENDENCY_{index}_NODE_MODULES_STATE={modules_state}")
         print(f"INSTALL_REQUIRED={'true' if install_required else 'false'}")
-        print(f"RESTORE_REQUIRED={'true' if restore_required else 'false'}")
         print(f"INSTALL_COMMAND={install_command}")
+        print(f"INSTALL_WORKDIR={install_workdir}")
+        print(f"RESTORE_REQUIRED={'true' if restore_required else 'false'}")
         print(f"RESTORE_COMMAND={restore_command}")
+        print(f"RESTORE_WORKDIR={restore_workdir}")
         print(f"INSTALL_TIMEOUT_SECONDS={INSTALL_TIMEOUT_SECONDS}")
         print("STATUS=pass")
         return 0
-    except PreflightError as exc:
+    except (PreflightError, WorkspaceError) as exc:
         print(f"ERROR={exc}", file=sys.stderr)
         print("STATUS=blocked", file=sys.stderr)
         return 2
