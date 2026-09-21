@@ -225,6 +225,133 @@ def validate_session_source(path: Path) -> None:
     compile_source(path)
 
 
+SEARCH_SKIP_PARTS = {
+    ".git",
+    "node_modules",
+    "__pycache__",
+    "web",
+    "ui-tui",
+    "apps",
+}
+
+
+def _iter_primary_python_sources(root: Path):
+    seen: set[Path] = set()
+    preferred = (
+        root / "hermes_cli",
+        root / "cli.py",
+    )
+    for base in preferred:
+        if base.is_file():
+            resolved = base.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                yield base
+        elif base.is_dir():
+            for path in base.rglob("*.py"):
+                if any(part in SEARCH_SKIP_PARTS for part in path.parts):
+                    continue
+                resolved = path.resolve()
+                if resolved in seen:
+                    continue
+                seen.add(resolved)
+                yield path
+
+    for path in root.glob("*.py"):
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        yield path
+
+
+def _iter_fallback_site_package_sources(root: Path):
+    venv = root / ".venv"
+    if not venv.is_dir():
+        return
+    for site_packages in venv.glob("lib/python*/site-packages"):
+        if not site_packages.is_dir():
+            continue
+        for path in site_packages.rglob("*.py"):
+            if any(part in SEARCH_SKIP_PARTS for part in path.parts):
+                continue
+            yield path
+
+
+def _read_source(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _is_tui_candidate(source: str) -> bool:
+    required = (
+        "clarify-border",
+        "clarify-title",
+        "clarify-question",
+        "clarify-choice",
+        "clarify-selected",
+        "clarify-active-other",
+        "_clarify_state",
+    )
+    return all(token in source for token in required) and (
+        'class:prompt-working", "?"' in source or PROMPT_TARGET in source
+    )
+
+
+def _is_session_candidate(source: str) -> bool:
+    required = (
+        "_persist_prompt_summary",
+        "_cprint",
+        "{label}: {detail}",
+        "_DIM",
+        "_RST",
+    )
+    return all(token in source for token in required) and (
+        "{outcome}" in source or "{rendered_outcome}" in source
+    )
+
+
+def _discover_from(paths) -> tuple[list[Path], list[Path]]:
+    tui: list[Path] = []
+    session: list[Path] = []
+    seen_tui: set[Path] = set()
+    seen_session: set[Path] = set()
+    for path in paths:
+        source = _read_source(path)
+        if source is None:
+            continue
+        resolved = path.resolve()
+        if _is_tui_candidate(source) and resolved not in seen_tui:
+            tui.append(path)
+            seen_tui.add(resolved)
+        if _is_session_candidate(source) and resolved not in seen_session:
+            session.append(path)
+            seen_session.add(resolved)
+    return tui, session
+
+
+def discover_source_paths(root: Path) -> tuple[Path, Path]:
+    if not root.is_dir():
+        raise RuntimeError(f"Hermes search root does not exist: {root}")
+
+    tui, session = _discover_from(_iter_primary_python_sources(root))
+    if not tui or not session:
+        fallback_tui, fallback_session = _discover_from(_iter_fallback_site_package_sources(root))
+        if not tui:
+            tui = fallback_tui
+        if not session:
+            session = fallback_session
+
+    if len(tui) != 1 or len(session) != 1:
+        raise RuntimeError(
+            "cannot uniquely discover Hermes Clarify sources: "
+            f"tui={[str(p) for p in tui]!r}, session={[str(p) for p in session]!r}"
+        )
+    return tui[0], session[0]
+
+
 def self_test() -> None:
     with tempfile.TemporaryDirectory(prefix="hermes-tui-semantic-input-test-") as temp_dir:
         root = Path(temp_dir)
@@ -286,6 +413,30 @@ def self_test() -> None:
         if patch_session_source(session) != "already-patched":
             raise RuntimeError("self-test: session patch is not idempotent")
 
+        future = root / "future_layout"
+        future.mkdir()
+        discovered_tui = future / "interactive_surface.py"
+        discovered_session = future / "history_surface.py"
+        discovered_tui.write_text(tui.read_text(encoding="utf-8"), encoding="utf-8")
+        discovered_session.write_text(session.read_text(encoding="utf-8"), encoding="utf-8")
+        found_tui, found_session = discover_source_paths(root)
+        if found_tui.resolve() != tui.resolve() or found_session.resolve() != session.resolve():
+            raise RuntimeError(
+                f"self-test: discovery should prefer primary root sources, got {found_tui}, {found_session}"
+            )
+
+        isolated = root / "isolated"
+        isolated.mkdir()
+        isolated_tui = isolated / "interactive_surface.py"
+        isolated_session = isolated / "history_surface.py"
+        isolated_tui.write_text(tui.read_text(encoding="utf-8"), encoding="utf-8")
+        isolated_session.write_text(session.read_text(encoding="utf-8"), encoding="utf-8")
+        found_tui, found_session = discover_source_paths(isolated)
+        if found_tui.resolve() != isolated_tui.resolve() or found_session.resolve() != isolated_session.resolve():
+            raise RuntimeError(
+                f"self-test: path-independent discovery failed: {found_tui}, {found_session}"
+            )
+
         broken = root / "broken_tui.py"
         broken.write_text("STYLE = {'clarify-border': '#fff'}\n", encoding="utf-8")
         try:
@@ -307,15 +458,26 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tui-path", type=Path)
     parser.add_argument("--session-path", type=Path)
+    parser.add_argument("--search-root", type=Path)
     parser.add_argument("--check-only", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
+    explicit = args.tui_path is not None or args.session_path is not None
     if args.self_test:
-        if args.tui_path or args.session_path:
-            parser.error("--self-test cannot be combined with source paths")
+        if explicit or args.search_root:
+            parser.error("--self-test cannot be combined with source paths or --search-root")
+    elif args.search_root:
+        if explicit:
+            parser.error("--search-root cannot be combined with --tui-path/--session-path")
     elif not (args.tui_path and args.session_path):
-        parser.error("--tui-path and --session-path are required unless --self-test is used")
+        parser.error("provide --search-root or both --tui-path and --session-path")
     return args
+
+
+def resolve_source_paths(args: argparse.Namespace) -> tuple[Path, Path]:
+    if args.search_root:
+        return discover_source_paths(args.search_root)
+    return args.tui_path, args.session_path
 
 
 def main() -> None:
@@ -325,14 +487,17 @@ def main() -> None:
         print("Hermes TUI semantic-input patch self-test passed")
         return
 
+    tui_path, session_path = resolve_source_paths(args)
+    print(f"Hermes TUI semantic-input targets: tui={tui_path}, session={session_path}")
+
     if args.check_only:
-        validate_tui_source(args.tui_path)
-        validate_session_source(args.session_path)
+        validate_tui_source(tui_path)
+        validate_session_source(session_path)
         print("Hermes TUI semantic-input contract valid")
         return
 
-    tui_state = patch_tui_source(args.tui_path)
-    session_state = patch_session_source(args.session_path)
+    tui_state = patch_tui_source(tui_path)
+    session_state = patch_session_source(session_path)
     print(
         "Hermes TUI semantic-input source states="
         f"tui:{tui_state},session:{session_state} and validated"
