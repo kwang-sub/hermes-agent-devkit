@@ -20,10 +20,11 @@ Default behavior:
 7. Force-recreate the container only after the build succeeds.
 8. Keep the existing hermes-data volume and profile/OAuth/session state intact.
 9. Run init-profiles.ps1 to reconcile the role profile and skill contract.
-10. Verify the running container contract.
-11. If verification fails, perform one normal cached rebuild + recreate repair,
-    reconcile profiles again, and verify once more unless -NoRepair is specified.
-12. Re-apply Git commit identity from .env and ensure persistent GitHub CLI auth.
+10. Ensure the default multiplex Gateway is running.
+11. Verify the running container contract.
+12. If verification fails, perform one normal cached rebuild + recreate repair,
+    reconcile profiles and the default Gateway again, then verify once more unless -NoRepair is specified.
+13. Re-apply Git commit identity from .env and ensure persistent GitHub CLI auth.
 
 The process-local overrides are restored before the script exits.
 #>
@@ -308,6 +309,19 @@ function Invoke-ProfileInitialization {
     }
 }
 
+function Ensure-DefaultMultiplexGateway {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ContainerName
+    )
+
+    Write-Host "[RUN ] Ensure default multiplex Gateway is running"
+    Invoke-Native -FilePath "docker" -Arguments @(
+        "exec", "--user", "hermes", $ContainerName,
+        "/opt/hermes/.venv/bin/hermes", "gateway", "start"
+    )
+}
+
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $OriginalLocation = Get-Location
 $ImageRebuilt = $false
@@ -454,6 +468,8 @@ try {
         Write-Host "[SKIP] Profile initialization disabled by -SkipProfileInit."
     }
 
+    Ensure-DefaultMultiplexGateway -ContainerName $Container
+
     if ($SkipVerify) {
         Write-Host "[SKIP] Runtime verification disabled by -SkipVerify."
     }
@@ -482,6 +498,8 @@ try {
                 Invoke-ProfileInitialization -Initializer $ProfileInitializer -ContainerName $Container
                 $ProfilesReconciled = $true
             }
+
+            Ensure-DefaultMultiplexGateway -ContainerName $Container
 
             Write-Host "[RUN ] Runtime verification after repair"
             if (-not (Invoke-RuntimeVerification -Verifier $Verifier -ContainerName $Container)) {
