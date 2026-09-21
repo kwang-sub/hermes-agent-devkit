@@ -45,26 +45,39 @@ from pathlib import Path
 
 dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
 required = (
+    "ARG PNPM_VERSION=12.5.1",
     "ENV PNPM_HOME=/opt/pnpm",
     "ENV HERMES_NODE_ROOT=/opt/data/node",
     "https://get.pnpm.io/install.sh",
-    '"$PNPM_HOME/pnpm" --version',
+    'ln -sf "$pnpm_target" /usr/local/bin/pnpm',
+    'test "$(/usr/local/bin/pnpm --version)" = "$PNPM_VERSION"',
 )
 missing = [term for term in required if term not in dockerfile]
 if missing:
     raise SystemExit("Dockerfile missing standalone pnpm contract: " + ", ".join(missing))
 
 runtime = Path("custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py").read_text(encoding="utf-8")
+workspace = Path("custom-skills/shared/dev-node-dependencies/scripts/node_workspace.py").read_text(encoding="utf-8")
 for required in (
-    'DEFAULT_ROOT = Path(os.getenv("HERMES_NODE_ROOT", "/opt/data/node"))',
-    '"pnpm_store": root / "pnpm-store"',
-    '"pnpm_home": root / "pnpm-home"',
-    '"NEXT_DIST_DIR": ".next-hermes"',
-    '"HERMES_NEXT_DIST_DIR": ".next-hermes"',
-    'devEngines.packageManager',
+    "prepare_isolated_package",
+    "resolve_project_toolchain",
+    "validate_pnpm_command(command)",
+    "dependencies_ready",
+    "current_dependency_fingerprint",
+    "linux-isolated-workspace;workspace-serialized",
 ):
     if required not in runtime:
-        raise SystemExit(f"Node runtime missing pnpm-only contract: {required}")
+        raise SystemExit(f"Node runtime missing isolated pnpm contract: {required}")
+for required in (
+    'DEFAULT_ROOT = Path(os.getenv("HERMES_NODE_ROOT", "/opt/data/node"))',
+    "GENERATED_NAMES",
+    "PRESERVE_DEST_NAMES",
+    "DEPENDENCY_FINGERPRINT_FILE",
+    "mark_dependencies_restored",
+    '"isolated_package_root": package_state / "source"',
+):
+    if required not in workspace:
+        raise SystemExit(f"Node workspace missing isolation/fingerprint contract: {required}")
 PYTHON
 }
 
