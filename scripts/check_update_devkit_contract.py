@@ -254,6 +254,10 @@ def main() -> int:
         ROOT / "scripts/test_kanban_registered_runtime.py",
         ROOT / "shared/scripts/kanban_registration_event.py",
         ROOT / "shared/scripts/test_kanban_registration_event.py",
+        ROOT / "shared/scripts/kanban_notify_subscribe.py",
+        ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/scripts/subscribe_notification.py",
+        ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/tests/test_subscribe_notification.py",
+        ROOT / "scripts/test_native_kanban_notification_runtime.py",
     ):
         if removed_notification_runtime.exists():
             raise SystemExit(

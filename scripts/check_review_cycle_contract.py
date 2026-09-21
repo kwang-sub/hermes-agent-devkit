@@ -133,7 +133,6 @@ def main() -> int:
             "대체 카드 생성 승인",
             "서로 다른 승인 Gate를 한 질문으로 합치지 않는다",
             "NO_EXTRA_KANBAN_CONFIRMATION",
-            "NOTIFICATION_SUBSCRIPTION_ATTEMPTED",
         ),
         failures,
     )
@@ -168,8 +167,8 @@ def main() -> int:
             "review-enter",
             "changes-return",
             "Reviewer profile DEFAULT",
-            "NOTIFY_STATUS=subscribed | disabled | warning",
-            "Hermes native",
+            "DevKit Notification Bridge",
+            "task_events",
             "kanban_unblock tool 정확히 1회",
         ),
         failures,
@@ -270,7 +269,7 @@ def main() -> int:
             print(f"[FAIL] {failure}")
         return 1
 
-    print("[PASS] Direct/Standard mandatory review, model-transition, requirement-delta approval, native notification, and auto-dispatch invariants")
+    print("[PASS] Direct/Standard mandatory review, model-transition, requirement-delta approval, DevKit notification bridge, and auto-dispatch invariants")
     return 0
 
 
