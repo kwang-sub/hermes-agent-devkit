@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: Orchestrator가 승인·dispatch한 Direct 또는 Standard Kanban 단일 Work Unit을 할당 Workspace에서 구현·검증하고 항상 Reviewer에게 인계한다.
-version: 0.24.2
+version: 0.25.0
 author: local
 platforms: [linux]
 metadata:
@@ -31,7 +31,7 @@ kanban_show
 → kanban_request_review | kanban_block
 ```
 
-Workspace/Expected Branch/Base SHA와 Pattern References는 Task body를 재사용한다. 기존 변경은 preserve-first이며 reset/restore/clean/stash하지 않는다. Existing Changes Preservation Fast Path가 승인된 경우 repository-wide dirty/EOL/untracked scan을 반복하지 않는다.
+Workspace Version Control과 Pattern References는 Task body를 재사용한다. Git Workspace는 Expected Branch/Base SHA를 검증하고, Non-Git Workspace는 `Version Control: none`, `Branch/Base SHA: NONE` 계약으로 `verify_workspace.py --version-control none`을 사용한다. 기존 변경은 preserve-first이며 reset/restore/clean/stash하지 않는다. Existing Changes Preservation Fast Path가 승인된 Git Workspace에서는 repository-wide dirty/EOL/untracked scan을 반복하지 않는다.
 
 ## Work Unit Boundary Gate
 
@@ -93,7 +93,7 @@ Applicable Skills와 실제 현재 Work Unit만 기준으로 필요한 capabilit
 
 ## Verification / Handoff
 
-Java/Gradle은 기존 toolchain과 canonical cached verification helper를 사용하고 동일 PASS fingerprint를 불필요하게 재실행하지 않는다. raw `./gradlew ...` 또는 `gradle ...` 직접 실행은 금지하며, 단순 bounded 진단이 필요하면 `hermes-java ./gradlew ...`, COMPILE/TARGETED_TEST는 `gradle_verification_cached.py`만 사용한다. 최종 scope 확정 후 **scoped change_summary.py**를 실행한다. Standard Flow에서 `--include` 없이 호출하지 않는다. 결과의 Changed Files와 verification evidence를 handoff한다.
+Java/Gradle은 기존 toolchain과 canonical cached verification helper를 사용하고 동일 PASS fingerprint를 불필요하게 재실행하지 않는다. raw `./gradlew ...` 또는 `gradle ...` 직접 실행은 금지하며, 단순 bounded 진단이 필요하면 `hermes-java ./gradlew ...`, COMPILE/TARGETED_TEST는 `gradle_verification_cached.py`만 사용한다. 최종 scope 확정 후 **scoped change_summary.py**를 실행한다. Standard Flow에서 `--include` 없이 호출하지 않는다. Git Workspace는 기존 diff/fingerprint handoff를 사용한다. Non-Git Workspace는 `change_summary.py --version-control none --include <changed-path>`로 Coder가 실제 변경 파일을 명시하며 Hermes가 snapshot이나 자동 diff를 만들지 않는다. 결과의 Changed Files와 verification evidence를 handoff한다.
 
 ```text
 Work Unit Boundary Respected: true
@@ -111,7 +111,7 @@ Terminal transition은 `kanban_request_review` 또는 `kanban_block` 중 정확�
 
 ## 불변식
 
-- Workspace 밖 수정, branch 전환, 다른 worktree 생성, commit, push, PR, merge 금지.
+- Workspace 밖 수정 금지. Git Workspace에서는 branch 전환, 다른 worktree 생성, commit, push, PR, merge 금지. Non-Git Workspace에서는 branch/worktree/commit 계약이 적용되지 않는다.
 - secret/raw credential 기록 금지.
 - Follow-up Work Unit 전용 capability를 현재 Task에서 실행하지 않는다.
 - Interactive Coder가 Kanban 없이 새 mutation request를 구현하지 않는다.

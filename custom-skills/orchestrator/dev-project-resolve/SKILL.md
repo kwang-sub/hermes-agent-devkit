@@ -1,7 +1,7 @@
 ---
 name: dev-project-resolve
-description: 정규화된 Work Item을 .hermes/project.yaml이 있는 Hermes Managed Project Metadata에만 매칭한다. Source Code Scan이나 Unmanaged Repository 탐색은 하지 않으며 결과는 사용자 승인 전까지 후보일 뿐이다.
-version: 0.2.1
+description: 정규화된 Work Item을 .hermes/project.yaml이 있는 Hermes Managed Project Metadata에만 매칭한다. Git 여부와 무관하게 metadata를 인덱스로 사용하며 Source Code Scan이나 unmanaged path 탐색은 하지 않는다.
+version: 0.3.0
 author: local
 platforms: [linux]
 metadata:
@@ -21,7 +21,7 @@ metadata:
 .hermes/project.yaml
 ```
 
-Unmanaged Repository나 Repository Source Code는 Scan하지 않는다.
+Unmanaged Git Repository, Non-Git directory, Source Code는 Scan하지 않는다. Managed Project는 Git 또는 승인된 Non-Git일 수 있다.
 
 이 Skill은 **orchestrator 전용 Read-only Resolver**다.
 
@@ -83,7 +83,7 @@ dev-breakdown
 
 이 Resolver는 Unknown Repository를 자동 Bootstrap하지 않는다.
 
-Resolver가 읽는 대상은 이미 Managed Project이므로 정상 Resolution 뒤에 Bootstrap을 새로 수행할 필요는 없다. 단, 사용자가 명시한 Repository가 아직 Managed Project가 아니라면 별도의 사용자 승인 후 `dev-project-bootstrap`을 수행한다.
+Resolver가 읽는 대상은 이미 Managed Project이므로 정상 Resolution 뒤에 Bootstrap을 새로 수행할 필요는 없다. 단, 사용자가 명시한 경로가 아직 Managed Project가 아니라면 별도의 사용자 승인 후 `dev-project-bootstrap`을 수행한다. Non-Git이면 bootstrap의 `[버전 관리 확인]` Gate를 먼저 통과해야 한다.
 
 ---
 
@@ -103,7 +103,7 @@ Resolver가 읽는 대상은 이미 Managed Project이므로 정상 Resolution �
 /workspace/manager/.hermes/project.yaml
 ```
 
-이 Metadata File만 읽는다.
+이 Metadata File만 읽는다. `project.repository`은 historical field name이지만 Managed Project root를 의미하며 반드시 Git root일 필요는 없다.
 
 명시적으로 제외:
 

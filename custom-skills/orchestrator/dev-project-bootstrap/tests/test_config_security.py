@@ -250,5 +250,65 @@ class ConfigSecurityTest(unittest.TestCase):
             self.assertIn("jdbc:postgresql://localhost:5432/app", app.read_text(encoding="utf-8"))
 
 
+    def test_non_git_project_keeps_env_contract_without_tracked_file_audit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "legacy"
+            frontend = project / "frontend"
+            frontend.mkdir(parents=True)
+            (frontend / "package.json").write_text(
+                '{"dependencies":{"next":"16.0.0"}}',
+                encoding="utf-8",
+            )
+            (frontend / ".env.local").write_text(
+                "NEXT_PUBLIC_API_URL=https://example.invalid\n",
+                encoding="utf-8",
+            )
+
+            result = security.ensure_configuration_security(
+                project,
+                version_control="none",
+            )
+            example = frontend / ".env.example"
+
+            self.assertTrue(example.is_file())
+            self.assertIn("NEXT_PUBLIC_API_URL=", example.read_text(encoding="utf-8"))
+            self.assertEqual([], result["tracked_protected"])
+            self.assertEqual([], result["hardcoded_spring"])
+            self.assertIn(
+                "version-control:none-tracked-file-audit-unavailable",
+                result["warnings"],
+            )
+
+
+    def test_non_git_composite_does_not_mutate_nested_git_repository(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "aggregate"
+            child = project / "new" / "frontend"
+            child.mkdir(parents=True)
+            subprocess.run(
+                ["git", "init", "-q", str(child)],
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            (child / "package.json").write_text(
+                '{"dependencies":{"next":"16.0.0"}}',
+                encoding="utf-8",
+            )
+            (child / ".env.local").write_text(
+                "NEXT_PUBLIC_API_URL=https://example.invalid\n",
+                encoding="utf-8",
+            )
+
+            result = security.ensure_configuration_security(
+                project,
+                version_control="none",
+            )
+
+            self.assertFalse((child / ".env.example").exists())
+            self.assertEqual([], result["frontend_roots"])
+            self.assertEqual([], result["backend_roots"])
+
+
 if __name__ == "__main__":
     unittest.main()

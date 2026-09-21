@@ -1,7 +1,7 @@
 ---
 name: dev-workflow-orchestrate
 description: Jira/text 개발 요청의 project·work unit·requirement delta·API spec·workspace·branch·Coder 모델·plan을 독립 clarify Gate로 승인한 뒤 단일 Work Unit만 Kanban dispatch하는 orchestrator 전용 workflow.
-version: 0.12.1
+version: 0.13.0
 author: local
 platforms: [linux]
 metadata:
@@ -25,7 +25,7 @@ START
 → WORK_UNIT_CLASSIFIED
 → API_SPEC_APPROVED | NOT_REQUIRED
 → WORKSPACE_APPROVED
-→ BRANCH_APPROVED
+→ BRANCH_APPROVED | BRANCH_NOT_REQUIRED
 → MODEL_APPROVED
 → PLAN_APPROVED
 → AUTO_DISPATCH_CURRENT_UNIT_ONLY
@@ -82,8 +82,8 @@ dev-work-intake
 → Work Unit Class/Boundary 확정
 → [API 규격 승인] (필요 시)
 → [Workspace 선택]
-→ [Branch 선택]
-→ 기존 변경 보존 승인 (필요 시)
+→ [Branch 선택] (Git Workspace만)
+→ 기존 변경 보존 승인 (Git Workspace에서 필요 시)
 → [Coder 모델 선택]
 → [작업 계획 승인]
 → NO_EXTRA_KANBAN_CONFIRMATION
@@ -118,7 +118,7 @@ choices: [규격 승인, 규격 보류]
 [추가 요구사항 확인]
 ```
 
-Workspace와 Branch는 별도 Gate다. `Other` 또는 수정 요구는 승인으로 간주하지 않고 값을 갱신한 뒤 **같은 Gate를 다시 출력**한다.
+Git Workspace에서는 Workspace와 Branch가 별도 Gate다. Non-Git Workspace는 Project 등록 시 Version Control 승인이 이미 기록되어 있으므로 `BRANCH_NOT_REQUIRED`, `Existing Changes: NOT_REQUIRED`로 진행한다. `Other` 또는 수정 요구는 승인으로 간주하지 않고 값을 갱신한 뒤 **같은 Gate를 다시 출력**한다.
 
 ### Plan Gate TUI 길이 계약
 
@@ -189,7 +189,7 @@ NO_EXTRA_KANBAN_CONFIRMATION
 ## 불변식
 
 - Project Approval / Plan Approval / Requirement Delta Approval을 추측하지 않는다.
-- Base SHA는 dispatch 시점 계약으로 보존한다.
+- Git Workspace의 Base SHA는 dispatch 시점 계약으로 보존한다. Non-Git Workspace는 `Base SHA: NONE`이며 snapshot을 생성하지 않는다.
 - 현재 Work Unit만 dispatch한다.
 - 추가 Kanban 생성 확인 질문을 만들지 않는다.
 - 상세 API/재작업/dispatch edge case는 `references/workflow-details.md`를 필요할 때만 읽는다.

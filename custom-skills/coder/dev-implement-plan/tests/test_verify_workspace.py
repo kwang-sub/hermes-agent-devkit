@@ -113,5 +113,29 @@ class VerifyWorkspaceTests(unittest.TestCase):
         self.assertIn("not an ancestor", proc.stderr)
 
 
+    def test_accepts_acknowledged_non_git_workspace_without_branch_or_sha(self) -> None:
+        workspace = Path(self.tmp.name) / "non-git"
+        workspace.mkdir()
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--task-key", "LEGACY-1",
+                "--version-control", "none",
+                "--workspace", str(workspace),
+                "--expected-workspace", str(workspace),
+            ],
+            text=True,
+            capture_output=True,
+            env=self.codex_shell_env(),
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("VERSION_CONTROL=none", proc.stdout)
+        self.assertIn("BRANCH=NONE", proc.stdout)
+        self.assertIn("BASE_SHA=NONE", proc.stdout)
+        self.assertIn("GIT_WORKSPACE=false", proc.stdout)
+        self.assertIn("STATUS=valid", proc.stdout)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

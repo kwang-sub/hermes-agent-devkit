@@ -292,12 +292,14 @@ run_check "Kanban worker session-affinity patch" python3 scripts/patch_hermes_ka
 run_check "Discord Kanban session-context patch" python3 scripts/patch_hermes_discord_kanban_session.py --self-test
 run_check "dev-workspace-dispatch regression tests" python3 custom-skills/orchestrator/dev-workspace-dispatch/tests/test_prepare_dispatch.py
 run_check "dev-implement-plan workspace verification tests" python3 custom-skills/coder/dev-implement-plan/tests/test_verify_workspace.py
+run_check "dev-implement-plan change summary tests" python3 custom-skills/coder/dev-implement-plan/tests/test_change_summary.py
 run_check "dev-code-review context tests" python3 custom-skills/reviewer/dev-code-review/tests/test_review_context.py
 run_check "dev-review-cycle contract" python3 scripts/check_review_cycle_contract.py
 run_check "dev-project-bootstrap launcher tests" python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_bootstrap_launcher.py
 run_check "dev-project-bootstrap metadata preservation tests" python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_metadata_preservation.py
 run_check "dev-project-bootstrap technology stack cache tests" python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_stack_cache.py
 run_check "dev-project-bootstrap development preflight tests" python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_dev_environment_preflight.py
+run_check "dev-project-bootstrap fast preflight tests" python3 custom-skills/orchestrator/dev-project-bootstrap/tests/test_bootstrap_preflight.py
 run_check "dev-tech-dispatch stack/fingerprint tests" python3 custom-skills/orchestrator/dev-tech-dispatch/tests/test_detect_capabilities.py
 run_check "Node dependency compatibility preflight tests" python3 custom-skills/shared/dev-node-dependencies/tests/test_node_dependency_preflight.py
 run_check "Node runtime isolation tests" python3 custom-skills/shared/dev-node-dependencies/tests/test_node_runtime.py

@@ -71,6 +71,7 @@ Infrastructure runtime/host/network/container/env delivery 변경
 security/authz/transaction/concurrency 정책 변경
 architecture/common abstraction/shared contract 결정
 cross-repository 또는 의미 있는 multi-module 변경
+Non-Git Managed Project 또는 Non-Git Workspace
 여러 독립 Work Unit
 요구사항 복수 해석
 실제 source를 넓게 분석해야 scope를 알 수 있음
@@ -103,7 +104,7 @@ choices:
 
 사용자가 현재 요청에서 정확한 managed Project를 지정하지 않았다면 기존 `[Project 선택]` Gate를 먼저 수행한다.
 
-Direct는 다음 fixed context에서만 허용한다.
+Direct는 Git managed project의 다음 fixed context에서만 허용한다. Non-Git/Composite Project는 Standard Flow로 처리한다.
 
 ```text
 Project: <approved managed project>

@@ -20,6 +20,38 @@ def git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def write_non_git_metadata(project: Path) -> None:
+    metadata = project / ".hermes" / "project.yaml"
+    metadata.parent.mkdir(parents=True, exist_ok=True)
+    metadata.write_text(
+        f"""# managed-by: dev-project-bootstrap
+version: 4
+
+project:
+  id: aggregate-project
+  name: aggregate-project
+  repository: {project}
+
+kanban:
+  board: aggregate-project
+
+version_control:
+  type: none
+  non_git_write_acknowledged: true
+
+git:
+  default_base_branch: ""
+  worktree_root: ""
+
+profiles:
+  orchestrator: orchestrator
+  coder: coder
+  reviewer: reviewer
+""",
+        encoding="utf-8",
+    )
+
+
 def write_metadata(repo: Path) -> None:
     metadata = repo / ".hermes" / "project.yaml"
     metadata.parent.mkdir(parents=True)
@@ -289,6 +321,124 @@ profiles:
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("task key", proc.stderr)
         self.assertEqual(git(self.repo, "branch", "--show-current").stdout.strip(), "main")
+
+
+    def test_non_git_workspace_uses_none_branch_mode(self) -> None:
+        project = Path(self.tempdir.name) / "aggregate"
+        project.mkdir()
+        write_non_git_metadata(project)
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--task-key", "LEGACY-001",
+                "--repo", str(project),
+                "--workspace", str(project),
+                "--branch-mode", "none",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("PROJECT_VERSION_CONTROL=none", proc.stdout)
+        self.assertIn("WORKSPACE_VERSION_CONTROL=none", proc.stdout)
+        self.assertIn("NON_GIT_WRITE_ACKNOWLEDGED=true", proc.stdout)
+        self.assertIn("BRANCH=NONE", proc.stdout)
+        self.assertIn("BASE_SHA=NONE", proc.stdout)
+        self.assertIn("WORKSPACE_CHANGE_SCAN_MODE=unsupported-non-git", proc.stdout)
+        self.assertIn("EXISTING_CHANGES_PRESERVATION_APPROVED=NOT_REQUIRED", proc.stdout)
+        self.assertIn("STATUS=prepared", proc.stdout)
+
+    def test_non_git_project_can_dispatch_nested_git_workspace(self) -> None:
+        project = Path(self.tempdir.name) / "aggregate"
+        child = project / "new" / "service"
+        child.mkdir(parents=True)
+        write_non_git_metadata(project)
+        subprocess.run(
+            ["git", "init", "-b", "main", str(child)],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        git(child, "config", "user.name", "Hermes Test")
+        git(child, "config", "user.email", "hermes-test@example.invalid")
+        (child / "README.md").write_text("child\n", encoding="utf-8")
+        git(child, "add", "README.md")
+        git(child, "commit", "-m", "fixture")
+        head = git(child, "rev-parse", "HEAD").stdout.strip()
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--task-key", "MIG-001",
+                "--repo", str(project),
+                "--workspace", str(child),
+                "--branch-mode", "current",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("PROJECT_VERSION_CONTROL=none", proc.stdout)
+        self.assertIn("WORKSPACE_VERSION_CONTROL=git", proc.stdout)
+        self.assertIn("NESTED_GIT_WORKSPACE=true", proc.stdout)
+        self.assertIn("BRANCH=main", proc.stdout)
+        self.assertIn("BASE_BRANCH=main", proc.stdout)
+        self.assertIn(f"BASE_SHA={head}", proc.stdout)
+        self.assertIn(f"WORKSPACE_PATH={child.resolve()}", proc.stdout)
+
+    def test_non_git_workspace_rejects_git_branch_mode(self) -> None:
+        project = Path(self.tempdir.name) / "aggregate"
+        project.mkdir()
+        write_non_git_metadata(project)
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--task-key", "LEGACY-002",
+                "--repo", str(project),
+                "--workspace", str(project),
+                "--branch-mode", "current",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("--branch-mode none", proc.stderr)
+
+
+    def test_non_git_project_can_dispatch_nested_non_git_workspace(self) -> None:
+        project = Path(self.tempdir.name) / "aggregate-non-git"
+        child = project / "legacy" / "service"
+        child.mkdir(parents=True)
+        write_non_git_metadata(project)
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--task-key", "LEGACY-CHILD-001",
+                "--repo", str(project),
+                "--workspace", str(child),
+                "--branch-mode", "none",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("PROJECT_VERSION_CONTROL=none", proc.stdout)
+        self.assertIn("WORKSPACE_VERSION_CONTROL=none", proc.stdout)
+        self.assertIn("WORKSPACE_TOOLCHAIN=none", proc.stdout)
+        self.assertIn("BRANCH=NONE", proc.stdout)
+        self.assertIn("EXISTING_CHANGES_PRESERVATION_APPROVED=NOT_REQUIRED", proc.stdout)
 
 
 if __name__ == "__main__":

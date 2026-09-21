@@ -1,7 +1,7 @@
 ---
 name: dev-project-bootstrap
-description: 기존 Git Repository를 Hermes Project로 idempotent하게 등록하고, Fast Preflight·기술 스택/Infrastructure cache·Java toolchain·EOL·Git ignore·애플리케이션 환경설정 보안·Kanban/Profile/Context/.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
-version: 0.6.3
+description: Git Project와 사용자 승인 Non-Git Project를 Hermes Managed Project로 idempotent하게 등록하고, Version Control Gate·Fast Preflight·기술 스택/Infrastructure cache·Java toolchain·환경설정 보안·Kanban/Profile/Context/.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
+version: 0.7.0
 author: local
 platforms: [linux]
 metadata:
@@ -12,7 +12,7 @@ metadata:
 
 # dev-project-bootstrap
 
-기존 Git Repository를 Hermes 개발 Workflow에 사용할 수 있도록 idempotent하게 준비한다.
+Git Repository 또는 사용자가 변경 추적 부재를 승인한 Non-Git 디렉터리를 Hermes 개발 Workflow에 사용할 수 있도록 idempotent하게 준비한다.
 
 애플리케이션 환경설정/Secret 정책은 `/opt/data/shared/references/application-configuration-security.md`를 따른다.
 
@@ -22,7 +22,9 @@ metadata:
 - 정확한 untracked/EOL-only 진단이 필요할 때만 `--full-preflight`를 사용한다.
 - 동일 Repository에서 Bootstrap process를 중복 실행하지 않는다. 이미 실행 중이면 기존 process를 poll한다.
 - 개발환경 preflight를 Project/Board 변경보다 먼저 실행한다.
-- Repository를 Git `safe.directory`에 idempotent하게 등록하고 쓰기 가능 여부를 확인한다.
+- Git Project는 Git `safe.directory`에 idempotent하게 등록하고 쓰기 가능 여부를 확인한다.
+- Non-Git Project는 최초 등록 시 Version Control Gate에서 명시적 사용자 승인을 받아야 하며, 승인 후에는 `.hermes/project.yaml`의 `version_control.non_git_write_acknowledged=true`를 재사용해 반복 확인하지 않는다.
+- Non-Git 승인은 snapshot/VCS 대체 기능을 만들지 않는다. Git diff/history/rollback/branch/worktree가 제공되지 않는 상태에서 직접 파일 변경을 허용한다는 의미다.
 - CRLF/LF-only tracked 변경은 effective change에서 제외한다.
 - `dev-tech-dispatch`와 동일한 bounded manifest 탐색 범위에서 Gradle/Maven build root를 찾고 Java target을 감지해 DevKit JDK 8/17/21 중 runtime을 선택한 뒤 Repository의 `.hermes/toolchain.env`에 기록한다.
 - 단일 프로젝트, Gradle/Maven multi-module, backend/frontend monorepo를 같은 탐색 계약으로 처리한다.
@@ -40,10 +42,11 @@ metadata:
 
 ```text
 bootstrap.py
-  ├─ repository process lock
+  ├─ project process lock
+  ├─ Version Control detection / acknowledgement
   ├─ bootstrap_preflight.py (fast)
   │   └─ project_builds.py (bounded build-root discovery)
-  ├─ ensure_gitignore.py
+  ├─ ensure_gitignore.py (Git only)
   ├─ ensure_config_security.py
   ├─ bootstrap_project.py
   ├─ stack_cache.py
@@ -58,6 +61,40 @@ python3 "${HERMES_SKILL_DIR}/scripts/bootstrap.py" \
 ```
 
 최종 `.hermes/project.yaml`은 technology cache와 Infrastructure Desired State를 포함할 수 있다.
+
+### Version Control Gate
+
+Project root가 Git 저장소가 아니면 자동 실패하거나 자동 승인하지 않는다. 최초 등록에서 반드시 독립 `clarify` Gate를 수행한다.
+
+```text
+question:
+  [버전 관리 확인]
+  현재 Project는 Git 저장소가 아닙니다. Git diff/history/rollback/branch/worktree 없이 직접 파일 변경을 허용할까요?
+choices:
+  - Non-Git 상태로 작업 허용
+  - Git 초기화 후 진행
+  - 취소
+```
+
+- `Non-Git 상태로 작업 허용`: 승인 후에만 bootstrap을 `--allow-non-git`으로 실행한다.
+- `Git 초기화 후 진행`: 사용자 승인 후 `git init`을 수행하고 가능한 경우 현재 상태를 initial commit으로 고정한 뒤 일반 Git bootstrap으로 진행한다. Git identity나 commit 조건이 충족되지 않으면 임의 identity를 만들지 않고 Block한다.
+- `취소`: 등록과 source mutation을 수행하지 않는다.
+- 이미 managed metadata에 `version_control.type=none` + `non_git_write_acknowledged=true`가 있으면 Gate를 다시 묻지 않는다.
+
+Non-Git metadata 예:
+
+```yaml
+version_control:
+  type: "none"
+  non_git_write_acknowledged: true
+
+git:
+  default_base_branch: ""
+  worktree_root: ""
+```
+
+상위 Project가 Non-Git이어도 하위에 독립 Git Repository 또는 독립 Non-Git 프로젝트가 여러 개 존재할 수 있다. Project 등록은 상위 metadata를 기준으로 하고, 실제 Standard Flow Workspace가 하위 Git root이면 해당 Workspace의 branch/diff/toolchain 계약을 사용한다. 하위 Non-Git Workspace는 branch/diff를 `N/A`로 처리하되 실행 Workspace별 toolchain을 준비할 수 있다.
+
 
 예:
 
@@ -202,10 +239,11 @@ python3 "${HERMES_SKILL_DIR}/scripts/refresh_stacks.py" \
 5. Fast 모드에서는 repository-wide Git change scan 생략
 6. bounded manifest에서 Gradle/Maven build root 탐색
 7. Gradle/Maven multi-module root와 sibling build root 구분
-8. 각 JVM build root의 Java target/runtime 선택
-9. compatible JVM roots이면 Repository .hermes/toolchain.env ensure
-10. .gitattributes ensure
-11. 각 build root의 gradlew/mvnw EOL 확인
+8. 단일 실행 영역이면 JVM build root의 Java target/runtime 선택
+9. Non-Git 상위 Project에서 독립 JVM build root가 여러 개면 toolchain 결정을 Workspace 선택 시점으로 지연
+10. Git Project 또는 단일 Non-Git 실행 영역이면 .hermes/toolchain.env ensure
+11. Git Project만 .gitattributes ensure
+12. 각 root-owned build root의 gradlew/mvnw EOL 확인
 ```
 
 Build root 출력 예:
@@ -272,7 +310,7 @@ Bootstrap은 한 번만 시작한다.
 
 ## 7. Java 실행 계약
 
-Java 프로젝트에는 Repository 단위 `.hermes/toolchain.env`를 보장한다. Coder/Reviewer는 `hermes-java` launcher를 우선한다. linked worktree에서는 별도 `.hermes/toolchain.env` 복사본을 만들지 않고 Git worktree 관계에서 Primary Worktree를 해석해 canonical toolchain을 읽는다. Gradle project-cache/build-output/workspace-lock key는 현재 linked worktree 경로를 기준으로 유지해 작업공간 간 실행 상태를 격리한다.
+Java 프로젝트에는 실행 Workspace에 적용 가능한 `.hermes/toolchain.env`를 보장한다. Coder/Reviewer는 `hermes-java` launcher를 우선한다. Git linked worktree에서는 기존처럼 Primary Worktree의 canonical toolchain을 읽는다. Non-Git Project에서는 가장 가까운 상위 `.hermes/toolchain.env`를 사용한다. 상위 Non-Git Project 아래 독립 child Workspace가 Git이든 Non-Git이든, Project root와 다른 실행 Workspace가 선택되면 해당 Workspace 기준으로 toolchain을 별도 준비한다. Gradle project-cache/build-output/workspace-lock은 Workspace 경로 기준으로 격리한다.
 
 ```bash
 hermes-java ./gradlew test
@@ -305,7 +343,7 @@ repo/
 
 Gradle/Maven multi-module의 nested module manifest는 동일 ancestor build root 아래 하나의 build project로 취급한다. 반대로 sibling Gradle/Maven root는 독립 build project로 유지한다.
 
-독립 JVM build project가 여러 개여도 모두 동일 target/runtime을 요구하면 Repository `.hermes/toolchain.env`를 공유한다. Java 17과 Java 21처럼 서로 다른 toolchain이 필요하면 현재 `hermes-java`의 `1 repository = 1 toolchain` 계약에서 자동 선택하지 않고 Bootstrap을 Block한다. 이 경우 per-project runtime 계약을 별도 설계하거나 프로젝트 Java 기준을 정렬해야 한다.
+하나의 Git Repository 안에서 독립 JVM build project가 여러 개이면 기존 계약대로 동일 target/runtime일 때만 `.hermes/toolchain.env`를 공유하고 서로 다르면 Block한다. Non-Git Managed Project에서는 독립 JVM build root가 2개 이상이면 Project 등록 단계에서 하나의 Java 버전을 강제하지 않고 `TOOLCHAIN_FILE=deferred-workspace`로 기록한다. 이후 승인된 child Workspace가 자신의 toolchain을 결정한다. 단일 Non-Git 실행 영역은 기존처럼 하나의 `.hermes/toolchain.env`를 사용한다.
 
 Frontend-only `package.json` 등은 Java build root로 취급하지 않는다.
 

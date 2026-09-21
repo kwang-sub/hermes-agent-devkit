@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import tempfile
@@ -156,6 +157,19 @@ def test_linked_worktree_uses_primary_toolchain_without_local_metadata() -> None
         assert_common_arguments(log.read_text(encoding="utf-8"), Path(env["HERMES_GRADLE_ROOT"]))
 
 
+def test_non_git_project_uses_nearest_hermes_toolchain() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        repo, env, log, _archive = make_repo(base)
+        shutil.rmtree(repo / ".git")
+
+        result = run_gradle(repo, env)
+
+        assert result.returncode == 0, result.stderr
+        assert "no Hermes Non-Git toolchain" not in result.stderr
+        assert_common_arguments(log.read_text(encoding="utf-8"), Path(env["HERMES_GRADLE_ROOT"]))
+
+
 def test_cache_miss_downloads_and_runs_exact_distribution() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
@@ -257,6 +271,7 @@ def test_bounded_helper_bypasses_session_guard() -> None:
 def main() -> int:
     tests = (
         test_linked_worktree_uses_primary_toolchain_without_local_metadata,
+        test_non_git_project_uses_nearest_hermes_toolchain,
         test_cache_miss_downloads_and_runs_exact_distribution,
         test_cache_hit_runs_without_source_archive,
         test_crlf_wrapper_properties_are_supported,

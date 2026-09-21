@@ -7,21 +7,40 @@ if [ "$#" -eq 0 ]; then
 fi
 
 workspace_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-if [ -z "$workspace_root" ]; then
-  echo "hermes-java: current directory is not inside a Git repository" >&2
-  exit 2
+workspace_is_git=true
+
+if [ -n "$workspace_root" ]; then
+  worktree_listing="$(git -C "$workspace_root" worktree list --porcelain 2>/dev/null || true)"
+  primary_root="$(printf '%s\n' "$worktree_listing" | sed -n 's/^worktree //p' | head -n 1)"
+  if [ -z "$primary_root" ] || [ ! -d "$primary_root" ]; then
+    echo "hermes-java: cannot resolve primary worktree from $workspace_root" >&2
+    exit 2
+  fi
+  toolchain_file="$primary_root/.hermes/toolchain.env"
+else
+  workspace_is_git=false
+  search_root="$(pwd -P)"
+  primary_root=""
+  while [ "$search_root" != "/" ]; do
+    if [ -f "$search_root/.hermes/toolchain.env" ]; then
+      primary_root="$search_root"
+      break
+    fi
+    search_root="$(dirname "$search_root")"
+  done
+  if [ -z "$primary_root" ] && [ -f "/.hermes/toolchain.env" ]; then
+    primary_root="/"
+  fi
+  if [ -z "$primary_root" ]; then
+    echo "hermes-java: current directory is not inside Git and no Hermes Non-Git toolchain was found" >&2
+    exit 2
+  fi
+  workspace_root="$primary_root"
+  toolchain_file="$primary_root/.hermes/toolchain.env"
 fi
 
-worktree_listing="$(git -C "$workspace_root" worktree list --porcelain 2>/dev/null || true)"
-primary_root="$(printf '%s\n' "$worktree_listing" | sed -n 's/^worktree //p' | head -n 1)"
-if [ -z "$primary_root" ] || [ ! -d "$primary_root" ]; then
-  echo "hermes-java: cannot resolve primary worktree from $workspace_root" >&2
-  exit 2
-fi
-
-toolchain_file="$primary_root/.hermes/toolchain.env"
 if [ ! -f "$toolchain_file" ]; then
-  echo "hermes-java: missing canonical $toolchain_file; run dev-project-bootstrap for the primary repository first" >&2
+  echo "hermes-java: missing canonical $toolchain_file; run dev-project-bootstrap or workspace toolchain preparation first" >&2
   exit 2
 fi
 
@@ -213,7 +232,11 @@ if [ "$command_name" = "gradlew" ]; then
   done
 
   repo_name="$(printf '%s' "$(basename "$workspace_root")" | tr -c '[:alnum:]._-' '_')"
-  repo_hash="$(printf '%s' "$workspace_root" | git hash-object --stdin | cut -c1-12)"
+  if [ "$workspace_is_git" = true ]; then
+    repo_hash="$(printf '%s' "$workspace_root" | git hash-object --stdin | cut -c1-12)"
+  else
+    repo_hash="$(printf '%s' "$workspace_root" | sha256sum | awk '{print $1}' | cut -c1-12)"
+  fi
   workspace_key="${repo_name}-${repo_hash}"
 
   gradle_extra_args=()

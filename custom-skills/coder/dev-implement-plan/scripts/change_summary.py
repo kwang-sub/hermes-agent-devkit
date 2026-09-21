@@ -25,6 +25,7 @@ def run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess[st
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Summarize scoped Git changes for implementation verification.")
     parser.add_argument("--workspace", default=".")
+    parser.add_argument("--version-control", choices=("git", "none"), default="git")
     parser.add_argument("--include", action="append", default=[])
     parser.add_argument("--allow-full-scan", action="store_true", help="Explicit diagnostic mode only. Allows repository-wide change discovery.")
     parser.add_argument("--compact", action="store_true", help="Print only handoff-critical summary fields without changing the process exit code.")
@@ -162,7 +163,35 @@ def print_summary(*, root: Path, includes: list[str], scan_mode: str, tracked: l
 
 def main() -> int:
     args = parse_args()
-    root = repo_root(Path(args.workspace))
+    workspace = Path(args.workspace).resolve()
+    if not workspace.is_dir():
+        raise SummaryError(f"workspace does not exist or is not a directory: {workspace}")
+
+    if args.version_control == "none":
+        includes = normalize_includes(workspace, args.include)
+        if not includes:
+            raise SummaryError(
+                "declared --include paths are required for a Non-Git workspace; "
+                "Hermes does not infer or snapshot Non-Git changes"
+            )
+        print(f"WORKSPACE={workspace}")
+        print("VERSION_CONTROL=none")
+        print(f"SCOPE={','.join(includes)}")
+        print("SCAN_MODE=unsupported-non-git")
+        print("CHANGE_TRACKING=unsupported")
+        print(f"DECLARED_CHANGED_COUNT={len(includes)}")
+        if not args.compact:
+            for index, path in enumerate(includes, start=1):
+                print(f"DECLARED_CHANGED_{index}={path}")
+        print("TRACKED_CHANGED_COUNT=-1")
+        print("EOL_ONLY_COUNT=-1")
+        print("UNTRACKED_COUNT=-1")
+        print("WHITESPACE_ERROR_COUNT=-1")
+        print("HANDOFF_GATE=NOT_APPLICABLE")
+        print("STATUS=valid")
+        return 0
+
+    root = repo_root(workspace)
     clear_handoff_state(root)
     includes = normalize_includes(root, args.include)
     if not includes and not args.allow_full_scan:
@@ -175,6 +204,7 @@ def main() -> int:
     effective_paths = sorted(set(tracked) | set(untracked))
     fingerprint = effective_scope_sha256(root, effective_paths)
 
+    print("VERSION_CONTROL=git")
     print_summary(root=root, includes=includes, scan_mode=scan_mode, tracked=tracked, eol_only=eol_only, untracked=untracked, fingerprint=fingerprint, whitespace_errors=whitespace_errors, compact=args.compact)
     if whitespace_errors:
         return 1
