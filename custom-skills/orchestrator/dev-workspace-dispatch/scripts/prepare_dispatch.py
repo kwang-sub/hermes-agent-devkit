@@ -183,6 +183,31 @@ def parse_managed_metadata(path: Path) -> dict[str, str]:
     }
 
 
+def ensure_executable_workspace_toolchain(workspace: Path) -> str:
+    helper = (
+        Path(__file__).resolve().parents[2]
+        / "dev-project-bootstrap"
+        / "scripts"
+        / "ensure_workspace_toolchain.py"
+    )
+    if not helper.is_file():
+        raise DispatchError(f"workspace toolchain helper is missing: {helper}")
+    result = run(
+        [
+            sys.executable,
+            str(helper),
+            "--workspace",
+            str(workspace),
+        ]
+    )
+    status = "unknown"
+    for line in result.stdout.splitlines():
+        if line.startswith("TOOLCHAIN_FILE="):
+            status = line.split("=", 1)[1].strip()
+            break
+    return status
+
+
 def exact_git_root(path: Path) -> Path | None:
     add_process_safe_directory(path)
     result = run(["git", "-C", str(path), "rev-parse", "--show-toplevel"], check=False)
@@ -399,6 +424,11 @@ def main() -> int:
         version_control = "git" if workspace_git else "none"
         repo = project_root
 
+    workspace_toolchain = "not-required"
+    if project_version_control == "none" and version_control == "git":
+        assert workspace_git is not None
+        workspace_toolchain = ensure_executable_workspace_toolchain(workspace_git)
+
     if version_control == "none":
         if args.branch_mode != "none":
             raise DispatchError("Non-Git workspace requires --branch-mode none")
@@ -494,6 +524,7 @@ def main() -> int:
     print(f"PROJECT_VERSION_CONTROL={project_version_control}")
     print(f"NON_GIT_WRITE_ACKNOWLEDGED={meta['non_git_acknowledged']}")
     print(f"WORKSPACE_VERSION_CONTROL={version_control}")
+    print(f"WORKSPACE_TOOLCHAIN={workspace_toolchain}")
     print(f"LINKED_WORKTREE={'true' if linked_worktree else 'false'}")
     print(
         f"NESTED_GIT_WORKSPACE={'true' if project_version_control == 'none' and version_control == 'git' else 'false'}"
