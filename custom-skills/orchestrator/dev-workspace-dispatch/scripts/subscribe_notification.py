@@ -26,10 +26,16 @@ def main() -> int:
     try:
         result = subprocess.run([str(runtime), str(helper), *sys.argv[1:]])
     except OSError as exc:
-        print("NOTIFY_STATUS=failed")
+        print("NOTIFY_STATUS=warning")
+        print("NOTIFY_VERIFIED=false")
         print(f"NOTIFY_ERROR=Hermes runtime Python unavailable: {runtime} ({type(exc).__name__})")
-        return 1
-    return int(result.returncode)
+        return 0
+    if result.returncode != 0:
+        print("NOTIFY_STATUS=warning")
+        print("NOTIFY_VERIFIED=false")
+        print(f"NOTIFY_ERROR=notification helper exited with code {result.returncode}")
+        return 0
+    return 0
 
 
 if __name__ == "__main__":
