@@ -46,8 +46,8 @@ PROJECT_APPROVAL
 → dev-breakdown READY
 → API_SPEC_APPROVAL (DESIGN_FIRST + REQUIRED인 경우)
 → WORKSPACE_APPROVAL
-→ BRANCH_APPROVAL
-→ EXISTING_CHANGES_APPROVAL (필요한 경우)
+→ BRANCH_APPROVAL (Git Workspace) | BRANCH_NOT_REQUIRED (Non-Git Workspace)
+→ EXISTING_CHANGES_APPROVAL (Git Workspace에서 필요한 경우)
 → CODER_MODEL_APPROVAL
 → PLAN_APPROVAL
 → AUTO_DISPATCH
@@ -175,6 +175,8 @@ choices:
 
 ## Gate 2 — Branch
 
+이 Gate는 Git Workspace에서만 수행한다. `WORKSPACE_VERSION_CONTROL=none`이면 Project 등록 시의 `non_git_write_acknowledged=true`를 근거로 `BRANCH_NOT_REQUIRED` 처리하고 Branch/Base SHA를 `NONE`으로 기록한다. 별도 snapshot은 만들지 않는다.
+
 ```text
 question:
   [Branch 선택]
@@ -186,11 +188,11 @@ choices:
   - 다른 Branch 지정
 ```
 
-Workspace와 Branch는 서로 다른 Gate다. 다른 Branch 또는 Other 입력은 후보를 갱신한 뒤 같은 Gate를 다시 표시한다.
+Git Workspace에서 Workspace와 Branch는 서로 다른 Gate다. 다른 Branch 또는 Other 입력은 후보를 갱신한 뒤 같은 Gate를 다시 표시한다.
 
 ## Gate 3 — Existing Changes
 
-기존 변경 보존 승인이 아직 없을 때만 사용한다.
+Git Workspace에서 기존 변경 보존 승인이 아직 없을 때만 사용한다. Non-Git Workspace는 Git 변경 추적이 없음을 이미 승인한 상태이므로 `NOT_REQUIRED`다.
 
 ```text
 question:
