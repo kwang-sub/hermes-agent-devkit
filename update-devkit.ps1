@@ -308,11 +308,76 @@ function Invoke-ProfileInitialization {
     }
 }
 
+function Test-ContainerDirectory {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ContainerName,
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $PreviousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        & docker exec $ContainerName test -d $Path 1>$null 2>$null
+        $ExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $PreviousPreference
+    }
+
+    return ($ExitCode -eq 0)
+}
+
 function Ensure-DefaultMultiplexGateway {
     param(
         [Parameter(Mandatory = $true)]
         [string]$ContainerName
     )
+
+    $ServicePath = "/run/service/gateway-default"
+
+    # docker compose up -d returns as soon as the container starts, while s6
+    # cont-init may still be reconciling the dynamic gateway slots as root.
+    # Give the upstream boot reconciler a bounded chance to publish the default
+    # slot before falling back to an explicit privileged registration.
+    Write-Host "[WAIT] Default multiplex Gateway s6 slot"
+    for ($Attempt = 0; $Attempt -lt 40; $Attempt++) {
+        if (Test-ContainerDirectory -ContainerName $ContainerName -Path $ServicePath) {
+            break
+        }
+        Start-Sleep -Milliseconds 500
+    }
+
+    if (-not (Test-ContainerDirectory -ContainerName $ContainerName -Path $ServicePath)) {
+        Write-Warning "Default Gateway s6 slot was not registered by container boot. Registering the volatile slot as root before starting the Gateway."
+
+        $RegisterDefaultGatewaySlot = @'
+from pathlib import Path
+from hermes_cli.service_manager import get_service_manager
+
+path = Path("/run/service/gateway-default")
+if not path.exists():
+    manager = get_service_manager()
+    try:
+        manager.register_profile_gateway("default", start_now=False)
+    except ValueError:
+        # The boot reconciler may win the race between the exists() check and
+        # registration. Accept only that exact successful-race outcome.
+        if not path.exists():
+            raise
+'@
+
+        # Root privilege is limited to creating the volatile /run/service slot.
+        # The actual Hermes Gateway lifecycle remains owned by the hermes user.
+        Invoke-Native -FilePath "docker" -Arguments @(
+            "exec", "--user", "root",
+            "-e", "HOME=/opt/data",
+            "-e", "HERMES_HOME=/opt/data",
+            $ContainerName,
+            "/opt/hermes/.venv/bin/python", "-c", $RegisterDefaultGatewaySlot
+        )
+    }
 
     Write-Host "[RUN ] Ensure default multiplex Gateway is running"
     Invoke-Native -FilePath "docker" -Arguments @(
