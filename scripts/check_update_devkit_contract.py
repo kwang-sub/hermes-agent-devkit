@@ -95,12 +95,11 @@ def main() -> int:
             "update-devkit.ps1 must reconcile the default Gateway on both normal and repair paths"
         )
 
-    gateway_start_as_root = re.search(
-        r'"exec"\s*,\s*"--user"\s*,\s*"root"[\s\S]{0,500}?'
-        r'"/opt/hermes/\.venv/bin/hermes"\s*,\s*"gateway"\s*,\s*"start"',
-        text,
+    root_gateway_start = (
+        '"exec", "--user", "root", $ContainerName,\n'
+        '        "/opt/hermes/.venv/bin/hermes", "gateway", "start"'
     )
-    if gateway_start_as_root:
+    if root_gateway_start in text:
         raise SystemExit(
             "update-devkit.ps1 may use root only to register the volatile s6 slot; "
             "the Hermes Gateway itself must start as user hermes"
