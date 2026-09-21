@@ -126,5 +126,32 @@ class ReviewContextTests(unittest.TestCase):
         self.assertNotIn("all_paths = git_paths", source)
 
 
+    def test_non_git_review_uses_declared_paths_without_diff_snapshot(self):
+        workspace = Path(self.tmp.name) / "non-git"
+        workspace.mkdir()
+        (workspace / "app.txt").write_text("changed\n", encoding="utf-8")
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--version-control", "none",
+                "--workspace", str(workspace),
+                "--expected-workspace", str(workspace),
+                "--include", "app.txt",
+            ],
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("VERSION_CONTROL=none", proc.stdout)
+        self.assertIn("SCAN_MODE=unsupported-non-git", proc.stdout)
+        self.assertIn("CHANGE_TRACKING=unsupported", proc.stdout)
+        self.assertIn("DECLARED_CHANGED_COUNT=1", proc.stdout)
+        self.assertIn("DECLARED_CHANGED_1=app.txt", proc.stdout)
+        self.assertIn("CODER_HANDOFF_GATE=NOT_APPLICABLE", proc.stdout)
+        self.assertIn("REVIEWER_TEST_RERUN_REQUIRED=true", proc.stdout)
+        self.assertIn("DIFF_CHECK=NOT_APPLICABLE", proc.stdout)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
