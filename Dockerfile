@@ -10,10 +10,6 @@ FROM ${HERMES_BASE_IMAGE} AS hermes-upstream-patched
 
 USER root
 
-COPY scripts/patch_hermes_syntax_warning.py /tmp/patch_hermes_syntax_warning.py
-RUN python3 /tmp/patch_hermes_syntax_warning.py /opt/hermes/hermes_cli/update_cmd.py \
-    && rm /tmp/patch_hermes_syntax_warning.py
-
 # Keep reasoning dim while making user-input surfaces visually distinct: cyan for
 # Clarify interaction and green for the recommended choice / recommendation label.
 COPY scripts/patch_hermes_tui_semantic_input.py /tmp/patch_hermes_tui_semantic_input.py
@@ -38,11 +34,6 @@ RUN python3 /tmp/patch_hermes_tirith_profile_guard.py --self-test \
     && grep -q 'DEVKIT_TIRITH_PROFILE_GUARD_V1' /opt/hermes/tools/tirith_security.py \
     && rm /tmp/patch_hermes_tirith_profile_guard.py
 
-COPY scripts/patch_hermes_kanban_terminal.py /tmp/patch_hermes_kanban_terminal.py
-RUN python3 /tmp/patch_hermes_kanban_terminal.py --self-test \
-    && python3 /tmp/patch_hermes_kanban_terminal.py /opt/hermes/agent/kanban_stop.py \
-    && rm /tmp/patch_hermes_kanban_terminal.py
-
 COPY scripts/devkit_session_affinity.py /opt/hermes/hermes_cli/devkit_session_affinity.py
 RUN python3 /opt/hermes/hermes_cli/devkit_session_affinity.py --self-test
 
@@ -50,17 +41,6 @@ COPY scripts/patch_hermes_kanban_session_affinity.py /tmp/patch_hermes_kanban_se
 RUN python3 /tmp/patch_hermes_kanban_session_affinity.py --self-test \
     && python3 /tmp/patch_hermes_kanban_session_affinity.py --search-root /opt/hermes/hermes_cli \
     && rm /tmp/patch_hermes_kanban_session_affinity.py
-
-# Codex native shell intentionally has no Kanban ownership env. Keep ownership
-# validation inside the Hermes tool registry/MCP process that receives the dispatcher grant.
-COPY scripts/devkit_kanban_worker_context.py /opt/hermes/hermes_cli/devkit_kanban_worker_context.py
-RUN python3 /opt/hermes/hermes_cli/devkit_kanban_worker_context.py --self-test
-
-COPY scripts/patch_hermes_codex_kanban_context.py /tmp/patch_hermes_codex_kanban_context.py
-RUN python3 /tmp/patch_hermes_codex_kanban_context.py --self-test \
-    && python3 /tmp/patch_hermes_codex_kanban_context.py --hermes-root /opt/hermes \
-    && HERMES_KANBAN_TASK=t_devkit_registry_check /opt/hermes/.venv/bin/python -c 'from model_tools import get_tool_definitions; from agent.transports.hermes_tools_mcp_server import EXPOSED_TOOLS; names={d["function"]["name"] for d in get_tool_definitions(enabled_toolsets=["kanban"], quiet_mode=True) if isinstance(d, dict) and d.get("type")=="function"}; assert "kanban_worker_context" in names, sorted(names); assert "kanban_worker_context" in EXPOSED_TOOLS, EXPOSED_TOOLS' \
-    && rm /tmp/patch_hermes_codex_kanban_context.py
 
 # Reviewer DEFAULT / Coder approved-model transitions must run inside the claim-bound
 # Kanban lifecycle tool path, not in Codex native shell where ownership env is scrubbed.
