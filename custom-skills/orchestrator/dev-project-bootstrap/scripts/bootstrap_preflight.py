@@ -52,6 +52,18 @@ def resolve_project_root(value: str, *, allow_non_git: bool) -> tuple[Path, str]
     return shared.resolve_repo(str(requested)), "git"
 
 
+def is_inside_nested_git(project_root: Path, managed_root: Path) -> bool:
+    current = project_root.resolve()
+    managed_root = managed_root.resolve()
+    while current != managed_root:
+        if (current / ".git").exists():
+            return True
+        if current.parent == current:
+            break
+        current = current.parent
+    return False
+
+
 def _nul_paths(text: str) -> list[str]:
     return [value for value in text.split("\0") if value]
 
@@ -169,7 +181,25 @@ def main() -> int:
             flush=True,
         )
 
-    projects = project_builds.discover_build_projects(repo)
+    discovered_projects = project_builds.discover_build_projects(repo)
+    if version_control == "none":
+        nested_projects = [
+            project for project in discovered_projects
+            if is_inside_nested_git(project.root, repo)
+        ]
+        projects = [
+            project for project in discovered_projects
+            if project not in nested_projects
+        ]
+        if nested_projects:
+            print(
+                f"[INFO] Nested Git build projects excluded from project-level toolchain: {len(nested_projects)}",
+                flush=True,
+            )
+    else:
+        nested_projects = []
+        projects = discovered_projects
+
     build_type = project_builds.summarize_build_type(projects)
     print(f"Build      : {build_type}", flush=True)
     print(f"Build roots: {len(projects)}", flush=True)
@@ -180,17 +210,14 @@ def main() -> int:
             flush=True,
         )
 
-    if version_control == "git":
-        toolchain_file, warnings = project_builds.configure_java_toolchain(
-            repo,
-            projects,
+    toolchain_file, warnings = project_builds.configure_java_toolchain(
+        repo,
+        projects,
+    )
+    if version_control == "none" and nested_projects:
+        warnings.append(
+            "Nested Git repositories own their Java toolchain independently and are prepared when selected as the executable workspace."
         )
-    else:
-        toolchain_file = "none"
-        warnings = [
-            "Project-level Java toolchain setup is skipped for a Non-Git aggregate project; "
-            "toolchain verification belongs to the selected executable workspace."
-        ]
 
     if version_control == "git":
         gitattributes = shared.ensure_gitattributes(repo)
