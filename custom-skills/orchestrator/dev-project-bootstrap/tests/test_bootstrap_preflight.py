@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -82,6 +83,37 @@ class BootstrapGitScanTest(unittest.TestCase):
             self.assertEqual(["new.txt"], effective)
             self.assertEqual(["app.txt"], eol_only)
             self.assertEqual(1, untracked_count)
+
+
+    def test_non_git_multiple_independent_builds_defer_toolchain_to_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "aggregate"
+            service_a = project / "service-a"
+            service_b = project / "service-b"
+            service_a.mkdir(parents=True)
+            service_b.mkdir(parents=True)
+            (service_a / "build.gradle").write_text("plugins {}\n", encoding="utf-8")
+            (service_b / "build.gradle").write_text("plugins {}\n", encoding="utf-8")
+
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--repo",
+                    str(project),
+                    "--allow-non-git",
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("VERSION_CONTROL=none", proc.stdout)
+            self.assertIn("BUILD_PROJECT_COUNT=2", proc.stdout)
+            self.assertIn("TOOLCHAIN_FILE=deferred-workspace", proc.stdout)
+            self.assertIn("PREFLIGHT_STATUS=ready-with-warnings", proc.stdout)
+            self.assertFalse((project / ".hermes" / "toolchain.env").exists())
 
 
 if __name__ == "__main__":
