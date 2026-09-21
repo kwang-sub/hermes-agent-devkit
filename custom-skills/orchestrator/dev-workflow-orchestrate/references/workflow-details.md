@@ -30,7 +30,7 @@ START
 → API_SPEC_REQUIRED | API_SPEC_NOT_REQUIRED
 → API_SPEC_APPROVED | NOT_REQUIRED
 → WORKSPACE_APPROVED
-→ BRANCH_APPROVED
+→ BRANCH_APPROVED | BRANCH_NOT_REQUIRED
 → EXISTING_CHANGES_APPROVED | NOT_REQUIRED
 → MODEL_APPROVED
 → PLAN_APPROVED
@@ -122,11 +122,11 @@ API Spec Gate 자체는 별도 Work Unit을 자동 의미하지 않는다. 하�
 3. `dev-breakdown`으로 READY 계획을 만들고 **Work Unit Class/Boundary를 먼저 확정**한 뒤 API Spec Mode/Gate/Status/Path를 확정한다.
 4. `SPLIT_REQUIRED`이면 Current Deliverable과 Excluded Follow-up Scope를 일반 메시지의 Plan에 명확히 보여준다. 후속 Work Unit은 계획 정보일 뿐 이번 Task의 구현 범위가 아니다.
 5. `DESIGN_FIRST + API Spec Gate: REQUIRED`이면 `skill_view("dev-api-spec")`로 Markdown API Spec DRAFT를 구성하고 일반 메시지로 보여준 뒤 `[API 규격 승인]` clarify Gate를 수행한다.
-6. `[Workspace 선택]` → `[Branch 선택]` → `[기존 변경 보존 확인]`(필요 시) → `[Coder 모델 선택]`을 각각 독립 clarify Gate로 승인받는다.
+6. `[Workspace 선택]` 후 Git Workspace면 `[Branch 선택]` → `[기존 변경 보존 확인]`(필요 시)을 각각 독립 clarify Gate로 승인받는다. Non-Git Workspace는 Project 등록 당시의 Version Control 승인을 재사용해 `BRANCH_NOT_REQUIRED`, `Existing Changes: NOT_REQUIRED`로 두고 `[Coder 모델 선택]`으로 진행한다.
 7. 승인된 Tier를 `flow_model_policy.py resolve --tier <DEFAULT|PREMIUM>`으로 정확히 한 번 해석한다.
 8. **현재 Work Unit만 포함한** Implementation Plan 본문을 일반 메시지로 전부 보여준 뒤 `[작업 계획 승인]` clarify Gate를 수행한다. Plan이 길어도 질문 본문으로 옮기지 않는다.
 9. Plan까지 승인되면 추가 Kanban 생성 확인 없이 `AUTO_DISPATCH_CURRENT_UNIT_ONLY`한다.
-10. `prepare_dispatch.py`가 승인 workspace/branch의 `Base SHA`를 확정하고 Task body에 Work Unit Contract와 함께 보존한다.
+10. `prepare_dispatch.py`가 Git Workspace면 승인 workspace/branch의 `Base SHA`를 확정하고, Non-Git이면 `Branch/Base SHA=NONE`을 기록한다. 두 경우 모두 Task body에 Work Unit Contract와 Workspace Version Control을 함께 보존한다.
 
 ## API 규격 승인 Gate
 
@@ -171,7 +171,7 @@ choices: [규격 승인, 규격 보류]
 
 선택 가능한 Coder Tier는 `DEFAULT | PREMIUM`뿐이다. Reviewer Model은 항상 DEFAULT이며 선택 Gate를 만들지 않는다. Agent가 PREMIUM을 추천할 수는 있지만 자동 escalation은 금지한다.
 
-`Other` 또는 다른 후보 지정/수정 요구는 승인으로 간주하지 않는다. 요구사항을 갱신한 뒤 **같은 Gate를 다시 출력**한다. Workspace와 Branch는 같은 질문에 합치지 않는다.
+`Other` 또는 다른 후보 지정/수정 요구는 승인으로 간주하지 않는다. 요구사항을 갱신한 뒤 **같은 Gate를 다시 출력**한다. Git Workspace에서 Workspace와 Branch는 같은 질문에 합치지 않는다. Non-Git Workspace에는 Branch Gate를 만들지 않는다.
 
 ### Plan Gate TUI 길이 계약
 
