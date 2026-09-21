@@ -53,6 +53,11 @@ services:
     environment:
       TZ: ${HERMES_TIMEZONE:-Asia/Seoul}
 
+      # DevKit Gateway topology is fixed: one default Gateway multiplexes every role profile.
+      # Bootstrap state covers fresh volumes; update-devkit.ps1 also reconciles a stopped persisted gateway.
+      GATEWAY_MULTIPLEX_PROFILES: "true"
+      HERMES_GATEWAY_BOOTSTRAP_STATE: "running"
+
       # Host/Container workspace bind mapping. Agent/skill path resolution must
       # use this mapping before applying any /mnt/<drive> Temp-path convention.
       HERMES_HOST_WORKSPACE_PATH: ${HERMES_HOST_WORKSPACE_PATH:-D:/workspace}
@@ -116,7 +121,6 @@ services:
       HERMES_KANBAN_NOTIFY_TARGET: ${HERMES_KANBAN_NOTIFY_TARGET:-}
       HERMES_KANBAN_NOTIFY_DELIVERY_MODE: ${HERMES_KANBAN_NOTIFY_DELIVERY_MODE:-notify}
       HERMES_KANBAN_NOTIFY_CHAT_TYPE: ${HERMES_KANBAN_NOTIFY_CHAT_TYPE:-channel}
-      HERMES_KANBAN_NOTIFY_PROFILE: ${HERMES_KANBAN_NOTIFY_PROFILE:-orchestrator}
 
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       DISCORD_HOME_CHANNEL: ${HERMES_KANBAN_NOTIFY_TARGET:-}
