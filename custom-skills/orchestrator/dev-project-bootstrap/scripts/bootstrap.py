@@ -23,6 +23,7 @@ HERMES_CLI_CANDIDATES = (
 )
 FULL_PREFLIGHT_FLAG = "--full-preflight"
 REFRESH_STACK_FLAG = "--refresh-stack"
+ALLOW_NON_GIT_FLAG = "--allow-non-git"
 DEFAULT_HOST_WORKSPACE = "D:/workspace"
 DEFAULT_CONTAINER_WORKSPACE = "/workspace"
 
@@ -210,6 +211,37 @@ def resolve_primary_repository(requested: str, *, env: dict[str, str]) -> Path:
     return primary
 
 
+def resolve_project_workspace(
+    requested: str,
+    *,
+    env: dict[str, str],
+    allow_non_git: bool,
+) -> tuple[Path, bool]:
+    requested_path = Path(requested).expanduser().resolve()
+    if not requested_path.is_dir():
+        raise BootstrapLauncherError(f"project path does not exist: {requested_path}")
+
+    add_process_safe_directory(env, requested_path)
+    root_result = run_capture(
+        ["git", "-C", str(requested_path), "rev-parse", "--show-toplevel"],
+        env=env,
+    )
+    if root_result.returncode == 0:
+        return resolve_primary_repository(str(requested_path), env=env), True
+
+    if not allow_non_git:
+        detail = (root_result.stderr or root_result.stdout).strip()
+        suffix = f"\n{detail}" if detail else ""
+        raise BootstrapLauncherError(
+            "project path is not a Git repository. "
+            "Non-Git projects require explicit user acknowledgement before writes. "
+            f"After approval rerun with {ALLOW_NON_GIT_FLAG}, or initialize Git first: "
+            f"{requested_path}{suffix}"
+        )
+
+    return requested_path, False
+
+
 def run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
     result = subprocess.run(cmd, env=env)
     if result.returncode != 0:
@@ -260,10 +292,15 @@ def main() -> int:
     mapped_repo = canonical_repo_path(requested_repo)
     full_preflight = FULL_PREFLIGHT_FLAG in launcher_args
     refresh_stack = REFRESH_STACK_FLAG in launcher_args
+    allow_non_git = ALLOW_NON_GIT_FLAG in launcher_args
     hermes_cli = resolve_hermes_cli()
     env = child_env(hermes_cli)
-    primary_repo = resolve_primary_repository(mapped_repo, env=env)
-    repo = str(primary_repo)
+    project_root, project_is_git = resolve_project_workspace(
+        mapped_repo,
+        env=env,
+        allow_non_git=allow_non_git,
+    )
+    repo = str(project_root)
     forwarded_args = rewrite_repo_arg(project_args(launcher_args), repo)
 
     print(f"[OK] Hermes CLI: {hermes_cli}", flush=True)
@@ -272,9 +309,9 @@ def main() -> int:
             f"[INFO] Repository path mapped: {requested_repo} -> {mapped_repo}",
             flush=True,
         )
-    if Path(mapped_repo).expanduser().resolve() != primary_repo:
+    if project_is_git and Path(mapped_repo).expanduser().resolve() != project_root:
         print(
-            f"[INFO] Linked worktree resolved to primary repository: {mapped_repo} -> {primary_repo}",
+            f"[INFO] Linked worktree resolved to primary repository: {mapped_repo} -> {project_root}",
             flush=True,
         )
         print(
@@ -286,7 +323,7 @@ def main() -> int:
     if refresh_stack:
         unsupported = [
             value for value in forwarded_args
-            if value not in ("--repo", repo)
+            if value not in ("--repo", repo, ALLOW_NON_GIT_FLAG)
         ]
         if unsupported:
             raise BootstrapLauncherError(
@@ -300,13 +337,20 @@ def main() -> int:
         )
 
     with bootstrap_lock(repo):
+        config_args = ["--repo", repo]
+        if not project_is_git:
+            config_args.append(ALLOW_NON_GIT_FLAG)
+
         if refresh_stack:
+            if project_is_git:
+                run(
+                    python_stage(scripts / "ensure_gitignore.py", "--repo", repo),
+                    env=env,
+                )
+            else:
+                print("[SKIP] .gitignore policy: version control is not enabled", flush=True)
             run(
-                python_stage(scripts / "ensure_gitignore.py", "--repo", repo),
-                env=env,
-            )
-            run(
-                python_stage(scripts / "ensure_config_security.py", "--repo", repo),
+                python_stage(scripts / "ensure_config_security.py", *config_args),
                 env=env,
             )
             run(
@@ -320,18 +364,23 @@ def main() -> int:
             return 0
 
         preflight_args = ["--repo", repo]
+        if not project_is_git:
+            preflight_args.append(ALLOW_NON_GIT_FLAG)
         if full_preflight:
             preflight_args.append("--full")
         run(
             python_stage(scripts / "bootstrap_preflight.py", *preflight_args),
             env=env,
         )
+        if project_is_git:
+            run(
+                python_stage(scripts / "ensure_gitignore.py", "--repo", repo),
+                env=env,
+            )
+        else:
+            print("[SKIP] .gitignore policy: version control is not enabled", flush=True)
         run(
-            python_stage(scripts / "ensure_gitignore.py", "--repo", repo),
-            env=env,
-        )
-        run(
-            python_stage(scripts / "ensure_config_security.py", "--repo", repo),
+            python_stage(scripts / "ensure_config_security.py", *config_args),
             env=env,
         )
         run(
