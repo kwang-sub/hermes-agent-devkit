@@ -546,9 +546,12 @@ def main() -> int:
     print(f"PREVIOUS_BRANCH={before_branch}")
     print(f"CREATED_BRANCH={'true' if created_branch else 'false'}")
     print(f"WORKSPACE_CHANGE_SCAN_MODE={scan_mode}")
-    print(
-        f"EXISTING_CHANGES_PRESERVATION_APPROVED={'true' if args.confirmed_dirty else 'false'}"
-    )
+    if version_control == "none":
+        print("EXISTING_CHANGES_PRESERVATION_APPROVED=NOT_REQUIRED")
+    else:
+        print(
+            f"EXISTING_CHANGES_PRESERVATION_APPROVED={'true' if args.confirmed_dirty else 'false'}"
+        )
 
     if changes is None:
         print("WORKSPACE_DIRTY=unknown")
