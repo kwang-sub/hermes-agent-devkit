@@ -180,10 +180,17 @@ def main() -> int:
             flush=True,
         )
 
-    toolchain_file, warnings = project_builds.configure_java_toolchain(
-        repo,
-        projects,
-    )
+    if version_control == "git":
+        toolchain_file, warnings = project_builds.configure_java_toolchain(
+            repo,
+            projects,
+        )
+    else:
+        toolchain_file = "none"
+        warnings = [
+            "Project-level Java toolchain setup is skipped for a Non-Git aggregate project; "
+            "toolchain verification belongs to the selected executable workspace."
+        ]
 
     if version_control == "git":
         gitattributes = shared.ensure_gitattributes(repo)
