@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PATCH = ROOT / "scripts" / "patch_hermes_tui_file_signature.py"
+PATCH = ROOT / "scripts" / "patch_hermes_tui_semantic_input.py"
 DOCKERFILE = ROOT / "Dockerfile"
 LATEST_COMPAT = ROOT / ".github" / "workflows" / "latest-hermes-compat.yml"
 
@@ -21,6 +21,12 @@ def require(text: str, terms: tuple[str, ...], label: str) -> None:
         raise SystemExit(f"[FAIL] {label} missing: {', '.join(missing)}")
 
 
+def forbid(text: str, terms: tuple[str, ...], label: str) -> None:
+    present = [term for term in terms if term in text]
+    if present:
+        raise SystemExit(f"[FAIL] {label} still contains fixed-layout terms: {', '.join(present)}")
+
+
 def main() -> int:
     patch = read(PATCH)
     dockerfile = read(DOCKERFILE)
@@ -29,28 +35,36 @@ def main() -> int:
     require(
         patch,
         (
-            "from utils import file_signature",
-            "file_signature(",
-            "has_module_import",
-            "already-patched",
-            "not-needed",
+            "def discover_source_paths",
+            "def resolve_source_paths",
+            "--search-root",
+            "_is_tui_candidate",
+            "_is_session_candidate",
+            "cannot uniquely discover Hermes Clarify sources",
             "--self-test",
             "py_compile.compile",
         ),
-        "Hermes TUI file_signature patch",
+        "Hermes TUI semantic-input discovery patch",
     )
 
     require(
         dockerfile,
         (
-            "patch_hermes_tui_file_signature.py --self-test",
-            "patch_hermes_tui_file_signature.py /opt/hermes/hermes_cli/cli_tui_mixin.py",
-            "/opt/hermes/hermes_cli/cli_tui_mixin.py",
-            "HERMES_DEFER_AGENT_STARTUP=1",
-            "_tui_init_run_state()",
-            "devkit-tui-config.yaml",
+            "patch_hermes_tui_semantic_input.py --self-test",
+            "patch_hermes_tui_semantic_input.py --search-root /opt/hermes",
+            "patch_hermes_tui_semantic_input.py --check-only --search-root /opt/hermes",
+            "/opt/hermes/.venv/bin/hermes --help",
         ),
-        "Dockerfile TUI startup guard",
+        "Dockerfile TUI layout-independent guard",
+    )
+    forbid(
+        dockerfile,
+        (
+            "patch_hermes_tui_file_signature.py",
+            "/opt/hermes/hermes_cli/cli_tui_mixin.py",
+            "/opt/hermes/hermes_cli/cli_session_mixin.py",
+        ),
+        "Dockerfile TUI layout-independent guard",
     )
 
     require(
@@ -63,7 +77,7 @@ def main() -> int:
         "latest Hermes compatibility CI",
     )
 
-    print("[PASS] latest Hermes TUI file_signature patch + real TUI init smoke contract verified")
+    print("[PASS] latest Hermes path-independent TUI semantic patch contract verified")
     return 0
 
 

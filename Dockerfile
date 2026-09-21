@@ -78,8 +78,6 @@ RUN test -x /opt/hermes/.venv/bin/hermes \
     && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/hermes_cli/commands_completion.py \
     && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/tui_gateway/methods_tools.py \
     && grep -q 'DEVKIT_TIRITH_PROFILE_GUARD_V1' /opt/hermes/tools/tirith_security.py \
-    && grep -q 'DEVKIT_TUI_SEMANTIC_INPUT_V1' /opt/hermes/hermes_cli/cli_tui_mixin.py \
-    && grep -q 'DEVKIT_TUI_SEMANTIC_INPUT_V1' /opt/hermes/hermes_cli/cli_session_mixin.py \
     && /opt/hermes/.venv/bin/python -m py_compile \
        /opt/hermes/tools/tirith_security.py \
        /opt/hermes/tools/kanban_tools.py \
