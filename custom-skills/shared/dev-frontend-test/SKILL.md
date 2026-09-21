@@ -217,7 +217,7 @@ Visual Regression: PASS | FAIL | NOT_RUN | NOT_REQUIRED
 
 Hermes Agent DevKit의 Node package manager는 pnpm으로 고정한다. Node/pnpm 버전은 별도 Hermes 파일이 아니라 프로젝트 `package.json`의 `devEngines.runtime` / `devEngines.packageManager`를 사용한다.
 
-Windows bind-mounted workspace에서 host와 Hermes의 generated output/cache가 충돌하지 않도록 Node/frontend **검증 명령**은 다음 runtime helper를 사용한다.
+Windows bind-mounted source에서 frontend 검증을 직접 실행하지 않는다. `node_runtime.py`가 package source를 `/opt/data/node/workspaces/.../source`로 동기화한 뒤 Linux 격리 workspace에서 test/lint/typecheck/build를 실행한다.
 
 ```bash
 python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py \
@@ -232,7 +232,7 @@ python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py 
 python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py \
   --workspace "$WORKSPACE" \
   --cwd "chagok-frontend" \
-  -- pnpm run test
+  -- pnpm run typecheck
 
 python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py \
   --workspace "$WORKSPACE" \
@@ -243,26 +243,22 @@ python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py 
 runtime helper 계약:
 
 ```text
-pnpm home/store          → /opt/data/node
-XDG cache                → /opt/data/node
-TMPDIR                    → /opt/data/node/workspaces/<workspace-id>/tmp
-동일 workspace 명령       → workspace lock으로 직렬화
-Node runtime              → package.json devEngines.runtime
-pnpm version              → package.json devEngines.packageManager
-Next.js Hermes distDir    → .next-hermes
+package source             → Linux isolated workspace로 sync
+host node_modules/.next    → sync 제외
+host *.tsbuildinfo         → sync 제외
+isolated node_modules      → 검증 간 유지
+isolated framework output  → 검증 시작마다 초기화
+pnpm home/store            → /opt/data/node
+동일 Task workspace 명령    → workspace lock으로 직렬화
+Node runtime               → package.json devEngines.runtime
+pnpm version               → package.json devEngines.packageManager
 ```
 
-Next.js 프로젝트는 host와 Hermes가 같은 worktree를 사용해도 generated type/build output을 공유하지 않도록 다음 convention을 사용한다.
+따라서 Windows에서 같은 worktree의 `next dev`가 실행 중이어도 host `.next/dev/types`와 Hermes `.next/types`가 하나의 TypeScript program에 섞이지 않는다. Next.js `distDir` 같은 프로젝트 전용 우회 설정은 필요하지 않다.
 
-```ts
-const nextConfig: NextConfig = {
-  distDir: process.env.HERMES_NEXT_DIST_DIR || ".next",
-}
-```
+isolated `node_modules`가 아직 준비되지 않았다면 `dev-node-dependencies` preflight가 반환한 `RESTORE_WORKDIR`에서 exact `pnpm install --frozen-lockfile`을 Tirith actual guard를 거쳐 실행한 뒤 검증한다.
 
-`.next-hermes/`는 `.gitignore`에 포함한다. Next.js의 `distDir`은 project directory 밖으로 나갈 수 없으므로 Hermes 전용 디렉터리도 project 내부에 둔다.
-
-dependency 추가/삭제/복원은 `node_runtime.py`로 실행하지 않는다. `pnpm add`, `pnpm install` 등 package mutation/restore는 `dev-node-dependencies`의 exact command + Tirith actual guard 계약을 사용한다.
+dependency 추가/삭제는 source package root에서 exact `pnpm add/remove`를 수행하여 `package.json`과 `pnpm-lock.yaml`을 갱신한다.
 
 ## Handoff
 
