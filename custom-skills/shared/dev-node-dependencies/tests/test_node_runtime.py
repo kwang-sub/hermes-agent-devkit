@@ -52,17 +52,29 @@ def make_workspace(base: Path) -> tuple[Path, dict[str, str], Path]:
     workspace = base / "frontend"
     workspace.mkdir()
     write_manifest(workspace)
+    (workspace / "src").mkdir()
+    (workspace / "src" / "index.ts").write_text("export const value = 1;\n", encoding="utf-8")
+
+    # Simulate Windows-host generated state that must never enter Hermes verification.
+    host_next = workspace / ".next" / "dev" / "types"
+    host_next.mkdir(parents=True)
+    (host_next / "stale.d.ts").write_text("declare const stale: true;\n", encoding="utf-8")
+    host_modules = workspace / "node_modules"
+    host_modules.mkdir()
+    (host_modules / "windows-host-marker.txt").write_text("host\n", encoding="utf-8")
+    (workspace / "tsconfig.tsbuildinfo").write_text("host-cache\n", encoding="utf-8")
+
     log = base / "env.log"
     fake_pnpm = base / "pnpm"
     make_executable(
         fake_pnpm,
         "#!/usr/bin/env bash\n"
-        'printf "PNPM_HOME=%s\\n" "$PNPM_HOME" > "$NODE_RUNTIME_TEST_LOG"\n'
+        'printf "PWD=%s\\n" "$PWD" > "$NODE_RUNTIME_TEST_LOG"\n'
+        'printf "PNPM_HOME=%s\\n" "$PNPM_HOME" >> "$NODE_RUNTIME_TEST_LOG"\n'
         'printf "PNPM_STORE_DIR=%s\\n" "$PNPM_STORE_DIR" >> "$NODE_RUNTIME_TEST_LOG"\n'
         'printf "npm_config_store_dir=%s\\n" "$npm_config_store_dir" >> "$NODE_RUNTIME_TEST_LOG"\n'
         'printf "XDG_CACHE_HOME=%s\\n" "$XDG_CACHE_HOME" >> "$NODE_RUNTIME_TEST_LOG"\n'
         'printf "TMPDIR=%s\\n" "$TMPDIR" >> "$NODE_RUNTIME_TEST_LOG"\n'
-        'printf "HERMES_NEXT_DIST_DIR=%s\\n" "$HERMES_NEXT_DIST_DIR" >> "$NODE_RUNTIME_TEST_LOG"\n'
         'printf "ARGS=%s\\n" "$*" >> "$NODE_RUNTIME_TEST_LOG"\n',
     )
     env = os.environ.copy()
@@ -94,24 +106,70 @@ def run_runtime(workspace: Path, env: dict[str, str], command: list[str], timeou
     )
 
 
-def test_pnpm_state_and_next_output_are_isolated() -> None:
+def output_value(stdout: str, key: str) -> str:
+    prefix = key + "="
+    for line in stdout.splitlines():
+        if line.startswith(prefix):
+            return line[len(prefix):]
+    raise AssertionError(f"missing {key} in output: {stdout}")
+
+
+def test_verification_runs_in_linux_isolated_workspace() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
         workspace, env, fake_pnpm = make_workspace(base)
         result = run_runtime(workspace, env, [str(fake_pnpm), "run", "build"])
         assert result.returncode == 0, result.stderr
+
+        isolated = Path(output_value(result.stdout, "NODE_RUNTIME_CWD"))
+        assert isolated != workspace
+        assert str(isolated).startswith(str(Path(env["HERMES_NODE_ROOT"])))
+        assert (isolated / "src" / "index.ts").read_text(encoding="utf-8") == "export const value = 1;\n"
+        assert not (isolated / ".next").exists()
+        assert not (isolated / "node_modules" / "windows-host-marker.txt").exists()
+        assert not (isolated / "tsconfig.tsbuildinfo").exists()
+
+        # Host state is preserved and never cleaned by Hermes.
+        assert (workspace / ".next" / "dev" / "types" / "stale.d.ts").is_file()
+        assert (workspace / "node_modules" / "windows-host-marker.txt").is_file()
+
         text = Path(env["NODE_RUNTIME_TEST_LOG"]).read_text(encoding="utf-8")
         root = Path(env["HERMES_NODE_ROOT"])
-        key = workspace_key(workspace)
+        assert f"PWD={isolated}" in text
         assert f"PNPM_HOME={root / 'pnpm-home'}" in text
         assert f"PNPM_STORE_DIR={root / 'pnpm-store'}" in text
         assert f"npm_config_store_dir={root / 'pnpm-store'}" in text
         assert f"XDG_CACHE_HOME={root / 'cache'}" in text
-        assert f"TMPDIR={root / 'workspaces' / key / 'tmp'}" in text
-        assert "HERMES_NEXT_DIST_DIR=.next-hermes" in text
         assert "ARGS=run build" in text
         assert "NODE_RUNTIME_NODE_REQUIREMENT=22.23.2" in result.stdout
         assert "NODE_RUNTIME_PNPM_REQUIREMENT=>=12.0.0 <13.0.0" in result.stdout
+        assert "NODE_RUNTIME_OUTPUT_POLICY=linux-isolated-workspace;workspace-serialized" in result.stdout
+
+
+def test_internal_node_modules_survive_sync_but_generated_output_is_reset() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        workspace, env, fake_pnpm = make_workspace(base)
+        first = run_runtime(workspace, env, [str(fake_pnpm), "run", "test"])
+        assert first.returncode == 0, first.stderr
+        isolated = Path(output_value(first.stdout, "NODE_RUNTIME_CWD"))
+
+        internal_modules = isolated / "node_modules"
+        internal_modules.mkdir(exist_ok=True)
+        (internal_modules / "linux-marker.txt").write_text("linux\n", encoding="utf-8")
+        internal_next = isolated / ".next" / "dev" / "types"
+        internal_next.mkdir(parents=True)
+        (internal_next / "old.d.ts").write_text("declare const old: true;\n", encoding="utf-8")
+        (isolated / "old.tsbuildinfo").write_text("old\n", encoding="utf-8")
+
+        (workspace / "src" / "index.ts").write_text("export const value = 2;\n", encoding="utf-8")
+        second = run_runtime(workspace, env, [str(fake_pnpm), "run", "build"])
+        assert second.returncode == 0, second.stderr
+
+        assert (isolated / "node_modules" / "linux-marker.txt").is_file()
+        assert not (isolated / ".next").exists()
+        assert not (isolated / "old.tsbuildinfo").exists()
+        assert (isolated / "src" / "index.ts").read_text(encoding="utf-8") == "export const value = 2;\n"
 
 
 def test_workspace_lock_blocks_concurrent_verification() -> None:
@@ -173,7 +231,8 @@ def test_non_pnpm_project_is_blocked() -> None:
 
 def main() -> int:
     tests = (
-        test_pnpm_state_and_next_output_are_isolated,
+        test_verification_runs_in_linux_isolated_workspace,
+        test_internal_node_modules_survive_sync_but_generated_output_is_reset,
         test_workspace_lock_blocks_concurrent_verification,
         test_dependency_mutation_is_rejected_to_preserve_tirith_guard,
         test_non_pnpm_command_is_rejected,
