@@ -280,5 +280,35 @@ class ConfigSecurityTest(unittest.TestCase):
             )
 
 
+    def test_non_git_composite_does_not_mutate_nested_git_repository(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "aggregate"
+            child = project / "new" / "frontend"
+            child.mkdir(parents=True)
+            subprocess.run(
+                ["git", "init", "-q", str(child)],
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            (child / "package.json").write_text(
+                '{"dependencies":{"next":"16.0.0"}}',
+                encoding="utf-8",
+            )
+            (child / ".env.local").write_text(
+                "NEXT_PUBLIC_API_URL=https://example.invalid\n",
+                encoding="utf-8",
+            )
+
+            result = security.ensure_configuration_security(
+                project,
+                version_control="none",
+            )
+
+            self.assertFalse((child / ".env.example").exists())
+            self.assertEqual([], result["frontend_roots"])
+            self.assertEqual([], result["backend_roots"])
+
+
 if __name__ == "__main__":
     unittest.main()
