@@ -1,6 +1,6 @@
 ---
 name: dev-node-dependencies
-description: Node.js 프로젝트의 pnpm dependency 추가·삭제·복원에서 package.json toolchain/runtime 계약과 pnpm-lock.yaml을 검증하고 Tirith security preflight를 적용하는 공통 capability skill.
+description: Node.js 프로젝트의 Frontend 실행 전 pnpm toolchain 환경 Gate와 dependency 추가·삭제·복원, pnpm-lock.yaml 검증, Tirith security preflight를 제공하는 공통 capability skill.
 version: 0.2.2
 author: local
 platforms: [linux]
