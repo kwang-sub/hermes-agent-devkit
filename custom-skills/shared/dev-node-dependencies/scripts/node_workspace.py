@@ -110,6 +110,16 @@ def _remove(path: Path) -> None:
         shutil.rmtree(path)
 
 
+def _assert_owned_by_current_user(path: Path) -> None:
+    expected_uid = os.geteuid()
+    actual_uid = path.stat().st_uid
+    if actual_uid != expected_uid:
+        raise WorkspaceError(
+            "internal Node state owner mismatch: "
+            f"path={path} owner_uid={actual_uid} expected_uid={expected_uid}"
+        )
+
+
 def _sync_tree(source: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     source_names: set[str] = set()
@@ -215,11 +225,13 @@ def prepare_isolated_package(
         if key in {"isolated_package_root", "dependency_fingerprint"}:
             continue
         path.mkdir(parents=True, exist_ok=True)
+        _assert_owned_by_current_user(path)
         if not os.access(path, os.W_OK):
             raise WorkspaceError(f"internal Node state is not writable: {path}")
 
     isolated = paths["isolated_package_root"]
     isolated.mkdir(parents=True, exist_ok=True)
+    _assert_owned_by_current_user(isolated)
     _sync_tree(package_root, isolated)
     if not (isolated / "package.json").is_file():
         raise WorkspaceError(f"isolated package sync is missing package.json: {isolated}")
@@ -244,6 +256,8 @@ def mark_dependencies_restored(
         raise WorkspaceError(
             f"isolated package root does not exist; prepare/restore it first: {isolated}"
         )
+    _assert_owned_by_current_user(isolated)
+    _assert_owned_by_current_user(paths["package_state"])
 
     source_fingerprint = dependency_fingerprint(package_root)
     isolated_fingerprint = dependency_fingerprint(isolated)
