@@ -18,6 +18,10 @@ frontend = (ROOT / "custom-skills/shared/dev-frontend-feature/SKILL.md").read_te
 official_docs = (ROOT / "custom-skills/shared/dev-official-docs-context/SKILL.md").read_text(encoding="utf-8")
 node_dependencies = (ROOT / "custom-skills/shared/dev-node-dependencies/SKILL.md").read_text(encoding="utf-8")
 node_preflight = (ROOT / "custom-skills/shared/dev-node-dependencies/scripts/node_dependency_preflight.py").read_text(encoding="utf-8")
+node_environment_gate_path = ROOT / "custom-skills/shared/dev-node-dependencies/scripts/node_environment_gate.py"
+if not node_environment_gate_path.is_file():
+    raise SystemExit("Node frontend environment gate is missing")
+node_environment_gate = node_environment_gate_path.read_text(encoding="utf-8")
 tirith_preflight = (ROOT / "custom-skills/shared/dev-node-dependencies/scripts/tirith_package_preflight.py").read_text(encoding="utf-8")
 node_runtime_path = ROOT / "custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py"
 node_workspace_path = ROOT / "custom-skills/shared/dev-node-dependencies/scripts/node_workspace.py"
@@ -77,17 +81,23 @@ checks = {
         "dev-official-docs-context", 'skill_view("dev-official-docs-context")', "External Technology Documentation Gate",
         "dev-typescript-guidelines", "dev-frontend-guidelines", "dev-nextjs-feature", "dev-node-dependencies",
         "DEPENDENCY_DECLARATION_COMPATIBILITY", "Documentation Version Match",
+        "Frontend Environment Gate", "node_environment_gate.py",
+        "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED", "Source Verification Fallback: FORBIDDEN",
+        "patch-package", "별도 승인된 해결 범위",
         "EXTRANEOUS", "analysis_incomplete", "Tirith Package Preflight",
     )),
     "official docs skill": (official_docs, (
         "Version First", "Context7 Hosted MCP Provider",
         "https://mcp.context7.com/mcp", "Default auth: anonymous", "resolve-library-id", "query-docs",
         "EXACT", "COMPATIBLE", "LATEST_ONLY", "LOCAL_ONLY",
-        "DEPENDENCY_DECLARATION_COMPATIBILITY", "compiler/typecheck/test/build",
+        "DEPENDENCY_DECLARATION_COMPATIBILITY", "patch-package 자동 도입/적용",
+        "별도 승인된 compatibility 해결 범위", "compiler/typecheck/test/build",
     )),
     "node dependency skill": (node_dependencies, (
         "pnpm 하나만 사용한다", "devEngines.runtime", "devEngines.packageManager",
         "pnpm-lock.yaml", "package-lock.json", "migration blocker", "PACKAGE_MANAGER_ROOT",
+        "Frontend Environment Gate", "node_environment_gate.py", "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED",
+        "SOURCE_VERIFICATION_POLICY=FORBIDDEN", "source worktree", "fallback",
         "node_dependency_preflight.py", "tirith_package_preflight.py", "analysis_incomplete",
         "TIRITH_PREFLIGHT=allow", "TIRITH_PREFLIGHT=approval_required", "actual Hermes terminal guard",
         "timeout=600", "shell `timeout` wrapper", "Linux named volume의 격리 workspace",
@@ -102,12 +112,21 @@ checks = {
         "RESTORE_REQUIRED", "RESTORE_COMMAND", "RESTORE_WORKDIR", "RESTORE_MARK_COMMAND",
         "INSTALL_TIMEOUT_SECONDS = 600", "STATUS=pass", "STATUS=blocked",
     )),
+    "node environment gate": (node_environment_gate, (
+        "PNPM_LOCKFILE", "LEGACY_LOCKFILES", "devEngines.runtime", "devEngines.packageManager",
+        "packageManager conflicts with DevKit pnpm-only contract", "pnpm-lock.yaml is required",
+        "FRONTEND_ENVIRONMENT_GATE=PASS", "FRONTEND_ENVIRONMENT_GATE=BLOCKED",
+        "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED", "DEVKIT_RUNTIME_CAPABILITY_MISSING",
+        "SOURCE_VERIFICATION_POLICY=FORBIDDEN", "VERIFICATION_RUNTIME=node_runtime.py",
+    )),
     "tirith package preflight": (tirith_preflight, (
         "analysis_incomplete", "daemon", "start", "--detach", "daemon-recheck-pass", "daemon-recheck-fail",
         "approval_required", "Hermes terminal guard remains authoritative", "do not execute install",
     )),
     "node runtime": (node_runtime, (
-        "prepare_isolated_package", "NODE_RUNTIME_SOURCE_PACKAGE_ROOT", "NODE_RUNTIME_CWD",
+        "prepare_isolated_package", "validate_project_environment",
+        "NODE_RUNTIME_SOURCE_PACKAGE_ROOT", "NODE_RUNTIME_CWD", "NODE_RUNTIME_ENVIRONMENT_GATE=PASS",
+        "NODE_RUNTIME_SOURCE_VERIFICATION_POLICY=FORBIDDEN", "NODE_RUNTIME_BLOCKER_CLASS",
         "pnpm_home", "pnpm_store", "devEngines", "packageManager.name must be 'pnpm'",
         "fcntl.flock", "validate_pnpm_command", "timed out waiting for Node workspace lock",
         "linux-isolated-workspace;workspace-serialized",
@@ -115,6 +134,7 @@ checks = {
     "node workspace": (node_workspace, (
         'HERMES_NODE_ROOT", "/opt/data/node"', "GENERATED_NAMES", "PRESERVE_DEST_NAMES",
         '"node_modules"', '".next"', '".test-build"', '".tsbuildinfo"',
+        "_assert_owned_by_current_user", "internal Node state owner mismatch",
         "prepare_isolated_package", "isolated_package_root", "NODE_WORKSPACE_SYNC=ready",
     )),
     "design reference": (design, (
@@ -140,7 +160,8 @@ checks = {
         "View Strategy / Platform Verification", "Desktop/Mobile Verification Matrix", "Shared owner check",
         "VISUAL_CONFORMANCE", "VISUAL_REGRESSION", "Design Conformance", "Visual Regression",
         "Approved Implementation", "Browser Screenshot Golden", "toHaveScreenshot",
-        "NOT_AVAILABLE", "자동 설치하지 않는다", "Hermes Node Runtime Isolation", "node_runtime.py",
+        "NOT_AVAILABLE", "자동 설치하지 않는다", "Frontend Verification Environment Gate",
+        "node_environment_gate.py", "SOURCE_VERIFICATION_POLICY", "Hermes Node Runtime Isolation", "node_runtime.py",
         "/opt/data/node", "workspace lock", "devEngines.runtime", "devEngines.packageManager",
         "Linux 격리 workspace", "host node_modules/.next", "dependency fingerprint",
         "RESTORE_MARK_COMMAND", "검증 시작마다 초기화", "Tirith actual guard",
