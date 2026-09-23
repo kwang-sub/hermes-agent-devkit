@@ -223,7 +223,7 @@ python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_environment
   [--cwd "<package root relative to workspace>"]
 ```
 
-`FRONTEND_ENVIRONMENT_GATE=BLOCKED`이면 모든 canonical verification을 `NOT_RUN`으로 남기고 즉시 BLOCK한다. source worktree에서 `npm test`, `npm run build`, `npx`, `next build`, `tsc`, 직접 `pnpm run`을 실행해 우회하지 않는다. host/source `.next` 권한 정비나 stale generated type 삭제를 canonical 해결책으로 사용하지 않는다.
+`FRONTEND_ENVIRONMENT_GATE=BLOCKED`이면 `SOURCE_VERIFICATION_POLICY=FORBIDDEN`을 evidence로 남기고 모든 canonical verification을 `NOT_RUN`으로 처리한 뒤 즉시 BLOCK한다. source worktree에서 `npm test`, `npm run build`, `npx`, `next build`, `tsc`, 직접 `pnpm run`을 실행해 우회하지 않는다. host/source `.next` 권한 정비나 stale generated type 삭제를 canonical 해결책으로 사용하지 않는다.
 
 ## Hermes Node Runtime Isolation
 
