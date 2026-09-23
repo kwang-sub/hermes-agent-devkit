@@ -52,12 +52,12 @@ dev-typescript-guidelines
 dev-frontend-guidelines
 dev-nextjs-feature
 dev-frontend-test            # functional/component/e2e/visual verification
-dev-node-dependencies        # Node package root/manager/lockfile + Tirith install preflight
+dev-node-dependencies        # Frontend 환경 Gate + pnpm package root/lockfile + Tirith preflight
 dev-figma-design             # optional Figma REST read-only provider
 dev-ui-ux                    # audited UI/UX quality baseline
 ```
 
-Frontend Task는 `dev-frontend-feature`를 runtime entry로 사용하고 세부 capability는 실제 evidence에 따라 lazy-load합니다. `dev-node-dependencies`는 Frontend 전용이 아니며 Node package add/remove/version/restore/lockfile 변경이 실제 Task 범위일 때 공통으로 사용할 수 있습니다.
+Frontend Task는 `dev-frontend-feature`를 runtime entry로 사용하고 세부 capability는 실제 evidence에 따라 lazy-load합니다. Node 기반 Frontend Task는 dependency mutation 여부와 무관하게 `dev-node-dependencies`의 Frontend Environment Gate를 첫 Node command 전에 적용합니다. package add/remove/version/restore/lockfile mutation과 Tirith 절차는 실제 dependency 변경이 Task 범위일 때만 추가 적용합니다.
 
 외부 SDK/library/API 또는 version-sensitive framework 설정을 구현할 때는 `dev-official-docs-context`가 먼저 실제 resolved version을 확정하고 Context7 공식 문서 → 공식 upstream → 설치된 local type/source → compiler 순서로 evidence를 만듭니다. Context7는 provider일 뿐 compiler/typecheck/test/build를 대체하지 않습니다.
 
