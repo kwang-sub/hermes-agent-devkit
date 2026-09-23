@@ -1,7 +1,7 @@
 ---
 name: dev-frontend-test
 description: frontend 변경에서 기존 Vitest/Jest/Testing Library/Storybook/Playwright/Cypress stack을 감지해 functional·component·e2e·design conformance·visual regression 검증을 선택하는 capability skill.
-version: 0.3.2
+version: 0.3.3
 author: local
 platforms: [linux]
 metadata:
@@ -213,11 +213,23 @@ Visual Regression: PASS | FAIL | NOT_RUN | NOT_REQUIRED
 - 전체 suite/build/e2e는 Task/risk/AC에서 필요할 때 implementation stable 이후 실행한다.
 - visual conformance와 visual regression이 목적이 다르다면 결과도 별도로 기록한다.
 
+## Frontend Verification Environment Gate
+
+test/lint/typecheck/build를 선택하기 전에 반드시 환경 Gate evidence를 확보한다.
+
+```bash
+python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_environment_gate.py \
+  --workspace "<Task Workspace>" \
+  [--cwd "<package root relative to workspace>"]
+```
+
+`FRONTEND_ENVIRONMENT_GATE=BLOCKED`이면 모든 canonical verification을 `NOT_RUN`으로 남기고 즉시 BLOCK한다. source worktree에서 `npm test`, `npm run build`, `npx`, `next build`, `tsc`, 직접 `pnpm run`을 실행해 우회하지 않는다. host/source `.next` 권한 정비나 stale generated type 삭제를 canonical 해결책으로 사용하지 않는다.
+
 ## Hermes Node Runtime Isolation
 
 Hermes Agent DevKit의 Node package manager는 pnpm으로 고정한다. Node/pnpm 버전은 별도 Hermes 파일이 아니라 프로젝트 `package.json`의 `devEngines.runtime` / `devEngines.packageManager`를 사용한다.
 
-Windows bind-mounted source에서 frontend 검증을 직접 실행하지 않는다. `node_runtime.py`가 package source를 `/opt/data/node/workspaces/.../source`로 동기화한 뒤 Linux 격리 workspace에서 test/lint/typecheck/build를 실행한다.
+Windows bind-mounted source에서 frontend 검증을 직접 실행하지 않는다. `node_runtime.py`가 package source를 `/opt/data/node/workspaces/.../source`로 동기화한 뒤 Linux 격리 workspace에서 test/lint/typecheck/build를 실행한다. 내부 상태가 root/다른 UID 소유이면 권한을 자동 보정하며 계속하지 않고 환경 blocker로 중단한다.
 
 ```bash
 python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py \
@@ -271,6 +283,9 @@ View Strategy: SHARED | RESPONSIVE | HYBRID | SPLIT_VIEW | N/A
 Desktop/Mobile Verification Matrix
 Affected tests/stories/pages
 Commands / Results
+Frontend Environment Gate: PASS | BLOCKED
+Environment Blocker Class: NONE | PROJECT_TOOLCHAIN_MIGRATION_REQUIRED | DEVKIT_RUNTIME_CAPABILITY_MISSING | PROJECT_STRUCTURE_INVALID
+Source Verification Fallback: FORBIDDEN
 Node Runtime Isolation: PASS | NOT_REQUIRED | BLOCKED
 Node Runtime Cache Root: /opt/data/node | NOT_REQUIRED
 Node Workspace Lock: PASS | NOT_REQUIRED | BLOCKED
