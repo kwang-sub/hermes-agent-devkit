@@ -86,11 +86,11 @@ dev-typescript-guidelines
 dev-frontend-guidelines
 dev-nextjs-feature
 dev-frontend-test
-dev-node-dependencies       # package add/remove/restore/lockfile + security preflight
+dev-node-dependencies       # mandatory frontend environment gate + package add/remove/restore/lockfile + security preflight
 dev-ui-ux
 ```
 
-`dev-node-dependencies`는 Frontend 전용이 아니며 package mutation이 실제 Task 책임일 때 Node workspace에서 공통 사용한다.
+`dev-node-dependencies`는 Frontend 전용이 아니다. 다만 Node 기반 Frontend Task에서는 environment gate 부분을 항상 적용하고, package mutation/Tirith 절차는 실제 dependency 변경이 Task 책임일 때만 추가 적용한다.
 
 ### Data canonical entry
 
@@ -180,7 +180,23 @@ visual/interaction/responsive/accessibility/chart → dev-ui-ux
 API integration → dev-api-contract
 ```
 
-repository가 React/Next.js를 포함한다는 이유만으로 frontend skill을 로드하지 않는다. package dependency mutation이 없는 Task에 `dev-node-dependencies`를 자동 적용하지 않는다. 외부 기술을 사용하지 않는 순수 UI/domain 작업에 `dev-official-docs-context`를 기계적으로 적용하지 않는다.
+repository가 React/Next.js를 포함한다는 이유만으로 frontend skill을 로드하지 않는다. 하지만 Frontend Work Unit으로 확정된 뒤에는 dependency mutation 여부와 무관하게 `dev-node-dependencies`의 Frontend Environment Gate를 첫 Node command 전에 적용한다. mutation/Tirith 절차는 dependency 변경이 있을 때만 추가한다. 외부 기술을 사용하지 않는 순수 UI/domain 작업에 `dev-official-docs-context`를 기계적으로 적용하지 않는다.
+
+### Frontend Node environment boundary
+
+모든 Node 기반 Frontend Work Unit은 첫 Node command 전에 `node_environment_gate.py`를 실행한다.
+
+```text
+pnpm canonical toolchain PASS
+→ Linux isolated node_runtime verification 허용
+
+npm/yarn/bun 또는 legacy lockfile / pnpm 계약 미완성
+→ PROJECT_TOOLCHAIN_MIGRATION_REQUIRED
+→ 현재 기능 Work Unit BLOCK
+→ source worktree npm/npx/next/tsc/pnpm fallback 금지
+```
+
+toolchain migration은 현재 기능 구현과 별도 승인 Work Unit으로 분리한다. host/source `.next` 정리나 권한 변경을 canonical verification의 대체 수단으로 사용하지 않는다.
 
 ### Node dependency mutation boundary
 
@@ -201,7 +217,7 @@ package.json / canonical lockfile
 
 Tirith의 `analysis_incomplete`는 positive security finding과 구분한다. dependency helper는 Tirith daemon을 준비한 뒤 동일 command를 정확히 1회 재검사할 수 있지만, incomplete를 allow로 재분류하거나 approval을 끄지 않는다. 재검사 후에도 warn/block이면 headless worker는 반복 실행하지 않고 BLOCK한다.
 
-외부 `.d.ts`와 compiler/platform declaration 충돌은 앱 source 오류와 분리해 `DEPENDENCY_DECLARATION_COMPATIBILITY`로 evidence화한다. 이를 감추기 위한 `skipLibCheck=true`, strictness 완화, 임의 버전 downgrade/upgrade는 자동 적용하지 않는다.
+외부 `.d.ts`와 compiler/platform declaration 충돌은 앱 source 오류와 분리해 `DEPENDENCY_DECLARATION_COMPATIBILITY`로 evidence화한다. 이를 감추기 위한 `skipLibCheck=true`, strictness 완화, `patch-package`, node_modules patch, 임의 버전 downgrade/upgrade는 자동 적용하지 않는다. 호환성 수정이 필요하면 별도 승인 Work Unit으로 분리한다.
 
 ## 8. REFERENCE_DRIVEN / CODE_DRIVEN
 
@@ -354,8 +370,9 @@ enum/paging/auth
 Frontend/Node는 기존 package manager/test runner를 사용한다. dependency 변경이면 package manager compatibility와 canonical lockfile 검증을 먼저 통과해야 한다.
 
 ```text
-Official docs/version evidence (외부 기술 변경 시)
-→ Node dependency preflight (해당 시)
+Frontend Environment Gate (Node 기반 Frontend이면 항상)
+→ Official docs/version evidence (외부 기술 변경 시)
+→ Node dependency preflight (dependency mutation 시)
 → Tirith package preflight (해당 시)
 → affected functional/component test
 → typecheck
