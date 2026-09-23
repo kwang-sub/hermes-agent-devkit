@@ -14,6 +14,7 @@ for name in required_skills:
 
 pattern = (ROOT / "custom-skills/orchestrator/dev-project-pattern/SKILL.md").read_text(encoding="utf-8")
 breakdown = (ROOT / "custom-skills/orchestrator/dev-breakdown/SKILL.md").read_text(encoding="utf-8")
+coder = (ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md").read_text(encoding="utf-8")
 frontend = (ROOT / "custom-skills/shared/dev-frontend-feature/SKILL.md").read_text(encoding="utf-8")
 official_docs = (ROOT / "custom-skills/shared/dev-official-docs-context/SKILL.md").read_text(encoding="utf-8")
 node_dependencies = (ROOT / "custom-skills/shared/dev-node-dependencies/SKILL.md").read_text(encoding="utf-8")
@@ -70,6 +71,14 @@ checks = {
         "Shared Implementation: api | model | state | hooks | common UI", "Desktop/Mobile Verification Matrix",
         "dev-api-contract", "dev-figma-design", "DESIGN_CONFORMANCE", "VISUAL_REGRESSION",
         "Regression Baseline: APPROVED_BROWSER_SCREENSHOT",
+        "Frontend Environment Gate: REQUIRED", "BLOCK_AND_SPLIT_MIGRATION",
+        "LINUX_ISOLATED_NODE_RUNTIME", "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED",
+    )),
+    "coder frontend gate": (coder, (
+        'skill_view("dev-frontend-feature")', "첫 Node command",
+        "node_environment_gate.py", "FRONTEND_ENVIRONMENT_GATE=BLOCKED",
+        "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED", "kanban_block",
+        "source worktree", "node_runtime.py", "Linux isolated workspace",
     )),
     "frontend entry": (frontend, (
         "canonical entry", "REFERENCE_DRIVEN", "CODE_DRIVEN",
@@ -215,6 +224,8 @@ checks = {
         "dev-nextjs-feature", "dev-node-dependencies", "dev-figma-design", "REFERENCE_DRIVEN", "CODE_DRIVEN",
         "실제 installed/resolved version", "DEPENDENCY_DECLARATION_COMPATIBILITY", "EXTRANEOUS", "analysis_incomplete", "Tirith",
         "DESIGN_CONFORMANCE", "VISUAL_REGRESSION", "Storybook", "Stack Detection != Skill Loading",
+        "Frontend Node environment boundary", "node_environment_gate.py",
+        "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED", "source worktree", "patch-package",
     )),
 }
 for label, (text, terms) in checks.items():
