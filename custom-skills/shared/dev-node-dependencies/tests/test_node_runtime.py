@@ -318,7 +318,7 @@ def test_pnpm_workspace_policy_change_invalidates_linux_node_modules() -> None:
         result = run_runtime(workspace, env, [str(fake_pnpm), "run", "build"])
 
         assert result.returncode == 2
-        assert "current package.json/pnpm-lock.yaml fingerprint" in result.stderr
+        assert "current package.json/pnpm-lock.yaml/pnpm-workspace.yaml fingerprint" in result.stderr
         assert not (isolated / "node_modules").exists()
 
 
