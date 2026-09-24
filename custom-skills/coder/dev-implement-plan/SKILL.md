@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: Orchestrator가 승인·dispatch한 Direct 또는 Standard Kanban 단일 Work Unit을 할당 Workspace에서 구현·검증하고 항상 Reviewer에게 인계한다.
-version: 0.25.1
+version: 0.25.2
 author: local
 platforms: [linux]
 metadata:
@@ -93,7 +93,11 @@ Applicable Skills와 실제 현재 Work Unit만 기준으로 필요한 capabilit
 
 ## Verification / Handoff
 
-Frontend/Node Work Unit은 `dev-frontend-feature`를 load한 뒤 **첫 Node command 전에** `node_environment_gate.py`를 실행한다. `FRONTEND_ENVIRONMENT_GATE=BLOCKED`이면 `PROJECT_TOOLCHAIN_MIGRATION_REQUIRED` 등 blocker class를 evidence로 남기고 `kanban_block`한다. 같은 Task에서 npm→pnpm migration을 암묵적으로 시작하거나 source worktree에서 `npm`, `npx`, `next`, `tsc`, 직접 `pnpm run`으로 fallback하지 않는다. `.next` 권한 수정/삭제를 반복해 canonical verification을 대신하지 않는다. Gate PASS 이후 test/lint/typecheck/build는 `node_runtime.py` Linux isolated workspace만 사용한다.
+Frontend/Node Work Unit은 `dev-frontend-feature`를 load한 뒤 **첫 Node command 전에** `node_environment_gate.py`를 실행한다. `FRONTEND_ENVIRONMENT_GATE=BLOCKED`이면 blocker class를 evidence로 남기고 `kanban_block`한다. 같은 Task에서 npm→pnpm migration을 암묵적으로 시작하거나 source worktree에서 `npm`, `npx`, `next`, `tsc`, 직접 `pnpm run`으로 fallback하지 않는다. `.next` 권한 수정/삭제를 반복해 canonical verification을 대신하지 않는다.
+
+isolated restore가 `ERR_PNPM_IGNORED_BUILDS`로 실패하면 일반 build 실패로 처리하지 않는다. pnpm output의 미검토 `package@version`을 한 번에 수집해 `PNPM_BUILD_POLICY_REVIEW_REQUIRED`로 BLOCK한다. 사용자 승인 후 `pnpm_build_policy.py --approve <package@exact-version>`가 출력한 `POLICY_UPDATE_COMMAND_<N>`을 source package root에서 실행하고 같은 Work Unit을 재개한다. 이미 `pnpm-workspace.yaml > allowBuilds`에 동일 matcher가 boolean으로 결정되어 있으면 재승인을 요청하지 않는다. `dangerouslyAllowAllBuilds=true`, `strictDepBuilds=false`, `pnpm approve-builds --all`, bare package 전체 true 승인은 자동 사용하지 않는다.
+
+Gate PASS 이후 test/lint/typecheck/build는 `node_runtime.py` Linux isolated workspace만 사용한다.
 
 Java/Gradle은 기존 toolchain과 canonical cached verification helper를 사용하고 동일 PASS fingerprint를 불필요하게 재실행하지 않는다. raw `./gradlew ...` 또는 `gradle ...` 직접 실행은 금지하며, 단순 bounded 진단이 필요하면 `hermes-java ./gradlew ...`, COMPILE/TARGETED_TEST는 `gradle_verification_cached.py`만 사용한다. 최종 scope 확정 후 **scoped change_summary.py**를 실행한다. Standard Flow에서 `--include` 없이 호출하지 않는다. Git Workspace는 기존 diff/fingerprint handoff를 사용한다. Non-Git Workspace는 `change_summary.py --version-control none --include <changed-path>`로 Coder가 실제 변경 파일을 명시하며 Hermes가 snapshot이나 자동 diff를 만들지 않는다. 결과의 Changed Files와 verification evidence를 handoff한다.
 
@@ -117,5 +121,7 @@ Terminal transition은 `kanban_request_review` 또는 `kanban_block` 중 정확�
 - secret/raw credential 기록 금지.
 - Follow-up Work Unit 전용 capability를 현재 Task에서 실행하지 않는다.
 - Frontend Environment Gate가 toolchain migration을 요구하면 현재 IMPLEMENTATION Work Unit에서 migration/fallback 검증을 수행하지 않는다.
+- pnpm build-script 승인 결정은 `pnpm-workspace.yaml > allowBuilds`에 Git 관리하고, 같은 exact matcher를 반복 승인받지 않는다.
+- build-script 승인 후 정책 변경은 현재 pnpm migration/dependency Work Unit의 승인된 재개로 처리하며 별도 Hermes allowlist를 만들지 않는다.
 - Interactive Coder가 Kanban 없이 새 mutation request를 구현하지 않는다.
 - 상세 BLOCKED/retry/full-test/evidence 형식은 `references/implementation-details.md`를 따른다.
