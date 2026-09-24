@@ -60,7 +60,12 @@ def is_exact_registry_matcher(value: str) -> bool:
     return bool(EXACT_REGISTRY_MATCHER.fullmatch(value.strip()))
 
 
-def inspect_build_policy(package_root: Path, pnpm_binary: str) -> dict[str, object]:
+def inspect_build_policy(
+    package_root: Path,
+    pnpm_binary: str,
+    *,
+    allow_pending: bool = False,
+) -> dict[str, object]:
     strict_value = _run_config_get(pnpm_binary, package_root, "strictDepBuilds")
     dangerous_value = _run_config_get(
         pnpm_binary, package_root, "dangerouslyAllowAllBuilds"
@@ -105,7 +110,7 @@ def inspect_build_policy(package_root: Path, pnpm_binary: str) -> dict[str, obje
         else:
             pending.append(matcher)
 
-    if pending:
+    if pending and not allow_pending:
         raise BuildPolicyError(
             "unreviewed pnpm dependency build entries require one-time user approval: "
             + ", ".join(pending),
@@ -126,6 +131,7 @@ def inspect_build_policy(package_root: Path, pnpm_binary: str) -> dict[str, obje
         "allow_builds": {str(key): value for key, value in allow_builds.items()},
         "approved": approved,
         "denied": denied,
+        "pending": pending,
     }
 
 
@@ -219,7 +225,11 @@ def main() -> int:
 
     try:
         workspace, package_root, pnpm_binary = _resolve_package(args)
-        policy = inspect_build_policy(package_root, pnpm_binary)
+        policy = inspect_build_policy(
+            package_root,
+            pnpm_binary,
+            allow_pending=bool(args.approve or args.deny),
+        )
 
         print(f"WORKSPACE={workspace}")
         print(f"PACKAGE_ROOT={package_root}")
@@ -234,6 +244,10 @@ def main() -> int:
         print(
             "PNPM_DENIED_BUILDS="
             + (",".join(policy["denied"]) if policy["denied"] else "NONE")
+        )
+        print(
+            "PNPM_PENDING_BUILDS="
+            + (",".join(policy["pending"]) if policy["pending"] else "NONE")
         )
 
         if args.approve or args.deny:
