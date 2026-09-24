@@ -57,7 +57,7 @@ dev-figma-design             # optional Figma REST read-only provider
 dev-ui-ux                    # audited UI/UX quality baseline
 ```
 
-Frontend Task는 `dev-frontend-feature`를 runtime entry로 사용하고 세부 capability는 실제 evidence에 따라 lazy-load합니다. Node 기반 Frontend Task는 dependency mutation 여부와 무관하게 `dev-node-dependencies`의 Frontend Environment Gate를 첫 Node command 전에 적용합니다. dependency build-script 권한은 별도 Hermes 설정이 아니라 pnpm 표준 `pnpm-workspace.yaml > allowBuilds`에 exact package/version 단위로 기록하며 같은 결정은 재승인하지 않습니다. package add/remove/version/restore/lockfile mutation과 Tirith 절차는 실제 dependency 변경이 Task 범위일 때만 추가 적용합니다.
+Frontend Task는 `dev-frontend-feature`를 runtime entry로 사용하고 세부 capability는 실제 evidence에 따라 lazy-load합니다. Node 기반 Frontend Task는 dependency mutation 여부와 무관하게 `dev-node-dependencies`의 Frontend Environment Gate를 첫 Node command 전에 적용합니다. dependency build-script 권한은 별도 Hermes 설정이 아니라 pnpm 표준 `pnpm-workspace.yaml > allowBuilds`에 exact package/version 단위로 기록하며 같은 결정은 재승인하지 않습니다. 초기 pnpm 안정화에서 여러 미검토 build dependency가 발견되면 package별로 연속 승인받지 않고 first restore output + isolated `pnpm ignored-builds` 결과를 하나의 `SINGLE_REVIEW_BATCH`로 묶어 한 번에 승인/거부합니다. package add/remove/version/restore/lockfile mutation과 Tirith 절차는 실제 dependency 변경이 Task 범위일 때만 추가 적용합니다.
 
 외부 SDK/library/API 또는 version-sensitive framework 설정을 구현할 때는 `dev-official-docs-context`가 먼저 실제 resolved version을 확정하고 Context7 공식 문서 → 공식 upstream → 설치된 local type/source → compiler 순서로 evidence를 만듭니다. Context7는 provider일 뿐 compiler/typecheck/test/build를 대체하지 않습니다.
 
