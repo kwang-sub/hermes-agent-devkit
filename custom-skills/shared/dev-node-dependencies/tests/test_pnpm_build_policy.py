@@ -84,6 +84,24 @@ def test_unreviewed_placeholder_requires_one_time_review() -> None:
         assert "unrs-resolver@1.12.2" in result.stderr
 
 
+def test_pending_exact_matcher_can_be_resolved_by_decision_plan() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        workspace, env = make_workspace(Path(tmp))
+        env["PNPM_TEST_ALLOW_BUILDS"] = json.dumps(
+            {"unrs-resolver@1.12.2": "set this to true or false"}
+        )
+        result = run_policy(
+            workspace,
+            env,
+            "--approve",
+            "unrs-resolver@1.12.2",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "PNPM_PENDING_BUILDS=unrs-resolver@1.12.2" in result.stdout
+        assert '"unrs-resolver@1.12.2":true' in result.stdout
+        assert "PNPM_BUILD_POLICY_DECISION=READY" in result.stdout
+
+
 def test_exact_approval_passes_and_new_version_is_not_implicitly_approved() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         workspace, env = make_workspace(Path(tmp))
@@ -142,6 +160,7 @@ def main() -> int:
     tests = (
         test_default_policy_is_safe_without_workspace_file,
         test_unreviewed_placeholder_requires_one_time_review,
+        test_pending_exact_matcher_can_be_resolved_by_decision_plan,
         test_exact_approval_passes_and_new_version_is_not_implicitly_approved,
         test_broad_true_approval_is_blocked,
         test_decision_plan_merges_existing_policy_and_uses_pnpm_config_set,
