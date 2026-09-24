@@ -1,7 +1,7 @@
 ---
 name: dev-node-dependencies
 description: Node.js 프로젝트의 Frontend 실행 전 pnpm toolchain 환경 Gate와 dependency 추가·삭제·복원, pnpm-lock.yaml 검증, Tirith security preflight를 제공하는 공통 capability skill.
-version: 0.2.2
+version: 0.2.3
 author: local
 platforms: [linux]
 metadata:
@@ -134,6 +134,101 @@ pnpm run ...  # source worktree 직접 실행
 ```
 
 프로젝트 toolchain migration은 현재 기능 구현의 암묵적 부수 작업으로 수행하지 않는다. 별도 승인된 migration scope에서 pnpm 계약을 준비한 뒤 원래 Task를 재개한다. Gate가 BLOCKED이면 source worktree의 `.next`, `node_modules`, `dist`, `build`를 새로 만들거나 권한을 수선하며 검증을 강행하지 않는다.
+
+## pnpm Standard Build Policy
+
+dependency의 `preinstall/install/postinstall` 실행 권한은 Hermes 전용 파일이 아니라 **pnpm 표준 project config인 `pnpm-workspace.yaml`의 `allowBuilds`**를 유일한 source of truth로 사용한다.
+
+기본 보안 계약:
+
+```yaml
+strictDepBuilds: true
+dangerouslyAllowAllBuilds: false
+
+allowBuilds:
+  'unrs-resolver@1.12.2': true
+```
+
+정책:
+
+```text
+strictDepBuilds=true
+→ 검토되지 않은 dependency build script가 있으면 fail-closed
+
+dangerouslyAllowAllBuilds=false
+→ 현재/미래 모든 transitive dependency의 script 자동 허용 금지
+
+allowBuilds['package@exact-version']=true
+→ 해당 package/version은 프로젝트에서 승인됨
+→ 이후 동일 matcher는 재승인 없이 pnpm 표준 동작으로 통과
+
+새 package 또는 새 version
+→ 기존 exact matcher가 적용되지 않음
+→ ERR_PNPM_IGNORED_BUILDS
+→ 새 1회 검토 대상
+```
+
+`pnpm-workspace.yaml`이 아직 없고 승인/거부 기록도 없으면 pnpm 12의 안전한 기본값(`strictDepBuilds=true`, `dangerouslyAllowAllBuilds=false`)을 사용하므로 Gate는 통과할 수 있다. **최초 build-script 결정이 생기는 시점부터** project config를 Git에 기록한다.
+
+현재 정책 확인:
+
+```bash
+python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/pnpm_build_policy.py \
+  --workspace "<Task Workspace>" \
+  [--cwd "<package root>"]
+```
+
+사용자가 build script를 승인한 뒤 정책 변경 계획 생성:
+
+```bash
+python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/pnpm_build_policy.py \
+  --workspace "<Task Workspace>" \
+  [--cwd "<package root>"] \
+  --approve "unrs-resolver@1.12.2"
+```
+
+거부:
+
+```bash
+.../pnpm_build_policy.py \
+  --workspace "<Task Workspace>" \
+  [--cwd "<package root>"] \
+  --deny "package@1.2.3"
+```
+
+helper는 직접 project config를 수정하거나 dependency script를 실행하지 않는다. 기존 `allowBuilds`를 읽고 pnpm 공식 `config set --location=project --json` 기반의 exact `POLICY_UPDATE_COMMAND_<N>`을 출력한다. **사용자 승인 이후** Coder가 해당 명령을 source package root에서 Hermes terminal guard를 통해 실행한다.
+
+DevKit 기본 승인 matcher는 registry dependency의 **`package@exact-version`** 이다. bare package 전체, version range, 모든 package 전역 승인은 자동 승인하지 않는다. 더 넓은 범위가 실제로 필요하면 별도 명시적 정책 결정으로 취급한다.
+
+### ERR_PNPM_IGNORED_BUILDS 처리
+
+isolated `pnpm install --frozen-lockfile`에서 이 오류가 발생하면 dependency restore 실패와 application source 오류를 구분한다.
+
+```text
+ERR_PNPM_IGNORED_BUILDS
+→ pnpm output의 미검토 package@version 전체 수집
+→ PNPM_BUILD_POLICY_REVIEW_REQUIRED
+→ 사용자에게 한 번에 승인/거부 요청
+→ 승인된 exact matcher를 allowBuilds에 기록
+→ dependency preflight 재실행
+→ isolated frozen restore 재실행
+→ test/lint/typecheck/build 재개
+```
+
+이미 `allowBuilds`에서 `true` 또는 `false`로 결정된 matcher는 다시 묻지 않는다. pnpm이 자동으로 생성한 `"set this to true or false"` placeholder 또는 기타 non-boolean 값은 미검토 상태로 분류하고 Gate에서 차단한다.
+
+사용자 승인 없이 다음 우회는 금지한다.
+
+```text
+dangerouslyAllowAllBuilds=true
+strictDepBuilds=false
+--ignore-scripts
+pnpm approve-builds --all
+bare package 전체를 true로 자동 확장
+Hermes 전용 allowlist 파일 생성
+```
+
+`pnpm-workspace.yaml`은 dependency fingerprint에 포함된다. 따라서 build policy 변경 후 기존 isolated `node_modules`를 그대로 정상 상태로 간주하지 않고 frozen restore를 다시 수행한다. pnpm의 side-effects cache는 별도 정책 변경 없이 그대로 활용하므로 동일 package build 결과의 재사용은 pnpm 표준 동작에 맡긴다.
 
 ## Dependency Preflight
 
@@ -321,7 +416,7 @@ Windows node_modules / .next / dist / build / coverage / *.tsbuildinfo
 Linux isolated node_modules
 → package.json + pnpm-lock.yaml fingerprint가 동일할 때만 검증 간 유지
 
-package.json / pnpm-lock.yaml fingerprint 변경
+package.json / pnpm-lock.yaml / pnpm-workspace.yaml fingerprint 변경
 → 기존 isolated node_modules 폐기
 → frozen restore 재요구
 
@@ -339,7 +434,7 @@ RESTORE_WORKDIR=<NODE_ISOLATED_PACKAGE_ROOT>
 RESTORE_MARK_COMMAND=python3 .../node_workspace.py --workspace ... --cwd ... --mark-restored
 ```
 
-restore가 성공한 뒤 `RESTORE_MARK_COMMAND`를 실행해 현재 `package.json + pnpm-lock.yaml` fingerprint를 기록한다. source manifest/lockfile이 restore 이후 바뀌었으면 mark를 거부하고 preflight부터 다시 수행한다.
+restore가 성공한 뒤 `RESTORE_MARK_COMMAND`를 실행해 현재 `package.json + pnpm-lock.yaml + pnpm-workspace.yaml` fingerprint를 기록한다. source manifest/lockfile/build policy가 restore 이후 바뀌었으면 mark를 거부하고 preflight부터 다시 수행한다.
 
 검증:
 
@@ -388,6 +483,10 @@ Canonical Lockfile: .../pnpm-lock.yaml
 Lockfile Present Before: true | false
 Tirith Preflight: allow | approval_required | unavailable
 Tirith Actual Guard: allow | approval_required | block | not_run
+pnpm Build Policy: PASS | REVIEW_REQUIRED | BLOCKED
+pnpm Build Policy File: <.../pnpm-workspace.yaml | NOT_PRESENT>
+Approved Builds: <package@version,... | NONE>
+Denied Builds: <package@version,... | NONE>
 Install Command: ... | NOT_REQUIRED
 Install Workdir: ... | NOT_REQUIRED
 Restore Command: ... | NOT_REQUIRED
@@ -413,6 +512,10 @@ Residual Risk:
 - `package.json`이 Node/pnpm toolchain source of truth다.
 - `pnpm-lock.yaml`만 canonical lockfile로 사용한다.
 - `node_modules`는 source of truth가 아니다.
+- dependency build-script 결정은 pnpm 표준 `pnpm-workspace.yaml > allowBuilds`만 source of truth로 사용한다.
+- 승인 `true`의 기본 matcher는 `package@exact-version`이다.
+- `dangerouslyAllowAllBuilds=true`, `strictDepBuilds=false`, `pnpm approve-builds --all`을 자동 사용하지 않는다.
+- 같은 approved/denied matcher를 반복 승인받지 않는다.
 - dependency mutation은 Tirith actual guard를 우회하지 않는다.
 - 동일 실패 command를 자동 반복하지 않는다.
 - 별도 Hermes 전용 Node version 설정 파일을 만들지 않는다.
