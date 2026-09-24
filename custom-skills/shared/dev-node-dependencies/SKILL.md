@@ -326,6 +326,9 @@ RESTORE_REQUIRED
 INSTALL_COMMAND
 RESTORE_COMMAND
 RESTORE_MARK_COMMAND
+BUILD_REVIEW_MODE
+BUILD_REVIEW_COMMAND
+BUILD_REVIEW_WORKDIR
 INSTALL_TIMEOUT_SECONDS
 STATUS=pass
 ```
@@ -540,6 +543,9 @@ Install Workdir: ... | NOT_REQUIRED
 Restore Command: ... | NOT_REQUIRED
 Restore Workdir: ... | NOT_REQUIRED
 Restore Mark Command: ... | NOT_REQUIRED
+Build Review Mode: SINGLE_REVIEW_BATCH | NOT_REQUIRED
+Build Review Command: pnpm ignored-builds | NOT_REQUIRED
+Build Review Workdir: ... | NOT_REQUIRED
 Dependency Fingerprint: ...
 Dependencies Ready: true | false
 Verification Package Root: ...
