@@ -159,6 +159,7 @@ checks = {
         "prepare_isolated_package", "validate_project_environment",
         "NODE_RUNTIME_SOURCE_PACKAGE_ROOT", "NODE_RUNTIME_CWD", "NODE_RUNTIME_ENVIRONMENT_GATE=PASS",
         "NODE_RUNTIME_SOURCE_VERIFICATION_POLICY=FORBIDDEN", "NODE_RUNTIME_BLOCKER_CLASS",
+        "NODE_RUNTIME_PNPM_BUILD_POLICY_FILE", "NODE_RUNTIME_PNPM_APPROVED_BUILDS",
         "pnpm_home", "pnpm_store", "devEngines", "packageManager.name must be 'pnpm'",
         "fcntl.flock", "validate_pnpm_command", "timed out waiting for Node workspace lock",
         "linux-isolated-workspace;workspace-serialized",
