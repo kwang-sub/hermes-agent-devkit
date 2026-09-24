@@ -30,7 +30,7 @@ class BuildPolicyError(RuntimeError):
 
 def _run_config_get(pnpm_binary: str, package_root: Path, key: str):
     result = subprocess.run(
-        [pnpm_binary, "config", "get", "--json", key],
+        [pnpm_binary, "config", "get", "--location=project", "--json", key],
         cwd=package_root,
         text=True,
         stdout=subprocess.PIPE,
