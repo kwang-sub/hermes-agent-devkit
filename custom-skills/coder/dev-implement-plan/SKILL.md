@@ -93,7 +93,7 @@ Applicable Skills와 실제 현재 Work Unit만 기준으로 필요한 capabilit
 
 ## Verification / Handoff
 
-Frontend/Node Work Unit은 `dev-frontend-feature`를 load한 뒤 **첫 Node command 전에** `node_environment_gate.py`를 실행한다. `FRONTEND_ENVIRONMENT_GATE=BLOCKED`이면 blocker class를 evidence로 남기고 `kanban_block`한다. 같은 Task에서 npm→pnpm migration을 암묵적으로 시작하거나 source worktree에서 `npm`, `npx`, `next`, `tsc`, 직접 `pnpm run`으로 fallback하지 않는다. `.next` 권한 수정/삭제를 반복해 canonical verification을 대신하지 않는다.
+Frontend/Node Work Unit은 `dev-frontend-feature`를 load한 뒤 **첫 Node command 전에** `node_environment_gate.py`를 실행한다. `FRONTEND_ENVIRONMENT_GATE=BLOCKED`이면 `PROJECT_TOOLCHAIN_MIGRATION_REQUIRED`, `PNPM_BUILD_POLICY_REVIEW_REQUIRED` 등 실제 blocker class를 evidence로 남기고 `kanban_block`한다. 같은 Task에서 npm→pnpm migration을 암묵적으로 시작하거나 source worktree에서 `npm`, `npx`, `next`, `tsc`, 직접 `pnpm run`으로 fallback하지 않는다. `.next` 권한 수정/삭제를 반복해 canonical verification을 대신하지 않는다.
 
 isolated restore가 `ERR_PNPM_IGNORED_BUILDS`로 실패하면 일반 build 실패로 처리하지 않는다. pnpm output의 미검토 `package@version`을 한 번에 수집해 `PNPM_BUILD_POLICY_REVIEW_REQUIRED`로 BLOCK한다. 사용자 승인 후 `pnpm_build_policy.py --approve <package@exact-version>`가 출력한 `POLICY_UPDATE_COMMAND_<N>`을 source package root에서 실행하고 같은 Work Unit을 재개한다. 이미 `pnpm-workspace.yaml > allowBuilds`에 동일 matcher가 boolean으로 결정되어 있으면 재승인을 요청하지 않는다. `dangerouslyAllowAllBuilds=true`, `strictDepBuilds=false`, `pnpm approve-builds --all`, bare package 전체 true 승인은 자동 사용하지 않는다.
 
