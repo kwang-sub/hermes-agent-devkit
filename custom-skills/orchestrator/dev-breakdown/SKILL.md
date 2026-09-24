@@ -138,6 +138,8 @@ Toolchain Mismatch Handling: BLOCK_AND_SPLIT_MIGRATION
 pnpm Build Policy Source: pnpm-workspace.yaml
 Build Approval Scope: package@exact-version
 Build Approval Reuse: SAME_MATCHER_NO_REPROMPT
+Build Approval Bootstrap: SINGLE_REVIEW_BATCH
+Build Approval Discovery: RESTORE_OUTPUT_PLUS_PNPM_IGNORED_BUILDS
 Verification Runtime: LINUX_ISOLATED_NODE_RUNTIME
 View Strategy: SHARED | RESPONSIVE | HYBRID | SPLIT_VIEW
 View Strategy Rationale
@@ -153,7 +155,7 @@ Regression Baseline: APPROVED_BROWSER_SCREENSHOT | EXISTING_PROJECT_BASELINE | N
 API Impact: NONE | SHARED_CONTRACT | CONTRACT_CHANGE
 ```
 
-Frontend canonical Applicable Skill은 `dev-frontend-feature`. 필요 시 `dev-api-contract`, `dev-frontend-test`, `dev-ui-ux`를 hint로 추가한다. Node 기반 Frontend는 구현/검증 전에 Environment Gate가 필수이며 npm/yarn/bun 또는 pnpm 계약 미완성은 현재 기능 Task에서 자동 migration하지 않고 `PROJECT_TOOLCHAIN_MIGRATION_REQUIRED`로 분리한다. pnpm migration/dependency Work Unit에서 `ERR_PNPM_IGNORED_BUILDS`가 발생하는 경우 build-script 허용 결정 자체는 별도 Work Unit으로 쪼개지 않고 사용자 1회 승인 Gate로 처리한다. 승인 결과는 `pnpm-workspace.yaml > allowBuilds`에 exact package/version으로 기록하며 동일 matcher는 재승인하지 않는다. 화면 차이만으로 Backend API를 superset DTO/중복 endpoint로 확대하지 않는다.
+Frontend canonical Applicable Skill은 `dev-frontend-feature`. 필요 시 `dev-api-contract`, `dev-frontend-test`, `dev-ui-ux`를 hint로 추가한다. Node 기반 Frontend는 구현/검증 전에 Environment Gate가 필수이며 npm/yarn/bun 또는 pnpm 계약 미완성은 현재 기능 Task에서 자동 migration하지 않고 `PROJECT_TOOLCHAIN_MIGRATION_REQUIRED`로 분리한다. pnpm migration/dependency Work Unit에서 `ERR_PNPM_IGNORED_BUILDS`가 발생하는 경우 build-script 허용 결정 자체는 별도 Work Unit으로 쪼개지 않고 사용자 1회 승인 Gate로 처리한다. 첫 restore output과 isolated `pnpm ignored-builds`를 이용해 **현재 dependency graph의 미검토 matcher 전체를 먼저 수집**하고, package별 연속 BLOCK이 아니라 `SINGLE_REVIEW_BATCH` 하나로 승인/거부를 받는다. 승인 결과는 `pnpm-workspace.yaml > allowBuilds`에 exact package/version으로 기록하며 동일 matcher는 재승인하지 않는다. 동일 graph에서 batch 반영 후 새 matcher가 연속 발견되면 자동 반복하지 않고 discovery incomplete로 차단한다. 화면 차이만으로 Backend API를 superset DTO/중복 endpoint로 확대하지 않는다.
 
 ## 기존 Spring/JPA 정책 보존
 
