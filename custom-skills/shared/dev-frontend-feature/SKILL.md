@@ -1,7 +1,7 @@
 ---
 name: dev-frontend-feature
 description: Frontend 작업의 canonical entry point로 승인된 Design Reference 또는 기존 코드 기준을 TypeScript·React/Next.js·UI/UX·API contract·test capability와 조합한다.
-version: 0.4.1
+version: 0.4.2
 author: local
 platforms: [linux]
 metadata:
@@ -219,6 +219,8 @@ BLOCKER_CLASS=PROJECT_TOOLCHAIN_MIGRATION_REQUIRED
 
 이 경우 현재 기능 Task에서 package manager migration을 암묵적으로 수행하지 않고 작업을 BLOCK한다. 특히 worker는 검증을 계속하기 위해 Windows/source worktree에서 `npm`, `npx`, `next`, `tsc`, 직접 `pnpm run`을 fallback으로 실행하지 않는다. source worktree의 `.next` 권한 수정·삭제를 반복해 canonical 검증을 우회하지도 않는다.
 
+Gate는 pnpm의 표준 build policy도 함께 확인한다. `dangerouslyAllowAllBuilds=true`, `strictDepBuilds=false`, non-boolean `allowBuilds` placeholder, exact version이 아닌 broad `true` 승인은 BLOCK한다. dependency restore 중 `ERR_PNPM_IGNORED_BUILDS`가 발생하면 `dev-node-dependencies`의 one-time build approval 절차를 사용한다. 이미 `pnpm-workspace.yaml > allowBuilds`에서 결정된 동일 package/version은 다시 승인받지 않는다.
+
 Gate PASS 이후 test/lint/typecheck/build는 반드시 `node_runtime.py`를 통해 Linux isolated workspace에서 실행한다. dependency mutation이 필요한 경우에만 같은 capability의 mutation preflight/Tirith 경로를 추가 적용한다.
 
 ## Lazy capability
@@ -407,7 +409,11 @@ Observed / Inferred / Unknown:
 Applied Capability Skills:
 - ...
 Frontend Environment Gate: PASS | BLOCKED
-Frontend Environment Blocker Class: NONE | PROJECT_TOOLCHAIN_MIGRATION_REQUIRED | DEVKIT_RUNTIME_CAPABILITY_MISSING | PROJECT_STRUCTURE_INVALID
+Frontend Environment Blocker Class: NONE | PROJECT_TOOLCHAIN_MIGRATION_REQUIRED | PNPM_BUILD_POLICY_REVIEW_REQUIRED | PNPM_BUILD_POLICY_UNSAFE | PNPM_BUILD_POLICY_SCOPE_TOO_BROAD | DEVKIT_RUNTIME_CAPABILITY_MISSING | PROJECT_STRUCTURE_INVALID
+pnpm Build Policy: PASS | REVIEW_REQUIRED | BLOCKED
+pnpm Build Policy File: <pnpm-workspace.yaml | NOT_PRESENT>
+Approved Builds: <package@version,... | NONE>
+Denied Builds: <package@version,... | NONE>
 Verification Runtime: linux-isolated-node-runtime | NOT_RUN
 Source Verification Fallback: FORBIDDEN
 Documentation Required: yes | no
@@ -436,6 +442,8 @@ Residual Risk:
 - Node 기반 Frontend Task는 첫 Node command 전에 Frontend Environment Gate를 통과한다.
 - Gate BLOCKED 상태에서 source worktree 직접 npm/npx/next/tsc/pnpm 검증으로 fallback하지 않는다.
 - test/lint/typecheck/build는 PASS 이후 `node_runtime.py` Linux isolated workspace에서만 실행한다.
+- dependency build-script 승인은 pnpm 표준 `pnpm-workspace.yaml > allowBuilds`만 사용하고 Hermes 전용 allowlist를 만들지 않는다.
+- `allowBuilds: true` 기본 승인은 `package@exact-version` 단위이며 동일 결정은 반복 승인받지 않는다.
 - DRAFT/REFERENCE를 APPROVED로 임의 승격하지 않는다.
 - 이미지 추정치를 exact design fact로 바꾸지 않는다.
 - Approved Reference 일치를 이유로 unrelated global style/token refactor를 하지 않는다.
