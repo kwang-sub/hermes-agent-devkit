@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 
+from pnpm_build_policy import BuildPolicyError, inspect_build_policy
 from node_workspace import DEFAULT_ROOT, WorkspaceError, prepare_isolated_package
 
 
@@ -263,6 +264,12 @@ def main() -> int:
         pnpm_version = run_version([pnpm_binary, "--version"], cwd=package_root)
         if not pnpm_version:
             raise PreflightError("cannot resolve the project pnpm version")
+        try:
+            build_policy = inspect_build_policy(package_root, pnpm_binary)
+        except BuildPolicyError as exc:
+            raise PreflightError(
+                f"{exc.blocker_class}: {exc}"
+            ) from exc
 
         lock_path = package_root / PNPM_LOCKFILE
         lock_present = lock_path.is_file()
@@ -325,6 +332,18 @@ def main() -> int:
         print("PACKAGE_MANAGER_SOURCE=package.json devEngines.packageManager")
         print(f"PACKAGE_MANAGER_VERSION={pnpm_version}")
         print(f"PACKAGE_MANAGER_REQUIRED_VERSION={pnpm_requirement}")
+        print(f"PNPM_BUILD_POLICY_FILE={build_policy['policy_file']}")
+        print("PNPM_BUILD_POLICY_SOURCE=pnpm-workspace.yaml")
+        print("PNPM_STRICT_DEP_BUILDS=true")
+        print("PNPM_DANGEROUSLY_ALLOW_ALL_BUILDS=false")
+        print(
+            "PNPM_APPROVED_BUILDS="
+            + (",".join(build_policy["approved"]) if build_policy["approved"] else "NONE")
+        )
+        print(
+            "PNPM_DENIED_BUILDS="
+            + (",".join(build_policy["denied"]) if build_policy["denied"] else "NONE")
+        )
         print(f"CANONICAL_LOCKFILE={lock_path}")
         print(f"LOCKFILE_PRESENT={'true' if lock_present else 'false'}")
         print("NODE_VERSION=managed-by-pnpm")
