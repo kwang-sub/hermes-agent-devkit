@@ -323,6 +323,16 @@ def main() -> int:
             if restore_required
             else "NOT_REQUIRED"
         )
+        build_review_command = (
+            "pnpm ignored-builds"
+            if restore_required
+            else "NOT_REQUIRED"
+        )
+        build_review_workdir = (
+            str(isolated_package_root)
+            if restore_required
+            else "NOT_REQUIRED"
+        )
 
         print(f"WORKSPACE={workspace}")
         print(f"PACKAGE_ROOT={package_root}")
@@ -371,6 +381,9 @@ def main() -> int:
         print(f"RESTORE_COMMAND={restore_command}")
         print(f"RESTORE_WORKDIR={restore_workdir}")
         print(f"RESTORE_MARK_COMMAND={restore_mark_command}")
+        print("BUILD_REVIEW_MODE=SINGLE_REVIEW_BATCH")
+        print(f"BUILD_REVIEW_COMMAND={build_review_command}")
+        print(f"BUILD_REVIEW_WORKDIR={build_review_workdir}")
         print(f"INSTALL_TIMEOUT_SECONDS={INSTALL_TIMEOUT_SECONDS}")
         print("STATUS=pass")
         return 0
