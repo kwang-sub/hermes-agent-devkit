@@ -475,6 +475,8 @@ def main() -> int:
             '/command/s6-svstat -o up',
             '/opt/custom-skills/shared/dev-api-spec/SKILL.md',
             '/opt/custom-skills/shared/dev-node-dependencies/SKILL.md',
+            '/opt/custom-skills/shared/dev-node-dependencies/scripts/node_environment_gate.py',
+            '/opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py',
             '/opt/data/shared/scripts/flow_model_policy.py',
             'test ! -e /opt/hermes/hermes_cli/devkit_kanban_worker_context.py',
             'agent/transports/codex_app_server.py',

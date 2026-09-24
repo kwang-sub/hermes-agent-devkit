@@ -1,7 +1,7 @@
 ---
 name: dev-frontend-feature
 description: Frontend 작업의 canonical entry point로 승인된 Design Reference 또는 기존 코드 기준을 TypeScript·React/Next.js·UI/UX·API contract·test capability와 조합한다.
-version: 0.4.0
+version: 0.4.1
 author: local
 platforms: [linux]
 metadata:
@@ -182,22 +182,44 @@ Desktop/Mobile Verification Matrix:
 ## Coder 실행 순서
 
 ```text
-1. Frontend stack/package manager/version 확인
-2. 외부 SDK/API·version-sensitive config/type 오류가 scope면 dev-official-docs-context Gate
-3. dependency mutation이 실제 scope면 dev-node-dependencies preflight
-4. REFERENCE_DRIVEN | CODE_DRIVEN 결정
-5. REFERENCE_DRIVEN이면 dev-design-reference load
-6. Screen Spec / Design Evidence와 기존 component/token/style/API/test/package pattern 대조
-7. Desktop/Mobile 범위면 View Strategy와 Package / View Plan 확정
-8. Shared / Split 책임과 API Impact 확정
-9. 필요한 하위 capability만 lazy-load
-10. IMPLEMENTATION_SCOPE_READY 확정
-11. 최소 변경 구현
-12. 의미 있는 stateful/shared UI면 기존 Storybook catalog 갱신 검토
-13. UI 변경이면 dev-ui-ux quality gate
-14. affected test/typecheck/lint/build + Desktop/Mobile verification matrix 수행
-15. handoff evidence 기록
+1. Frontend package root 확인 후 Frontend Environment Gate 실행
+2. Gate PASS 후 stack/package manager/version 확인
+3. 외부 SDK/API·version-sensitive config/type 오류가 scope면 dev-official-docs-context Gate
+4. dependency mutation이 실제 scope면 dev-node-dependencies mutation preflight
+5. REFERENCE_DRIVEN | CODE_DRIVEN 결정
+6. REFERENCE_DRIVEN이면 dev-design-reference load
+7. Screen Spec / Design Evidence와 기존 component/token/style/API/test/package pattern 대조
+8. Desktop/Mobile 범위면 View Strategy와 Package / View Plan 확정
+9. Shared / Split 책임과 API Impact 확정
+10. 필요한 하위 capability만 lazy-load
+11. IMPLEMENTATION_SCOPE_READY 확정
+12. 최소 변경 구현
+13. 의미 있는 stateful/shared UI면 기존 Storybook catalog 갱신 검토
+14. UI 변경이면 dev-ui-ux quality gate
+15. affected test/typecheck/lint/build + Desktop/Mobile verification matrix 수행
+16. handoff evidence 기록
 ```
+
+## Frontend Environment Gate
+
+모든 Node 기반 Frontend Task는 dependency 변경 여부와 무관하게 첫 Node command 전에 다음 Gate를 통과해야 한다.
+
+```bash
+python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_environment_gate.py \
+  --workspace "<Task Workspace>" \
+  [--cwd "<package root relative to workspace>"]
+```
+
+정상 계약은 `pnpm + devEngines.runtime + devEngines.packageManager + pnpm-lock.yaml`이다. npm/yarn/bun 선언 또는 legacy lockfile, pnpm 계약 미완성은 구현 오류가 아니라 다음 환경 blocker로 분류한다.
+
+```text
+FRONTEND_ENVIRONMENT_GATE=BLOCKED
+BLOCKER_CLASS=PROJECT_TOOLCHAIN_MIGRATION_REQUIRED
+```
+
+이 경우 현재 기능 Task에서 package manager migration을 암묵적으로 수행하지 않고 작업을 BLOCK한다. 특히 worker는 검증을 계속하기 위해 Windows/source worktree에서 `npm`, `npx`, `next`, `tsc`, 직접 `pnpm run`을 fallback으로 실행하지 않는다. source worktree의 `.next` 권한 수정·삭제를 반복해 canonical 검증을 우회하지도 않는다.
+
+Gate PASS 이후 test/lint/typecheck/build는 반드시 `node_runtime.py`를 통해 Linux isolated workspace에서 실행한다. dependency mutation이 필요한 경우에만 같은 capability의 mutation preflight/Tirith 경로를 추가 적용한다.
 
 ## Lazy capability
 
@@ -212,7 +234,7 @@ Desktop/Mobile Verification Matrix:
 - backend↔frontend request/response contract → `dev-api-contract`
 - visual/interaction/responsive/accessibility/chart → `dev-ui-ux`
 
-React/Next.js가 존재한다는 이유만으로 모든 Skill을 로드하지 않는다. `dev-node-dependencies`도 package mutation이 실제 구현 범위일 때만 로드한다.
+React/Next.js가 존재한다는 이유만으로 모든 Skill을 로드하지 않는다. 다만 Node 기반 Frontend Task의 **환경 Gate는 항상 적용**하며, `dev-node-dependencies`의 dependency mutation/Tirith 절차는 package mutation이 실제 구현 범위일 때만 추가 적용한다.
 
 ## External Technology Documentation Gate
 
@@ -238,7 +260,7 @@ actual resolved version
 
 Context7 provider 장애만으로 구현을 중단하지 않는다. 공식 upstream 또는 설치된 local type/source로 충분한 evidence가 있으면 fallback한다. 반대로 latest docs만 보고 현재 project에 없는 API를 도입하지 않는다.
 
-외부 declaration 충돌은 앱 source 오류와 분리해 `DEPENDENCY_DECLARATION_COMPATIBILITY` 여부를 판단한다. 이를 숨기기 위해 `skipLibCheck=true`, `strict=false`, 임의 dependency/compiler downgrade를 자동 적용하지 않는다.
+외부 declaration 충돌은 앱 source 오류와 분리해 `DEPENDENCY_DECLARATION_COMPATIBILITY` 여부를 판단한다. 오류 origin이 `node_modules/**/*.d.ts` 또는 외부/generated declaration이고 application source error가 아니라면 해당 분류 evidence를 먼저 남긴다. 이를 숨기기 위해 `skipLibCheck=true`, `strict=false`, `patch-package`, node_modules patch, 임의 dependency/compiler downgrade·upgrade를 자동 적용하지 않는다. 호환성 변경이 필요하면 별도 승인된 해결 범위로 분리한다.
 
 ## Dependency Mutation
 
@@ -384,6 +406,10 @@ Observed / Inferred / Unknown:
 - ...
 Applied Capability Skills:
 - ...
+Frontend Environment Gate: PASS | BLOCKED
+Frontend Environment Blocker Class: NONE | PROJECT_TOOLCHAIN_MIGRATION_REQUIRED | DEVKIT_RUNTIME_CAPABILITY_MISSING | PROJECT_STRUCTURE_INVALID
+Verification Runtime: linux-isolated-node-runtime | NOT_RUN
+Source Verification Fallback: FORBIDDEN
 Documentation Required: yes | no
 Documentation Ready: pass | partial | blocked | NOT_REQUIRED
 Documentation Version Match: EXACT | COMPATIBLE | LATEST_ONLY | LOCAL_ONLY | UNKNOWN | NOT_REQUIRED
@@ -407,6 +433,9 @@ Residual Risk:
 
 ## 불변식
 
+- Node 기반 Frontend Task는 첫 Node command 전에 Frontend Environment Gate를 통과한다.
+- Gate BLOCKED 상태에서 source worktree 직접 npm/npx/next/tsc/pnpm 검증으로 fallback하지 않는다.
+- test/lint/typecheck/build는 PASS 이후 `node_runtime.py` Linux isolated workspace에서만 실행한다.
 - DRAFT/REFERENCE를 APPROVED로 임의 승격하지 않는다.
 - 이미지 추정치를 exact design fact로 바꾸지 않는다.
 - Approved Reference 일치를 이유로 unrelated global style/token refactor를 하지 않는다.

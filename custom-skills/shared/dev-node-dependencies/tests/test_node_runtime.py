@@ -11,6 +11,7 @@ import tempfile
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 RUNTIME = SCRIPTS / "node_runtime.py"
+ENVIRONMENT_GATE = SCRIPTS / "node_environment_gate.py"
 WORKSPACE_HELPER = SCRIPTS / "node_workspace.py"
 
 
@@ -100,6 +101,7 @@ def make_workspace(base: Path) -> tuple[Path, dict[str, str], Path]:
         {
             "HERMES_NODE_ROOT": str(base / "node-root"),
             "NODE_RUNTIME_TEST_LOG": str(log),
+            "PATH": f"{base}:{os.environ.get('PATH', '')}",
         }
     )
     return workspace, env, fake_pnpm
@@ -121,6 +123,24 @@ def run_runtime(
             str(timeout),
             "--",
             *command,
+        ],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def run_environment_gate(
+    workspace: Path,
+    env: dict[str, str],
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            "python3",
+            str(ENVIRONMENT_GATE),
+            "--workspace",
+            str(workspace),
         ],
         env=env,
         text=True,
@@ -367,8 +387,75 @@ def test_non_pnpm_project_is_blocked() -> None:
         assert "packageManager.name must be 'pnpm'" in result.stderr
 
 
+def test_environment_gate_passes_for_canonical_pnpm_project() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        workspace, env, _fake_pnpm = make_workspace(base)
+        result = run_environment_gate(workspace, env)
+        assert result.returncode == 0, result.stderr
+        assert "FRONTEND_ENVIRONMENT_GATE=PASS" in result.stdout
+        assert "BLOCKER_CLASS=NONE" in result.stdout
+        assert "PACKAGE_MANAGER=pnpm" in result.stdout
+        assert "SOURCE_VERIFICATION_POLICY=FORBIDDEN" in result.stdout
+        assert "VERIFICATION_RUNTIME=node_runtime.py" in result.stdout
+
+
+def test_environment_gate_blocks_legacy_npm_project_before_verification() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        workspace, env, fake_pnpm = make_workspace(base)
+        manifest = json.loads(
+            (workspace / "package.json").read_text(encoding="utf-8")
+        )
+        manifest["packageManager"] = "npm@11.17.0"
+        (workspace / "package.json").write_text(
+            json.dumps(manifest) + "\n", encoding="utf-8"
+        )
+        (workspace / "package-lock.json").write_text(
+            '{"lockfileVersion":3}\n', encoding="utf-8"
+        )
+
+        gate = run_environment_gate(workspace, env)
+        assert gate.returncode == 2
+        assert "FRONTEND_ENVIRONMENT_GATE=BLOCKED" in gate.stderr
+        assert "BLOCKER_CLASS=PROJECT_TOOLCHAIN_MIGRATION_REQUIRED" in gate.stderr
+        assert "SOURCE_VERIFICATION_POLICY=FORBIDDEN" in gate.stderr
+
+        runtime = run_runtime(
+            workspace, env, [str(fake_pnpm), "run", "build"]
+        )
+        assert runtime.returncode == 2
+        assert (
+            "NODE_RUNTIME_BLOCKER_CLASS=PROJECT_TOOLCHAIN_MIGRATION_REQUIRED"
+            in runtime.stderr
+        )
+        assert not Path(env["NODE_RUNTIME_TEST_LOG"]).exists()
+
+
+def test_environment_gate_blocks_missing_pnpm_lock() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        workspace, env, fake_pnpm = make_workspace(base)
+        (workspace / "pnpm-lock.yaml").unlink()
+
+        gate = run_environment_gate(workspace, env)
+        assert gate.returncode == 2
+        assert "BLOCKER_CLASS=PROJECT_TOOLCHAIN_MIGRATION_REQUIRED" in gate.stderr
+        assert "pnpm-lock.yaml is required" in gate.stderr
+
+        runtime = run_runtime(
+            workspace, env, [str(fake_pnpm), "run", "typecheck"]
+        )
+        assert runtime.returncode == 2
+        assert "pnpm-lock.yaml is required" in runtime.stderr
+        assert not Path(env["NODE_RUNTIME_TEST_LOG"]).exists()
+
+
 def main() -> int:
     tests = (
+        test_environment_gate_passes_for_canonical_pnpm_project,
+        test_environment_gate_blocks_legacy_npm_project_before_verification,
+        test_environment_gate_blocks_missing_pnpm_lock,
         test_verification_runs_in_linux_isolated_workspace,
         test_internal_node_modules_survive_sync_but_generated_output_is_reset,
         test_dependency_fingerprint_change_invalidates_linux_node_modules,

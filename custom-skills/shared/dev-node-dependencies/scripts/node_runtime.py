@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 
+from node_environment_gate import EnvironmentGateError, validate_project_environment
 from node_workspace import (
     DEFAULT_ROOT,
     WorkspaceError,
@@ -169,6 +170,7 @@ def main() -> int:
             raise RuntimeErrorPolicy(f"workspace does not exist: {workspace}")
         source_cwd = resolve_cwd(workspace, args.cwd)
         source_package_root = resolve_package_root(workspace, source_cwd)
+        environment_evidence = validate_project_environment(source_package_root)
         validate_pnpm_command(command)
 
         root = Path(os.getenv("HERMES_NODE_ROOT", str(DEFAULT_ROOT))).expanduser().resolve()
@@ -196,6 +198,9 @@ def main() -> int:
             print(f"NODE_RUNTIME_WORKSPACE={workspace}")
             print(f"NODE_RUNTIME_SOURCE_PACKAGE_ROOT={source_package_root}")
             print(f"NODE_RUNTIME_CWD={isolated_package_root}")
+            print("NODE_RUNTIME_ENVIRONMENT_GATE=PASS")
+            print("NODE_RUNTIME_SOURCE_VERIFICATION_POLICY=FORBIDDEN")
+            print(f"NODE_RUNTIME_CANONICAL_LOCKFILE={environment_evidence['lockfile']}")
             print(f"NODE_RUNTIME_NODE_REQUIREMENT={node_requirement}")
             print(f"NODE_RUNTIME_PNPM_REQUIREMENT={pnpm_requirement}")
             print(f"NODE_RUNTIME_STATE_ROOT={paths['workspace_state']}")
@@ -217,6 +222,12 @@ def main() -> int:
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
             lock_handle.close()
         return result.returncode
+    except EnvironmentGateError as exc:
+        print("NODE_RUNTIME_STATUS=BLOCKED", file=sys.stderr)
+        print(f"NODE_RUNTIME_BLOCKER_CLASS={exc.blocker_class}", file=sys.stderr)
+        print("NODE_RUNTIME_SOURCE_VERIFICATION_POLICY=FORBIDDEN", file=sys.stderr)
+        print(f"NODE_RUNTIME_BLOCKER={exc}", file=sys.stderr)
+        return 2
     except (RuntimeErrorPolicy, WorkspaceError) as exc:
         print(f"NODE_RUNTIME_STATUS=BLOCKED\nNODE_RUNTIME_BLOCKER={exc}", file=sys.stderr)
         return 2

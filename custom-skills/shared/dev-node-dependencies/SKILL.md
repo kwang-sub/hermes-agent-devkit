@@ -1,7 +1,7 @@
 ---
 name: dev-node-dependencies
-description: Node.js 프로젝트의 pnpm dependency 추가·삭제·복원에서 package.json toolchain/runtime 계약과 pnpm-lock.yaml을 검증하고 Tirith security preflight를 적용하는 공통 capability skill.
-version: 0.2.1
+description: Node.js 프로젝트의 Frontend 실행 전 pnpm toolchain 환경 Gate와 dependency 추가·삭제·복원, pnpm-lock.yaml 검증, Tirith security preflight를 제공하는 공통 capability skill.
+version: 0.2.2
 author: local
 platforms: [linux]
 metadata:
@@ -80,6 +80,60 @@ pnpm-lock.yaml
 이다.
 
 기존 npm/yarn/bun 프로젝트를 Agent가 임의로 병행 지원하지 않는다. 프로젝트 migration Task에서 `package.json` toolchain 선언과 `pnpm-lock.yaml`을 만든 뒤 정상 Node workflow로 진입한다.
+
+## Frontend Environment Gate
+
+모든 Node/Frontend Task는 dependency mutation 여부와 관계없이 **첫 Node command 전에** 환경 Gate를 실행한다.
+
+```bash
+python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_environment_gate.py \
+  --workspace "<Task Workspace>" \
+  [--cwd "<package root relative to workspace>"]
+```
+
+PASS 조건:
+
+```text
+package.json devEngines.runtime = node
+package.json devEngines.packageManager = pnpm
+top-level packageManager가 있으면 pnpm
+legacy npm/yarn/bun lockfile 없음
+pnpm-lock.yaml 존재
+DevKit pnpm runtime 사용 가능
+```
+
+PASS evidence:
+
+```text
+FRONTEND_ENVIRONMENT_GATE=PASS
+BLOCKER_CLASS=NONE
+PACKAGE_MANAGER=pnpm
+NODE_REQUIREMENT
+PNPM_REQUIREMENT
+CANONICAL_LOCKFILE
+SOURCE_VERIFICATION_POLICY=FORBIDDEN
+VERIFICATION_RUNTIME=node_runtime.py
+```
+
+npm/yarn/bun project, legacy lockfile, pnpm contract 미완성은:
+
+```text
+FRONTEND_ENVIRONMENT_GATE=BLOCKED
+BLOCKER_CLASS=PROJECT_TOOLCHAIN_MIGRATION_REQUIRED
+SOURCE_VERIFICATION_POLICY=FORBIDDEN
+```
+
+으로 즉시 중단한다. 이 상태에서 worker가 검증을 계속하기 위해 source worktree에서 다음 fallback을 실행하면 안 된다.
+
+```text
+npm test / npm run ...
+npx ...
+next ...
+tsc ...
+pnpm run ...  # source worktree 직접 실행
+```
+
+프로젝트 toolchain migration은 현재 기능 구현의 암묵적 부수 작업으로 수행하지 않는다. 별도 승인된 migration scope에서 pnpm 계약을 준비한 뒤 원래 Task를 재개한다. Gate가 BLOCKED이면 source worktree의 `.next`, `node_modules`, `dist`, `build`를 새로 만들거나 권한을 수선하며 검증을 강행하지 않는다.
 
 ## Dependency Preflight
 
@@ -243,7 +297,7 @@ pnpm-lock.yaml 있음
 
 ## Hermes Runtime Isolation
 
-test/lint/typecheck/build 같은 검증은 Windows bind-mounted source에서 직접 실행하지 않는다. 현재 package source를 Linux named volume의 격리 workspace로 동기화한 뒤 그 복사본에서 실행한다.
+test/lint/typecheck/build 같은 검증은 Windows bind-mounted source에서 직접 실행하지 않는다. 현재 package source를 Linux named volume의 격리 workspace로 동기화한 뒤 그 복사본에서 실행한다. 격리 상태 경로는 실행 사용자(정상 운영에서는 `hermes`)가 소유해야 하며 root/다른 UID 소유 경로가 발견되면 자동 chown으로 숨기지 않고 환경 오류로 BLOCK한다.
 
 격리 workspace 준비:
 
@@ -353,6 +407,8 @@ Residual Risk:
 
 ## 불변식
 
+- 모든 Node/Frontend Task는 첫 Node command 전에 `node_environment_gate.py`를 통과한다.
+- Gate BLOCKED 상태에서 source worktree 직접 npm/next/tsc/pnpm 검증으로 fallback하지 않는다.
 - Node 프로젝트는 pnpm만 사용한다.
 - `package.json`이 Node/pnpm toolchain source of truth다.
 - `pnpm-lock.yaml`만 canonical lockfile로 사용한다.

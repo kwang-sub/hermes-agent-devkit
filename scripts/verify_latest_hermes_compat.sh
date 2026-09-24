@@ -200,6 +200,8 @@ PY
         test -f /opt/custom-skills/shared/dev-nextjs-feature/SKILL.md
         test -f /opt/custom-skills/shared/dev-nextjs-feature/references/official-nextjs-practices.md
         test -f /opt/custom-skills/shared/dev-node-dependencies/SKILL.md
+        test -f /opt/custom-skills/shared/dev-node-dependencies/scripts/node_environment_gate.py
+        test -f /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py
         test -f /opt/data/shared/references/approval-gate-rules.md
         test -f /opt/data/shared/scripts/flow_model_policy.py
     '

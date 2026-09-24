@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: Orchestrator가 승인·dispatch한 Direct 또는 Standard Kanban 단일 Work Unit을 할당 Workspace에서 구현·검증하고 항상 Reviewer에게 인계한다.
-version: 0.25.0
+version: 0.25.1
 author: local
 platforms: [linux]
 metadata:
@@ -82,7 +82,7 @@ Applicable Skills와 실제 현재 Work Unit만 기준으로 필요한 capabilit
 - API Spec → `skill_view("dev-api-spec")`
 - API cross-stack → `skill_view("dev-api-contract")`
 - OpenAPI/Swagger/Postman → `skill_view("dev-api-docs")`
-- Frontend → `skill_view("dev-frontend-feature")`
+- Frontend → `skill_view("dev-frontend-feature")`; 이후 첫 Node command 전에 해당 skill의 Frontend Environment Gate를 반드시 수행
 - Infrastructure 영향이면 **첫 production patch 전에 반드시** `skill_view("dev-infrastructure")`
 - Data → `skill_view("dev-data-feature")`
 - MIGRATION → `skill_view("dev-db-migration")`
@@ -92,6 +92,8 @@ Applicable Skills와 실제 현재 Work Unit만 기준으로 필요한 capabilit
 구조 evidence는 `Structural quality check: PASS | REFACTORED | ESCALATED`로 남긴다.
 
 ## Verification / Handoff
+
+Frontend/Node Work Unit은 `dev-frontend-feature`를 load한 뒤 **첫 Node command 전에** `node_environment_gate.py`를 실행한다. `FRONTEND_ENVIRONMENT_GATE=BLOCKED`이면 `PROJECT_TOOLCHAIN_MIGRATION_REQUIRED` 등 blocker class를 evidence로 남기고 `kanban_block`한다. 같은 Task에서 npm→pnpm migration을 암묵적으로 시작하거나 source worktree에서 `npm`, `npx`, `next`, `tsc`, 직접 `pnpm run`으로 fallback하지 않는다. `.next` 권한 수정/삭제를 반복해 canonical verification을 대신하지 않는다. Gate PASS 이후 test/lint/typecheck/build는 `node_runtime.py` Linux isolated workspace만 사용한다.
 
 Java/Gradle은 기존 toolchain과 canonical cached verification helper를 사용하고 동일 PASS fingerprint를 불필요하게 재실행하지 않는다. raw `./gradlew ...` 또는 `gradle ...` 직접 실행은 금지하며, 단순 bounded 진단이 필요하면 `hermes-java ./gradlew ...`, COMPILE/TARGETED_TEST는 `gradle_verification_cached.py`만 사용한다. 최종 scope 확정 후 **scoped change_summary.py**를 실행한다. Standard Flow에서 `--include` 없이 호출하지 않는다. Git Workspace는 기존 diff/fingerprint handoff를 사용한다. Non-Git Workspace는 `change_summary.py --version-control none --include <changed-path>`로 Coder가 실제 변경 파일을 명시하며 Hermes가 snapshot이나 자동 diff를 만들지 않는다. 결과의 Changed Files와 verification evidence를 handoff한다.
 
@@ -114,5 +116,6 @@ Terminal transition은 `kanban_request_review` 또는 `kanban_block` 중 정확�
 - Workspace 밖 수정 금지. Git Workspace에서는 branch 전환, 다른 worktree 생성, commit, push, PR, merge 금지. Non-Git Workspace에서는 branch/worktree/commit 계약이 적용되지 않는다.
 - secret/raw credential 기록 금지.
 - Follow-up Work Unit 전용 capability를 현재 Task에서 실행하지 않는다.
+- Frontend Environment Gate가 toolchain migration을 요구하면 현재 IMPLEMENTATION Work Unit에서 migration/fallback 검증을 수행하지 않는다.
 - Interactive Coder가 Kanban 없이 새 mutation request를 구현하지 않는다.
 - 상세 BLOCKED/retry/full-test/evidence 형식은 `references/implementation-details.md`를 따른다.

@@ -1,7 +1,7 @@
 ---
 name: dev-official-docs-context
 description: 외부 library/framework/SDK/API 작업에서 프로젝트의 실제 설치 버전을 먼저 확정하고 Context7 공식 문서, 공식 upstream source, 설치된 local types/source를 계층적으로 확인해 version-aware 구현 evidence를 만드는 공통 capability skill.
-version: 0.1.1
+version: 0.1.2
 author: local
 platforms: [linux]
 metadata:
@@ -231,12 +231,14 @@ Generated Artifact Error: true|false
 skipLibCheck=true
 strict=false
 dependency 임의 downgrade/upgrade
+patch-package 자동 도입/적용
 node_modules 직접 patch
+generated declaration 수동 수정
 --force / --legacy-peer-deps
 공식 근거 없는 compiler downgrade
 ```
 
-필요한 버전 변경은 기존 Requirement Delta / dependency mutation 정책을 따른다.
+필요한 버전 변경은 기존 Requirement Delta / dependency mutation 정책을 따른다. `DEPENDENCY_DECLARATION_COMPATIBILITY`는 현재 기능 구현과 자동으로 합쳐 해결하지 않는다. patch-package, dependency/compiler version 변경, framework config 우회가 필요하면 **별도 승인된 compatibility 해결 범위**로 분리하고 현재 Task에는 blocker/evidence만 남긴다.
 
 ## 7. Implementation / Verification
 
@@ -287,5 +289,6 @@ Residual Version Drift Risk:
 - actual installed/resolved version을 확인하기 전에 latest 문법을 도입하지 않는다.
 - 공식 문서와 프로젝트 기존 convention이 충돌하면 Task 범위와 사용자 정책을 우선하고 차이를 evidence로 남긴다.
 - 외부 기술 오류를 애플리케이션 source 오류로 성급하게 분류하지 않는다.
+- `DEPENDENCY_DECLARATION_COMPATIBILITY`를 발견했다는 이유만으로 patch-package나 dependency/compiler version 변경을 자동 수행하지 않는다.
 - provider 장애를 해결하려고 새로운 package manager/global tool을 설치하지 않는다.
 - compiler/typecheck/test/build를 문서 조회로 대체하지 않는다.

@@ -1,7 +1,7 @@
 ---
 name: dev-breakdown
 description: managed 프로젝트의 실제 코드·디자인 Reference·데이터 근거와 기존 project pattern으로 단일 Work Unit의 한국어 Implementation Plan을 생성하며 구현하지 않는 orchestrator 전용 skill.
-version: 0.17.1
+version: 0.17.2
 author: local
 platforms: [linux]
 metadata:
@@ -133,6 +133,9 @@ IMAGE/Figma면 `dev-design-reference`, Figma provider read가 필요할 때만 `
 
 ```text
 Frontend Entry: dev-frontend-feature
+Frontend Environment Gate: REQUIRED
+Toolchain Mismatch Handling: BLOCK_AND_SPLIT_MIGRATION
+Verification Runtime: LINUX_ISOLATED_NODE_RUNTIME
 View Strategy: SHARED | RESPONSIVE | HYBRID | SPLIT_VIEW
 View Strategy Rationale
 Platform Scope: DESKTOP | MOBILE | BOTH
@@ -147,7 +150,7 @@ Regression Baseline: APPROVED_BROWSER_SCREENSHOT | EXISTING_PROJECT_BASELINE | N
 API Impact: NONE | SHARED_CONTRACT | CONTRACT_CHANGE
 ```
 
-Frontend canonical Applicable Skill은 `dev-frontend-feature`. 필요 시 `dev-api-contract`, `dev-frontend-test`, `dev-ui-ux`를 hint로 추가한다. 화면 차이만으로 Backend API를 superset DTO/중복 endpoint로 확대하지 않는다.
+Frontend canonical Applicable Skill은 `dev-frontend-feature`. 필요 시 `dev-api-contract`, `dev-frontend-test`, `dev-ui-ux`를 hint로 추가한다. Node 기반 Frontend는 구현/검증 전에 Environment Gate가 필수이며 npm/yarn/bun 또는 pnpm 계약 미완성은 현재 기능 Task에서 자동 migration하지 않고 `PROJECT_TOOLCHAIN_MIGRATION_REQUIRED`로 분리한다. 화면 차이만으로 Backend API를 superset DTO/중복 endpoint로 확대하지 않는다.
 
 ## 기존 Spring/JPA 정책 보존
 
