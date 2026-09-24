@@ -198,6 +198,21 @@ npm/yarn/bun 또는 legacy lockfile / pnpm 계약 미완성
 
 toolchain migration은 현재 기능 구현과 별도 승인 Work Unit으로 분리한다. host/source `.next` 정리나 권한 변경을 canonical verification의 대체 수단으로 사용하지 않는다.
 
+### pnpm dependency build policy
+
+dependency의 install/build script 승인은 pnpm 표준 project config를 사용한다.
+
+```text
+pnpm-workspace.yaml
+└─ allowBuilds
+   ├─ package@exact-version: true
+   └─ package@exact-version: false
+```
+
+Hermes 전용 allowlist를 만들지 않는다. `strictDepBuilds=true`를 fail-closed 기준으로 유지하고 `dangerouslyAllowAllBuilds=true`, `strictDepBuilds=false`, `pnpm approve-builds --all`을 자동 사용하지 않는다.
+
+`ERR_PNPM_IGNORED_BUILDS`가 발생하면 미검토 package/version을 한 번에 사용자에게 보여 승인/거부를 받는다. 결정은 `pnpm-workspace.yaml`에 Git 관리하고 같은 matcher는 다시 묻지 않는다. 새 version은 기존 exact matcher와 다르므로 다시 검토한다. build policy 변경은 dependency fingerprint를 변경시켜 isolated frozen restore를 다시 요구한다.
+
 ### Node dependency mutation boundary
 
 Node dependency 변경은 source 구현과 분리된 compatibility/security boundary로 취급한다.
@@ -370,7 +385,7 @@ enum/paging/auth
 Frontend/Node는 기존 package manager/test runner를 사용한다. dependency 변경이면 package manager compatibility와 canonical lockfile 검증을 먼저 통과해야 한다.
 
 ```text
-Frontend Environment Gate (Node 기반 Frontend이면 항상)
+Frontend Environment Gate + pnpm build policy (Node 기반 Frontend이면 항상)
 → Official docs/version evidence (외부 기술 변경 시)
 → Node dependency preflight (dependency mutation 시)
 → Tirith package preflight (해당 시)
@@ -406,6 +421,7 @@ Frontend Mode / Design Source / Status / Fidelity (해당 시)
 Reference / Screen Spec (해당 시)
 Observed / Inferred / Unknown (해당 시)
 Node package root / manager / version / lockfile (dependency 변경 시)
+pnpm build policy file / approved exact matchers / denied matchers (해당 시)
 Tirith package preflight / retry evidence (dependency 변경 시)
 Component/Token Reuse (해당 시)
 Storybook Catalog / Design Conformance / Visual Regression (해당 시)

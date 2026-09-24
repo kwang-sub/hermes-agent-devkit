@@ -88,6 +88,16 @@ def make_workspace(base: Path) -> tuple[Path, dict[str, str], Path]:
     make_executable(
         fake_pnpm,
         "#!/usr/bin/env bash\n"
+        'if [ "$1" = "config" ] && [ "$2" = "get" ]; then\n'
+        '  key="${!#}"\n'
+        '  case "$key" in\n'
+        '    strictDepBuilds) printf "%s\\n" "${PNPM_TEST_STRICT_DEP_BUILDS:-true}" ;;\n'
+        '    dangerouslyAllowAllBuilds) printf "%s\\n" "${PNPM_TEST_DANGEROUSLY_ALLOW_ALL_BUILDS:-false}" ;;\n'
+        '    allowBuilds) if [ -n "${PNPM_TEST_ALLOW_BUILDS+x}" ]; then printf "%s\\n" "$PNPM_TEST_ALLOW_BUILDS"; else printf "{}\\n"; fi ;;\n'
+        '    *) printf "null\\n" ;;\n'
+        '  esac\n'
+        '  exit 0\n'
+        'fi\n'
         'printf "PWD=%s\\n" "$PWD" > "$NODE_RUNTIME_TEST_LOG"\n'
         'printf "PNPM_HOME=%s\\n" "$PNPM_HOME" >> "$NODE_RUNTIME_TEST_LOG"\n'
         'printf "PNPM_STORE_DIR=%s\\n" "$PNPM_STORE_DIR" >> "$NODE_RUNTIME_TEST_LOG"\n'
@@ -286,8 +296,64 @@ def test_dependency_fingerprint_change_invalidates_linux_node_modules() -> None:
         result = run_runtime(workspace, env, [str(fake_pnpm), "run", "build"])
 
         assert result.returncode == 2
-        assert "current package.json/pnpm-lock.yaml fingerprint" in result.stderr
+        assert "current package.json/pnpm-lock.yaml/pnpm-workspace.yaml fingerprint" in result.stderr
         assert not (isolated / "node_modules").exists()
+
+
+def test_pnpm_workspace_policy_change_invalidates_linux_node_modules() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        workspace, env, fake_pnpm = make_workspace(base)
+        isolated = prepare_restored_workspace(workspace, env)
+        assert (isolated / "node_modules" / "react").is_dir()
+
+        (workspace / "pnpm-workspace.yaml").write_text(
+            "strictDepBuilds: true\n"
+            "dangerouslyAllowAllBuilds: false\n"
+            "allowBuilds:\n"
+            "  'unrs-resolver@1.12.2': true\n",
+            encoding="utf-8",
+        )
+        env["PNPM_TEST_ALLOW_BUILDS"] = '{"unrs-resolver@1.12.2":true}'
+        result = run_runtime(workspace, env, [str(fake_pnpm), "run", "build"])
+
+        assert result.returncode == 2
+        assert "current package.json/pnpm-lock.yaml/pnpm-workspace.yaml fingerprint" in result.stderr
+        assert not (isolated / "node_modules").exists()
+
+
+def test_environment_gate_blocks_dangerous_global_build_allow() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        workspace, env, _fake_pnpm = make_workspace(base)
+        env["PNPM_TEST_DANGEROUSLY_ALLOW_ALL_BUILDS"] = "true"
+
+        result = run_environment_gate(workspace, env)
+        assert result.returncode == 2
+        assert "BLOCKER_CLASS=PNPM_BUILD_POLICY_UNSAFE" in result.stderr
+        assert "dangerouslyAllowAllBuilds=true" in result.stderr
+
+
+def test_environment_gate_blocks_broad_build_approval() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        workspace, env, _fake_pnpm = make_workspace(base)
+        env["PNPM_TEST_ALLOW_BUILDS"] = '{"unrs-resolver":true}'
+
+        result = run_environment_gate(workspace, env)
+        assert result.returncode == 2
+        assert "BLOCKER_CLASS=PNPM_BUILD_POLICY_SCOPE_TOO_BROAD" in result.stderr
+
+
+def test_environment_gate_accepts_exact_build_approval() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        workspace, env, _fake_pnpm = make_workspace(base)
+        env["PNPM_TEST_ALLOW_BUILDS"] = '{"unrs-resolver@1.12.2":true}'
+
+        result = run_environment_gate(workspace, env)
+        assert result.returncode == 0, result.stderr
+        assert "PNPM_APPROVED_BUILDS=unrs-resolver@1.12.2" in result.stdout
 
 
 def test_restore_mark_rejects_source_change_after_install() -> None:
@@ -459,6 +525,10 @@ def main() -> int:
         test_verification_runs_in_linux_isolated_workspace,
         test_internal_node_modules_survive_sync_but_generated_output_is_reset,
         test_dependency_fingerprint_change_invalidates_linux_node_modules,
+        test_pnpm_workspace_policy_change_invalidates_linux_node_modules,
+        test_environment_gate_blocks_dangerous_global_build_allow,
+        test_environment_gate_blocks_broad_build_approval,
+        test_environment_gate_accepts_exact_build_approval,
         test_restore_mark_rejects_source_change_after_install,
         test_workspace_lock_blocks_concurrent_verification,
         test_dependency_mutation_is_rejected_to_preserve_tirith_guard,

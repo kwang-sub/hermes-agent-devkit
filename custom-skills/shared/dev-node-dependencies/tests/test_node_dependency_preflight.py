@@ -38,7 +38,18 @@ class NodeDependencyPreflightTest(unittest.TestCase):
         self.fake_bin.mkdir()
         make_executable(
             self.fake_bin / "pnpm",
-            "#!/usr/bin/env sh\nprintf '12.5.1\\n'\n",
+            "#!/usr/bin/env sh\n"
+            'if [ "$1" = "config" ] && [ "$2" = "get" ]; then\n'
+            '  key="$5"\n'
+            '  case "$key" in\n'
+            '    strictDepBuilds) printf "%s\\n" "${PNPM_TEST_STRICT_DEP_BUILDS:-true}" ;;\n'
+            '    dangerouslyAllowAllBuilds) printf "%s\\n" "${PNPM_TEST_DANGEROUSLY_ALLOW_ALL_BUILDS:-false}" ;;\n'
+            '    allowBuilds) if [ -n "${PNPM_TEST_ALLOW_BUILDS+x}" ]; then printf "%s\\n" "$PNPM_TEST_ALLOW_BUILDS"; else printf "{}\\n"; fi ;;\n'
+            '    *) printf "null\\n" ;;\n'
+            '  esac\n'
+            'else\n'
+            '  printf "12.5.1\\n"\n'
+            'fi\n',
         )
         self.env = os.environ.copy()
         self.env["PATH"] = f"{self.fake_bin}:{self.env.get('PATH', '')}"
@@ -230,6 +241,37 @@ class NodeDependencyPreflightTest(unittest.TestCase):
         self.assertIn("DEPENDENCIES_READY=false", second.stdout)
         self.assertIn("RESTORE_REQUIRED=true", second.stdout)
         self.assertFalse((isolated / "node_modules").exists())
+
+    def test_build_policy_evidence_is_reported(self) -> None:
+        self.write_manifest(dependencies={"react": "19.3.0"})
+        self.write_lock()
+        self.env["PNPM_TEST_ALLOW_BUILDS"] = json.dumps(
+            {"unrs-resolver@1.12.2": True}
+        )
+
+        proc = self.run_preflight()
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(
+            "PNPM_APPROVED_BUILDS=unrs-resolver@1.12.2",
+            proc.stdout,
+        )
+        self.assertIn("PNPM_STRICT_DEP_BUILDS=true", proc.stdout)
+        self.assertIn(
+            "PNPM_DANGEROUSLY_ALLOW_ALL_BUILDS=false",
+            proc.stdout,
+        )
+
+    def test_unsafe_build_policy_blocks_dependency_preflight(self) -> None:
+        self.write_manifest(dependencies={"react": "19.3.0"})
+        self.write_lock()
+        self.env["PNPM_TEST_DANGEROUSLY_ALLOW_ALL_BUILDS"] = "true"
+
+        proc = self.run_preflight()
+
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("PNPM_BUILD_POLICY_UNSAFE", proc.stderr)
+        self.assertIn("dangerouslyAllowAllBuilds=true", proc.stderr)
 
     def test_declared_dependency_without_pnpm_lock_blocks_restore(self) -> None:
         self.write_manifest(dependencies={"react": "19.3.0"})

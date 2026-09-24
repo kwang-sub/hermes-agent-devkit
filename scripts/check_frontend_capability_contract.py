@@ -19,6 +19,10 @@ frontend = (ROOT / "custom-skills/shared/dev-frontend-feature/SKILL.md").read_te
 official_docs = (ROOT / "custom-skills/shared/dev-official-docs-context/SKILL.md").read_text(encoding="utf-8")
 node_dependencies = (ROOT / "custom-skills/shared/dev-node-dependencies/SKILL.md").read_text(encoding="utf-8")
 node_preflight = (ROOT / "custom-skills/shared/dev-node-dependencies/scripts/node_dependency_preflight.py").read_text(encoding="utf-8")
+pnpm_build_policy_path = ROOT / "custom-skills/shared/dev-node-dependencies/scripts/pnpm_build_policy.py"
+if not pnpm_build_policy_path.is_file():
+    raise SystemExit("pnpm build policy helper is missing")
+pnpm_build_policy = pnpm_build_policy_path.read_text(encoding="utf-8")
 node_environment_gate_path = ROOT / "custom-skills/shared/dev-node-dependencies/scripts/node_environment_gate.py"
 if not node_environment_gate_path.is_file():
     raise SystemExit("Node frontend environment gate is missing")
@@ -73,12 +77,16 @@ checks = {
         "Regression Baseline: APPROVED_BROWSER_SCREENSHOT",
         "Frontend Environment Gate: REQUIRED", "BLOCK_AND_SPLIT_MIGRATION",
         "LINUX_ISOLATED_NODE_RUNTIME", "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED",
+        "pnpm Build Policy Source: pnpm-workspace.yaml", "package@exact-version",
+        "SAME_MATCHER_NO_REPROMPT",
     )),
     "coder frontend gate": (coder, (
         'skill_view("dev-frontend-feature")', "첫 Node command",
         "node_environment_gate.py", "FRONTEND_ENVIRONMENT_GATE=BLOCKED",
         "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED", "kanban_block",
         "source worktree", "node_runtime.py", "Linux isolated workspace",
+        "ERR_PNPM_IGNORED_BUILDS", "pnpm_build_policy.py", "POLICY_UPDATE_COMMAND_",
+        "pnpm-workspace.yaml > allowBuilds",
     )),
     "frontend entry": (frontend, (
         "canonical entry", "REFERENCE_DRIVEN", "CODE_DRIVEN",
@@ -93,6 +101,8 @@ checks = {
         "Frontend Environment Gate", "node_environment_gate.py",
         "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED", "Source Verification Fallback: FORBIDDEN",
         "patch-package", "별도 승인된 해결 범위",
+        "pnpm-workspace.yaml > allowBuilds", "exact package/version",
+        "ERR_PNPM_IGNORED_BUILDS",
         "EXTRANEOUS", "analysis_incomplete", "Tirith Package Preflight",
     )),
     "official docs skill": (official_docs, (
@@ -110,7 +120,10 @@ checks = {
         "node_dependency_preflight.py", "tirith_package_preflight.py", "analysis_incomplete",
         "TIRITH_PREFLIGHT=allow", "TIRITH_PREFLIGHT=approval_required", "actual Hermes terminal guard",
         "timeout=600", "shell `timeout` wrapper", "Linux named volume의 격리 workspace",
-        "RESTORE_WORKDIR", "별도 Hermes 전용 Node version 설정 파일을 만들지 않는다",
+        "RESTORE_WORKDIR", "pnpm Standard Build Policy", "pnpm-workspace.yaml",
+        "allowBuilds", "strictDepBuilds", "dangerouslyAllowAllBuilds",
+        "package@exact-version", "pnpm_build_policy.py", "POLICY_UPDATE_COMMAND_",
+        "ERR_PNPM_IGNORED_BUILDS", "별도 Hermes 전용 Node version 설정 파일을 만들지 않는다",
     )),
     "node dependency preflight": (node_preflight, (
         "PNPM_LOCKFILE", "LEGACY_LOCKFILES", "os.walk", "SKIP_DIRS",
@@ -121,11 +134,21 @@ checks = {
         "RESTORE_REQUIRED", "RESTORE_COMMAND", "RESTORE_WORKDIR", "RESTORE_MARK_COMMAND",
         "INSTALL_TIMEOUT_SECONDS = 600", "STATUS=pass", "STATUS=blocked",
     )),
+    "pnpm build policy": (pnpm_build_policy, (
+        "PNPM_BUILD_POLICY_SOURCE=pnpm-workspace.yaml",
+        "strictDepBuilds", "dangerouslyAllowAllBuilds", "allowBuilds",
+        "PNPM_BUILD_POLICY_REVIEW_REQUIRED", "PNPM_BUILD_POLICY_UNSAFE",
+        "PNPM_BUILD_POLICY_SCOPE_TOO_BROAD", "PNPM_BUILD_POLICY_MATCHER_NOT_EXACT",
+        "package@version", "pnpm config set --location=project --json allowBuilds",
+        "POLICY_UPDATE_COMMAND_", "PNPM_BUILD_POLICY_DECISION=READY",
+    )),
     "node environment gate": (node_environment_gate, (
         "PNPM_LOCKFILE", "LEGACY_LOCKFILES", "devEngines.runtime", "devEngines.packageManager",
         "packageManager conflicts with DevKit pnpm-only contract", "pnpm-lock.yaml is required",
         "FRONTEND_ENVIRONMENT_GATE=PASS", "FRONTEND_ENVIRONMENT_GATE=BLOCKED",
         "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED", "DEVKIT_RUNTIME_CAPABILITY_MISSING",
+        "PNPM_BUILD_POLICY_SOURCE=pnpm-workspace.yaml", "PNPM_STRICT_DEP_BUILDS=true",
+        "PNPM_DANGEROUSLY_ALLOW_ALL_BUILDS=false", "PNPM_APPROVED_BUILDS",
         "SOURCE_VERIFICATION_POLICY=FORBIDDEN", "VERIFICATION_RUNTIME=node_runtime.py",
     )),
     "tirith package preflight": (tirith_preflight, (
@@ -136,6 +159,7 @@ checks = {
         "prepare_isolated_package", "validate_project_environment",
         "NODE_RUNTIME_SOURCE_PACKAGE_ROOT", "NODE_RUNTIME_CWD", "NODE_RUNTIME_ENVIRONMENT_GATE=PASS",
         "NODE_RUNTIME_SOURCE_VERIFICATION_POLICY=FORBIDDEN", "NODE_RUNTIME_BLOCKER_CLASS",
+        "NODE_RUNTIME_PNPM_BUILD_POLICY_FILE", "NODE_RUNTIME_PNPM_APPROVED_BUILDS",
         "pnpm_home", "pnpm_store", "devEngines", "packageManager.name must be 'pnpm'",
         "fcntl.flock", "validate_pnpm_command", "timed out waiting for Node workspace lock",
         "linux-isolated-workspace;workspace-serialized",
@@ -144,6 +168,7 @@ checks = {
         'HERMES_NODE_ROOT", "/opt/data/node"', "GENERATED_NAMES", "PRESERVE_DEST_NAMES",
         '"node_modules"', '".next"', '".test-build"', '".tsbuildinfo"',
         "_assert_owned_by_current_user", "internal Node state owner mismatch",
+        '"pnpm-workspace.yaml"', "package.json/pnpm-lock.yaml/pnpm-workspace.yaml",
         "prepare_isolated_package", "isolated_package_root", "NODE_WORKSPACE_SYNC=ready",
     )),
     "design reference": (design, (
@@ -173,6 +198,7 @@ checks = {
         "node_environment_gate.py", "SOURCE_VERIFICATION_POLICY", "Hermes Node Runtime Isolation", "node_runtime.py",
         "/opt/data/node", "workspace lock", "devEngines.runtime", "devEngines.packageManager",
         "Linux 격리 workspace", "host node_modules/.next", "dependency fingerprint",
+        "ERR_PNPM_IGNORED_BUILDS", "pnpm-workspace.yaml > allowBuilds",
         "RESTORE_MARK_COMMAND", "검증 시작마다 초기화", "Tirith actual guard",
     )),
     "typescript skill": (typescript, (
@@ -225,7 +251,8 @@ checks = {
         "실제 installed/resolved version", "DEPENDENCY_DECLARATION_COMPATIBILITY", "EXTRANEOUS", "analysis_incomplete", "Tirith",
         "DESIGN_CONFORMANCE", "VISUAL_REGRESSION", "Storybook", "Stack Detection != Skill Loading",
         "Frontend Node environment boundary", "node_environment_gate.py",
-        "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED", "source worktree", "patch-package",
+        "pnpm dependency build policy", "pnpm-workspace.yaml", "allowBuilds",
+        "package@exact-version", "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED", "source worktree", "patch-package",
     )),
 }
 for label, (text, terms) in checks.items():

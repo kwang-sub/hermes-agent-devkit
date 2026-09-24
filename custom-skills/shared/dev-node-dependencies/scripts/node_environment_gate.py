@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import sys
 
+from pnpm_build_policy import BuildPolicyError, inspect_build_policy
 from node_workspace import WorkspaceError, resolve_cwd, resolve_package_root
 
 
@@ -104,7 +105,7 @@ def validate_package_manager_declaration(manifest: dict) -> str:
     return value
 
 
-def validate_project_environment(package_root: Path) -> dict[str, str]:
+def validate_project_environment(package_root: Path) -> dict[str, object]:
     manifest = read_manifest(package_root)
     node_requirement, pnpm_requirement = resolve_dev_engines(manifest)
     package_manager_declaration = validate_package_manager_declaration(manifest)
@@ -122,11 +123,28 @@ def validate_project_environment(package_root: Path) -> dict[str, str]:
             "pnpm-lock.yaml is required by the DevKit frontend verification contract; migrate the project toolchain before continuing"
         )
 
+    pnpm_binary = shutil.which("pnpm")
+    if not pnpm_binary:
+        raise EnvironmentGateError(
+            "pnpm standalone executable is unavailable in the DevKit runtime",
+            blocker_class="DEVKIT_RUNTIME_CAPABILITY_MISSING",
+        )
+    try:
+        build_policy = inspect_build_policy(package_root, pnpm_binary)
+    except BuildPolicyError as exc:
+        raise EnvironmentGateError(
+            str(exc),
+            blocker_class=exc.blocker_class,
+        ) from exc
+
     return {
         "node_requirement": node_requirement,
         "pnpm_requirement": pnpm_requirement,
         "package_manager_declaration": package_manager_declaration,
         "lockfile": str(lockfile),
+        "build_policy_file": build_policy["policy_file"],
+        "approved_builds": build_policy["approved"],
+        "denied_builds": build_policy["denied"],
     }
 
 
@@ -147,13 +165,6 @@ def main() -> int:
         package_root = resolve_package_root(workspace, cwd)
         evidence = validate_project_environment(package_root)
 
-        pnpm_binary = shutil.which("pnpm")
-        if not pnpm_binary:
-            raise EnvironmentGateError(
-                "pnpm standalone executable is unavailable in the DevKit runtime",
-                blocker_class="DEVKIT_RUNTIME_CAPABILITY_MISSING",
-            )
-
         print("FRONTEND_ENVIRONMENT_GATE=PASS")
         print("BLOCKER_CLASS=NONE")
         print(f"WORKSPACE={workspace}")
@@ -170,6 +181,18 @@ def main() -> int:
         print(f"CANONICAL_LOCKFILE={evidence['lockfile']}")
         print("CANONICAL_LOCKFILE_PRESENT=true")
         print("LEGACY_LOCKFILES=NONE")
+        print(f"PNPM_BUILD_POLICY_FILE={evidence['build_policy_file']}")
+        print("PNPM_BUILD_POLICY_SOURCE=pnpm-workspace.yaml")
+        print("PNPM_STRICT_DEP_BUILDS=true")
+        print("PNPM_DANGEROUSLY_ALLOW_ALL_BUILDS=false")
+        print(
+            "PNPM_APPROVED_BUILDS="
+            + (",".join(evidence["approved_builds"]) if evidence["approved_builds"] else "NONE")
+        )
+        print(
+            "PNPM_DENIED_BUILDS="
+            + (",".join(evidence["denied_builds"]) if evidence["denied_builds"] else "NONE")
+        )
         print("SOURCE_VERIFICATION_POLICY=FORBIDDEN")
         print("VERIFICATION_RUNTIME=node_runtime.py")
         print("DEPENDENCY_MUTATION_POLICY=dev-node-dependencies")

@@ -189,7 +189,7 @@ def main() -> int:
             )
             if not paths["dependencies_ready"]:
                 raise RuntimeErrorPolicy(
-                    "isolated Node dependencies are not restored for the current package.json/pnpm-lock.yaml fingerprint; "
+                    "isolated Node dependencies are not restored for the current package.json/pnpm-lock.yaml/pnpm-workspace.yaml fingerprint; "
                     "run dev-node-dependencies preflight, execute the exact RESTORE_COMMAND in RESTORE_WORKDIR, "
                     "then run node_workspace.py --mark-restored before verification"
                 )
@@ -201,6 +201,11 @@ def main() -> int:
             print("NODE_RUNTIME_ENVIRONMENT_GATE=PASS")
             print("NODE_RUNTIME_SOURCE_VERIFICATION_POLICY=FORBIDDEN")
             print(f"NODE_RUNTIME_CANONICAL_LOCKFILE={environment_evidence['lockfile']}")
+            print(f"NODE_RUNTIME_PNPM_BUILD_POLICY_FILE={environment_evidence['build_policy_file']}")
+            print(
+                "NODE_RUNTIME_PNPM_APPROVED_BUILDS="
+                + (",".join(environment_evidence["approved_builds"]) if environment_evidence["approved_builds"] else "NONE")
+            )
             print(f"NODE_RUNTIME_NODE_REQUIREMENT={node_requirement}")
             print(f"NODE_RUNTIME_PNPM_REQUIREMENT={pnpm_requirement}")
             print(f"NODE_RUNTIME_STATE_ROOT={paths['workspace_state']}")

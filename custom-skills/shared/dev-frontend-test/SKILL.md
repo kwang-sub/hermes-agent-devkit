@@ -1,7 +1,7 @@
 ---
 name: dev-frontend-test
 description: frontend 변경에서 기존 Vitest/Jest/Testing Library/Storybook/Playwright/Cypress stack을 감지해 functional·component·e2e·design conformance·visual regression 검증을 선택하는 capability skill.
-version: 0.3.3
+version: 0.3.4
 author: local
 platforms: [linux]
 metadata:
@@ -259,7 +259,7 @@ package source             → Linux isolated workspace로 sync
 host node_modules/.next    → sync 제외
 host *.tsbuildinfo         → sync 제외
 isolated node_modules      → dependency fingerprint 동일 시에만 재사용
-package/lock fingerprint 변경 → 기존 isolated node_modules 폐기 + frozen restore
+package/lock/build-policy fingerprint 변경 → 기존 isolated node_modules 폐기 + frozen restore
 isolated framework output  → 검증 시작마다 초기화
 pnpm home/store            → /opt/data/node
 동일 Task workspace 명령    → workspace lock으로 직렬화
@@ -269,7 +269,7 @@ pnpm version               → package.json devEngines.packageManager
 
 따라서 Windows에서 같은 worktree의 `next dev`가 실행 중이어도 host `.next/dev/types`와 Hermes `.next/types`가 하나의 TypeScript program에 섞이지 않는다. Next.js `distDir` 같은 프로젝트 전용 우회 설정은 필요하지 않다.
 
-isolated `node_modules`가 아직 준비되지 않았거나 dependency fingerprint가 바뀌었다면 `dev-node-dependencies` preflight가 반환한 `RESTORE_WORKDIR`에서 exact `pnpm install --frozen-lockfile`을 Tirith actual guard를 거쳐 실행한다. 성공 후 `RESTORE_MARK_COMMAND`를 실행해 현재 `package.json + pnpm-lock.yaml` fingerprint를 기록한 뒤 검증한다.
+isolated `node_modules`가 아직 준비되지 않았거나 dependency fingerprint가 바뀌었다면 `dev-node-dependencies` preflight가 반환한 `RESTORE_WORKDIR`에서 exact `pnpm install --frozen-lockfile`을 Tirith actual guard를 거쳐 실행한다. `ERR_PNPM_IGNORED_BUILDS`이면 테스트 실패로 오분류하지 않고 pnpm build-policy review로 전환한다. 사용자 승인 후 `pnpm-workspace.yaml > allowBuilds`에 exact package/version을 기록하고 restore를 다시 수행한다. 성공 후 `RESTORE_MARK_COMMAND`를 실행해 현재 `package.json + pnpm-lock.yaml + pnpm-workspace.yaml` fingerprint를 기록한 뒤 검증한다.
 
 dependency 추가는 source package root에서 exact `pnpm add --lockfile-only ...`를 수행해 `package.json`과 `pnpm-lock.yaml`만 갱신한다. 실제 dependency tree는 isolated workspace의 frozen restore가 소유한다.
 
@@ -284,7 +284,9 @@ Desktop/Mobile Verification Matrix
 Affected tests/stories/pages
 Commands / Results
 Frontend Environment Gate: PASS | BLOCKED
-Environment Blocker Class: NONE | PROJECT_TOOLCHAIN_MIGRATION_REQUIRED | DEVKIT_RUNTIME_CAPABILITY_MISSING | PROJECT_STRUCTURE_INVALID
+Environment Blocker Class: NONE | PROJECT_TOOLCHAIN_MIGRATION_REQUIRED | PNPM_BUILD_POLICY_REVIEW_REQUIRED | PNPM_BUILD_POLICY_UNSAFE | PNPM_BUILD_POLICY_SCOPE_TOO_BROAD | DEVKIT_RUNTIME_CAPABILITY_MISSING | PROJECT_STRUCTURE_INVALID
+pnpm Build Policy: PASS | REVIEW_REQUIRED | BLOCKED
+pnpm Build Policy File: <pnpm-workspace.yaml | NOT_PRESENT>
 Source Verification Fallback: FORBIDDEN
 Node Runtime Isolation: PASS | NOT_REQUIRED | BLOCKED
 Node Runtime Cache Root: /opt/data/node | NOT_REQUIRED
