@@ -78,6 +78,14 @@ JSON
           export PATH="$PNPM_HOME:/usr/local/bin:$PATH"
           /usr/local/bin/pnpm install --lockfile-only
           test -f pnpm-lock.yaml
+          /usr/local/bin/pnpm config set --location=project --json strictDepBuilds true
+          /usr/local/bin/pnpm config set --location=project --json dangerouslyAllowAllBuilds false
+          test -f pnpm-workspace.yaml
+          /opt/hermes/.venv/bin/python \
+            /opt/custom-skills/shared/dev-node-dependencies/scripts/pnpm_build_policy.py \
+            --workspace "$runtime_smoke" > /tmp/devkit-pnpm-build-policy.out
+          grep -q "^PNPM_BUILD_POLICY=PASS$" /tmp/devkit-pnpm-build-policy.out
+          grep -q "^PNPM_BUILD_POLICY_SOURCE=pnpm-workspace.yaml$" /tmp/devkit-pnpm-build-policy.out
           runtime_version="$(/usr/local/bin/pnpm --silent run runtime-smoke | tail -n 1)"
           test "$runtime_version" = "v22.23.2"
         )
@@ -201,6 +209,7 @@ PY
         test -f /opt/custom-skills/shared/dev-nextjs-feature/references/official-nextjs-practices.md
         test -f /opt/custom-skills/shared/dev-node-dependencies/SKILL.md
         test -f /opt/custom-skills/shared/dev-node-dependencies/scripts/node_environment_gate.py
+        test -f /opt/custom-skills/shared/dev-node-dependencies/scripts/pnpm_build_policy.py
         test -f /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py
         test -f /opt/data/shared/references/approval-gate-rules.md
         test -f /opt/data/shared/scripts/flow_model_policy.py
