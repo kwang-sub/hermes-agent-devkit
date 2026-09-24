@@ -75,6 +75,10 @@ jobs:
         shell: bash
         run: python3 custom-skills/shared/dev-node-dependencies/tests/test_node_runtime.py
 
+      - name: Verify pnpm build policy
+        shell: bash
+        run: python3 custom-skills/shared/dev-node-dependencies/tests/test_pnpm_build_policy.py
+
       - name: Verify Data DBA capability contract
         shell: bash
         run: python3 scripts/check_data_capability_contract.py
