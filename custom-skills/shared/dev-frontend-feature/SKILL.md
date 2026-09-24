@@ -219,7 +219,7 @@ BLOCKER_CLASS=PROJECT_TOOLCHAIN_MIGRATION_REQUIRED
 
 이 경우 현재 기능 Task에서 package manager migration을 암묵적으로 수행하지 않고 작업을 BLOCK한다. 특히 worker는 검증을 계속하기 위해 Windows/source worktree에서 `npm`, `npx`, `next`, `tsc`, 직접 `pnpm run`을 fallback으로 실행하지 않는다. source worktree의 `.next` 권한 수정·삭제를 반복해 canonical 검증을 우회하지도 않는다.
 
-Gate는 pnpm의 표준 build policy도 함께 확인한다. `dangerouslyAllowAllBuilds=true`, `strictDepBuilds=false`, non-boolean `allowBuilds` placeholder, exact version이 아닌 broad `true` 승인은 BLOCK한다. dependency restore 중 `ERR_PNPM_IGNORED_BUILDS`가 발생하면 `dev-node-dependencies`의 one-time build approval 절차를 사용한다. 이미 `pnpm-workspace.yaml > allowBuilds`에서 결정된 동일 package/version은 다시 승인받지 않는다.
+Gate는 pnpm의 표준 build policy도 함께 확인한다. `dangerouslyAllowAllBuilds=true`, `strictDepBuilds=false`, non-boolean `allowBuilds` placeholder, exact version이 아닌 broad `true` 승인은 BLOCK한다. dependency restore 중 `ERR_PNPM_IGNORED_BUILDS`가 발생하면 `dev-node-dependencies`의 one-time build approval 절차를 사용한다. 이미 `pnpm-workspace.yaml > allowBuilds`에서 결정된 동일 exact package/version은 다시 승인받지 않는다.
 
 Gate PASS 이후 test/lint/typecheck/build는 반드시 `node_runtime.py`를 통해 Linux isolated workspace에서 실행한다. dependency mutation이 필요한 경우에만 같은 capability의 mutation preflight/Tirith 경로를 추가 적용한다.
 
