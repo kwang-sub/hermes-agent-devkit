@@ -161,10 +161,11 @@ def _sync_tree(source: Path, destination: Path) -> None:
 def dependency_fingerprint(package_root: Path) -> str:
     manifest = package_root / "package.json"
     lockfile = package_root / "pnpm-lock.yaml"
+    workspace_policy = package_root / "pnpm-workspace.yaml"
     if not manifest.is_file():
         raise WorkspaceError(f"package.json is missing from isolated package root: {package_root}")
     digest = hashlib.sha256()
-    for path in (manifest, lockfile):
+    for path in (manifest, lockfile, workspace_policy):
         digest.update(path.name.encode("utf-8"))
         digest.update(b"\0")
         if path.is_file():
@@ -263,7 +264,7 @@ def mark_dependencies_restored(
     isolated_fingerprint = dependency_fingerprint(isolated)
     if source_fingerprint != isolated_fingerprint:
         raise WorkspaceError(
-            "source package.json/pnpm-lock.yaml changed after isolated restore; rerun preflight/restore before marking"
+            "source package.json/pnpm-lock.yaml/pnpm-workspace.yaml changed after isolated restore; rerun preflight/restore before marking"
         )
 
     requires_modules = _manifest_requires_node_modules(package_root)
@@ -292,7 +293,7 @@ def main() -> int:
     parser.add_argument(
         "--mark-restored",
         action="store_true",
-        help="Record the current package.json/pnpm-lock.yaml fingerprint after a successful isolated pnpm restore.",
+        help="Record the current package.json/pnpm-lock.yaml/pnpm-workspace.yaml fingerprint after a successful isolated pnpm restore.",
     )
     args = parser.parse_args()
 
