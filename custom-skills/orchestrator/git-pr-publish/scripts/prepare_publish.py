@@ -21,6 +21,7 @@ from pr_publish_lib import (
     repo_root,
     resolve_base_branch,
     resolve_workspace,
+    row_paths,
 )
 
 
@@ -93,7 +94,7 @@ def main() -> int:
             emit("EOL_ONLY_FILE", display)
 
         print("DIFF_STAT_BEGIN")
-        semantic_paths = [path for _status, path, _original in semantic_rows]
+        semantic_paths = row_paths(semantic_rows)
         print(diff_stat(root, semantic_paths) if semantic_paths else "")
         print("DIFF_STAT_END")
         return 0
