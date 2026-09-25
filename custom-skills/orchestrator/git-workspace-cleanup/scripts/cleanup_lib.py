@@ -516,7 +516,7 @@ def fingerprint_payload(
 ) -> str:
     digest = hashlib.sha256()
     payload = {
-        "version": "dev-workspace-cleanup-v1",
+        "version": "dev-workspace-cleanup-v2-eol-aware",
         "worktree": str(worktree),
         "branch": branch,
         "head": head,
