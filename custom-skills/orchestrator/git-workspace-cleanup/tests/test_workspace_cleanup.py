@@ -137,6 +137,51 @@ class WorkspaceCleanupTests(unittest.TestCase):
         self.assertEqual(data["WORKTREE_1_STATUS"], "CLEAN")
         self.assertEqual(data["WORKTREE_1_REMOTE_EXISTS"], "true")
 
+    def test_lists_eol_only_worktree_separately_from_dirty(self):
+        (self.f.worktree / "feature.txt").write_bytes(b"feature\r\n")
+        result = run(
+            ["python3", str(LIST), "--repo", str(self.f.repo), "--remote", "origin"],
+            cwd=self.f.repo,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = values(result.stdout)
+        self.assertEqual(data["WORKTREE_1_STATUS"], "EOL_ONLY")
+
+    def test_eol_only_worktree_is_ready_for_cleanup_with_scoped_force_evidence(self):
+        self.f.merge()
+        (self.f.worktree / "feature.txt").write_bytes(b"feature\r\n")
+        result = self.prepare()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = values(result.stdout)
+        self.assertEqual(data["WORKTREE_SEMANTIC_DIRTY"], "false")
+        self.assertEqual(data["WORKTREE_EOL_NOISE_ONLY"], "true")
+        self.assertEqual(data["EOL_ONLY_COUNT"], "1")
+        self.assertEqual(data["EOL_ONLY_FORCE_REMOVE_ALLOWED"], "true")
+        self.assertEqual(data["EOL_ONLY_FILE"], "feature.txt")
+
+    def test_eol_only_worktree_cleanup_removes_without_reset_restore_or_clean(self):
+        self.f.merge()
+        (self.f.worktree / "feature.txt").write_bytes(b"feature\r\n")
+        preview = self.prepare()
+        self.assertEqual(preview.returncode, 0, preview.stderr)
+        fingerprint = values(preview.stdout)["CLEANUP_FINGERPRINT"]
+
+        result = run([
+            "python3", str(CLEANUP), "--workspace", str(self.f.worktree), "--remote", "origin",
+            "--base-branch", "main", "--fingerprint", fingerprint,
+        ], cwd=self.f.repo, check=False)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.f.worktree.exists())
+        self.assertEqual(values(result.stdout)["WORKTREE_REMOVED"], "true")
+
+    def test_semantic_tracked_change_is_still_blocked(self):
+        (self.f.worktree / "feature.txt").write_text("semantic change\n", encoding="utf-8")
+        result = self.prepare()
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("semantic modified/staged/untracked files", result.stderr)
+
     def test_base_branch_linked_worktree_is_ready_for_worktree_only_cleanup(self):
         self.f.switch_worktree_to_base_without_merge()
         result = self.prepare()
@@ -207,7 +252,9 @@ class WorkspaceCleanupTests(unittest.TestCase):
         text = CLEANUP.read_text(encoding="utf-8")
         self.assertIn('"update-ref", "-d"', text)
         self.assertIn('"worktree", "remove"', text)
-        for forbidden in ("--force-with-lease", '"branch", "-D"', "git reset", "git stash"):
+        self.assertIn('allow_eol_only_force', text)
+        self.assertIn('command.append("--force")', text)
+        for forbidden in ("--force-with-lease", '"branch", "-D"', "git reset", "git restore", "git clean", "git stash"):
             self.assertNotIn(forbidden, text)
 
 
