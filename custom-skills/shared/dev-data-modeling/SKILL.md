@@ -1,7 +1,7 @@
 ---
 name: dev-data-modeling
 description: Use Case에서 주제영역·데이터 책임·소유권·lifecycle·cardinality·Current/History/Snapshot/Derived를 정의하고 canonical logical DBML로 표현하는 DBMS 중립 DBA capability.
-version: 0.3.0
+version: 0.4.0
 author: local
 platforms: [linux]
 metadata:
@@ -162,6 +162,37 @@ Data Model Mode: LOGICAL_RELATIONAL
 ```
 
 Canonical DESIGN_FIRST 모델에서는 vendor-specific physical option을 넣지 않고 Subject Area를 `TableGroup`으로 기록한다.
+
+### 논리명/설명 Note 규격
+
+새로 작성하거나 의미 있게 변경하는 canonical logical DBML은 DBML 표준 `Note` 문법으로 한글 논리명을 함께 기록한다. 별도 `logical_name` custom property를 canonical 규격으로 만들지 않는다.
+
+- Table 물리/식별 이름은 기존 규칙대로 영문 lowercase snake_case를 유지한다.
+- Table `Note`의 **첫 줄은 한글 논리 테이블명**으로 작성한다.
+- Table `Note`의 **다음 문단은 테이블의 책임/업무 의미 설명**으로 작성한다.
+- Column `note`에는 **한글 논리 컬럼명**을 작성한다. 설명이 추가로 필요하면 논리명 뒤에 짧게 덧붙일 수 있으나 논리명이 먼저 식별되어야 한다.
+- 논리명은 단순 영문 직역보다 도메인에서 사용하는 업무 용어를 우선한다.
+- 기존 프로젝트가 자체 DBML 문서 규격을 명시적으로 갖고 있으면 PROJECT_EXISTING 규칙을 우선하며 전체 파일을 기계적으로 재작성하지 않는다.
+
+권장 형식:
+
+```dbml
+Table investment_funding_plan {
+  id bigint [pk, note: '투자 자금 계획 ID']
+  account_id bigint [not null, note: '계좌 ID']
+  planned_amount decimal(19,4) [not null, note: '계획 금액']
+  starts_on date [not null, note: '시작일']
+  ends_on date [note: '종료일']
+
+  Note: '''
+  투자 자금 계획
+
+  계좌별 투자 자금의 계획 금액과 적용 기간을 관리한다.
+  '''
+}
+```
+
+이 Note는 canonical logical DBML의 사람이 읽는 논리명/설명 계약이며, 특정 IDE plugin이나 외부 시각화 도구의 전용 metadata에 의존하지 않는다.
 
 DBML 변경 후 lightweight guard:
 
