@@ -59,7 +59,7 @@ checks = {
         "Current State", "History / Ledger", "Snapshot", "Derived Data",
         "Subject Area", "TableGroup", "docs/data/schema.dbml", "LOGICAL_RELATIONAL", "PHYSICAL",
         "Design-Time DBA", "Coder physicalization", "PROJECT_EXISTING", "PROJECT_INFERRED", "DEVKIT_DEFAULT",
-        "tbl_<subject_area>_<entity>", "V<yyyyMMddHHmmss>", "UTC", "Flyway", "Liquibase", "outOfOrder=true",
+        "tbl_<subject_area>_<entity>", "Table Note 첫 줄", "한글 논리 테이블명", "Column note", "한글 논리 컬럼명", "V<yyyyMMddHHmmss>", "UTC", "Flyway", "Liquibase", "outOfOrder=true",
         "public_id", "external_id", "UUIDv7",
         "created_at", "created_by", "updated_at", "updated_by",
         "deleted_at", "deleted_by", "is_deleted",
@@ -85,7 +85,7 @@ checks = {
     "data modeling": (data_modeling, (
         "Design-Time DBA", "Subject Area", "TableGroup", "책임", "cardinality",
         "Current / History / Snapshot / Derived", "docs/data/schema.dbml", "dbml_guard.py",
-        "--require-subject-area", "tbl_<subject_area>_<entity>", "Data Model Status: DRAFT | APPROVED",
+        "--require-subject-area", "한글 논리 테이블명", "한글 논리 컬럼명", "logical_name", "tbl_<subject_area>_<entity>", "Data Model Status: DRAFT | APPROVED",
     )),
     "db schema": (db_schema, (
         "Coder migration", "Approved Subject Area", "DEVKIT_DEFAULT Physical Naming",
@@ -118,7 +118,7 @@ checks = {
     )),
     "default dbml example": (example_dbml, (
         "Table account", "id bigint [pk]", "Table transaction",
-        "account_id bigint [not null]", "TableGroup finance",
+        "account_id bigint [not null, note: '계좌 ID']", "Note: '''", "계좌", "거래", "TableGroup finance",
         "Ref: transaction.account_id > account.id",
     )),
 }
