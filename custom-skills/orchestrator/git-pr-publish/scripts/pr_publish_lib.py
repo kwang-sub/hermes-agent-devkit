@@ -126,6 +126,77 @@ def changed_rows(root: Path, includes: Iterable[str]) -> list[tuple[str, str, st
     return parse_status(status_bytes(root, includes))
 
 
+def _normalize_crlf(value: bytes) -> bytes:
+    return value.replace(b"\r\n", b"\n")
+
+
+def _looks_utf8_text(value: bytes) -> bool:
+    if b"\x00" in value:
+        return False
+    try:
+        value.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return True
+
+
+def _index_blob(root: Path, path: str) -> bytes | None:
+    result = run(["git", "show", f":{path}"], cwd=root, check=False, text=False)
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
+def is_eol_only_worktree_change(
+    root: Path,
+    row: tuple[str, str, str | None],
+) -> bool:
+    status, path, original = row
+    if status != " M" or original is not None:
+        return False
+    target = root / path
+    if not target.is_file() or target.is_symlink():
+        return False
+    index = _index_blob(root, path)
+    if index is None:
+        return False
+    worktree = target.read_bytes()
+    if index == worktree:
+        return False
+    if not (_looks_utf8_text(index) and _looks_utf8_text(worktree)):
+        return False
+    return _normalize_crlf(index) == _normalize_crlf(worktree)
+
+
+def classify_changed_rows(
+    root: Path,
+    includes: Iterable[str],
+) -> tuple[
+    list[tuple[str, str, str | None]],
+    list[tuple[str, str, str | None]],
+]:
+    semantic: list[tuple[str, str, str | None]] = []
+    eol_only: list[tuple[str, str, str | None]] = []
+    for row in changed_rows(root, includes):
+        if is_eol_only_worktree_change(root, row):
+            eol_only.append(row)
+        else:
+            semantic.append(row)
+    return semantic, eol_only
+
+
+def row_paths(rows: Iterable[tuple[str, str, str | None]]) -> list[str]:
+    values: list[str] = []
+    seen: set[str] = set()
+    for _status, path, original in rows:
+        for candidate in (path, original):
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            values.append(candidate)
+    return values
+
+
 def diff_stat(root: Path, includes: Iterable[str]) -> str:
     result = run(["git", "diff", "--stat", "HEAD", *_pathspec_args(includes)], cwd=root)
     tracked = result.stdout.rstrip()
@@ -140,20 +211,27 @@ def diff_stat(root: Path, includes: Iterable[str]) -> str:
 def publish_fingerprint(root: Path, includes: Iterable[str]) -> str:
     includes = list(includes)
     digest = hashlib.sha256()
-    digest.update(b"dev-pr-publish-v1\0")
+    digest.update(b"dev-pr-publish-v2\0")
     digest.update(current_branch(root).encode("utf-8") + b"\0")
     digest.update(head_sha(root).encode("ascii") + b"\0")
 
-    raw_status = status_bytes(root, includes)
-    digest.update(raw_status)
-    diff = run(
-        ["git", "diff", "--binary", "HEAD", *_pathspec_args(includes)],
-        cwd=root,
-        text=False,
-    ).stdout
-    digest.update(diff)
+    semantic_rows, _eol_only_rows = classify_changed_rows(root, includes)
+    semantic_paths = row_paths(semantic_rows)
+    for status, path, original in semantic_rows:
+        digest.update(status.encode("ascii", "replace") + b"\0")
+        digest.update(path.encode("utf-8", "surrogateescape") + b"\0")
+        if original:
+            digest.update(original.encode("utf-8", "surrogateescape") + b"\0")
 
-    for status, path, _ in parse_status(raw_status):
+    if semantic_paths:
+        diff = run(
+            ["git", "diff", "--binary", "HEAD", "--", *semantic_paths],
+            cwd=root,
+            text=False,
+        ).stdout
+        digest.update(diff)
+
+    for status, path, _ in semantic_rows:
         if status != "??":
             continue
         target = root / path
@@ -229,6 +307,24 @@ def remote_head_sha(root: Path, remote: str, branch: str) -> str | None:
     if not line:
         return None
     return line.split()[0]
+
+
+def push_command(root: Path, remote: str, branch: str) -> list[str]:
+    url = remote_url(root, remote)
+    if url.startswith("https://") or url.startswith("http://"):
+        ensure_gh(root)
+        return [
+            "git",
+            "-c",
+            "credential.helper=",
+            "-c",
+            "credential.helper=!gh auth git-credential",
+            "push",
+            "--set-upstream",
+            remote,
+            branch,
+        ]
+    return ["git", "push", "--set-upstream", remote, branch]
 
 
 def validate_conventional_commit(message: str) -> None:

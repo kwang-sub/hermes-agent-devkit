@@ -6,12 +6,13 @@ import sys
 
 from pr_publish_lib import (
     PublishError,
+    classify_changed_rows,
     current_branch,
     emit,
-    ensure_gh,
     head_sha,
     publish_fingerprint,
-    remote_url,
+    push_command,
+    row_paths,
     repo_root,
     resolve_workspace,
     run,
@@ -52,27 +53,6 @@ def path_is_in_scope(path: str, includes: list[str]) -> bool:
     return False
 
 
-def push_command(root, remote: str, branch: str) -> list[str]:
-    url = remote_url(root, remote)
-    if url.startswith("https://") or url.startswith("http://"):
-        # Use gh as a one-command credential helper instead of mutating global Git config.
-        # This preserves the user's repository configuration and lets the same gh auth
-        # used for PR creation authenticate the approved HTTPS push.
-        ensure_gh(root)
-        return [
-            "git",
-            "-c",
-            "credential.helper=",
-            "-c",
-            "credential.helper=!gh auth git-credential",
-            "push",
-            "--set-upstream",
-            remote,
-            branch,
-        ]
-    return ["git", "push", "--set-upstream", remote, branch]
-
-
 def main() -> int:
     args = parser().parse_args()
     commit_sha = None
@@ -97,12 +77,16 @@ def main() -> int:
                 raise PublishError(
                     "staged changes outside the approved publish scope: " + ", ".join(outside)
                 )
-            run(["git", "add", "-A", "--", *args.include], cwd=root)
-        else:
-            run(["git", "add", "-A", "--", "."], cwd=root)
+
+        semantic_rows, _eol_only_rows = classify_changed_rows(root, args.include)
+        semantic_paths = row_paths(semantic_rows)
+        if not semantic_paths:
+            raise PublishError("approved publish scope has no semantic working-tree changes")
+
+        run(["git", "add", "-A", "--", *semantic_paths], cwd=root)
 
         if run(["git", "diff", "--cached", "--quiet"], cwd=root, check=False).returncode == 0:
-            raise PublishError("approved publish scope produced no staged changes")
+            raise PublishError("approved publish scope produced no staged semantic changes")
 
         run(["git", "commit", "-m", args.message], cwd=root)
         commit_sha = head_sha(root)

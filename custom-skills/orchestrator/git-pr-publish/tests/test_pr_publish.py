@@ -16,6 +16,7 @@ REPO_ROOT = SKILL_ROOT.parents[2]
 SCRIPTS = SKILL_ROOT / "scripts"
 PREPARE = SCRIPTS / "prepare_publish.py"
 PUBLISH = SCRIPTS / "publish_commit.py"
+PUSH_EXISTING = SCRIPTS / "push_existing.py"
 PREPARE_PR = SCRIPTS / "prepare_pr.py"
 CREATE_PR = SCRIPTS / "create_pr.py"
 LIB = SCRIPTS / "pr_publish_lib.py"
@@ -112,6 +113,18 @@ raise SystemExit(9)
         (self.work / "README.md").write_text("base\nfeature\n", encoding="utf-8")
         (self.work / "new.txt").write_text("new\n", encoding="utf-8")
 
+    def commit_feature(self, *, push: bool) -> str:
+        (self.work / "feature.txt").write_text("feature\n", encoding="utf-8")
+        run(["git", "add", "feature.txt"], cwd=self.work)
+        run(["git", "commit", "-m", "feat: 기존 커밋 준비"], cwd=self.work)
+        sha = run(["git", "rev-parse", "HEAD"], cwd=self.work).stdout.strip()
+        if push:
+            run(["git", "push", "-u", "origin", "feature/pr-skill-test"], cwd=self.work)
+        return sha
+
+    def make_readme_crlf_noise(self) -> None:
+        (self.work / "README.md").write_bytes(b"base\r\n")
+
     def prepare(self):
         result = run(
             [sys.executable, str(PREPARE), "--workspace", str(self.work), "--base-branch", "main"],
@@ -124,6 +137,116 @@ raise SystemExit(9)
         self.assertEqual(values["BASE_BRANCH"], ["main"])
         self.assertEqual(values["CHANGED_COUNT"], ["2"])
         return values
+
+    def test_eol_only_noise_allows_existing_pushed_head_to_skip_commit_flow(self):
+        head = self.commit_feature(push=True)
+        self.make_readme_crlf_noise()
+
+        result = run(
+            [sys.executable, str(PREPARE), "--workspace", str(self.work), "--base-branch", "main"],
+            cwd=self.work,
+            env=self.env,
+        )
+        values = parse_kv(result.stdout)
+        self.assertEqual(values["STATUS"], ["existing-head"])
+        self.assertEqual(values["HEAD_SHA"], [head])
+        self.assertEqual(values["REMOTE_HEAD_MATCH"], ["true"])
+        self.assertEqual(values["CHANGED_COUNT"], ["0"])
+        self.assertEqual(values["EOL_ONLY_COUNT"], ["1"])
+        self.assertEqual(values["WORKTREE_SEMANTIC_DIRTY"], ["false"])
+        self.assertEqual(values["WORKTREE_EOL_NOISE_ONLY"], ["true"])
+        self.assertEqual(len(values["EOL_ONLY_FILE"]), 1)
+
+        preview = run(
+            [
+                sys.executable,
+                str(PREPARE_PR),
+                "--workspace",
+                str(self.work),
+                "--base",
+                "main",
+                "--head",
+                "feature/pr-skill-test",
+            ],
+            cwd=self.work,
+            env=self.env,
+        )
+        self.assertEqual(parse_kv(preview.stdout)["STATUS"], ["ready"])
+        self.assertEqual((self.work / "README.md").read_bytes(), b"base\r\n")
+
+    def test_existing_unpushed_head_can_push_without_normalizing_eol_noise(self):
+        head = self.commit_feature(push=False)
+        self.make_readme_crlf_noise()
+
+        prepared = run(
+            [sys.executable, str(PREPARE), "--workspace", str(self.work), "--base-branch", "main"],
+            cwd=self.work,
+            env=self.env,
+        )
+        values = parse_kv(prepared.stdout)
+        self.assertEqual(values["STATUS"], ["existing-head"])
+        self.assertEqual(values["REMOTE_HEAD_MATCH"], ["missing"])
+        self.assertEqual(values["EOL_ONLY_COUNT"], ["1"])
+
+        pushed = run(
+            [
+                sys.executable,
+                str(PUSH_EXISTING),
+                "--workspace",
+                str(self.work),
+                "--branch",
+                "feature/pr-skill-test",
+                "--expected-head",
+                head,
+            ],
+            cwd=self.work,
+            env=self.env,
+        )
+        pushed_values = parse_kv(pushed.stdout)
+        self.assertEqual(pushed_values["STATUS"], ["pushed-existing-head"])
+        remote = run(
+            ["git", "ls-remote", "--heads", "origin", "refs/heads/feature/pr-skill-test"],
+            cwd=self.work,
+        ).stdout.split()[0]
+        self.assertEqual(remote, head)
+        self.assertEqual((self.work / "README.md").read_bytes(), b"base\r\n")
+
+    def test_semantic_commit_excludes_eol_only_noise_from_staging_and_fingerprint(self):
+        self.make_readme_crlf_noise()
+        (self.work / "new.txt").write_text("semantic\n", encoding="utf-8")
+
+        prepared = run(
+            [sys.executable, str(PREPARE), "--workspace", str(self.work), "--base-branch", "main"],
+            cwd=self.work,
+            env=self.env,
+        )
+        values = parse_kv(prepared.stdout)
+        self.assertEqual(values["STATUS"], ["ready"])
+        self.assertEqual(values["CHANGED_COUNT"], ["1"])
+        self.assertEqual(values["EOL_ONLY_COUNT"], ["1"])
+
+        published = run(
+            [
+                sys.executable,
+                str(PUBLISH),
+                "--workspace",
+                str(self.work),
+                "--branch",
+                "feature/pr-skill-test",
+                "--fingerprint",
+                values["PUBLISH_FINGERPRINT"][0],
+                "--message",
+                "feat: semantic 변경만 게시",
+            ],
+            cwd=self.work,
+            env=self.env,
+        )
+        self.assertEqual(parse_kv(published.stdout)["STATUS"], ["pushed"])
+        committed = run(["git", "show", "--name-only", "--format=", "HEAD"], cwd=self.work).stdout.splitlines()
+        self.assertEqual(committed, ["new.txt"])
+        self.assertEqual((self.work / "README.md").read_bytes(), b"base\r\n")
+        status = run(["git", "status", "--short"], cwd=self.work).stdout
+        self.assertIn("README.md", status)
 
     def test_fingerprint_change_requires_reapproval(self):
         self.modify()
@@ -268,12 +391,13 @@ raise SystemExit(9)
         self.assertIn("&& gh --version \\", dockerfile)
         self.assertIn('"/opt/data/gh"', library)
         self.assertIn("HERMES_GH_CONFIG_DIR", library)
-        self.assertIn("credential.helper=!gh auth git-credential", publisher)
+        self.assertIn("credential.helper=!gh auth git-credential", library)
+        self.assertIn("push_command", publisher)
 
     def test_forbidden_publish_mutations_are_not_in_scripts(self):
         combined = "\n".join(
             path.read_text(encoding="utf-8")
-            for path in (PUBLISH, CREATE_PR, PREPARE, PREPARE_PR)
+            for path in (PUBLISH, PUSH_EXISTING, CREATE_PR, PREPARE, PREPARE_PR)
         )
         for term in ("--force-with-lease", "push --force", "git reset", "git restore", "git stash", "gh pr merge"):
             self.assertNotIn(term, combined)
