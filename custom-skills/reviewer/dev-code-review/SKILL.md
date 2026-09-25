@@ -1,7 +1,7 @@
 ---
 name: dev-code-review
 description: 동일 Workspace의 Direct/Standard 미커밋 구현을 requirement/AC와 Work Unit·project pattern·capability·구조 품질 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
-version: 0.18.0
+version: 0.18.1
 author: local
 platforms: [linux]
 metadata:
@@ -24,6 +24,41 @@ Reviewer는 같은 Workspace의 미커밋 변경을 독립 검토하며 applicat
 5. P0/P1이면 `kanban_request_changes`, 충분하면 `kanban_complete`, 판단 불가/외부 결정/반복 blocker면 `kanban_block` 중 정확히 하나를 실행한다.
 
 Direct/Standard Flow에서는 scope 없는 review를 하지 않는다. Standard Flow에서는 `--include`를 반드시 제공한다. Git Workspace의 `--allow-full-scan`은 명시적 진단 전용이며 tracked와 untracked 모두 Git pathspec으로 제한한다. Non-Git Workspace는 자동 change discovery/snapshot을 하지 않고 Coder의 선언 scope만 검토한다.
+
+## Recovery Revision Review Gate
+
+`kanban_show()` comments에 `TASK_RECOVERY_REVISION_V<N>` 또는 `TASK_RECOVERY_RETRY_V<N>`가 있으면 Coder와 동일한 effective contract를 재구성한다.
+
+```text
+Effective Review Contract
+= Original Task Contract
++ Latest Approved Recovery Revision의 명시적 delta
+```
+
+승인 Revision 조건:
+
+```text
+Recovery Gate: APPROVED
+Recovery Mode: SAME_TASK_RESUME
+Task: <현재 Task ID>
+Original Contract: PRESERVED
+Revision Authority: LATEST_APPROVED_RECOVERY_REVISION
+```
+
+가장 큰 `N`의 유효한 Revision만 사용한다. malformed latest marker, Task ID 불일치, Work Unit boundary를 실제로 바꾸는 delta는 `RECOVERY_CONTRACT_INVALID` finding으로 처리한다.
+
+`RETRY_SAME_CONTRACT`는 Original Contract/AC를 그대로 검토한다. `REPLACEMENT_REQUIRED + Current Task: PRESERVE_BLOCKED` marker가 있는데 review에 진입했다면 lifecycle 위반으로 `kanban_block`한다.
+
+Coder handoff의:
+
+```text
+Recovery Contract
+Recovery Revision
+Recovery Delta Applied
+Recovery Acceptance Criteria
+```
+
+를 comments의 durable marker와 대조한다.
 
 ## Standard Work Unit Review Gate
 
@@ -108,4 +143,5 @@ CHANGES_REQUESTED는 original coder가 같은 Workspace에서 수정한다.
 - EOL-only noise는 finding이 아니다.
 - finding은 file/symbol, evidence, required change, expected verification을 포함한다.
 - Direct/Standard Task는 모두 Reviewer가 검토한다.
+- Recovery Task는 Original Contract와 Latest Approved Recovery Revision의 명시적 delta를 합성해 검토하며, Recovery comment 전체를 Task body 대체로 간주하지 않는다.
 - 상세 checklist/escalation은 `references/review-details.md`를 따른다.

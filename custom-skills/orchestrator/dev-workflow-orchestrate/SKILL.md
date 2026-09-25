@@ -1,13 +1,13 @@
 ---
 name: dev-workflow-orchestrate
 description: Jira/text 개발 요청의 project·work unit·requirement delta·API spec·workspace·branch·Coder 모델·plan을 독립 clarify Gate로 승인한 뒤 단일 Work Unit만 Kanban dispatch하는 orchestrator 전용 workflow.
-version: 0.13.0
+version: 0.13.1
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, workflow, orchestrator, approval, clarify, gate, work-unit, requirement-delta, api, spec, dispatch, kanban, model, performance]
-    related_skills: [dev-work-intake, dev-project-resolve, dev-project-bootstrap, dev-breakdown, dev-api-spec, dev-skill-preflight, dev-workspace-dispatch, dev-flow-model-policy]
+    related_skills: [dev-work-intake, dev-project-resolve, dev-project-bootstrap, dev-breakdown, dev-api-spec, dev-skill-preflight, dev-workspace-dispatch, dev-flow-model-policy, dev-task-recovery]
 ---
 
 # dev-workflow-orchestrate
@@ -15,6 +15,34 @@ metadata:
 Orchestrator는 요청의 상태 머신과 승인 Gate만 조정한다. application/test code, code review, commit, push, PR, merge, cleanup은 직접 하지 않는다. 사용자 가시 계획/승인 문구는 한국어다.
 
 Standard Flow 승인 UI는 `/opt/data/shared/references/approval-gate-rules.md`, Work Unit 경계는 `/opt/data/shared/references/standard-work-unit-rules.md`가 source of truth다. **한 번의 사용자 확인에서는 하나의 의사결정만 요청한다.** 선택지는 질문 본문에 번호로 쓰지 않고 `clarify`의 `choices`를 사용한다.
+
+## Blocked Task Recovery 진입
+
+사용자가 다음처럼 **기존 blocked Kanban Task 복구 자체**를 요청하면 일반 신규 Standard Flow보다 먼저 `skill_view("dev-task-recovery")`를 사용한다.
+
+```text
+리커버 플로우
+차단 Task 복구
+blocked 카드 원인 분석 후 재개
+기존 카드 번호를 유지해 복구
+```
+
+Recovery Flow는:
+
+```text
+[보드 선택]
+→ [차단 카드 선택]
+→ read-only 원인 분석
+→ [복구 계획 승인]
+→ durable Recovery Revision
+→ SAME_TASK_RESUME
+```
+
+의 정확히 3-Gate 계약을 소유한다.
+
+`RETRY_SAME_CONTRACT | SAME_TASK_RESUME`이고 Project/Workspace/Branch/Model/API/Work Unit 독립 재승인이 필요하지 않으면 Recovery Gate 3 승인이 bounded Requirement Delta + Recovery Plan 승인을 대표한다. 이 경우 일반 `[추가 요구사항 확인]` / `[작업 계획 승인]` Gate를 뒤에 중복 추가하지 않는다.
+
+독립 승인 경계를 넘으면 Recovery Skill이 `REPLACEMENT_REQUIRED`로 종료하고 현재 카드를 blocked로 보존한 뒤 이 Standard Flow로 돌아온다. 이때부터는 일반 승인 Gate를 그대로 적용한다.
 
 ## 상태 머신
 
@@ -148,7 +176,19 @@ Requirement Delta:
 
 ## 기존 카드 재작업 계약
 
-먼저 `kanban_show`로 기존 상태와 Work Unit/모델 snapshot을 읽는다.
+일반 기존-card 재작업과 `dev-task-recovery`를 구분한다.
+
+```text
+사용자가 blocked Task Recovery를 명시
+→ dev-task-recovery 3-Gate 경로 우선
+
+일반 추가 요구사항/완료 Task 변경/비-blocked 재작업
+→ 아래 Generic Requirement Delta 경로
+```
+
+Recovery 정상 경로는 같은 Task ID에 durable Revision을 남기고 `kanban_unblock`한다. `kanban_create`를 사용하지 않는다.
+
+일반 재작업은 먼저 `kanban_show`로 기존 상태와 Work Unit/모델 snapshot을 읽는다.
 
 ```text
 Approval Reuse:
@@ -187,6 +227,7 @@ NO_EXTRA_KANBAN_CONFIRMATION
 ## 불변식
 
 - Project Approval / Plan Approval / Requirement Delta Approval을 추측하지 않는다.
+- blocked Task 복구 요청은 `dev-task-recovery`의 정확히 3-Gate 계약을 우선하며, 정상 SAME_TASK_RESUME 뒤에 일반 Plan/Requirement Delta Gate를 중복 추가하지 않는다.
 - Git Workspace의 Base SHA는 dispatch 시점 계약으로 보존한다. Non-Git Workspace는 `Base SHA: NONE`이며 snapshot을 생성하지 않는다.
 - 현재 Work Unit만 dispatch한다.
 - 추가 Kanban 생성 확인 질문을 만들지 않는다.

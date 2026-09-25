@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: Orchestrator가 승인·dispatch한 Direct 또는 Standard Kanban 단일 Work Unit을 할당 Workspace에서 구현·검증하고 항상 Reviewer에게 인계한다.
-version: 0.25.2
+version: 0.25.3
 author: local
 platforms: [linux]
 metadata:
@@ -32,6 +32,54 @@ kanban_show
 ```
 
 Workspace Version Control과 Pattern References는 Task body를 재사용한다. Git Workspace는 Expected Branch/Base SHA를 검증하고, Non-Git Workspace는 `Version Control: none`, `Branch/Base SHA: NONE` 계약으로 `verify_workspace.py --version-control none`을 사용한다. 기존 변경은 preserve-first이며 reset/restore/clean/stash하지 않는다. Existing Changes Preservation Fast Path가 승인된 Git Workspace에서는 repository-wide dirty/EOL/untracked scan을 반복하지 않는다.
+
+## Approved Recovery Revision Contract
+
+초기 `kanban_show`의 comments에 Task Recovery marker가 있으면 source mutation 전에 복구 계약을 판정한다.
+
+```text
+TASK_RECOVERY_RETRY_V<N>
+→ RETRY_SAME_CONTRACT
+→ Original Contract / AC 그대로 재사용
+
+TASK_RECOVERY_REVISION_V<N>
++ Recovery Gate: APPROVED
++ Recovery Mode: SAME_TASK_RESUME
+→ 가장 큰 N의 승인 Revision만 Latest Approved Recovery Revision으로 사용
+
+TASK_RECOVERY_ESCALATION_V<N>
++ Current Task: PRESERVE_BLOCKED
+→ 이 Task가 running으로 들어온 상태 자체가 계약 위반
+→ RECOVERY_CONTRACT_INVALID로 BLOCK
+```
+
+`SAME_TASK_RESUME`에서는 Task body를 덮어쓴 것으로 간주하지 않는다.
+
+```text
+Effective Task Contract
+= Original Task Contract
++ Latest Approved Recovery Revision의 명시적 delta
+```
+
+우선순위:
+
+```text
+Latest Approved Recovery Revision에서 명시적으로 Changed/Forbidden/Reverification/Acceptance Criteria로 갱신한 항목
+→ 해당 항목만 Revision 우선
+
+Revision이 언급하지 않은 Goal/Work Unit/기존 constraint
+→ Original Contract 유지
+```
+
+Coder는 Recovery Revision을 이유로 새 카드/branch/worktree를 만들지 않고, 승인된 delta만 현재 Task 범위에 합친다. 가장 큰 Revision이 malformed이거나 `Recovery Gate: APPROVED`, Task ID, Recovery Mode 정합성이 없으면 추측하지 않고 `RECOVERY_CONTRACT_INVALID`로 `kanban_block`한다.
+
+Handoff에는 다음을 남긴다.
+
+```text
+Recovery Contract: NONE | RETRY_SAME_CONTRACT | SAME_TASK_RESUME
+Recovery Revision: <TASK_RECOVERY_REVISION_VN | TASK_RECOVERY_RETRY_VN | NONE>
+Recovery Delta Applied: true | false
+```
 
 ## Work Unit Boundary Gate
 
@@ -124,6 +172,7 @@ Terminal transition은 `kanban_request_review` 또는 `kanban_block` 중 정확�
 - Workspace 밖 수정 금지. Git Workspace에서는 branch 전환, 다른 worktree 생성, commit, push, PR, merge 금지. Non-Git Workspace에서는 branch/worktree/commit 계약이 적용되지 않는다.
 - secret/raw credential 기록 금지.
 - Follow-up Work Unit 전용 capability를 현재 Task에서 실행하지 않는다.
+- `TASK_RECOVERY_REVISION_V<N>`은 가장 큰 승인 Revision의 명시적 delta만 Original Contract에 합성하며, 전체 Task body 대체나 임의 scope 확장 근거로 사용하지 않는다.
 - Frontend Environment Gate가 toolchain migration을 요구하면 현재 IMPLEMENTATION Work Unit에서 migration/fallback 검증을 수행하지 않는다.
 - pnpm build-script 승인 결정은 `pnpm-workspace.yaml > allowBuilds`에 Git 관리하고, 같은 exact matcher를 반복 승인받지 않는다.
 - 초기 pnpm 안정화에서는 `ERR_PNPM_IGNORED_BUILDS` 항목을 하나씩 사용자에게 묻지 않고 전체 pending set을 한 batch로 승인받는다.

@@ -16,6 +16,37 @@ Standard Flow의 모든 사용자 승인 UI는 `/opt/data/shared/references/appr
 
 핵심 불변식은 `Project Approval`, `Work Unit Boundary`, `Requirement Delta Approval`, 필요한 경우 `API Spec Approval`, `Plan Approval`, Workspace/Branch/Model 승인, 그리고 dispatch 시점의 `Base SHA` 보존이다.
 
+## Blocked Task Recovery 전용 진입
+
+기존 Task가 `blocked`이고 사용자가 복구/재개를 요청하면 Generic Requirement Delta 경로보다 `dev-task-recovery`를 우선한다.
+
+```text
+RECOVERY_ENTRY
+→ Gate 1 [보드 선택]
+→ Gate 2 [차단 카드 선택]
+→ read-only blocker/root-cause 분석
+→ Gate 3 [복구 계획 승인]
+→ durable Recovery Revision
+→ same Task ID unblock
+→ coder ↔ reviewer
+```
+
+이 경로는 정확히 3개의 사용자 Gate를 가진다.
+
+Gate 3은 다음 조건에서만 bounded Requirement Delta + Recovery Plan 승인을 함께 대표한다.
+
+```text
+Recovery Mode = RETRY_SAME_CONTRACT | SAME_TASK_RESUME
+Project/Workspace/Branch/Coder Model = REUSE
+Work Unit Class 유지
+Excluded Follow-up Scope 침범 없음
+독립 API Spec/Data/Infrastructure 승인 불필요
+```
+
+위 조건을 벗어나면 `REPLACEMENT_REQUIRED`로 현재 Task를 blocked 상태에 보존하고 Recovery Flow를 종료한다. 그 이후 일반 Standard Flow의 독립 Gate를 수행한다.
+
+Recovery 정상 경로에서는 `kanban_create`를 사용하지 않는다. latest approved Recovery Revision은 durable comment로 기록하며 next worker의 `worker_context`에 포함된다.
+
 ## 상태 머신
 
 신규 Standard Flow:
@@ -189,6 +220,25 @@ Plan Gate는 일반 메시지와 `clarify`를 명확히 분리한다.
 4. `Task`, `Project / Workspace / Branch`, `Coder Model`, `Goal`, `Design Evidence`, `Implementation Tasks`, `Acceptance Criteria`, API/환경변수/인증 계약 상세를 Plan Gate 질문에 재출력하지 않는다.
 5. 앞선 Gate에서 승인된 Workspace/Branch/Model 값은 Plan 승인 질문에 반복하지 않는다.
 6. 정보는 일반 메시지에 유지하고 결정 UI만 짧게 유지한다.
+
+## Recovery-specific 승인 예외
+
+Generic 기존 카드 재작업에서는 아래 Requirement Delta Approval과 Plan Approval을 각각 수행한다.
+
+단, 사용자가 blocked Task Recovery를 명시적으로 시작했고 `dev-task-recovery`가 다음을 모두 확인한 경우에는 Recovery Gate 3 하나가 그 bounded delta와 plan의 단일 승인이다.
+
+```text
+task.status == blocked
+same Task ID 유지
+same current deliverable
+same Work Unit Class
+Project/Workspace/Branch/Model 재사용
+새 독립 API/Data/Infra 승인 없음
+```
+
+Recovery Gate 3 승인 후 별도 `[추가 요구사항 확인]` 또는 `[작업 계획 승인]`을 반복하지 않는다.
+
+독립 재승인이 필요하면 이 예외를 적용하지 않고 `REPLACEMENT_REQUIRED`로 일반 Standard Flow에 넘긴다.
 
 ## Requirement Delta Approval — 승인 이후 추가 요구사항
 

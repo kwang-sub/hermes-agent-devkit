@@ -21,6 +21,80 @@ Reviewer의 **compact 실행 계약**이다. 상세 severity/checklist/escalatio
 8. Coder의 `Review Risk`와 구조화된 `Risk Reasons`를 탐색 시작점으로 재사용하되 verdict로 그대로 신뢰하지 않는다.
 9. P0/P1이 있으면 `kanban_request_changes`; 없고 evidence가 충분하면 `kanban_complete`; 안전한 판단 불가·외부 결정 필요·반복 blocker면 `kanban_block` 중 정확히 하나만 실행한다.
 
+## Recovery Revision Review Contract
+
+초기 `kanban_show()`의 comments에서 Recovery marker를 확인한다. 별도 `kanban_show` 반복 호출로 contract를 재구성하지 않는다.
+
+인식 marker:
+
+```text
+TASK_RECOVERY_RETRY_V<N>
+TASK_RECOVERY_REVISION_V<N>
+TASK_RECOVERY_ESCALATION_V<N>
+```
+
+### SAME_TASK_RESUME
+
+가장 큰 `N`의 `TASK_RECOVERY_REVISION_V<N>` 중 다음을 모두 만족해야 한다.
+
+```text
+Recovery Gate: APPROVED
+Recovery Mode: SAME_TASK_RESUME
+Task: <현재 task id>
+Original Contract: PRESERVED
+Revision Authority: LATEST_APPROVED_RECOVERY_REVISION
+```
+
+Effective Review Contract:
+
+```text
+Original Task requirement / AC / Work Unit / approved specs
++
+Latest Approved Recovery Revision의 명시적 delta
+```
+
+Revision에서 명시한 Changed/Rollback/Forbidden/Reverification/Recovery Plan/Acceptance Criteria만 기존 계약보다 우선한다. 언급되지 않은 기존 Goal/constraint/Work Unit/API/Data/Infrastructure 계약은 유지한다.
+
+latest marker가 malformed이면 과거 revision으로 silent fallback하지 않고:
+
+```text
+RECOVERY_CONTRACT_INVALID
+```
+
+로 lifecycle/contract finding을 남긴다.
+
+### RETRY_SAME_CONTRACT
+
+```text
+Recovery Mode: RETRY_SAME_CONTRACT
+Original Contract: PRESERVED
+Acceptance Criteria: PRESERVED
+```
+
+이면 원래 AC를 그대로 검토한다. retry comment의 Resolution Evidence는 재실행 근거일 뿐 새 requirement가 아니다.
+
+### REPLACEMENT_REQUIRED
+
+```text
+Recovery Mode: REPLACEMENT_REQUIRED
+Current Task: PRESERVE_BLOCKED
+```
+
+인데 review에 들어왔다면 unblock/dispatch lifecycle 오류다. application finding으로 돌리지 않고 `kanban_block`한다.
+
+### Handoff 정합성
+
+Coder handoff:
+
+```text
+Recovery Contract
+Recovery Revision
+Recovery Delta Applied
+Recovery Acceptance Criteria
+```
+
+와 durable comment를 대조한다. Coder가 승인되지 않은 delta를 구현했거나 approved delta를 무시했다면 scope/requirement finding으로 처리한다.
+
 ## Standard Work Unit Review Gate
 
 Task body에 다음이 있어야 한다.

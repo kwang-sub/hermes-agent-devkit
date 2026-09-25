@@ -63,6 +63,14 @@ jobs:
         shell: bash
         run: python3 custom-skills/coder/dev-implement-plan/tests/test_verify_worker_context.py
 
+      - name: Verify Task Recovery contract
+        shell: bash
+        run: python3 scripts/check_task_recovery_contract.py
+
+      - name: Verify Task Recovery board inventory
+        shell: bash
+        run: python3 custom-skills/orchestrator/dev-task-recovery/tests/test_recovery_board_inventory.py
+
       - name: Verify frontend capability contract
         shell: bash
         run: python3 scripts/check_frontend_capability_contract.py

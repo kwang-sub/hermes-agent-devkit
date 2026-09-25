@@ -43,6 +43,8 @@ docker run --rm \
     -ceu '
         test -x /opt/hermes/.venv/bin/hermes
         /opt/hermes/.venv/bin/hermes --help >/dev/null
+        /opt/hermes/.venv/bin/hermes kanban boards list --json >/tmp/devkit-kanban-boards.json
+        test -s /tmp/devkit-kanban-boards.json
 
         test "$(/usr/local/bin/git --version)" = "git version 2.55.0"
         test "$(/usr/local/bin/git config --system --bool --get worktree.useRelativePaths)" = "true"
@@ -118,7 +120,10 @@ scrubbed = delegated_child_subprocess_env({
 assert not (required_env & set(scrubbed)), scrubbed
 
 required_tools = {
+    "kanban_list",
     "kanban_show",
+    "kanban_comment",
+    "kanban_unblock",
     "kanban_complete",
     "kanban_block",
     "kanban_request_review",
@@ -180,6 +185,12 @@ finally:
     reset_hermes_home_override(token)
 PY
 
+        test -f /opt/custom-skills/orchestrator/dev-task-recovery/SKILL.md
+        test -f /opt/custom-skills/orchestrator/dev-task-recovery/references/recovery-details.md
+        test -f /opt/custom-skills/orchestrator/dev-task-recovery/scripts/recovery_board_inventory.py
+        /opt/hermes/.venv/bin/python /opt/custom-skills/orchestrator/dev-task-recovery/scripts/recovery_board_inventory.py --help >/dev/null
+        grep -q "RECOVERY_GATE_COUNT=3" /opt/custom-skills/orchestrator/dev-task-recovery/SKILL.md
+        grep -q "TASK_RECOVERY_REVISION_V1" /opt/custom-skills/orchestrator/dev-task-recovery/SKILL.md
         test -f /opt/custom-skills/shared/dev-api-spec/SKILL.md
         test -f /opt/custom-skills/shared/dev-api-contract/SKILL.md
         test -f /opt/custom-skills/shared/dev-api-docs/SKILL.md

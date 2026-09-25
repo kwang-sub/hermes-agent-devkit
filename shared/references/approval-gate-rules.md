@@ -19,6 +19,7 @@
 13. **`clarify.question`은 결정만 묻는 짧은 UI다.** 긴 설명, 계획 본문, 이미 승인된 Gate 값은 일반 메시지에 두고 `clarify.question`에 다시 복사하지 않는다.
 14. **Plan Gate의 `clarify.question`은 아래 Gate 5의 고정 리터럴을 그대로 사용한다.** Task/Project/Workspace/Branch/Coder Model/Goal/Design Evidence/Implementation Tasks/Acceptance Criteria 같은 동적 내용을 보간하거나 덧붙이지 않는다.
 15. Implementation Plan이 길면 일반 메시지를 섹션 단위로 나눠 모두 보여줄 수 있지만, 화면 높이에 맞추기 위해 Plan 본문을 `clarify.question`으로 이동하거나 요약 뒤에 이어 붙이지 않는다.
+16. **Blocked Task Recovery는 `dev-task-recovery`의 전용 3-Gate 계약을 사용한다.** 이 경로에서는 Board와 Task가 이미 독립 Gate로 승인되고 독립 API/Workspace/Branch/Model 결정이 필요하지 않은 bounded same-task recovery에 한해 Gate 3의 단일 `Recovery Plan` 승인이 Requirement Delta + 재개 Plan 결정을 함께 대표한다. 범위를 넘는 경우 Gate를 합치지 않고 `REPLACEMENT_REQUIRED`로 Recovery를 종료한다.
 
 ## clarify 사용 계약
 
@@ -69,6 +70,65 @@ EXISTING_TASK_INSPECTED
 `SOURCE_SYNC`나 `AUDIT`처럼 API 의미를 바꾸지 않는 문서화/감사 Task는 `API_SPEC_APPROVAL=NOT_REQUIRED`다.
 
 기존 카드 재작업에서는 승인 증거가 있는 Gate만 `REUSE`한다. `REQUIRED`가 여러 개여도 하나씩 위 순서대로 수행한다.
+
+## Blocked Task Recovery Flow — 정확히 3 Gate
+
+사용자가 차단 카드 복구를 요청하고 `dev-task-recovery`를 진입점으로 사용하면 일반 기존-card 재작업 Gate 대신 다음 전용 순서를 사용한다.
+
+```text
+RECOVERY_GATE_COUNT=3
+
+Gate 1 BOARD_APPROVAL
+[보드 선택]
+
+Gate 2 BLOCKED_TASK_APPROVAL
+[차단 카드 선택]
+
+read-only blocker/root-cause 분석
+
+Gate 3 RECOVERY_PLAN_APPROVAL
+[복구 계획 승인]
+
+→ durable Recovery Revision
+→ same Task unblock
+```
+
+각 Gate는 하나의 사용자 의사결정만 가진다.
+
+- Gate 1: 어느 Board를 복구 대상으로 볼지 결정.
+- Gate 2: 어느 blocked Task를 복구할지 결정.
+- Gate 3: 분석된 원인, bounded Requirement Delta, Recovery Plan, 유지 AC/검증을 합친 **하나의 Recovery Revision**을 승인할지 결정.
+
+Gate 3이 Requirement Delta와 Plan을 한 결정으로 대표할 수 있는 조건은 전부 충족되어야 한다.
+
+```text
+task.status == blocked
+Recovery Mode == RETRY_SAME_CONTRACT | SAME_TASK_RESUME
+Project == REUSE
+Workspace == REUSE
+Branch == REUSE
+Coder Model == REUSE
+새 독립 API Spec Approval 불필요
+새 Data DESIGN/MIGRATION 승인 불필요
+새 Infrastructure Desired State 승인 불필요
+Work Unit Class 유지
+기존 Excluded Follow-up Scope 침범 없음
+```
+
+위 조건 중 하나라도 깨지면 Gate 3에서 `REPLACEMENT_REQUIRED` 방향만 승인할 수 있다. 현재 Task는 blocked로 유지하고 Recovery Flow를 종료한 뒤 Standard Flow가 자신의 독립 Gate를 수행한다.
+
+Recovery 정상 경로에서는 Gate 3 승인 뒤 다음 추가 질문을 만들지 않는다.
+
+```text
+[추가 요구사항 확인] 금지
+[Workspace 선택] 재질문 금지
+[Branch 선택] 재질문 금지
+[Coder 모델 선택] 재질문 금지
+[작업 계획 승인] 재질문 금지
+"같은 카드를 재개할까요?" 추가 질문 금지
+```
+
+Gate 3 승인 전에는 `kanban_comment`, `kanban_unblock` 등 Task mutation을 수행하지 않는다. 승인 후에는 `dev-task-recovery`의 durable read-back 계약을 통과한 뒤 같은 Task ID를 재개한다.
 
 ## Gate R — Requirement Delta
 
