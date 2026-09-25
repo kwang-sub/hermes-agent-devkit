@@ -570,6 +570,43 @@ Direct Flow로 진행해주세요.
 Standard Flow로 진행해주세요.
 ```
 
+## 9.3 Task Recovery Flow
+
+기존 Kanban 카드가 `blocked` 상태에서 멈춘 경우 새 카드를 바로 만들지 않고 `dev-task-recovery`로 같은 Task를 복구할 수 있습니다.
+
+```text
+Recovery Flow
+→ [보드 선택]
+→ [차단 카드 선택]
+→ 원인/방향 read-only 분석
+→ [복구 계획 승인]
+→ durable Contract Revision
+→ SAME_TASK_RESUME
+→ 기존 Task ID unblock
+→ Coder
+→ Reviewer
+```
+
+정상 Recovery는 사용자 승인 Gate가 정확히 3개입니다.
+
+```text
+1. Board
+2. blocked Task
+3. Recovery Plan
+```
+
+같은 최종 산출물을 완료하기 위한 bounded dependency/source/test/config/verification 정합성 수정은 기존 카드 재사용을 우선합니다. Work Unit Class, Workspace/Branch/Model, 독립 API/Data/Infrastructure 승인 경계를 넘어가면 현재 카드를 blocked로 보존하고 Standard Flow로 전환합니다.
+
+예:
+
+```text
+리커버 플로우 실행해줘
+차단된 작업 복구해줘
+t_9ed73170 복구해줘
+```
+
+Task ID를 직접 지정해도 Board/Task 선택 Gate는 생략하지 않습니다.
+
 ---
 
 # 10. 주요 디렉터리
@@ -580,6 +617,7 @@ hermes-agent-devkit
 │  ├─ orchestrator/
 │  │  ├─ dev-direct-flow/
 │  │  ├─ dev-workflow-orchestrate/
+│  │  ├─ dev-task-recovery/
 │  │  ├─ dev-breakdown/
 │  │  └─ dev-workspace-dispatch/
 │  ├─ coder/
@@ -654,4 +692,4 @@ Reviewer
 done / blocked
 ```
 
-Hermes Agent DevKit은 설계 문서와 명시적인 작업 계약을 중심으로 개발 기준을 만들고, 그 기준에 따라 작은 Work Unit을 안정적으로 구현·검토하기 위한 개발 Workflow를 제공합니다.
+Hermes Agent DevKit은 설계 문서와 명시적인 작업 계약을 중심으로 개발 기준을 만들고, 그 기준에 따라 작은 Work Unit을 안정적으로 구현·검토하기 위한 개발 Workflow를 제공합니다. 차단된 기존 카드의 bounded 복구는 별도 `dev-task-recovery` 3-Gate Flow로 같은 Task ID를 우선 재사용합니다.
