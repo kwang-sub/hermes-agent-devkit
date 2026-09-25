@@ -1,7 +1,7 @@
 ---
 name: git-workspace-cleanup
 description: Git worktree 목록을 보여주고 선택한 linked worktree와 안전하게 증명된 작업 브랜치를 Preview/승인 후 정리한다.
-version: 0.4.0
+version: 0.4.1
 author: local
 platforms: [linux]
 metadata:
@@ -40,11 +40,50 @@ PR merge 완료
 python3 "${HERMES_SKILL_DIR}/scripts/list_worktrees.py" --repo "<REPO>" --remote "<REMOTE>"
 ```
 
-Primary worktree는 표시만 하고 선택하지 않는다. Path, Branch, HEAD, CLEAN/DIRTY, remote 존재 여부, cleanup hint를 보여준 뒤 `[Worktree 선택]` clarify Gate에서 하나를 선택한다.
+Primary worktree는 표시만 하고 선택하지 않는다. Path, Branch, HEAD, `CLEAN | EOL_ONLY | DIRTY`, remote 존재 여부, cleanup hint를 보여준 뒤 `[Worktree 선택]` clarify Gate에서 하나를 선택한다.
 
 ## 공통 안전 조건
 
-선택 대상은 primary가 아닌 linked worktree, non-detached, 정확히 등록된 worktree, unlocked/non-prunable, CLEAN 상태여야 한다. dirty/untracked가 있으면 force/reset/stash/clean으로 우회하지 않고 BLOCK한다.
+선택 대상은 primary가 아닌 linked worktree, non-detached, 정확히 등록된 worktree, unlocked/non-prunable이어야 한다. 일반적으로 `CLEAN`이어야 하며, `EOL_ONLY`는 아래의 좁은 예외 계약으로만 허용한다. semantic modified/staged/untracked 변경이 하나라도 있으면 force/reset/restore/stash/clean으로 우회하지 않고 BLOCK한다.
+
+## EOL-only Noise 예외
+
+Windows/WSL/Container 경계에서 tracked UTF-8 text 파일이 LF↔CRLF 차이만으로 Git `DIRTY`처럼 보일 수 있다. 이 경우 실제 사용자 변경과 줄바꿈 노이즈를 구분한다.
+
+판정 기준:
+
+```text
+status == unstaged tracked modify (" M")
+index blob != worktree bytes
+index/worktree 둘 다 UTF-8 text
+CRLF→LF 정규화 후 bytes 완전 동일
+→ EOL_ONLY
+```
+
+다음은 EOL-only가 아니다.
+
+```text
+staged change
+untracked file
+rename/copy/delete
+binary/non-UTF8
+trailing-space/content 변경
+CRLF/LF 외 내용 차이
+```
+
+Preflight evidence:
+
+```text
+WORKTREE_SEMANTIC_DIRTY=false
+WORKTREE_EOL_NOISE_ONLY=true
+EOL_ONLY_COUNT=<N>
+EOL_ONLY_FILE=<path>
+EOL_ONLY_FORCE_REMOVE_ALLOWED=true
+```
+
+`EOL_ONLY`이면 파일을 reset/restore/normalize하지 않는다. Git 자체의 `git worktree remove`가 dirty worktree를 거부하므로, **preflight와 mutation 시점의 fingerprint 재검증이 모두 통과하고 semantic dirty가 0인 경우에만** `git worktree remove --force`를 허용한다.
+
+이 scoped force 예외는 worktree directory 제거에만 적용된다. branch 삭제는 기존 exact SHA `git update-ref -d` 계약을 그대로 사용하며 force branch 삭제/force push는 계속 금지한다.
 
 ## 현재 Feature Branch Worktree
 
@@ -121,7 +160,7 @@ TRACKED_REFLOG_MESSAGE
 CLEANUP_FINGERPRINT
 ```
 
-Fingerprint에는 worktree/HEAD/base/status/remote/PR/추적 branch/reflog evidence를 포함한다. 승인 뒤 상태가 바뀌면 Preview/Gate를 다시 수행한다.
+Fingerprint에는 worktree/HEAD/base/status/remote/PR/추적 branch/reflog evidence를 포함한다. EOL-only 상태도 fingerprint에 포함되며 mutation helper가 동일 판정을 다시 수행한다. 승인 뒤 semantic 상태나 EOL-only 상태가 바뀌면 Preview/Gate를 다시 수행한다.
 
 ## Preview
 
@@ -211,7 +250,7 @@ Base branch local/remote는 항상 보존한다. local feature/tracked branch �
 ## 절대 금지
 
 ```text
-git worktree remove --force
+git worktree remove --force  # 단, 검증된 EOL_ONLY + fingerprint 일치의 scoped exception만 허용
 git branch -D
 git push --force
 git push --force-with-lease
