@@ -316,7 +316,28 @@ Current Task: PRESERVE_BLOCKED
 Next Flow: dev-workflow-orchestrate
 ```
 
-## 11. Durable read-back
+## 11. Gate 3 승인 후 pre-mutation revalidation
+
+Gate 3 승인 직후 `kanban_comment` 전에 동일 board/task를 `kanban_show`로 다시 읽는다.
+
+필수 확인:
+
+```text
+task.id == Gate 2 approved task
+task.status == blocked
+active/running claim 없음
+Gate 2 분석 시점 이후 더 큰 approved TASK_RECOVERY_REVISION_V<N> 없음
+```
+
+다르면:
+
+```text
+RECOVERY_STATUS=STALE_RECOVERY_SELECTION
+```
+
+으로 종료한다. comment/unblock을 호출하지 않는다. 이 read-back은 사용자 승인 Gate가 아니며 새 clarify를 추가하지 않는다.
+
+## 12. Durable read-back
 
 `kanban_comment`이 성공한 뒤 반드시 `kanban_show`를 다시 호출한다.
 
@@ -332,7 +353,7 @@ Recovery Mode 일치
 
 가장 최근 comment만 대충 보고 성공으로 간주하지 않는다. expected marker가 실제 comment thread에 존재해야 한다.
 
-## 12. Unblock
+## 13. Unblock
 
 정상 Recovery만:
 
@@ -353,7 +374,7 @@ todo
 
 `todo`면 부모 dependency가 남아 있는 상태이므로 수동 ready 전환을 하지 않는다.
 
-## 13. 반복 차단
+## 14. 반복 차단
 
 같은 Recovery Revision 이후 같은 원인으로 다시 blocked 되면 새 카드를 즉시 만들지 않는다.
 
@@ -370,7 +391,7 @@ Work Unit boundary를 넘기 시작함
 
 Hermes의 unblock recurrence breaker가 task를 `triage`로 올린 경우 이 v0.1 skill은 raw status mutation으로 우회하지 않는다.
 
-## 14. Triage 제한
+## 15. Triage 제한
 
 `kanban_unblock`은 blocked Task recovery tool이다. 따라서 Gate 2는 `status=blocked`만 선택 가능하다.
 
@@ -388,7 +409,7 @@ dashboard API raw status 변경 금지
 
 향후 Hermes가 orchestrator-safe triage recovery tool을 제공하면 별도 version에서 확장한다.
 
-## 15. Re-dispatch contract
+## 16. Re-dispatch contract
 
 `kanban_unblock` 이후 새 Task를 만들지 않는다.
 
@@ -410,7 +431,7 @@ comments
 
 Coder는 Original Contract와 Latest Approved Recovery Revision이 충돌하면 latest Recovery Revision의 **명시적 delta만** 우선하고, 나머지 Original Contract는 유지한다.
 
-## 16. Failure behavior
+## 17. Failure behavior
 
 ### Board inventory 실패
 
@@ -438,6 +459,16 @@ RECOVERY_STATUS=STALE_TASK_SELECTION
 ```
 
 Gate 2를 다시 구성한다.
+
+### Stale recovery selection
+
+Gate 3 승인 후 pre-mutation read-back에서 status/claim/revision이 바뀌면:
+
+```text
+RECOVERY_STATUS=STALE_RECOVERY_SELECTION
+```
+
+comment/unblock을 수행하지 않는다.
 
 ### Revision persistence 실패
 
