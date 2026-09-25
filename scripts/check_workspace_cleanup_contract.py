@@ -52,10 +52,13 @@ def main() -> int:
         "HEAD reflog", "GitHub merged PR + exact PR head SHA", "git-ancestor",
         "--delete-tracked-branch", "--delete-remote", "git update-ref -d",
         "git-pr-publish", "Preview에 이름을 표시하지 않은 branch 삭제",
+        "EOL-only Noise 예외", "WORKTREE_EOL_NOISE_ONLY=true",
+        "EOL_ONLY_FORCE_REMOVE_ALLOWED=true", "git worktree remove --force",
     ), "git-workspace-cleanup skill")
 
     require(listing, (
         "worktree_snapshot(root)", "parse_worktrees(", "resolve_remote_head",
+        "classify_worktree_status",
         "add_process_safe_directory", 'emit("LINKED_WORKTREES"',
         'emit("SELECTABLE_WORKTREES"', 'emit("WORKTREES_JSON"', "CLEANUP_SCOPE_HINT",
     ), "worktree selection helper")
@@ -65,7 +68,8 @@ def main() -> int:
         "checkout: moving from", "tracked_previous_branch", "tracked_previous_head_sha",
         "tracked_previous_merge_evidence", "tracked_previous_cleanup_allowed",
         "tracked_previous_remote_delete_available", "github_pull_requests",
-        "branch_is_ancestor", "git-workspace-cleanup-worktree-only-v2",
+        "branch_is_ancestor", "git-workspace-cleanup-worktree-only-v3-eol-aware",
+        "classify_worktree_status", "eol_only_force_allowed",
         "the primary worktree cannot be removed by git-workspace-cleanup",
     ), "base-worktree previous-branch tracking")
 
@@ -75,7 +79,8 @@ def main() -> int:
         'emit("TRACKED_PREVIOUS_MERGE_EVIDENCE"',
         'emit("TRACKED_PREVIOUS_REMOTE_DELETE_AVAILABLE"',
         'emit("TRACKED_PREVIOUS_REASON"', 'emit("TRACKED_REFLOG_MESSAGE"',
-        'emit("CLEANUP_FINGERPRINT"',
+        'emit("WORKTREE_EOL_NOISE_ONLY"', 'emit("EOL_ONLY_COUNT"',
+        'emit("EOL_ONLY_FORCE_REMOVE_ALLOWED"', 'emit("CLEANUP_FINGERPRINT"',
     ), "cleanup read-only helper")
 
     require(cleanup, (
@@ -84,6 +89,7 @@ def main() -> int:
         "tracked local branch moved after cleanup approval",
         "tracked remote branch moved after cleanup approval",
         "push_delete_named_branch", "preserved-base", "cleanup fingerprint changed after approval",
+        "allow_eol_only_force", 'command.append("--force")',
     ), "cleanup mutation helper")
 
     forbid(cleanup, (
@@ -91,11 +97,22 @@ def main() -> int:
         '"clean"', '"stash"', "rm -rf", '"config", "--global", "--add", "safe.directory"',
     ), "cleanup mutation helper")
 
+    if cleanup.count('command.append("--force")') != 1:
+        raise SystemExit("[FAIL] cleanup mutation helper must have exactly one scoped worktree --force insertion")
+    if "allow_eol_only_force=state.eol_only_force_allowed" not in cleanup:
+        raise SystemExit("[FAIL] feature worktree cleanup must bind --force only to EOL-only evidence")
+    if "allow_eol_only_force=worktree_only.eol_only_force_allowed" not in cleanup:
+        raise SystemExit("[FAIL] base worktree cleanup must bind --force only to EOL-only evidence")
+
     require(legacy_tests, (
         "test_lists_linked_worktree_with_branch_and_remote",
         "test_base_branch_linked_worktree_is_ready_for_worktree_only_cleanup",
         "test_cleanup_can_delete_matching_remote_branch_after_approval",
         "test_primary_worktree_is_blocked", "test_dirty_worktree_is_blocked",
+        "test_lists_eol_only_worktree_separately_from_dirty",
+        "test_eol_only_worktree_is_ready_for_cleanup_with_scoped_force_evidence",
+        "test_eol_only_worktree_cleanup_removes_without_reset_restore_or_clean",
+        "test_semantic_tracked_change_is_still_blocked",
     ), "existing cleanup regression tests")
 
     require(tracked_tests, (
@@ -103,6 +120,7 @@ def main() -> int:
         "test_worktree_only_choice_preserves_tracked_branch",
         "test_approved_tracked_local_branch_is_deleted_by_exact_sha",
         "test_approved_tracked_remote_branch_is_deleted_but_base_is_preserved",
+        "test_base_worktree_eol_only_noise_is_ready_and_removable",
         "test_unmerged_previous_branch_is_not_offered_for_deletion",
     ), "tracked previous branch regression tests")
 

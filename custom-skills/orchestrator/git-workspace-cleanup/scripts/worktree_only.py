@@ -11,7 +11,9 @@ from cleanup_lib import (
     CleanupError,
     PullRequestEvidence,
     branch_is_ancestor,
+    classify_worktree_status,
     current_branch,
+    encode_status_rows,
     github_auth_status,
     github_pull_requests,
     github_slug,
@@ -47,6 +49,9 @@ class WorktreeOnlyInspection:
     github_status: str
     worktree_snapshot: str
     status_snapshot: bytes
+    semantic_status_snapshot: bytes
+    eol_only_paths: tuple[str, ...]
+    eol_only_force_allowed: bool
     tracked_previous_branch: str | None
     tracked_previous_head_sha: str | None
     tracked_previous_remote_sha: str | None
@@ -117,7 +122,7 @@ def _fingerprint(
 ) -> str:
     digest = hashlib.sha256()
     payload = {
-        "version": "git-workspace-cleanup-worktree-only-v2",
+        "version": "git-workspace-cleanup-worktree-only-v3-eol-aware",
         "worktree": str(worktree),
         "branch": branch,
         "head": head,
@@ -162,8 +167,11 @@ def try_inspect_base_worktree(
         return None
 
     raw_status = status_bytes(root)
-    if raw_status:
-        raise CleanupError("worktree contains modified or untracked files; cleanup is blocked")
+    semantic_rows, eol_only_rows = classify_worktree_status(root, raw_status)
+    semantic_status = encode_status_rows(semantic_rows)
+    eol_only_paths = tuple(path for _status, path, _original in eol_only_rows)
+    if semantic_rows:
+        raise CleanupError("worktree contains semantic modified/staged/untracked files; cleanup is blocked")
 
     wt_raw = worktree_snapshot(root)
     worktrees = parse_worktrees(wt_raw)
@@ -270,6 +278,9 @@ def try_inspect_base_worktree(
         github_status=gh_status,
         worktree_snapshot=wt_raw,
         status_snapshot=raw_status,
+        semantic_status_snapshot=semantic_status,
+        eol_only_paths=eol_only_paths,
+        eol_only_force_allowed=bool(eol_only_paths) and not semantic_rows,
         tracked_previous_branch=tracked_branch,
         tracked_previous_head_sha=tracked_head,
         tracked_previous_remote_sha=tracked_remote_sha,

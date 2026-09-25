@@ -58,6 +58,9 @@ class CleanupInspection:
     remote_delete_available: bool
     worktree_snapshot: str
     status_snapshot: bytes
+    semantic_status_snapshot: bytes
+    eol_only_paths: tuple[str, ...]
+    eol_only_force_allowed: bool
     fingerprint: str
 
 
@@ -138,6 +141,103 @@ def status_bytes(root: Path) -> bytes:
         cwd=root,
         text=False,
     ).stdout
+
+
+def parse_status(raw: bytes) -> list[tuple[str, str, str | None]]:
+    parts = raw.split(b"\0")
+    rows: list[tuple[str, str, str | None]] = []
+    index = 0
+    while index < len(parts):
+        entry = parts[index]
+        if not entry:
+            index += 1
+            continue
+        if len(entry) < 4:
+            raise CleanupError(f"unexpected porcelain entry: {entry!r}")
+        status = entry[:2].decode("ascii", "replace")
+        path = entry[3:].decode("utf-8", "surrogateescape")
+        original = None
+        if "R" in status or "C" in status:
+            index += 1
+            if index >= len(parts) or not parts[index]:
+                raise CleanupError("rename/copy porcelain entry is missing the original path")
+            original = parts[index].decode("utf-8", "surrogateescape")
+        rows.append((status, path, original))
+        index += 1
+    return rows
+
+
+def _normalize_crlf(value: bytes) -> bytes:
+    return value.replace(b"\r\n", b"\n")
+
+
+def _looks_utf8_text(value: bytes) -> bool:
+    if b"\x00" in value:
+        return False
+    try:
+        value.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return True
+
+
+def _index_blob(root: Path, path: str) -> bytes | None:
+    result = run(["git", "show", f":{path}"], cwd=root, check=False, text=False)
+    if result.returncode != 0:
+        return None
+    return result.stdout
+
+
+def is_eol_only_worktree_change(
+    root: Path,
+    row: tuple[str, str, str | None],
+) -> bool:
+    status, path, original = row
+    if status != " M" or original is not None:
+        return False
+    target = root / path
+    if not target.is_file() or target.is_symlink():
+        return False
+    index = _index_blob(root, path)
+    if index is None:
+        return False
+    worktree = target.read_bytes()
+    if index == worktree:
+        return False
+    if not (_looks_utf8_text(index) and _looks_utf8_text(worktree)):
+        return False
+    return _normalize_crlf(index) == _normalize_crlf(worktree)
+
+
+def encode_status_rows(rows: list[tuple[str, str, str | None]]) -> bytes:
+    parts: list[bytes] = []
+    for status, path, original in rows:
+        parts.append(
+            status.encode("ascii", "replace")
+            + b" "
+            + path.encode("utf-8", "surrogateescape")
+        )
+        if original:
+            parts.append(original.encode("utf-8", "surrogateescape"))
+    return b"\0".join(parts) + (b"\0" if parts else b"")
+
+
+def classify_worktree_status(
+    root: Path,
+    raw: bytes | None = None,
+) -> tuple[
+    list[tuple[str, str, str | None]],
+    list[tuple[str, str, str | None]],
+]:
+    actual = status_bytes(root) if raw is None else raw
+    semantic: list[tuple[str, str, str | None]] = []
+    eol_only: list[tuple[str, str, str | None]] = []
+    for row in parse_status(actual):
+        if is_eol_only_worktree_change(root, row):
+            eol_only.append(row)
+        else:
+            semantic.append(row)
+    return semantic, eol_only
 
 
 def format_dirty_status(raw: bytes, limit: int = 8) -> str:
@@ -416,7 +516,7 @@ def fingerprint_payload(
 ) -> str:
     digest = hashlib.sha256()
     payload = {
-        "version": "dev-workspace-cleanup-v1",
+        "version": "dev-workspace-cleanup-v2-eol-aware",
         "worktree": str(worktree),
         "branch": branch,
         "head": head,
@@ -460,10 +560,13 @@ def inspect_cleanup(
     branch = current_branch(root)
     head = head_sha(root)
     raw_status = status_bytes(root)
-    if raw_status:
+    semantic_rows, eol_only_rows = classify_worktree_status(root, raw_status)
+    semantic_status = encode_status_rows(semantic_rows)
+    eol_only_paths = tuple(path for _status, path, _original in eol_only_rows)
+    if semantic_rows:
         raise CleanupError(
-            "worktree contains modified or untracked files; cleanup is blocked\n"
-            + format_dirty_status(raw_status)
+            "worktree contains semantic modified/staged/untracked files; cleanup is blocked\n"
+            + format_dirty_status(semantic_status)
         )
 
     wt_raw = worktree_snapshot(root)
@@ -568,6 +671,9 @@ def inspect_cleanup(
         remote_delete_available=delete_available,
         worktree_snapshot=wt_raw,
         status_snapshot=raw_status,
+        semantic_status_snapshot=semantic_status,
+        eol_only_paths=eol_only_paths,
+        eol_only_force_allowed=bool(eol_only_paths) and not semantic_rows,
         fingerprint=fingerprint,
     )
 

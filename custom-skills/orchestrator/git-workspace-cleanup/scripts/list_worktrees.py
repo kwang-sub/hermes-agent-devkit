@@ -9,6 +9,7 @@ import sys
 
 from cleanup_lib import (
     CleanupError,
+    classify_worktree_status,
     emit,
     parse_worktrees,
     remote_branch_sha,
@@ -72,7 +73,14 @@ def main() -> int:
             if entry.path.is_dir() and not entry.prunable:
                 try:
                     add_process_safe_directory(entry.path)
-                    clean_state = "CLEAN" if not status_bytes(entry.path) else "DIRTY"
+                    raw_status = status_bytes(entry.path)
+                    semantic_rows, eol_only_rows = classify_worktree_status(entry.path, raw_status)
+                    if semantic_rows:
+                        clean_state = "DIRTY"
+                    elif eol_only_rows:
+                        clean_state = "EOL_ONLY"
+                    else:
+                        clean_state = "CLEAN"
                 except CleanupError:
                     clean_state = "UNKNOWN"
 
