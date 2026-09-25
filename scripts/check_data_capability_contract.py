@@ -117,7 +117,7 @@ checks = {
         "MODEL_CHANGE", "SCHEMA_CHANGE", "MIGRATION", "PERFORMANCE",
     )),
     "default dbml example": (example_dbml, (
-        "Table account", "id bigint [pk]", "Table transaction",
+        "Table account", "id bigint [pk, note: '계좌 ID']", "Table transaction",
         "account_id bigint [not null, note: '계좌 ID']", "Note: '''", "계좌", "거래", "TableGroup finance",
         "Ref: transaction.account_id > account.id",
     )),
