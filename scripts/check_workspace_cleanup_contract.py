@@ -68,7 +68,8 @@ def main() -> int:
         "checkout: moving from", "tracked_previous_branch", "tracked_previous_head_sha",
         "tracked_previous_merge_evidence", "tracked_previous_cleanup_allowed",
         "tracked_previous_remote_delete_available", "github_pull_requests",
-        "branch_is_ancestor", "git-workspace-cleanup-worktree-only-v2",
+        "branch_is_ancestor", "git-workspace-cleanup-worktree-only-v3-eol-aware",
+        "classify_worktree_status", "eol_only_force_allowed",
         "the primary worktree cannot be removed by git-workspace-cleanup",
     ), "base-worktree previous-branch tracking")
 
@@ -96,6 +97,13 @@ def main() -> int:
         '"clean"', '"stash"', "rm -rf", '"config", "--global", "--add", "safe.directory"',
     ), "cleanup mutation helper")
 
+    if cleanup.count('command.append("--force")') != 1:
+        raise SystemExit("[FAIL] cleanup mutation helper must have exactly one scoped worktree --force insertion")
+    if "allow_eol_only_force=state.eol_only_force_allowed" not in cleanup:
+        raise SystemExit("[FAIL] feature worktree cleanup must bind --force only to EOL-only evidence")
+    if "allow_eol_only_force=worktree_only.eol_only_force_allowed" not in cleanup:
+        raise SystemExit("[FAIL] base worktree cleanup must bind --force only to EOL-only evidence")
+
     require(legacy_tests, (
         "test_lists_linked_worktree_with_branch_and_remote",
         "test_base_branch_linked_worktree_is_ready_for_worktree_only_cleanup",
@@ -112,6 +120,7 @@ def main() -> int:
         "test_worktree_only_choice_preserves_tracked_branch",
         "test_approved_tracked_local_branch_is_deleted_by_exact_sha",
         "test_approved_tracked_remote_branch_is_deleted_but_base_is_preserved",
+        "test_base_worktree_eol_only_noise_is_ready_and_removable",
         "test_unmerged_previous_branch_is_not_offered_for_deletion",
     ), "tracked previous branch regression tests")
 
