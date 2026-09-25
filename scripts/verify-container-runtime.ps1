@@ -127,6 +127,10 @@ Invoke-DockerExactOutputCheck -Label "Standalone pnpm 12.5.1 runtime" -DockerArg
 Invoke-DockerCheck -Label "Hermes CLI stable path" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "/usr/local/bin/hermes", "--help"
 )
+Invoke-DockerCheck -Label "Kanban board inventory CLI" -DockerArgs @(
+    "exec", "--user", "hermes", $Container,
+    "/opt/hermes/.venv/bin/hermes", "kanban", "boards", "list", "--json"
+)
 
 $S6ScandirWriteProbe = @'
 from pathlib import Path
