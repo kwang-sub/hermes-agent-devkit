@@ -299,7 +299,10 @@ if leaked:
     raise SystemExit(f"Codex/delegate native child leaked Kanban ownership env: {leaked}")
 
 required_tools = {
+    "kanban_list",
     "kanban_show",
+    "kanban_comment",
+    "kanban_unblock",
     "kanban_complete",
     "kanban_block",
     "kanban_request_review",
@@ -342,6 +345,16 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[OK] Upstream Codex scoped Kanban MCP contract"
 
+Invoke-DockerCheck -Label "Task Recovery orchestrator capability" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "test", "-f",
+    "/opt/custom-skills/orchestrator/dev-task-recovery/SKILL.md"
+)
+Invoke-DockerCheck -Label "Task Recovery board inventory helper" -DockerArgs @(
+    "exec", "--user", "hermes", $Container,
+    "/opt/hermes/.venv/bin/python",
+    "/opt/custom-skills/orchestrator/dev-task-recovery/scripts/recovery_board_inventory.py",
+    "--help"
+)
 Invoke-DockerCheck -Label "Shared custom skill root" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "test", "-d", "/opt/custom-skills/shared"
 )
