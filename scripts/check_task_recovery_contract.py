@@ -101,7 +101,7 @@ def main() -> int:
     require(
         inventory,
         (
-            '["kanban", "boards", "list", "--json"]',
+            '"kanban", "boards", "list", "--json"',
             "BOARD_INVENTORY_UNAVAILABLE",
             "parse_board_payload",
             "normalize_boards",
