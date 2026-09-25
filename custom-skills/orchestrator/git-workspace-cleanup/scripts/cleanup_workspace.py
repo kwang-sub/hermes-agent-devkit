@@ -98,6 +98,10 @@ def emit_base_result(state, *, worktree_removed: bool, tracked_local, tracked_re
     emit("BASE_BRANCH", state.base_branch)
     emit("MERGE_EVIDENCE", "base-branch-worktree")
     emit("WORKTREE_REMOVED", str(worktree_removed).lower())
+    emit(
+        "WORKTREE_REMOVE_MODE",
+        "eol-only-force" if state.eol_only_force_allowed else "normal",
+    )
     emit("LOCAL_BRANCH_REMOVED", "preserved-base")
     emit("REMOTE_BRANCH_REMOVED", "preserved-base")
     emit("TRACKED_PREVIOUS_BRANCH", state.tracked_previous_branch)
@@ -295,6 +299,10 @@ def main() -> int:
         emit("BASE_BRANCH", state.base_branch)
         emit("MERGE_EVIDENCE", state.merge_evidence)
         emit("WORKTREE_REMOVED", str(worktree_removed).lower())
+        emit(
+            "WORKTREE_REMOVE_MODE",
+            "eol-only-force" if state.eol_only_force_allowed else "normal",
+        )
         emit("LOCAL_BRANCH_REMOVED", str(local_branch_removed).lower())
         emit("REMOTE_BRANCH_REMOVED", str(remote_branch_removed).lower() if args.delete_remote else "skipped")
         return 0
