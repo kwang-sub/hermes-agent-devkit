@@ -304,6 +304,16 @@ migrations/          = 복잡하거나 위험한 migration 계획/evidence
 
 Canonical logical DBML은 Subject Area를 `TableGroup`으로 표현한다. 물리 table 이름을 논리 DBML의 source of truth로 만들지 않는다.
 
+Canonical logical DBML의 사람이 읽는 논리명/설명은 DBML 표준 `Note`를 사용한다.
+
+```text
+Table Note 첫 줄   = 한글 논리 테이블명
+Table Note 다음 문단 = 테이블 책임/업무 의미 설명
+Column note        = 한글 논리 컬럼명
+```
+
+영문 lowercase snake_case table/column 식별자는 유지하며, 별도 `logical_name` custom property를 DevKit canonical 규격으로 정의하지 않는다. 이 규칙은 특정 IDE plugin이나 외부 DBML renderer에 종속되지 않는 문서 계약이다. 기존 프로젝트에 명시적인 DBML 문서 규격이 있으면 PROJECT_EXISTING을 우선한다.
+
 기존 프로젝트가 다른 ERD/schema-as-code 규칙을 이미 사용하면 기존 규칙이 우선한다.
 
 DBML Canvas, dbdiagram.io 같은 시각화 도구는 `schema.dbml`의 Human View다. DevKit 실행 자체가 특정 IDE plugin이나 외부 웹 서비스에 의존하지 않는다.
