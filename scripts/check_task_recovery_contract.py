@@ -11,6 +11,10 @@ INVENTORY = ROOT / "custom-skills/orchestrator/dev-task-recovery/scripts/recover
 INVENTORY_TEST = ROOT / "custom-skills/orchestrator/dev-task-recovery/tests/test_recovery_board_inventory.py"
 WORKFLOW = ROOT / "custom-skills/orchestrator/dev-workflow-orchestrate/SKILL.md"
 WORKFLOW_DETAILS = ROOT / "custom-skills/orchestrator/dev-workflow-orchestrate/references/workflow-details.md"
+CODER = ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md"
+CODER_DETAILS = ROOT / "custom-skills/coder/dev-implement-plan/references/implementation-details.md"
+REVIEWER = ROOT / "custom-skills/reviewer/dev-code-review/SKILL.md"
+REVIEWER_DETAILS = ROOT / "custom-skills/reviewer/dev-code-review/references/review-details.md"
 APPROVAL = ROOT / "shared/references/approval-gate-rules.md"
 README = ROOT / "README.md"
 
@@ -37,6 +41,10 @@ def main() -> int:
     read_required(INVENTORY_TEST, "recovery board inventory tests")
     workflow = read_required(WORKFLOW, "dev-workflow-orchestrate skill")
     workflow_details = read_required(WORKFLOW_DETAILS, "dev-workflow-orchestrate details")
+    coder = read_required(CODER, "dev-implement-plan skill")
+    coder_details = read_required(CODER_DETAILS, "dev-implement-plan details")
+    reviewer = read_required(REVIEWER, "dev-code-review skill")
+    reviewer_details = read_required(REVIEWER_DETAILS, "dev-code-review details")
     approval = read_required(APPROVAL, "approval gate rules")
     readme = read_required(README, "README")
 
@@ -142,6 +150,58 @@ def main() -> int:
             "REPLACEMENT_REQUIRED",
         ),
         "dev-workflow-orchestrate recovery details",
+    )
+
+    require(
+        coder,
+        (
+            "Approved Recovery Revision Contract",
+            "TASK_RECOVERY_RETRY_V<N>",
+            "TASK_RECOVERY_REVISION_V<N>",
+            "TASK_RECOVERY_ESCALATION_V<N>",
+            "Effective Task Contract",
+            "RECOVERY_CONTRACT_INVALID",
+            "Recovery Contract: NONE | RETRY_SAME_CONTRACT | SAME_TASK_RESUME",
+        ),
+        "coder recovery contract",
+    )
+
+    require(
+        coder_details,
+        (
+            "Task Recovery Revision 적용",
+            "Latest Approved Revision 선택",
+            "Original Task body / Work Unit Contract / existing approved spec",
+            "Revision Authority: LATEST_APPROVED_RECOVERY_REVISION",
+            "REPLACEMENT_REQUIRED marker",
+            "Recovery Delta Applied",
+        ),
+        "coder recovery details",
+    )
+
+    require(
+        reviewer,
+        (
+            "Recovery Revision Review Gate",
+            "Effective Review Contract",
+            "Latest Approved Recovery Revision",
+            "RECOVERY_CONTRACT_INVALID",
+            "Recovery Delta Applied",
+        ),
+        "reviewer recovery contract",
+    )
+
+    require(
+        reviewer_details,
+        (
+            "Recovery Revision Review Contract",
+            "TASK_RECOVERY_REVISION_V<N>",
+            "Revision Authority: LATEST_APPROVED_RECOVERY_REVISION",
+            "RETRY_SAME_CONTRACT",
+            "REPLACEMENT_REQUIRED",
+            "Recovery Acceptance Criteria",
+        ),
+        "reviewer recovery details",
     )
 
     require(
