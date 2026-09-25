@@ -209,7 +209,7 @@ class WorkspaceCleanupTests(unittest.TestCase):
         (self.f.worktree / "untracked.txt").write_text("keep\n", encoding="utf-8")
         result = self.prepare()
         self.assertEqual(result.returncode, 2)
-        self.assertIn("modified or untracked files", result.stderr)
+        self.assertIn("semantic modified/staged/untracked files", result.stderr)
 
     def test_open_pr_is_blocked(self):
         result = self.prepare(env=self.f.fake_github("open"))
