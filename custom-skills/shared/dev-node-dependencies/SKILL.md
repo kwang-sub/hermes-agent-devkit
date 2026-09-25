@@ -1,7 +1,7 @@
 ---
 name: dev-node-dependencies
 description: Node.js 프로젝트의 Frontend 실행 전 pnpm toolchain 환경 Gate와 dependency 추가·삭제·복원, pnpm-lock.yaml 검증, Tirith security preflight를 제공하는 공통 capability skill.
-version: 0.2.3
+version: 0.2.4
 author: local
 platforms: [linux]
 metadata:
@@ -200,18 +200,64 @@ helper는 직접 project config를 수정하거나 dependency script를 실행�
 
 DevKit 기본 승인 matcher는 registry dependency의 **`package@exact-version`** 이다. bare package 전체, version range, 모든 package 전역 승인은 자동 승인하지 않는다. 더 넓은 범위가 실제로 필요하면 별도 명시적 정책 결정으로 취급한다.
 
+### Build Policy Bootstrap Batch Gate
+
+pnpm toolchain migration 또는 새 lockfile을 처음 안정화할 때 build-script approval을 dependency마다 하나씩 묻지 않는다. **첫 isolated restore에서 발견 가능한 미검토 build package 전체를 한 batch로 수집한 뒤 한 번만 사용자 결정을 요청한다.**
+
+초기 흐름:
+
+```text
+pnpm toolchain + pnpm-lock.yaml 준비
+→ isolated frozen restore 1회
+→ 성공: build approval 없음, 그대로 검증
+→ ERR_PNPM_IGNORED_BUILDS:
+   1. 해당 restore 출력에서 package@version 전체 수집
+   2. 같은 RESTORE_WORKDIR에서 read-only `pnpm ignored-builds` 1회 실행
+   3. 이미 allowBuilds=true/false인 matcher 제외
+   4. 남은 미검토 matcher 전체를 하나의 REVIEW_BATCH로 제시
+   5. 사용자에게 batch 승인/거부 1회 요청
+```
+
+`pnpm ignored-builds`는 pnpm 공식 read-only 진단 명령으로만 사용한다. source worktree 검증 fallback이나 dependency mutation으로 취급하지 않으며 **실패한 isolated restore의 `RESTORE_WORKDIR`에서만** pending build 목록 확인에 사용한다.
+
+사용자가 여러 항목을 한 번에 결정하면 helper에 여러 `--approve` / `--deny`를 전달한다.
+
+```bash
+python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/pnpm_build_policy.py \
+  --workspace "<Task Workspace>" \
+  [--cwd "<package root>"] \
+  --approve "unrs-resolver@1.12.2" \
+  --approve "esbuild@0.25.9" \
+  --deny "example-package@1.0.0"
+```
+
+batch evidence:
+
+```text
+PNPM_BUILD_POLICY_DECISION_MODE=BATCH
+PNPM_BUILD_POLICY_DECISION_COUNT=<N>
+PNPM_BUILD_POLICY_APPROVAL_COUNT=<N>
+PNPM_BUILD_POLICY_DENIAL_COUNT=<N>
+PNPM_BUILD_POLICY_BATCH_APPROVALS=<...|NONE>
+PNPM_BUILD_POLICY_BATCH_DENIALS=<...|NONE>
+```
+
+승인/거부를 `pnpm-workspace.yaml > allowBuilds`에 한 번 반영한 뒤 dependency preflight와 isolated frozen restore를 **한 번만 재시도**한다. 동일 package graph에서 두 번째 restore가 새로운 미검토 matcher를 추가로 발견하면 자동 반복 승인 루프를 만들지 않고 `PNPM_BUILD_POLICY_DISCOVERY_INCOMPLETE`로 BLOCK하여 왜 첫 batch에 포함되지 않았는지 조사한다. package.json/pnpm-lock.yaml이 중간에 변경되어 dependency graph 자체가 바뀐 경우에만 새 batch로 취급한다.
+
+일반 기능 Task에서 이미 Git에 결정된 build policy가 있으면 이 bootstrap batch를 다시 실행하지 않는다.
+
 ### ERR_PNPM_IGNORED_BUILDS 처리
 
 isolated `pnpm install --frozen-lockfile`에서 이 오류가 발생하면 dependency restore 실패와 application source 오류를 구분한다.
 
 ```text
 ERR_PNPM_IGNORED_BUILDS
-→ pnpm output의 미검토 package@version 전체 수집
+→ pnpm output + isolated `pnpm ignored-builds`로 미검토 package@version 전체 수집
 → PNPM_BUILD_POLICY_REVIEW_REQUIRED
-→ 사용자에게 한 번에 승인/거부 요청
-→ 승인된 exact matcher를 allowBuilds에 기록
+→ REVIEW_BATCH 1개로 사용자에게 한 번에 승인/거부 요청
+→ 승인/거부 exact matcher 전체를 allowBuilds에 한 번 기록
 → dependency preflight 재실행
-→ isolated frozen restore 재실행
+→ isolated frozen restore 1회 재실행
 → test/lint/typecheck/build 재개
 ```
 
@@ -280,6 +326,9 @@ RESTORE_REQUIRED
 INSTALL_COMMAND
 RESTORE_COMMAND
 RESTORE_MARK_COMMAND
+BUILD_REVIEW_MODE
+BUILD_REVIEW_COMMAND
+BUILD_REVIEW_WORKDIR
 INSTALL_TIMEOUT_SECONDS
 STATUS=pass
 ```
@@ -483,7 +532,9 @@ Canonical Lockfile: .../pnpm-lock.yaml
 Lockfile Present Before: true | false
 Tirith Preflight: allow | approval_required | unavailable
 Tirith Actual Guard: allow | approval_required | block | not_run
-pnpm Build Policy: PASS | REVIEW_REQUIRED | BLOCKED
+pnpm Build Policy: PASS | REVIEW_REQUIRED | DISCOVERY_INCOMPLETE | BLOCKED
+Build Policy Review Mode: BATCH | NOT_REQUIRED
+Build Policy Review Count: <N | 0>
 pnpm Build Policy File: <.../pnpm-workspace.yaml | NOT_PRESENT>
 Approved Builds: <package@version,... | NONE>
 Denied Builds: <package@version,... | NONE>
@@ -492,6 +543,9 @@ Install Workdir: ... | NOT_REQUIRED
 Restore Command: ... | NOT_REQUIRED
 Restore Workdir: ... | NOT_REQUIRED
 Restore Mark Command: ... | NOT_REQUIRED
+Build Review Mode: SINGLE_REVIEW_BATCH | NOT_REQUIRED
+Build Review Command: pnpm ignored-builds | NOT_REQUIRED
+Build Review Workdir: ... | NOT_REQUIRED
 Dependency Fingerprint: ...
 Dependencies Ready: true | false
 Verification Package Root: ...
@@ -516,6 +570,8 @@ Residual Risk:
 - 승인 `true`의 기본 matcher는 `package@exact-version`이다.
 - `dangerouslyAllowAllBuilds=true`, `strictDepBuilds=false`, `pnpm approve-builds --all`을 자동 사용하지 않는다.
 - 같은 approved/denied matcher를 반복 승인받지 않는다.
+- 초기 pnpm 안정화에서 미검토 build dependency를 package별로 연속 BLOCK하지 않고 하나의 batch로 수집한다.
+- 동일 dependency graph의 batch 승인 후 두 번째 신규 matcher가 나오면 자동 반복하지 않고 discovery incomplete로 BLOCK한다.
 - dependency mutation은 Tirith actual guard를 우회하지 않는다.
 - 동일 실패 command를 자동 반복하지 않는다.
 - 별도 Hermes 전용 Node version 설정 파일을 만들지 않는다.

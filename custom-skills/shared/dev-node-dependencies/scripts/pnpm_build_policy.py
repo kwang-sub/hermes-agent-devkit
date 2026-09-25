@@ -186,6 +186,11 @@ def build_decision_plan(
     return {
         "allow_builds": merged,
         "allow_builds_json": allow_json,
+        "approval_count": len(normalized_approvals),
+        "denial_count": len(normalized_denials),
+        "decision_count": len(normalized_approvals) + len(normalized_denials),
+        "approvals": normalized_approvals,
+        "denials": normalized_denials,
         "commands": [
             "pnpm config set --location=project --json strictDepBuilds true",
             "pnpm config set --location=project --json dangerouslyAllowAllBuilds false",
@@ -257,6 +262,18 @@ def main() -> int:
                 denials=args.deny,
             )
             print("PNPM_BUILD_POLICY_DECISION=READY")
+            print("PNPM_BUILD_POLICY_DECISION_MODE=BATCH")
+            print(f"PNPM_BUILD_POLICY_DECISION_COUNT={plan['decision_count']}")
+            print(f"PNPM_BUILD_POLICY_APPROVAL_COUNT={plan['approval_count']}")
+            print(f"PNPM_BUILD_POLICY_DENIAL_COUNT={plan['denial_count']}")
+            print(
+                "PNPM_BUILD_POLICY_BATCH_APPROVALS="
+                + (",".join(plan["approvals"]) if plan["approvals"] else "NONE")
+            )
+            print(
+                "PNPM_BUILD_POLICY_BATCH_DENIALS="
+                + (",".join(plan["denials"]) if plan["denials"] else "NONE")
+            )
             print(f"PNPM_ALLOW_BUILDS_JSON={plan['allow_builds_json']}")
             for index, command in enumerate(plan["commands"], start=1):
                 print(f"POLICY_UPDATE_COMMAND_{index}={command}")

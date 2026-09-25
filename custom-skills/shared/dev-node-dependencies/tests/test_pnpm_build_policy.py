@@ -148,6 +148,37 @@ def test_decision_plan_merges_existing_policy_and_uses_pnpm_config_set() -> None
         assert "pnpm config set --location=project --json allowBuilds" in result.stdout
 
 
+def test_batch_decision_reports_all_approvals_and_denials_once() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        workspace, env = make_workspace(Path(tmp))
+        result = run_policy(
+            workspace,
+            env,
+            "--approve",
+            "unrs-resolver@1.12.2",
+            "--approve",
+            "esbuild@0.25.9",
+            "--deny",
+            "telemetry-package@1.0.0",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "PNPM_BUILD_POLICY_DECISION_MODE=BATCH" in result.stdout
+        assert "PNPM_BUILD_POLICY_DECISION_COUNT=3" in result.stdout
+        assert "PNPM_BUILD_POLICY_APPROVAL_COUNT=2" in result.stdout
+        assert "PNPM_BUILD_POLICY_DENIAL_COUNT=1" in result.stdout
+        assert (
+            "PNPM_BUILD_POLICY_BATCH_APPROVALS=esbuild@0.25.9,unrs-resolver@1.12.2"
+            in result.stdout
+        )
+        assert (
+            "PNPM_BUILD_POLICY_BATCH_DENIALS=telemetry-package@1.0.0"
+            in result.stdout
+        )
+        assert '"esbuild@0.25.9":true' in result.stdout
+        assert '"unrs-resolver@1.12.2":true' in result.stdout
+        assert '"telemetry-package@1.0.0":false' in result.stdout
+
+
 def test_decision_plan_requires_exact_version() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         workspace, env = make_workspace(Path(tmp))
@@ -164,6 +195,7 @@ def main() -> int:
         test_exact_approval_passes_and_new_version_is_not_implicitly_approved,
         test_broad_true_approval_is_blocked,
         test_decision_plan_merges_existing_policy_and_uses_pnpm_config_set,
+        test_batch_decision_reports_all_approvals_and_denials_once,
         test_decision_plan_requires_exact_version,
     )
     for test in tests:

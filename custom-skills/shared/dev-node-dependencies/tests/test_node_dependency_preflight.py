@@ -154,6 +154,9 @@ class NodeDependencyPreflightTest(unittest.TestCase):
         )
         self.assertIn(f"INSTALL_WORKDIR={self.frontend}", proc.stdout)
         self.assertIn("RESTORE_COMMAND=NOT_REQUIRED", proc.stdout)
+        self.assertIn("BUILD_REVIEW_MODE=SINGLE_REVIEW_BATCH", proc.stdout)
+        self.assertIn("BUILD_REVIEW_COMMAND=NOT_REQUIRED", proc.stdout)
+        self.assertIn("BUILD_REVIEW_WORKDIR=NOT_REQUIRED", proc.stdout)
         isolated = Path(
             output_value(proc.stdout, "VERIFICATION_PACKAGE_ROOT")
         )
@@ -195,6 +198,9 @@ class NodeDependencyPreflightTest(unittest.TestCase):
         )
         self.assertIn(f"RESTORE_WORKDIR={isolated}", proc.stdout)
         self.assertIn("RESTORE_MARK_COMMAND=python3 ", proc.stdout)
+        self.assertIn("BUILD_REVIEW_MODE=SINGLE_REVIEW_BATCH", proc.stdout)
+        self.assertIn("BUILD_REVIEW_COMMAND=pnpm ignored-builds", proc.stdout)
+        self.assertIn(f"BUILD_REVIEW_WORKDIR={isolated}", proc.stdout)
         self.assertNotEqual(isolated, self.frontend)
         self.assertFalse(
             (isolated / "node_modules" / "react" / "package.json").exists()

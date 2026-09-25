@@ -1,7 +1,7 @@
 ---
 name: dev-project-bootstrap
 description: Git Project와 사용자 승인 Non-Git Project를 Hermes Managed Project로 idempotent하게 등록하고, Version Control Gate·Fast Preflight·기술 스택/Infrastructure cache·Java toolchain·환경설정 보안·Kanban/Profile/Context/.hermes/project.yaml을 보장한다. resolver 값은 사용자가 직접 관리한다.
-version: 0.7.0
+version: 0.7.1
 author: local
 platforms: [linux]
 metadata:
@@ -154,6 +154,27 @@ backend_skills
 ```
 
 현재 detector가 지원하는 Backend는 JVM/Spring이지만 이 metadata 구조는 특정 Backend 생태계에 고정하지 않는다. 향후 실제 Python/FastAPI 등 capability를 추가할 때 detector mapping과 Skill/CI만 확장하고 project metadata schema를 다시 바꾸지 않는 것을 목표로 한다.
+
+## Node / pnpm Bootstrap Boundary
+
+일반 Project 등록 Bootstrap은 dependency install/build script를 실행하지 않는다. 따라서 단순 `dev-project-bootstrap` 실행만으로 모든 transitive build dependency를 미리 승인하려고 하지 않는다.
+
+대신 bounded manifest 탐색에서 Node/pnpm project가 확인되고 별도 **pnpm toolchain migration/bootstrap Work Unit**이 필요한 경우 Orchestrator handoff에 다음 계약을 포함한다.
+
+```text
+Node Toolchain Bootstrap: REQUIRED
+Build Policy Bootstrap: SINGLE_REVIEW_BATCH
+Build Policy Source: pnpm-workspace.yaml > allowBuilds
+Build Discovery:
+- first isolated frozen restore output
+- pnpm ignored-builds (isolated RESTORE_WORKDIR, read-only, 1회)
+Build Approval Scope: package@exact-version
+Build Approval Reuse: SAME_MATCHER_NO_REPROMPT
+```
+
+즉 Project 등록 자체는 빠르고 비파괴적으로 유지하되, 실제 pnpm migration이 lockfile과 isolated dependency tree를 처음 준비하는 시점에 build-script dependency 전체를 한 batch로 수집한다. build script가 필요한 dependency가 없으면 사용자 승인 Gate 자체가 발생하지 않는다.
+
+동일 dependency graph에서는 package별 연속 승인 요청을 만들지 않는다. 첫 batch 결정 반영 후 restore에서 새로운 미검토 matcher가 추가로 나타나면 자동 반복 승인하지 않고 `PNPM_BUILD_POLICY_DISCOVERY_INCOMPLETE`로 올려 원인을 조사한다.
 
 ## 2. Technology Stack Cache
 

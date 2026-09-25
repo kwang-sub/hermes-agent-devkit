@@ -14,6 +14,7 @@ for name in required_skills:
 
 pattern = (ROOT / "custom-skills/orchestrator/dev-project-pattern/SKILL.md").read_text(encoding="utf-8")
 breakdown = (ROOT / "custom-skills/orchestrator/dev-breakdown/SKILL.md").read_text(encoding="utf-8")
+project_bootstrap = (ROOT / "custom-skills/orchestrator/dev-project-bootstrap/SKILL.md").read_text(encoding="utf-8")
 coder = (ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md").read_text(encoding="utf-8")
 frontend = (ROOT / "custom-skills/shared/dev-frontend-feature/SKILL.md").read_text(encoding="utf-8")
 official_docs = (ROOT / "custom-skills/shared/dev-official-docs-context/SKILL.md").read_text(encoding="utf-8")
@@ -78,7 +79,15 @@ checks = {
         "Frontend Environment Gate: REQUIRED", "BLOCK_AND_SPLIT_MIGRATION",
         "LINUX_ISOLATED_NODE_RUNTIME", "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED",
         "pnpm Build Policy Source: pnpm-workspace.yaml", "package@exact-version",
-        "SAME_MATCHER_NO_REPROMPT",
+        "SAME_MATCHER_NO_REPROMPT", "SINGLE_REVIEW_BATCH",
+        "RESTORE_OUTPUT_PLUS_PNPM_IGNORED_BUILDS",
+    )),
+    "project bootstrap pnpm boundary": (project_bootstrap, (
+        "Node / pnpm Bootstrap Boundary", "Node Toolchain Bootstrap: REQUIRED",
+        "Build Policy Bootstrap: SINGLE_REVIEW_BATCH",
+        "Build Policy Source: pnpm-workspace.yaml > allowBuilds",
+        "pnpm ignored-builds", "package@exact-version",
+        "SAME_MATCHER_NO_REPROMPT", "PNPM_BUILD_POLICY_DISCOVERY_INCOMPLETE",
     )),
     "coder frontend gate": (coder, (
         'skill_view("dev-frontend-feature")', "첫 Node command",
@@ -86,7 +95,8 @@ checks = {
         "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED", "kanban_block",
         "source worktree", "node_runtime.py", "Linux isolated workspace",
         "ERR_PNPM_IGNORED_BUILDS", "pnpm_build_policy.py", "POLICY_UPDATE_COMMAND_",
-        "pnpm-workspace.yaml > allowBuilds",
+        "pnpm-workspace.yaml > allowBuilds", "pnpm ignored-builds",
+        "PNPM_BUILD_POLICY_DECISION_MODE=BATCH", "PNPM_BUILD_POLICY_DISCOVERY_INCOMPLETE",
     )),
     "frontend entry": (frontend, (
         "canonical entry", "REFERENCE_DRIVEN", "CODE_DRIVEN",
@@ -123,7 +133,10 @@ checks = {
         "RESTORE_WORKDIR", "pnpm Standard Build Policy", "pnpm-workspace.yaml",
         "allowBuilds", "strictDepBuilds", "dangerouslyAllowAllBuilds",
         "package@exact-version", "pnpm_build_policy.py", "POLICY_UPDATE_COMMAND_",
-        "ERR_PNPM_IGNORED_BUILDS", "별도 Hermes 전용 Node version 설정 파일을 만들지 않는다",
+        "ERR_PNPM_IGNORED_BUILDS", "Build Policy Bootstrap Batch Gate",
+        "pnpm ignored-builds", "PNPM_BUILD_POLICY_DECISION_MODE=BATCH",
+        "PNPM_BUILD_POLICY_DISCOVERY_INCOMPLETE",
+        "별도 Hermes 전용 Node version 설정 파일을 만들지 않는다",
     )),
     "node dependency preflight": (node_preflight, (
         "PNPM_LOCKFILE", "LEGACY_LOCKFILES", "os.walk", "SKIP_DIRS",
@@ -132,6 +145,8 @@ checks = {
         "EXTRANEOUS_PRESENT", "VERIFICATION_PACKAGE_ROOT", "INSTALL_REQUIRED", "INSTALL_WORKDIR",
         "DEPENDENCY_FINGERPRINT", "DEPENDENCIES_READY",
         "RESTORE_REQUIRED", "RESTORE_COMMAND", "RESTORE_WORKDIR", "RESTORE_MARK_COMMAND",
+        "BUILD_REVIEW_MODE=SINGLE_REVIEW_BATCH", "BUILD_REVIEW_COMMAND",
+        '"pnpm ignored-builds"', "BUILD_REVIEW_WORKDIR",
         "INSTALL_TIMEOUT_SECONDS = 600", "STATUS=pass", "STATUS=blocked",
     )),
     "pnpm build policy": (pnpm_build_policy, (
@@ -141,6 +156,10 @@ checks = {
         "PNPM_BUILD_POLICY_SCOPE_TOO_BROAD", "PNPM_BUILD_POLICY_MATCHER_NOT_EXACT",
         "package@version", "pnpm config set --location=project --json allowBuilds",
         "POLICY_UPDATE_COMMAND_", "PNPM_BUILD_POLICY_DECISION=READY",
+        "PNPM_BUILD_POLICY_DECISION_MODE=BATCH",
+        "PNPM_BUILD_POLICY_DECISION_COUNT",
+        "PNPM_BUILD_POLICY_BATCH_APPROVALS",
+        "PNPM_BUILD_POLICY_BATCH_DENIALS",
     )),
     "node environment gate": (node_environment_gate, (
         "PNPM_LOCKFILE", "LEGACY_LOCKFILES", "devEngines.runtime", "devEngines.packageManager",
@@ -252,7 +271,9 @@ checks = {
         "DESIGN_CONFORMANCE", "VISUAL_REGRESSION", "Storybook", "Stack Detection != Skill Loading",
         "Frontend Node environment boundary", "node_environment_gate.py",
         "pnpm dependency build policy", "pnpm-workspace.yaml", "allowBuilds",
-        "package@exact-version", "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED", "source worktree", "patch-package",
+        "package@exact-version", "SINGLE_REVIEW_BATCH", "pnpm ignored-builds",
+        "PNPM_BUILD_POLICY_DISCOVERY_INCOMPLETE",
+        "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED", "source worktree", "patch-package",
     )),
 }
 for label, (text, terms) in checks.items():

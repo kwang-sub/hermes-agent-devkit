@@ -211,7 +211,7 @@ pnpm-workspace.yaml
 
 Hermes 전용 allowlist를 만들지 않는다. `strictDepBuilds=true`를 fail-closed 기준으로 유지하고 `dangerouslyAllowAllBuilds=true`, `strictDepBuilds=false`, `pnpm approve-builds --all`을 자동 사용하지 않는다.
 
-`ERR_PNPM_IGNORED_BUILDS`가 발생하면 미검토 package/version을 한 번에 사용자에게 보여 승인/거부를 받는다. 결정은 `pnpm-workspace.yaml`에 Git 관리하고 같은 matcher는 다시 묻지 않는다. 새 version은 기존 exact matcher와 다르므로 다시 검토한다. build policy 변경은 dependency fingerprint를 변경시켜 isolated frozen restore를 다시 요구한다.
+`ERR_PNPM_IGNORED_BUILDS`가 발생하면 package별로 하나씩 묻지 않는다. 첫 isolated restore output과 같은 `RESTORE_WORKDIR`의 read-only `pnpm ignored-builds` 결과를 합쳐 현재 dependency graph의 미검토 package/version 전체를 `SINGLE_REVIEW_BATCH`로 사용자에게 보여 승인/거부를 받는다. 결정은 `pnpm-workspace.yaml`에 Git 관리하고 같은 matcher는 다시 묻지 않는다. 새 version은 기존 exact matcher와 다르므로 다시 검토한다. build policy 변경은 dependency fingerprint를 변경시켜 isolated frozen restore를 다시 요구한다. 동일 graph에서 batch 반영 후 또 다른 미검토 matcher가 나오면 자동 반복하지 않고 `PNPM_BUILD_POLICY_DISCOVERY_INCOMPLETE`로 분류한다.
 
 ### Node dependency mutation boundary
 

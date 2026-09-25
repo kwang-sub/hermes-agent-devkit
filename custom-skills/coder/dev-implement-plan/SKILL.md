@@ -95,7 +95,11 @@ Applicable Skills와 실제 현재 Work Unit만 기준으로 필요한 capabilit
 
 Frontend/Node Work Unit은 `dev-frontend-feature`를 load한 뒤 **첫 Node command 전에** `node_environment_gate.py`를 실행한다. `FRONTEND_ENVIRONMENT_GATE=BLOCKED`이면 `PROJECT_TOOLCHAIN_MIGRATION_REQUIRED`, `PNPM_BUILD_POLICY_REVIEW_REQUIRED` 등 실제 blocker class를 evidence로 남기고 `kanban_block`한다. 같은 Task에서 npm→pnpm migration을 암묵적으로 시작하거나 source worktree에서 `npm`, `npx`, `next`, `tsc`, 직접 `pnpm run`으로 fallback하지 않는다. `.next` 권한 수정/삭제를 반복해 canonical verification을 대신하지 않는다.
 
-isolated restore가 `ERR_PNPM_IGNORED_BUILDS`로 실패하면 일반 build 실패로 처리하지 않는다. pnpm output의 미검토 `package@version`을 한 번에 수집해 `PNPM_BUILD_POLICY_REVIEW_REQUIRED`로 BLOCK한다. 사용자 승인 후 `pnpm_build_policy.py --approve <package@exact-version>`가 출력한 `POLICY_UPDATE_COMMAND_<N>`을 source package root에서 실행하고 같은 Work Unit을 재개한다. 이미 `pnpm-workspace.yaml > allowBuilds`에 동일 matcher가 boolean으로 결정되어 있으면 재승인을 요청하지 않는다. `dangerouslyAllowAllBuilds=true`, `strictDepBuilds=false`, `pnpm approve-builds --all`, bare package 전체 true 승인은 자동 사용하지 않는다.
+isolated restore가 `ERR_PNPM_IGNORED_BUILDS`로 실패하면 일반 build 실패로 처리하지 않는다. **package별로 즉시 하나씩 BLOCK하지 말고**, 실패한 restore output의 전체 matcher를 수집한 뒤 같은 `RESTORE_WORKDIR`에서 read-only `pnpm ignored-builds`를 정확히 1회 실행해 pending build 목록을 보강한다. 이미 `pnpm-workspace.yaml > allowBuilds`에 boolean 결정이 있는 matcher를 제외하고 남은 exact `package@version` 전체를 하나의 `PNPM_BUILD_POLICY_REVIEW_REQUIRED` batch로 사용자에게 제시한다.
+
+사용자가 여러 항목을 승인/거부하면 `pnpm_build_policy.py`에 모든 `--approve` / `--deny`를 한 invocation으로 전달하고, 출력된 `POLICY_UPDATE_COMMAND_<N>`을 source package root에서 한 번 적용한 뒤 같은 Work Unit을 재개한다. evidence는 `PNPM_BUILD_POLICY_DECISION_MODE=BATCH`와 decision/approval/denial count를 남긴다. 같은 dependency graph에서 policy 적용 후 restore를 1회 재시도했는데 새 미검토 matcher가 또 나오면 자동 승인 루프를 만들지 않고 `PNPM_BUILD_POLICY_DISCOVERY_INCOMPLETE`로 BLOCK한다. package.json 또는 pnpm-lock.yaml이 변경되어 graph가 달라진 경우만 새 review batch다.
+
+이미 `pnpm-workspace.yaml > allowBuilds`에 동일 matcher가 boolean으로 결정되어 있으면 재승인을 요청하지 않는다. `dangerouslyAllowAllBuilds=true`, `strictDepBuilds=false`, `pnpm approve-builds --all`, bare package 전체 true 승인은 자동 사용하지 않는다.
 
 Gate PASS 이후 test/lint/typecheck/build는 `node_runtime.py` Linux isolated workspace만 사용한다.
 
@@ -122,6 +126,7 @@ Terminal transition은 `kanban_request_review` 또는 `kanban_block` 중 정확�
 - Follow-up Work Unit 전용 capability를 현재 Task에서 실행하지 않는다.
 - Frontend Environment Gate가 toolchain migration을 요구하면 현재 IMPLEMENTATION Work Unit에서 migration/fallback 검증을 수행하지 않는다.
 - pnpm build-script 승인 결정은 `pnpm-workspace.yaml > allowBuilds`에 Git 관리하고, 같은 exact matcher를 반복 승인받지 않는다.
+- 초기 pnpm 안정화에서는 `ERR_PNPM_IGNORED_BUILDS` 항목을 하나씩 사용자에게 묻지 않고 전체 pending set을 한 batch로 승인받는다.
 - build-script 승인 후 정책 변경은 현재 pnpm migration/dependency Work Unit의 승인된 재개로 처리하며 별도 Hermes allowlist를 만들지 않는다.
 - Interactive Coder가 Kanban 없이 새 mutation request를 구현하지 않는다.
 - 상세 BLOCKED/retry/full-test/evidence 형식은 `references/implementation-details.md`를 따른다.
