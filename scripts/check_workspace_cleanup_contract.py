@@ -52,10 +52,13 @@ def main() -> int:
         "HEAD reflog", "GitHub merged PR + exact PR head SHA", "git-ancestor",
         "--delete-tracked-branch", "--delete-remote", "git update-ref -d",
         "git-pr-publish", "Preview에 이름을 표시하지 않은 branch 삭제",
+        "EOL-only Noise 예외", "WORKTREE_EOL_NOISE_ONLY=true",
+        "EOL_ONLY_FORCE_REMOVE_ALLOWED=true", "git worktree remove --force",
     ), "git-workspace-cleanup skill")
 
     require(listing, (
         "worktree_snapshot(root)", "parse_worktrees(", "resolve_remote_head",
+        "classify_worktree_status",
         "add_process_safe_directory", 'emit("LINKED_WORKTREES"',
         'emit("SELECTABLE_WORKTREES"', 'emit("WORKTREES_JSON"', "CLEANUP_SCOPE_HINT",
     ), "worktree selection helper")
@@ -75,7 +78,8 @@ def main() -> int:
         'emit("TRACKED_PREVIOUS_MERGE_EVIDENCE"',
         'emit("TRACKED_PREVIOUS_REMOTE_DELETE_AVAILABLE"',
         'emit("TRACKED_PREVIOUS_REASON"', 'emit("TRACKED_REFLOG_MESSAGE"',
-        'emit("CLEANUP_FINGERPRINT"',
+        'emit("WORKTREE_EOL_NOISE_ONLY"', 'emit("EOL_ONLY_COUNT"',
+        'emit("EOL_ONLY_FORCE_REMOVE_ALLOWED"', 'emit("CLEANUP_FINGERPRINT"',
     ), "cleanup read-only helper")
 
     require(cleanup, (
@@ -84,6 +88,7 @@ def main() -> int:
         "tracked local branch moved after cleanup approval",
         "tracked remote branch moved after cleanup approval",
         "push_delete_named_branch", "preserved-base", "cleanup fingerprint changed after approval",
+        "allow_eol_only_force", 'command.append("--force")',
     ), "cleanup mutation helper")
 
     forbid(cleanup, (
@@ -96,6 +101,10 @@ def main() -> int:
         "test_base_branch_linked_worktree_is_ready_for_worktree_only_cleanup",
         "test_cleanup_can_delete_matching_remote_branch_after_approval",
         "test_primary_worktree_is_blocked", "test_dirty_worktree_is_blocked",
+        "test_lists_eol_only_worktree_separately_from_dirty",
+        "test_eol_only_worktree_is_ready_for_cleanup_with_scoped_force_evidence",
+        "test_eol_only_worktree_cleanup_removes_without_reset_restore_or_clean",
+        "test_semantic_tracked_change_is_still_blocked",
     ), "existing cleanup regression tests")
 
     require(tracked_tests, (
