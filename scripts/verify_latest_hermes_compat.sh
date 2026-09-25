@@ -43,6 +43,8 @@ docker run --rm \
     -ceu '
         test -x /opt/hermes/.venv/bin/hermes
         /opt/hermes/.venv/bin/hermes --help >/dev/null
+        /opt/hermes/.venv/bin/hermes kanban boards list --json >/tmp/devkit-kanban-boards.json
+        test -s /tmp/devkit-kanban-boards.json
 
         test "$(/usr/local/bin/git --version)" = "git version 2.55.0"
         test "$(/usr/local/bin/git config --system --bool --get worktree.useRelativePaths)" = "true"
