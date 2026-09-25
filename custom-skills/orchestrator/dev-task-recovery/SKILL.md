@@ -319,7 +319,18 @@ SAME_TASK_RESUME
 
 으로 취급한다. Board와 Task는 이미 Gate 1/2에서 승인되었고, Workspace/Branch/Model/API Spec처럼 독립 의사결정이 새로 필요한 경우는 애초에 `REPLACEMENT_REQUIRED`이므로 이 Gate에 합치지 않는다.
 
-## 7. Gate 3 승인 후 — Durable Revision
+## 7. Gate 3 승인 후 — Pre-mutation Revalidation + Durable Revision
+
+Gate 3 승인 직후 mutation 전에 `kanban_show(board=<APPROVED_BOARD>, task_id=<APPROVED_TASK>)`를 한 번 더 읽어 selection이 stale하지 않은지 확인한다.
+
+```text
+task id 동일
+status == blocked
+Gate 2 분석 이후 더 최신 approved Recovery Revision이 없음
+running claim 없음
+```
+
+하나라도 달라졌으면 `RECOVERY_STATUS=STALE_RECOVERY_SELECTION`으로 종료하고 comment/unblock을 수행하지 않는다. 사용자 Gate를 추가하지 않고 Recovery Flow를 다시 시작해야 한다.
 
 Gate 3 승인 전에는 다음을 호출하지 않는다.
 
@@ -471,6 +482,7 @@ Gate 3 = Recovery Plan 승인
 - Gate 1 승인 전 Gate 2 금지.
 - Gate 2 승인 전 Task 분석/선정 확정 금지.
 - Gate 3 승인 전 Kanban mutation 금지.
+- Gate 3 승인 후에도 pre-mutation `kanban_show` revalidation PASS 전에는 comment/unblock 금지.
 - 정상 Recovery에서 Gate 3 뒤 추가 사용자 승인 금지.
 - same deliverable이면 `SAME_TASK_RESUME`를 새 카드보다 우선한다.
 - 독립 결정이 필요하면 Recovery Gate를 늘리지 않고 `REPLACEMENT_REQUIRED`로 종료한다.
