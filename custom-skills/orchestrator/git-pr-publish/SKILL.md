@@ -1,7 +1,7 @@
 ---
 name: git-pr-publish
 description: 완료된 별도 Git branch/worktree의 변경을 사용자 승인 기반으로 commit+push하고 PR preview 재승인 후 GitHub PR을 생성한다.
-version: 0.2.0
+version: 0.2.1
 author: local
 platforms: [linux]
 metadata:
@@ -20,9 +20,15 @@ metadata:
 ```text
 DONE / Reviewer APPROVED / Fast LOW 완료
 → read-only publish preflight
-→ [커밋 Preview]
-→ [커밋 승인]
-→ commit + normal push
+   ├─ semantic working-tree change 있음
+   │  → [커밋 Preview]
+   │  → [커밋 승인]
+   │  → commit + normal push
+   │
+   └─ semantic working-tree change 없음
+      ├─ EOL-only noise는 게시 대상에서 제외
+      ├─ remote head == local HEAD → commit/push Gate 생략
+      └─ remote head != local HEAD → [기존 커밋 Push 승인] → normal push
 → [PR Preview]
 → [PR 생성 승인]
 → PR 생성
@@ -50,6 +56,65 @@ Base Branch는 추측하지 않는다.
 
 `main`, `master`, `dev`를 임의 선택하지 않는다.
 
+## EOL-only / 이미 커밋된 HEAD Fast Path
+
+`git-pr-publish`는 post-review publication Skill이다. 줄바꿈 정리를 위해 새 Direct/Standard 구현 Task, Coder 모델 선택, Plan Approval을 시작하지 않는다.
+
+`prepare_publish.py`는 working tree를 다음으로 분류한다.
+
+```text
+Semantic Change
+→ 실제 publish/commit 대상
+
+EOL-only Noise
+→ tracked UTF-8 text file의 index ↔ worktree 차이가 CRLF/LF 변환뿐
+→ publish 대상에서 제외
+→ 파일을 reset/restore/normalize하지 않음
+```
+
+EOL-only 판정은 `git diff --ignore-space-at-eol` 같은 광범위 whitespace ignore가 아니라 index blob과 worktree bytes를 CRLF→LF로만 정규화해 비교한다. trailing-space/content 변경은 semantic change로 유지한다.
+
+preflight evidence:
+
+```text
+CHANGED_COUNT=<semantic count>
+EOL_ONLY_COUNT=<noise count>
+WORKTREE_SEMANTIC_DIRTY=true|false
+WORKTREE_EOL_NOISE_ONLY=true|false
+REMOTE_HEAD_SHA=<sha|empty>
+REMOTE_HEAD_MATCH=true|false|missing
+```
+
+### semantic change 없음
+
+```text
+STATUS=existing-head | base-unresolved-existing-head
+```
+
+이면 `[커밋 Preview]`, `[커밋 승인]`, Direct/Standard Flow를 만들지 않는다.
+
+`REMOTE_HEAD_MATCH=true`면 바로 PR preflight로 이동한다.
+
+`REMOTE_HEAD_MATCH=false|missing`이면 기존 commit을 push해야 하므로 일반 메시지로 branch/local HEAD/remote HEAD/EOL-only count를 보여준 뒤 정확히 한 번 승인받는다.
+
+```text
+[기존 커밋 Push 승인]
+- 기존 커밋 Push
+- 취소
+```
+
+승인 후:
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/push_existing.py" \
+  --workspace "<WORKSPACE>" \
+  --remote "<REMOTE>" \
+  --branch "<BRANCH>" \
+  --expected-head "<HEAD_SHA>"
+```
+
+helper는 semantic working-tree change가 하나라도 생겼거나 branch/HEAD가 승인 후 바뀌면 push를 거부한다. EOL-only noise는 그대로 보존하고 force push를 사용하지 않는다.
+
 ## Commit preflight / 승인
 
 먼저 read-only helper를 실행한다.
@@ -61,7 +126,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/prepare_publish.py" \
   [--base-branch "<BASE_BRANCH>"]
 ```
 
-파일 목록, diff stat, branch/base, remote, `PUBLISH_FINGERPRINT`와 Conventional Commit 메시지를 `[커밋 Preview]`로 먼저 보여준다.
+semantic 파일 목록, diff stat, branch/base, remote, `PUBLISH_FINGERPRINT`와 Conventional Commit 메시지를 `[커밋 Preview]`로 먼저 보여준다. `EOL_ONLY_FILE`은 참고 evidence이며 commit preview의 변경 파일 수에 포함하지 않는다.
 
 ```text
 [커밋 승인]
@@ -70,7 +135,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/prepare_publish.py" \
 - 취소
 ```
 
-`커밋 및 Push 승인`만 mutation 승인이다. 승인 전 `git add`, `git commit`, `git push`는 금지한다. 승인 후 다음 helper를 정확히 한 번 실행한다.
+`커밋 및 Push 승인`만 mutation 승인이다. 승인 전 `git add`, `git commit`, `git push`는 금지한다. 승인 후 다음 helper를 정확히 한 번 실행한다. helper도 EOL-only path를 staging에서 제외한다.
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/publish_commit.py" \
@@ -120,7 +185,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/create_pr.py" \
 
 ## 승인 무효화
 
-Commit 승인 뒤 changed files/content/staged 상태/branch/HEAD/scope가 바뀌면 fingerprint가 달라져 다시 승인받는다. Push 후 remote head/base/title/body/open PR 상태가 바뀌면 PR Preview와 승인을 다시 만든다.
+Commit 승인 뒤 semantic changed files/content/staged 상태/branch/HEAD/scope가 바뀌면 fingerprint가 달라져 다시 승인받는다. CRLF/LF-only worktree noise는 fingerprint에 포함하지 않는다. 기존 커밋 Push 승인 뒤 branch/HEAD 또는 semantic working-tree 상태가 바뀌면 push 승인을 무효화한다. Push 후 remote head/base/title/body/open PR 상태가 바뀌면 PR Preview와 승인을 다시 만든다.
 
 ## Worktree 공통 처리
 
@@ -135,6 +200,8 @@ auto-merge enable
 branch delete
 worktree cleanup
 source 수정
+EOL-only noise를 publish 목적으로 reset/restore/normalize
+줄바꿈 정리를 위한 Direct/Standard Flow dispatch
 Reviewer 대체
 force push
 base branch 직접 commit
