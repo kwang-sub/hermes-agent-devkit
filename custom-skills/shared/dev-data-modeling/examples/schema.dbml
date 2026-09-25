@@ -1,13 +1,25 @@
 Table account {
-  id bigint [pk]
-  name varchar(100) [not null]
+  id bigint [pk, note: '계좌 ID']
+  name varchar(100) [not null, note: '계좌명']
+
+  Note: '''
+  계좌
+
+  금융 거래와 잔액의 기준이 되는 계좌를 관리한다.
+  '''
 }
 
 Table transaction {
-  id bigint [pk]
-  account_id bigint [not null]
-  amount decimal(19,4) [not null]
-  occurred_at timestamp [not null]
+  id bigint [pk, note: '거래 ID']
+  account_id bigint [not null, note: '계좌 ID']
+  amount decimal(19,4) [not null, note: '거래 금액']
+  occurred_at timestamp [not null, note: '거래 발생 일시']
+
+  Note: '''
+  거래
+
+  계좌에서 발생한 금융 거래 내역을 기록한다.
+  '''
 
   indexes {
     (account_id, occurred_at)
