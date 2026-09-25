@@ -122,7 +122,7 @@ def _fingerprint(
 ) -> str:
     digest = hashlib.sha256()
     payload = {
-        "version": "git-workspace-cleanup-worktree-only-v2",
+        "version": "git-workspace-cleanup-worktree-only-v3-eol-aware",
         "worktree": str(worktree),
         "branch": branch,
         "head": head,
