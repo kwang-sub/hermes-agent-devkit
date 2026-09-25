@@ -73,6 +73,100 @@ working-tree 파일 개수 계산
 
 Task body의 Workspace / Expected Branch / Base SHA는 Orchestrator가 이미 확정한 dispatch contract이므로 사전 재검증하지 않는다.
 
+## Task Recovery Revision 적용
+
+초기 `kanban_show` 응답의 comments는 기존 Task의 durable history이므로 Worker Context Gate와 함께 Recovery marker를 확인한다. Recovery를 찾기 위해 추가 `kanban_show`를 반복 호출하지 않는다.
+
+인식 marker:
+
+```text
+TASK_RECOVERY_RETRY_V<N>
+TASK_RECOVERY_REVISION_V<N>
+TASK_RECOVERY_ESCALATION_V<N>
+```
+
+### Latest Approved Revision 선택
+
+`TASK_RECOVERY_REVISION_V<N>` comment 중:
+
+```text
+Recovery Gate: APPROVED
+Recovery Mode: SAME_TASK_RESUME
+Task: <현재 task id>
+Original Contract: PRESERVED
+Revision Authority: LATEST_APPROVED_RECOVERY_REVISION
+```
+
+를 모두 만족하는 항목만 승인 Revision 후보다. 가장 큰 `N` 하나만 effective revision으로 사용한다.
+
+가장 큰 번호의 marker가 존재하지만 승인 필드가 누락/불일치하면 더 낮은 과거 Revision로 조용히 fallback하지 않는다.
+
+```text
+RECOVERY_CONTRACT_INVALID
+- Marker: ...
+- Evidence: ...
+```
+
+로 BLOCK한다.
+
+### Effective Task Contract
+
+```text
+Original Task body / Work Unit Contract / existing approved spec
++
+Latest Approved Recovery Revision
+```
+
+Revision은 다음 필드의 **명시적 delta**만 우선한다.
+
+```text
+Requirement Delta.Changed
+Requirement Delta.Rollback/Removal
+Requirement Delta.Forbidden
+Requirement Delta.Reverification
+Recovery Plan
+Acceptance Criteria
+```
+
+Revision이 언급하지 않은 기존 Goal, Work Unit Class/Boundary, Project/Workspace/Branch/Model, API/Data/Infrastructure 계약은 그대로 유지한다.
+
+Revision 내용이 실제로 Work Unit Class를 바꾸거나 Excluded Follow-up Scope를 침범하면 Orchestrator Recovery 판정과 충돌한 것이므로 구현하지 않고 `RECOVERY_CONTRACT_INVALID`로 BLOCK한다.
+
+### RETRY_SAME_CONTRACT
+
+가장 최신 retry marker가:
+
+```text
+Recovery Gate: APPROVED
+Recovery Mode: RETRY_SAME_CONTRACT
+Original Contract: PRESERVED
+Acceptance Criteria: PRESERVED
+```
+
+이면 scope/AC를 바꾸지 않는다. Resolution Evidence를 재시도 근거로 사용하고 원래 Plan 그대로 검증을 재개한다.
+
+### REPLACEMENT_REQUIRED marker
+
+```text
+TASK_RECOVERY_ESCALATION_V<N>
+Recovery Mode: REPLACEMENT_REQUIRED
+Current Task: PRESERVE_BLOCKED
+```
+
+가 latest recovery marker인데 worker가 running으로 진입했다면 lifecycle 정합성 오류다. source를 수정하지 않고 `RECOVERY_CONTRACT_INVALID`로 BLOCK한다.
+
+### Coder Handoff
+
+Recovery Task는 Reviewer가 동일 effective contract를 재구성할 수 있도록 다음을 명시한다.
+
+```text
+Recovery Contract: NONE | RETRY_SAME_CONTRACT | SAME_TASK_RESUME
+Recovery Revision: <marker | NONE>
+Recovery Delta Applied: true | false
+Recovery Acceptance Criteria:
+- <revision AC | ORIGINAL>
+```
+
 ## Canonical Workspace Verification
 
 `verify_workspace.py`는 **Git/Workspace 전용 검증기**다. Workspace 검증은 아래 **독립 terminal command로 정확히 1회** 실행한다. 다른 명령을 `+`, `&&`, `;`, background process 또는 batch 형태로 붙이지 않는다.
