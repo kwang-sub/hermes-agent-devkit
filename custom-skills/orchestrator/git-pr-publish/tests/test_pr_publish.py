@@ -391,7 +391,8 @@ raise SystemExit(9)
         self.assertIn("&& gh --version \\", dockerfile)
         self.assertIn('"/opt/data/gh"', library)
         self.assertIn("HERMES_GH_CONFIG_DIR", library)
-        self.assertIn("credential.helper=!gh auth git-credential", publisher)
+        self.assertIn("credential.helper=!gh auth git-credential", library)
+        self.assertIn("push_command", publisher)
 
     def test_forbidden_publish_mutations_are_not_in_scripts(self):
         combined = "\n".join(
