@@ -85,6 +85,12 @@ def main() -> int:
             emit("TRACKED_PREVIOUS_REMOTE_DELETE_AVAILABLE", str(worktree_only.tracked_previous_remote_delete_available).lower())
             emit("TRACKED_PREVIOUS_REASON", worktree_only.tracked_previous_reason)
             emit("TRACKED_REFLOG_MESSAGE", worktree_only.tracked_reflog_message)
+            emit("WORKTREE_SEMANTIC_DIRTY", "false")
+            emit("WORKTREE_EOL_NOISE_ONLY", str(bool(worktree_only.eol_only_paths)).lower())
+            emit("EOL_ONLY_COUNT", len(worktree_only.eol_only_paths))
+            for path in worktree_only.eol_only_paths:
+                emit("EOL_ONLY_FILE", path)
+            emit("EOL_ONLY_FORCE_REMOVE_ALLOWED", str(worktree_only.eol_only_force_allowed).lower())
             emit("CLEANUP_FINGERPRINT", worktree_only.fingerprint)
             return 0
 
@@ -119,6 +125,12 @@ def main() -> int:
         emit("PR_MERGED_AT", state.pr.merged_at if state.pr else "")
         emit("REMOTE_DELETE_AVAILABLE", str(state.remote_delete_available).lower())
         emit("TRACKED_PREVIOUS_BRANCH", "")
+        emit("WORKTREE_SEMANTIC_DIRTY", "false")
+        emit("WORKTREE_EOL_NOISE_ONLY", str(bool(state.eol_only_paths)).lower())
+        emit("EOL_ONLY_COUNT", len(state.eol_only_paths))
+        for path in state.eol_only_paths:
+            emit("EOL_ONLY_FILE", path)
+        emit("EOL_ONLY_FORCE_REMOVE_ALLOWED", str(state.eol_only_force_allowed).lower())
         emit("CLEANUP_FINGERPRINT", state.fingerprint)
         return 0
     except CleanupError as exc:
