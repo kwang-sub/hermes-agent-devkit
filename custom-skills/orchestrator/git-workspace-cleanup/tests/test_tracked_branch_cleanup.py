@@ -105,6 +105,22 @@ class TrackedBranchCleanupTests(unittest.TestCase):
         self.assertEqual(values["TRACKED_PREVIOUS_REMOTE_EXISTS"], "true")
         self.assertEqual(values["TRACKED_PREVIOUS_REMOTE_DELETE_AVAILABLE"], "true")
 
+    def test_base_worktree_eol_only_noise_is_ready_and_removable(self) -> None:
+        self.merge_and_switch_worktree_to_base()
+        (self.worktree / "README.md").write_bytes(b"base\r\n")
+        preview = self.prepare()
+        self.assertEqual(preview.returncode, 0, preview.stderr)
+        data = kv(preview.stdout)
+        self.assertEqual(data["WORKTREE_SEMANTIC_DIRTY"], "false")
+        self.assertEqual(data["WORKTREE_EOL_NOISE_ONLY"], "true")
+        self.assertEqual(data["EOL_ONLY_COUNT"], "1")
+        self.assertEqual(data["EOL_ONLY_FORCE_REMOVE_ALLOWED"], "true")
+
+        result = self.cleanup(data["CLEANUP_FINGERPRINT"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.worktree.exists())
+        self.assertEqual(kv(result.stdout)["WORKTREE_REMOVED"], "true")
+
     def test_worktree_only_choice_preserves_tracked_branch(self) -> None:
         self.merge_and_switch_worktree_to_base()
         preview = self.prepare()
