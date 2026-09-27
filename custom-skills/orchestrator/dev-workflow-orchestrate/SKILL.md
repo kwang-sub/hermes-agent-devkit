@@ -1,7 +1,7 @@
 ---
 name: dev-workflow-orchestrate
 description: Jira/text 개발 요청의 project·work unit·requirement delta·API spec·workspace·branch·Coder 모델·plan을 독립 clarify Gate로 승인한 뒤 단일 Work Unit만 Kanban dispatch하는 orchestrator 전용 workflow.
-version: 0.13.1
+version: 0.14.0
 author: local
 platforms: [linux]
 metadata:
@@ -55,7 +55,7 @@ START
 → WORKSPACE_APPROVED
 → BRANCH_APPROVED | BRANCH_NOT_REQUIRED
 → MODEL_APPROVED
-→ PLAN_APPROVED
+→ PLAN_AND_VERIFICATION_APPROVED
 → AUTO_DISPATCH_CURRENT_UNIT_ONLY
 → SKILL_PREFLIGHT
 → KANBAN_CREATED
@@ -112,7 +112,7 @@ dev-work-intake
 → [Branch 선택] (Git Workspace만)
 → 기존 변경 보존 승인 (Git Workspace에서 필요 시)
 → [Coder 모델 선택]
-→ [작업 계획 승인]
+→ [실행·검증 계획 승인]
 → NO_EXTRA_KANBAN_CONFIRMATION
 → AUTO_DISPATCH_CURRENT_UNIT_ONLY
 ```
@@ -141,19 +141,40 @@ choices: [규격 승인, 규격 보류]
 [Branch 선택]
 [기존 변경 보존 확인]
 [Coder 모델 선택]
-[작업 계획 승인]
+[실행·검증 계획 승인]
 [추가 요구사항 확인]
 ```
 
 Git Workspace에서는 Workspace와 Branch가 별도 Gate다. Non-Git Workspace는 Project 등록 시 Version Control 승인이 이미 기록되어 있으므로 `BRANCH_NOT_REQUIRED`, `Existing Changes: NOT_REQUIRED`로 진행한다. `Other` 또는 수정 요구는 승인으로 간주하지 않고 값을 갱신한 뒤 **같은 Gate를 다시 출력**한다.
+
+## 실행·검증 계획 승인 Gate
+
+Plan Approval은 Implementation만 승인하지 않고 **Execution Contract + Verification Contract**를 함께 승인한다. 일반 메시지에서 반드시 다음 canonical heading을 사용한다.
+
+```text
+## 🛠️ **실행 계획**
+<현재 Work Unit의 구현 계획>
+
+## 🧪 **검증 계획**
+- Target: ...
+- Method: ...
+- Provider: ...
+- Required Environment: ...
+- Lifecycle: ...
+
+### ⚠️ **환경 의존 검증**
+<별도 환경 검증 상세 또는 NONE>
+```
+
+환경 의존 검증은 Docker/실제 DB/Testcontainers/외부 서비스/browser 등 구현환경 외 capability를 요구하는 검증이다. Provider와 lifecycle은 Plan Approval의 일부다. 승인 뒤 Coder가 provider를 임의 변경하거나 fallback하지 않는다. 변경이 필요하면 Requirement Delta/Recovery의 bounded verification delta로 재승인한다.
 
 ### Plan Gate TUI 길이 계약
 
 전체 Implementation Plan은 clarify 직전 일반 메시지로 먼저 보여준다. `clarify.questions[0].question`은 아래 문자열을 그대로 사용한다.
 
 ```text
-[작업 계획 승인]
-위 Implementation Plan을 승인할까요?
+[실행·검증 계획 승인]
+위 실행 계획과 검증 계획을 승인할까요?
 ```
 
 Task, Project / Workspace / Branch, Coder Model, Goal, Design Evidence, Implementation Tasks, Acceptance Criteria 등 동적 상세는 질문에 다시 넣지 않는다. **정보는 일반 메시지에 유지하고 결정 UI만 짧게 유지**한다.
@@ -199,14 +220,14 @@ Approval Reuse:
 - Workspace: REUSE | REQUIRED
 - Branch: REUSE | REQUIRED
 - Coder Model: REUSE | REQUIRED | MIGRATE
-- Plan: REUSE | REQUIRED
+- Plan + Verification: REUSE | REQUIRED
 ```
 
 pre-policy Task는 필요하면 `migrate-existing`을 사용하며 성공 계약은 `STATUS=legacy-task-migrated`, `SNAPSHOT_SOURCE=durable-comment`다. 대체 카드 생성 승인 자체는 각 Gate 승인을 대신하지 않는다.
 
 ## 신규/대체 Task 승인 불변식
 
-범위가 바뀐 신규/대체 Task는 Requirement Delta Approval, Work Unit 재분류, 필요한 API Spec Approval, Plan Approval을 각각 가진다. 모든 필수 Gate 완료 후에는 Kanban 생성 자체를 다시 승인받지 않는다.
+범위가 바뀐 신규/대체 Task는 Requirement Delta Approval, Work Unit 재분류, 필요한 API Spec Approval, Execution + Verification Plan Approval을 가진다. 모든 필수 Gate 완료 후에는 Kanban 생성 자체를 다시 승인받지 않는다.
 
 ## 자동 Dispatch / 성능
 
@@ -226,7 +247,7 @@ NO_EXTRA_KANBAN_CONFIRMATION
 
 ## 불변식
 
-- Project Approval / Plan Approval / Requirement Delta Approval을 추측하지 않는다.
+- Project Approval / Execution+Verification Plan Approval / Requirement Delta Approval을 추측하지 않는다.
 - blocked Task 복구 요청은 `dev-task-recovery`의 정확히 3-Gate 계약을 우선하며, 정상 SAME_TASK_RESUME 뒤에 일반 Plan/Requirement Delta Gate를 중복 추가하지 않는다.
 - Git Workspace의 Base SHA는 dispatch 시점 계약으로 보존한다. Non-Git Workspace는 `Base SHA: NONE`이며 snapshot을 생성하지 않는다.
 - 현재 Work Unit만 dispatch한다.
