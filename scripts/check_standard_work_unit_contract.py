@@ -65,7 +65,7 @@ def main() -> int:
         "별도 Standard Flow",
         "SAME_TASK_RESUME",
         "FOLLOW_UP_TASK",
-        "PLAN_AND_VERIFICATION_APPROVED", "실행·검증 계획 승인",
+        "PLAN_APPROVED", "Execution + Verification Contract approved", "실행·검증 계획 승인",
         "환경 의존 검증", "provider를 임의 변경하거나 fallback하지 않는다",
     ))
 
