@@ -157,6 +157,24 @@ Infrastructure에서도 단일 목표의 containerization에 Docker/Compose + Sp
 
 `AUDIT`은 기본적으로 read-only다. Audit 결과에서 수정 필요성이 발견되어도 현재 Task에 자동 source fix를 추가하지 않는다. 사용자가 처음부터 작고 명확한 audit+fix를 하나의 구현 목표로 승인한 경우에는 `IMPLEMENTATION`으로 분류해야 한다.
 
+## Verification Contract
+
+Standard Flow Plan은 Current Work Unit을 어떻게 구현할지뿐 아니라 어떻게 완료를 증명할지도 승인한다.
+
+```text
+Verification Target: <검증 목적>
+Verification Method: <command/script/test>
+Verification Provider: PROJECT_CANONICAL | LOCAL_RUNTIME | DOCKER | TESTCONTAINERS | CI | EXTERNAL_SERVICE | NONE
+Environment Dependency: NONE | REQUIRED
+Required Environment: <... | NONE>
+Lifecycle: <reuse | ephemeral+cleanup | externally-managed | NONE>
+Fallback Policy: REAPPROVAL_REQUIRED | NOT_REQUIRED
+```
+
+사용자 가시 Plan은 `## 🛠️ **실행 계획**`, `## 🧪 **검증 계획**`, 필요 시 `### ⚠️ **환경 의존 검증**`을 사용한다. 색상은 채널 호환성 때문에 계약으로 강제하지 않는다.
+
+프로젝트의 기존 canonical verification을 우선하며 DevKit 공용 DB/서비스 컨테이너를 기본 제공하지 않는다. 환경 의존 provider가 승인 후 unavailable이면 다른 provider로 자동 전환하지 않고 verification delta 재승인을 요구한다.
+
 ## Coder 불변식
 
 Coder는 Task의 Work Unit Contract를 구현 범위 상한으로 사용한다.
@@ -191,7 +209,7 @@ Reviewer는 diff가 Work Unit Boundary를 넘었는지 확인한다.
 
 ## Orchestrator 불변식
 
-- `dev-breakdown`이 Work Unit을 분류하고 split 여부를 Plan에 명시한다.
+- `dev-breakdown`이 Work Unit을 분류하고 split 여부와 Verification Contract를 Plan에 명시한다.
 - `dev-workflow-orchestrate`는 현재 Work Unit만 승인/dispatch한다.
 - 후속 Work Unit은 현재 Plan 승인으로 자동 생성하지 않는다.
 - Requirement Delta가 현재 Work Unit 경계를 넘어가면 SAME_TASK_RESUME 대신 FOLLOW_UP_TASK 또는 새 Standard Flow를 사용한다.
