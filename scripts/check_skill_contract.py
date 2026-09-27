@@ -91,7 +91,7 @@ def main()->int:
         "/opt/data/shared/references/approval-gate-rules.md","WORKSPACE_APPROVED","BRANCH_APPROVED","MODEL_APPROVED","PLAN_APPROVED",
         "REQUIREMENT_DELTA_APPROVED","Requirement Delta Approval","[추가 요구사항 확인]",
         "한 번의 사용자 확인에서는 하나의 의사결정만 요청한다","clarify","choices","선택지는 질문 본문에 번호로 쓰지 않고",
-        "[Project 선택]","[Workspace 선택]","[Branch 선택]","[Coder 모델 선택]","[작업 계획 승인]",
+        "[Project 선택]","[Workspace 선택]","[Branch 선택]","[Coder 모델 선택]","[실행·검증 계획 승인]",
         "DEFAULT | PREMIUM","같은 Gate를 다시 출력","NO_EXTRA_KANBAN_CONFIRMATION","AUTO_DISPATCH_CURRENT_UNIT_ONLY"))
     require_terms(approval,"shared approval gate rules",(
         "clarify","choices","↑/↓ 이동 + Enter 선택","Other (type your answer)","Workspace와 Branch는 서로 다른 Gate다",
@@ -101,8 +101,8 @@ def main()->int:
 
     plan_gate_literal=(
         "question:\n"
-        "  [작업 계획 승인]\n"
-        "  위 Implementation Plan을 승인할까요?\n"
+        "  [실행·검증 계획 승인]\n"
+        "  위 실행 계획과 검증 계획을 승인할까요?\n"
         "choices:\n"
         "  - 승인\n"
         "  - 차단"
@@ -116,7 +116,7 @@ def main()->int:
         "`clarify` 선택 영역은 스크롤 가능한 상세 뷰가 아니라 **결정 UI**"))
     require_terms(workflow_plan,"workflow Plan Gate TUI contract",(
         "`clarify.questions[0].question`은 아래 문자열을 그대로 사용한다",
-        "[작업 계획 승인]\n위 Implementation Plan을 승인할까요?",
+        "[실행·검증 계획 승인]\n위 실행 계획과 검증 계획을 승인할까요?",
         "Task", "Project / Workspace / Branch", "Coder Model", "Design Evidence", "Implementation Tasks",
         "정보는 일반 메시지에 유지하고 결정 UI만 짧게 유지"))
     forbid_terms(approval,"legacy verbose Plan Gate question",("위 Implementation Plan을 어떻게 처리할까요?",))
