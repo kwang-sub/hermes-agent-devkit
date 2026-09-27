@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 단일 Work Unit 계획과 Git/Non-Git workspace의 버전관리 계약·Coder 모델·capability를 Kanban으로 인계한다. 알림은 동일 컨테이너의 DevKit Notification Bridge가 task_events를 비동기로 관찰한다.
-version: 0.18.0
+version: 0.19.0
 author: local
 platforms: [linux]
 metadata:
