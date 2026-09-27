@@ -1,7 +1,7 @@
 ---
 name: dev-breakdown
 description: managed 프로젝트의 실제 코드·디자인 Reference·데이터 근거와 기존 project pattern으로 단일 Work Unit의 한국어 Implementation Plan을 생성하며 구현하지 않는 orchestrator 전용 skill.
-version: 0.17.3
+version: 0.18.0
 author: local
 platforms: [linux]
 metadata:
@@ -22,7 +22,21 @@ metadata:
 3. 필요한 source/test/config만 bounded read한다.
 4. **Implementation Tasks를 만들기 전에 Work Unit Class/Boundary를 확정**한다.
 5. API/Data/Infrastructure/Frontend 계약을 affected scope에 따라 분류한다.
-6. Acceptance Criteria와 verification plan을 만들고 `READY | BLOCKED`를 출력한다.
+6. Acceptance Criteria와 **승인 가능한 Verification Plan**을 만든다. 검증 목적(Target), 방법(Method), 실행환경/Provider, 환경 의존 여부와 lifecycle을 구현 전에 확정한다.
+7. 사용자 가시 Plan에서는 아래 canonical heading으로 실행/검증 영역을 시각적으로 분리하고 `READY | BLOCKED`를 출력한다.
+
+```text
+## 🛠️ **실행 계획**
+<Implementation Tasks>
+
+## 🧪 **검증 계획**
+<Verification Target / Method / Provider>
+
+### ⚠️ **환경 의존 검증**
+<Docker/실제 DB/외부 서비스/브라우저 등 별도 환경이 필요한 검증 또는 NONE>
+```
+
+색상은 renderer별 호환성이 달라 필수 계약으로 사용하지 않는다. 아이콘 + Markdown bold heading이 canonical 표현이다.
 
 `READY`는 구현 가능한 Plan 상태이며 사용자 승인이나 dispatch 완료를 의미하지 않는다.
 
@@ -157,12 +171,31 @@ API Impact: NONE | SHARED_CONTRACT | CONTRACT_CHANGE
 
 Frontend canonical Applicable Skill은 `dev-frontend-feature`. 필요 시 `dev-api-contract`, `dev-frontend-test`, `dev-ui-ux`를 hint로 추가한다. Node 기반 Frontend는 구현/검증 전에 Environment Gate가 필수이며 npm/yarn/bun 또는 pnpm 계약 미완성은 현재 기능 Task에서 자동 migration하지 않고 `PROJECT_TOOLCHAIN_MIGRATION_REQUIRED`로 분리한다. pnpm migration/dependency Work Unit에서 `ERR_PNPM_IGNORED_BUILDS`가 발생하는 경우 build-script 허용 결정 자체는 별도 Work Unit으로 쪼개지 않고 사용자 1회 승인 Gate로 처리한다. 첫 restore output과 isolated `pnpm ignored-builds`를 이용해 **현재 dependency graph의 미검토 matcher 전체를 먼저 수집**하고, package별 연속 BLOCK이 아니라 `SINGLE_REVIEW_BATCH` 하나로 승인/거부를 받는다. 승인 결과는 `pnpm-workspace.yaml > allowBuilds`에 exact package/version으로 기록하며 동일 matcher는 재승인하지 않는다. 동일 graph에서 batch 반영 후 새 matcher가 연속 발견되면 자동 반복하지 않고 discovery incomplete로 차단한다. 화면 차이만으로 Backend API를 superset DTO/중복 endpoint로 확대하지 않는다.
 
+## Verification Plan 계약
+
+Standard Flow는 구현 전에 검증 방식을 선정한다. Coder가 구현 후 임의로 검증 provider를 발명하는 구조를 사용하지 않는다.
+
+```text
+Verification Target: <무엇을 증명할지>
+Verification Method: <canonical command/script/test>
+Verification Provider: PROJECT_CANONICAL | LOCAL_RUNTIME | DOCKER | TESTCONTAINERS | CI | EXTERNAL_SERVICE | NONE
+Environment Dependency: NONE | REQUIRED
+Required Environment: <docker daemon / PostgreSQL 17 / browser / external service / NONE>
+Lifecycle: <reuse / ephemeral+cleanup / externally-managed / NONE>
+Fallback Policy: REAPPROVAL_REQUIRED | NOT_REQUIRED
+```
+
+- compile/test/lint/typecheck/migration_guard처럼 현재 project/toolchain에서 바로 수행 가능한 표준 검증은 계획에 표시하되 별도 provider 승인을 만들지 않는다.
+- Docker, 실제 DB, Testcontainers, 외부 API/Supabase, Redis/Kafka, browser/E2E 등 별도 환경이 필요한 검증은 `⚠️ 환경 의존 검증`에 provider·필요 환경·lifecycle을 명시한다.
+- 프로젝트가 이미 제공하는 canonical verification을 우선한다. Hermes/DevKit이 프로젝트에 없는 공용 검증 인프라를 기본 생성하지 않는다.
+- 승인된 provider가 실행 불가하면 다른 provider로 자동 fallback하지 않고 재승인 대상으로 올린다.
+
 ## 기존 Spring/JPA 정책 보존
 
 기존 프로젝트 pattern을 우선한다. 공통 response/error contract를 재사용하고, 조회는 Method Query → QueryDSL → 근거 있는 Native Query 순서를 유지한다.
 
 ## 필수 출력
 
-Task Identity; Project/working tree; Goal/Requirement; Assumptions/Out of Scope; Work Unit Contract; Project Pattern Summary; API/Data/Infrastructure/Frontend 계약(해당 시); Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Data Capability Hints; Acceptance Criteria; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
+Task Identity; Project/working tree; Goal/Requirement; Assumptions/Out of Scope; Work Unit Contract; Project Pattern Summary; API/Data/Infrastructure/Frontend 계약(해당 시); Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Data Capability Hints; Acceptance Criteria; **🛠️ 실행 계획**; **🧪 검증 계획**(Target/Method/Provider/Environment/Lifecycle); **⚠️ 환경 의존 검증**; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
 
 상세 분석 절차와 출력 template은 `references/planning-details.md`를 따른다.
