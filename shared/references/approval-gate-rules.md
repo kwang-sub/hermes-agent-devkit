@@ -278,7 +278,9 @@ choices:
 
 선택 가능한 논리 Tier는 `DEFAULT | PREMIUM`뿐이다. 권장 Tier를 첫 번째 choice에 둔다. Other 입력은 자동 승인하지 않는다. Reviewer는 항상 DEFAULT다. 실제 provider/model은 승인 Tier를 `flow_model_policy.py resolve`로 정확히 한 번 해석해 snapshot으로 고정한다.
 
-## Gate 5 — Execution + Verification Plan
+## Gate 5 — Plan
+
+> Plan Approval scope: **Execution + Verification Plan**
 
 Plan 본문은 `## 🛠️ **실행 계획**`, `## 🧪 **검증 계획**`, 필요 시 `### ⚠️ **환경 의존 검증**`으로 구분해 **반드시 일반 메시지로 먼저 전부 보여준다.** 검증 계획에는 Target/Method/Provider/Required Environment/Lifecycle/Fallback Policy를 포함한다. 환경 의존 provider는 이 Gate 승인 후 Coder가 임의 변경할 수 없다.
 
