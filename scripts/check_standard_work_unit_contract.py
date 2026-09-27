@@ -44,6 +44,7 @@ def main() -> int:
         "여러 Skill 사용 != Task 분리",
         "logical model과 physical DB 구현은 항상 별도 Standard Task",
         "후속 Work Unit을 같은 Plan 승인으로 자동 dispatch하지 않는다",
+        "Verification Contract", "Verification Provider", "환경 의존 검증",
     ))
 
     require(BREAKDOWN, common + (
@@ -53,6 +54,8 @@ def main() -> int:
         "별도 Standard Flow",
         "API Spec Gate",
         "별도 Work Unit",
+        "🛠️ **실행 계획**", "🧪 **검증 계획**", "환경 의존 검증",
+        "Verification Provider", "Fallback Policy",
     ))
 
     require(WORKFLOW, common + (
@@ -62,6 +65,8 @@ def main() -> int:
         "별도 Standard Flow",
         "SAME_TASK_RESUME",
         "FOLLOW_UP_TASK",
+        "PLAN_APPROVED", "Execution + Verification Contract approved", "실행·검증 계획 승인",
+        "환경 의존 검증", "provider를 임의 변경하거나 fallback하지 않는다",
     ))
 
     require(DISPATCH, common + (
@@ -69,6 +74,7 @@ def main() -> int:
         "Follow-up Work Unit 자동 Kanban 생성/dispatch",
         "Follow-up capability를 현재 Applicable Skills에 자동 추가",
         "dev-db-migration",
+        "Verification Contract", "Verification Provider", "Verification Approval: APPROVED",
     ))
 
     require(IMPLEMENT, common + (
@@ -79,6 +85,7 @@ def main() -> int:
         "### AUDIT",
         "application/test/config source를 수정하지 않는다",
         "Work Unit Boundary Respected: true",
+        "Standard Flow Verification Contract Gate", "VERIFICATION_PROVIDER_UNAVAILABLE",
     ))
 
     require(REVIEW, common + (

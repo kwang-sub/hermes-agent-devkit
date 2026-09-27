@@ -5,7 +5,7 @@
 ## 핵심 원칙
 
 1. **한 번의 사용자 확인에서는 하나의 의사결정만 요청한다.**
-2. Project, Requirement Delta, API Spec, Workspace, Branch, 기존 변경 보존, Coder Model, Plan을 한 질문에 합치지 않는다.
+2. Project, Requirement Delta, API Spec, Workspace, Branch, 기존 변경 보존, Coder Model, Execution+Verification Plan을 한 질문에 합치지 않는다.
 3. 승인 선택은 일반 텍스트 번호 목록이 아니라 Hermes 내장 `clarify` tool의 `choices`를 사용한다.
 4. TUI/CLI에서는 `clarify` choice picker의 ↑/↓ 이동 + Enter 선택 UX를 사용한다. 숫자 입력을 기본 UX로 요구하지 않는다.
 5. 선택지는 질문 본문에 `1.`, `2.`, `3.`으로 직접 나열하지 않고 반드시 `clarify`의 `choices` 인자로 전달한다.
@@ -124,7 +124,7 @@ Recovery 정상 경로에서는 Gate 3 승인 뒤 다음 추가 질문을 만들
 [Workspace 선택] 재질문 금지
 [Branch 선택] 재질문 금지
 [Coder 모델 선택] 재질문 금지
-[작업 계획 승인] 재질문 금지
+[실행·검증 계획 승인] 재질문 금지
 "같은 카드를 재개할까요?" 추가 질문 금지
 ```
 
@@ -280,14 +280,18 @@ choices:
 
 ## Gate 5 — Plan
 
+> Plan Approval scope: **Execution + Verification Plan**
+
+Plan 본문은 `## 🛠️ **실행 계획**`, `## 🧪 **검증 계획**`, 필요 시 `### ⚠️ **환경 의존 검증**`으로 구분해 **반드시 일반 메시지로 먼저 전부 보여준다.** 검증 계획에는 Target/Method/Provider/Required Environment/Lifecycle/Fallback Policy를 포함한다. 환경 의존 provider는 이 Gate 승인 후 Coder가 임의 변경할 수 없다.
+
 Implementation Plan 본문은 **반드시 일반 메시지로 먼저 전부 보여준다.** Plan이 길면 Goal/Design Evidence/Implementation Tasks/Verification 등 의미 있는 섹션 단위로 일반 메시지를 나눌 수 있다. 이때도 Plan 본문을 `clarify.question` 안으로 옮기지 않는다.
 
 Plan Gate의 `clarify.question`은 아래 리터럴을 그대로 사용한다. 질문은 두 논리 줄만 가지며 동적 metadata를 보간하지 않는다.
 
 ```text
 question:
-  [작업 계획 승인]
-  위 Implementation Plan을 승인할까요?
+  [실행·검증 계획 승인]
+  위 실행 계획과 검증 계획을 승인할까요?
 choices:
   - 승인
   - 차단
@@ -308,7 +312,7 @@ API/환경변수/인증 계약 상세
 
 위 정보가 승인 판단에 필요하면 바로 앞의 일반 Implementation Plan 메시지에 포함한다. 이미 Workspace/Branch/Model Gate에서 승인된 값은 Plan Gate 질문에 반복하지 않는다. `clarify` 선택 영역은 스크롤 가능한 상세 뷰가 아니라 **결정 UI**로 취급한다.
 
-`승인`은 Plan 승인이다. API Spec Gate가 REQUIRED인 Task는 `API_SPEC_APPROVED=true`가 선행되어야 한다. 모든 선행 Gate가 승인되었으면 **추가 질문 없이 AUTO_DISPATCH**한다. `차단`은 BLOCKED 유지다. Other 입력은 수정/추가 요구사항으로 처리해 계획을 갱신한 뒤 같은 Plan Gate를 다시 표시한다.
+`승인`은 Execution Contract와 Verification Contract를 함께 승인한다. API Spec Gate가 REQUIRED인 Task는 `API_SPEC_APPROVED=true`가 선행되어야 한다. 모든 선행 Gate가 승인되었으면 **추가 질문 없이 AUTO_DISPATCH**한다. `차단`은 BLOCKED 유지다. Other 입력은 수정/추가 요구사항으로 처리해 계획을 갱신한 뒤 같은 Plan Gate를 다시 표시한다.
 
 Plan Gate에서 `Other`로 새로운 목표/범위/API contract 변경이 들어오면 단순 문구 수정으로 처리하지 않는다. 그 입력이 Requirement Delta에 해당하면 `requirement_delta_approved=false`, `plan_approved=false`로 무효화하고 Gate R부터 다시 수행한다. API contract가 바뀌면 `API_SPEC_APPROVED=false`도 함께 무효화한다.
 

@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 단일 Work Unit 계획과 Git/Non-Git workspace의 버전관리 계약·Coder 모델·capability를 Kanban으로 인계한다. 알림은 동일 컨테이너의 DevKit Notification Bridge가 task_events를 비동기로 관찰한다.
-version: 0.18.0
+version: 0.19.0
 author: local
 platforms: [linux]
 metadata:
@@ -18,7 +18,8 @@ metadata:
 `/opt/data/shared/references/standard-work-unit-rules.md`를 적용한다.
 
 ## 1. 진입 조건
-- Plan 승인 완료
+- 실행 계획 + 검증 계획 승인 완료
+- Verification Contract에 Target/Method/Provider/Environment Dependency/Required Environment/Lifecycle/Fallback Policy 존재
 - `Work Unit Class`가 `DESIGN | IMPLEMENTATION | MIGRATION | REFACTOR | AUDIT` 중 하나
 - `Work Unit Boundary`와 Current/Follow-up/Excluded scope가 승인 Plan에 존재
 - `SPLIT_REQUIRED`이면 현재 Plan의 Implementation Tasks/AC가 **Current Deliverable만** 포함하고 Follow-up scope를 구현 범위에서 제외
@@ -238,6 +239,7 @@ HERMES_KANBAN_BOARD fallback
 default/current board fallback
 Infrastructure Impact=YES인데 Desired State persistence 생략
 Plan에 없는 Infrastructure Desired 값을 dispatch 시 재추론
+승인되지 않은 Verification Provider를 Task body에 추가하거나 자동 fallback
 Infrastructure metadata에 credential/secret 기록
 native notify-subscribe를 DevKit dispatch 경로에서 호출
 custom registration event 생성
@@ -306,6 +308,16 @@ Infrastructure:
 - Database Port: <... | unknown>
 - Database Platform: <...>
 - Database Vendor: <...>
+
+Verification Contract:
+- Verification Target: <...>
+- Verification Method: <...>
+- Verification Provider: PROJECT_CANONICAL | LOCAL_RUNTIME | DOCKER | TESTCONTAINERS | CI | EXTERNAL_SERVICE | NONE
+- Environment Dependency: NONE | REQUIRED
+- Required Environment: <... | NONE>
+- Lifecycle: <reuse | ephemeral+cleanup | externally-managed | NONE>
+- Fallback Policy: REAPPROVAL_REQUIRED | NOT_REQUIRED
+- Verification Approval: APPROVED
 
 Model Policy:
 - Coder Model Tier: <DEFAULT|PREMIUM>

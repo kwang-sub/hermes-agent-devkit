@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: Orchestrator가 승인·dispatch한 Direct 또는 Standard Kanban 단일 Work Unit을 할당 Workspace에서 구현·검증하고 항상 Reviewer에게 인계한다.
-version: 0.25.3
+version: 0.26.0
 author: local
 platforms: [linux]
 metadata:
@@ -22,6 +22,7 @@ kanban_show
 → Worker Context Gate 1회
 → verify_workspace.py 1회
 → Work Unit Boundary Gate
+→ Standard Flow Verification Contract Gate
 → 필요한 source/test만 bounded read
 → 현재 Work Unit만 구현
 → targeted verification
@@ -139,6 +140,23 @@ Applicable Skills와 실제 현재 Work Unit만 기준으로 필요한 capabilit
 
 구조 evidence는 `Structural quality check: PASS | REFACTORED | ESCALATED`로 남긴다.
 
+## Standard Flow Verification Contract Gate
+
+Standard Flow Coder는 구현 전에 Task body의 승인된 Verification Contract를 읽는다.
+
+```text
+Verification Target
+Verification Method
+Verification Provider
+Environment Dependency
+Required Environment
+Lifecycle
+Fallback Policy
+Verification Approval: APPROVED
+```
+
+환경 의존 검증의 provider는 구현 후 Coder가 새로 선정하지 않는다. 승인 provider가 unavailable이면 로컬 DB, Docker, Testcontainers, 외부 서비스 등 다른 provider로 자동 fallback하지 않고 `VERIFICATION_PROVIDER_UNAVAILABLE` evidence와 함께 차단/재승인 경로로 넘긴다. 프로젝트가 제공하는 canonical verification이 승인되어 있으면 그 경로를 우선 사용하며 Hermes 공용 검증 인프라를 임의 생성하지 않는다. Direct Flow에는 이 Standard 전용 계약을 강제하지 않는다.
+
 ## Verification / Handoff
 
 Frontend/Node Work Unit은 `dev-frontend-feature`를 load한 뒤 **첫 Node command 전에** `node_environment_gate.py`를 실행한다. `FRONTEND_ENVIRONMENT_GATE=BLOCKED`이면 `PROJECT_TOOLCHAIN_MIGRATION_REQUIRED`, `PNPM_BUILD_POLICY_REVIEW_REQUIRED` 등 실제 blocker class를 evidence로 남기고 `kanban_block`한다. 같은 Task에서 npm→pnpm migration을 암묵적으로 시작하거나 source worktree에서 `npm`, `npx`, `next`, `tsc`, 직접 `pnpm run`으로 fallback하지 않는다. `.next` 권한 수정/삭제를 반복해 canonical verification을 대신하지 않는다.
@@ -177,5 +195,6 @@ Terminal transition은 `kanban_request_review` 또는 `kanban_block` 중 정확�
 - pnpm build-script 승인 결정은 `pnpm-workspace.yaml > allowBuilds`에 Git 관리하고, 같은 exact matcher를 반복 승인받지 않는다.
 - 초기 pnpm 안정화에서는 `ERR_PNPM_IGNORED_BUILDS` 항목을 하나씩 사용자에게 묻지 않고 전체 pending set을 한 batch로 승인받는다.
 - build-script 승인 후 정책 변경은 현재 pnpm migration/dependency Work Unit의 승인된 재개로 처리하며 별도 Hermes allowlist를 만들지 않는다.
+- Standard Flow에서 승인된 Verification Provider/Environment/Lifecycle을 임의 변경하지 않는다.
 - Interactive Coder가 Kanban 없이 새 mutation request를 구현하지 않는다.
 - 상세 BLOCKED/retry/full-test/evidence 형식은 `references/implementation-details.md`를 따른다.
