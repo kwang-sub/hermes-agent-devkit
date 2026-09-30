@@ -188,6 +188,31 @@ choices: [규격 승인, 규격 보류]
 
 ## clarify Gate 계약
 
+### Gate 즉시 호출 불변식
+
+승인이 필요한 상태에서 해당 Gate의 입력이 준비되면 일반 메시지로 turn을 종료하지 않는다. 판단 근거·후보·Implementation Plan 등 사용자에게 보여줄 내용이 있으면 먼저 출력하고 **같은 turn에서 즉시 canonical `clarify` Gate를 호출**한다.
+
+```text
+PROJECT_READY → [Project 선택] clarify
+API_SPEC_DRAFT_READY → [API 규격 승인] clarify
+WORKSPACE_READY → [Workspace 선택] clarify
+BRANCH_READY → [Branch 선택] clarify
+EXISTING_CHANGES_READY → [기존 변경 보존 확인] clarify
+MODEL_TIER_READY → [Coder 모델 선택] clarify
+PLAN_READY → Plan 일반 메시지 → [실행·검증 계획 승인] clarify
+REQUIREMENT_DELTA_READY → Delta 일반 메시지 → [추가 요구사항 확인] clarify
+```
+
+다음 중간 흐름은 금지한다.
+
+```text
+Gate 설명/계획 출력 → turn 종료 → 사용자 "네/진행해주세요" → clarify
+Gate 설명/계획 출력 → 동일 내용 재출력 → clarify
+Gate 설명/계획 출력 → 비필수 진행 확인 질문 → clarify
+```
+
+단, durable approval evidence가 있어 `REUSE`이거나 정책상 `NOT_REQUIRED`인 Gate는 호출하지 않는다. Gate가 REQUIRED인데 `clarify` 승인 evidence가 없으면 다음 상태 및 dispatch로 전이할 수 없다.
+
 선택지는 질문 본문에 번호로 쓰지 않고 `clarify.questions[].choices`에 넣는다. 첫 번째 choice는 Hermes가 Recommended로 표시하므로 현재 권장값을 첫 번째에 둔다. `Other (type your answer)`는 추가 요구사항 입력 경로다.
 
 ```text
@@ -197,7 +222,7 @@ choices: [규격 승인, 규격 보류]
 [Branch 선택]             choices: [제안된 Branch 사용, 다른 Branch 지정]
 [기존 변경 보존 확인]     choices: [기존 변경을 모두 보존하고 진행, 상태 확인 후 다시 결정]
 [Coder 모델 선택]         choices: [<권장 Tier>, <나머지 Tier>]
-[작업 계획 승인]          choices: [승인, 차단]
+[실행·검증 계획 승인]     choices: [승인, 차단]
 ```
 
 선택 가능한 Coder Tier는 `DEFAULT | PREMIUM`뿐이다. Reviewer Model은 항상 DEFAULT이며 선택 Gate를 만들지 않는다. Agent가 PREMIUM을 추천할 수는 있지만 자동 escalation은 금지한다.

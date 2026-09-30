@@ -19,11 +19,14 @@
 13. **`clarify.question`은 결정만 묻는 짧은 UI다.** 긴 설명, 계획 본문, 이미 승인된 Gate 값은 일반 메시지에 두고 `clarify.question`에 다시 복사하지 않는다.
 14. **Plan Gate의 `clarify.question`은 아래 Gate 5의 고정 리터럴을 그대로 사용한다.** Task/Project/Workspace/Branch/Coder Model/Goal/Design Evidence/Implementation Tasks/Acceptance Criteria 같은 동적 내용을 보간하거나 덧붙이지 않는다.
 15. Implementation Plan이 길면 일반 메시지를 섹션 단위로 나눠 모두 보여줄 수 있지만, 화면 높이에 맞추기 위해 Plan 본문을 `clarify.question`으로 이동하거나 요약 뒤에 이어 붙이지 않는다.
-16. **Blocked Task Recovery는 `dev-task-recovery`의 전용 3-Gate 계약을 사용한다.** 이 경로에서는 Board와 Task가 이미 독립 Gate로 승인되고 독립 API/Workspace/Branch/Model 결정이 필요하지 않은 bounded same-task recovery에 한해 Gate 3의 단일 `Recovery Plan` 승인이 Requirement Delta + 재개 Plan 결정을 함께 대표한다. 범위를 넘는 경우 Gate를 합치지 않고 `REPLACEMENT_REQUIRED`로 Recovery를 종료한다.
+16. **Gate가 필요한 단계는 일반 메시지 출력만으로 종료하지 않는다.** 해당 Gate의 판단 근거·후보·계획을 일반 메시지로 보여준 경우, 같은 workflow turn에서 즉시 해당 `clarify` Gate를 호출한다. 사용자의 `진행해주세요`, `네`, `계속해주세요` 같은 별도 자연어 응답을 중간 단계로 요구하지 않는다.
+17. **Gate-required state에서 `clarify` 없이 사용자 입력 대기 상태로 전환하는 것을 금지한다.** Project/API Spec/Workspace/Branch/Existing Changes/Coder Model/Plan/Requirement Delta 및 Recovery 전용 Gate 모두 동일하다. 단, 이미 durable approval evidence가 있어 `REUSE` 또는 `NOT_REQUIRED`로 판정된 Gate는 재호출하지 않는다.
+18. **설명과 승인 UI는 한 쌍이다.** 설명이 필요한 Gate는 `일반 메시지 → 즉시 clarify` 순서로 처리하며, 그 사이에 동일 계획 재출력·진행 의사 재확인·다른 비필수 질문을 삽입하지 않는다.
+19. **Blocked Task Recovery는 `dev-task-recovery`의 전용 3-Gate 계약을 사용한다.** 이 경로에서는 Board와 Task가 이미 독립 Gate로 승인되고 독립 API/Workspace/Branch/Model 결정이 필요하지 않은 bounded same-task recovery에 한해 Gate 3의 단일 `Recovery Plan` 승인이 Requirement Delta + 재개 Plan 결정을 함께 대표한다. 범위를 넘는 경우 Gate를 합치지 않고 `REPLACEMENT_REQUIRED`로 Recovery를 종료한다.
 
 ## clarify 사용 계약
 
-각 Gate는 독립된 `clarify` call 하나를 사용한다. 서로 의존하는 Gate를 batch `questions` 한 번에 묶지 않는다.
+각 Gate는 독립된 `clarify` call 하나를 사용한다. 서로 의존하는 Gate를 batch `questions` 한 번에 묶지 않는다. **현재 상태가 Gate 입력 준비 완료(`*_READY`)가 되는 즉시 그 Gate의 `clarify`를 호출해야 하며, 일반 assistant 응답으로 turn을 종료해서는 안 된다.**
 
 ```text
 clarify
