@@ -1,7 +1,7 @@
 ---
 name: dev-breakdown
 description: managed 프로젝트의 실제 코드·디자인 Reference·데이터 근거와 기존 project pattern으로 단일 Work Unit의 한국어 Implementation Plan을 생성하며 구현하지 않는 orchestrator 전용 skill.
-version: 0.18.0
+version: 0.19.0
 author: local
 platforms: [linux]
 metadata:
@@ -62,6 +62,26 @@ Excluded Follow-up Scope: ... | NONE
 - physicalization은 승인 DBML을 입력으로 **별도 Standard Flow**의 MIGRATION Work Unit에서 수행한다.
 
 API Spec Gate 자체는 자동으로 별도 Work Unit을 뜻하지 않는다. API 설계 자체가 독립 deliverable이면 DESIGN, 구현은 별도 Work Unit으로 분리한다.
+
+## Parent Tracking 판정
+
+Work Unit Boundary를 확정한 뒤, Standard Flow가 연속 작업 tracking을 사용할지 권장값을 함께 출력한다.
+
+```text
+Parent Tracking Recommendation: NONE | NEW_PARENT | LINK_EXISTING_PARENT | PROMOTE_TO_PARENT
+Parent Tracking Reason: <짧은 근거>
+Suggested Parent Title: [부모] <전체 작업 제목> | NONE
+Suggested Child Title: [자식] <현재 Work Unit 제목> | NONE
+```
+
+판정 기준은 `/opt/data/shared/references/parent-tracking-rules.md`를 따른다.
+
+- 둘 이상의 후속 Standard Task가 예상되거나 여러 세션에 걸칠 가능성이 높으면 `NEW_PARENT`를 권장한다.
+- 사용자가 기존 Parent 작업을 지정하면 `LINK_EXISTING_PARENT`를 권장한다.
+- Parent 없이 진행 중인 기존 작업을 연속 작업으로 묶으려면 `PROMOTE_TO_PARENT`를 권장한다.
+- 작은 bounded 단건 작업은 `NONE`이다.
+
+이 판정은 Parent 생성 자체를 승인하지 않는다. Parent 구조 mutation은 Standard Flow의 `[작업 관리 방식 승인]` Gate가 소유한다.
 
 ## API Spec 계약
 
@@ -196,6 +216,6 @@ Fallback Policy: REAPPROVAL_REQUIRED | NOT_REQUIRED
 
 ## 필수 출력
 
-Task Identity; Project/working tree; Goal/Requirement; Assumptions/Out of Scope; Work Unit Contract; Project Pattern Summary; API/Data/Infrastructure/Frontend 계약(해당 시); Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Data Capability Hints; Acceptance Criteria; **🛠️ 실행 계획**; **🧪 검증 계획**(Target/Method/Provider/Environment/Lifecycle); **⚠️ 환경 의존 검증**; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
+Task Identity; Project/working tree; Goal/Requirement; Assumptions/Out of Scope; Work Unit Contract; Parent Tracking Recommendation/Reason/Suggested Titles; Project Pattern Summary; API/Data/Infrastructure/Frontend 계약(해당 시); Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Data Capability Hints; Acceptance Criteria; **🛠️ 실행 계획**; **🧪 검증 계획**(Target/Method/Provider/Environment/Lifecycle); **⚠️ 환경 의존 검증**; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
 
 상세 분석 절차와 출력 template은 `references/planning-details.md`를 따른다.

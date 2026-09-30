@@ -5,7 +5,7 @@
 ## 핵심 원칙
 
 1. **한 번의 사용자 확인에서는 하나의 의사결정만 요청한다.**
-2. Project, Requirement Delta, API Spec, Workspace, Branch, 기존 변경 보존, Coder Model, Execution+Verification Plan을 한 질문에 합치지 않는다.
+2. Project, Parent Tracking, Requirement Delta, API Spec, Workspace, Branch, 기존 변경 보존, Coder Model, Execution+Verification Plan을 한 질문에 합치지 않는다.
 3. 승인 선택은 일반 텍스트 번호 목록이 아니라 Hermes 내장 `clarify` tool의 `choices`를 사용한다.
 4. TUI/CLI에서는 `clarify` choice picker의 ↑/↓ 이동 + Enter 선택 UX를 사용한다. 숫자 입력을 기본 UX로 요구하지 않는다.
 5. 선택지는 질문 본문에 `1.`, `2.`, `3.`으로 직접 나열하지 않고 반드시 `clarify`의 `choices` 인자로 전달한다.
@@ -20,7 +20,7 @@
 14. **Plan Gate의 `clarify.question`은 아래 Gate 5의 고정 리터럴을 그대로 사용한다.** Task/Project/Workspace/Branch/Coder Model/Goal/Design Evidence/Implementation Tasks/Acceptance Criteria 같은 동적 내용을 보간하거나 덧붙이지 않는다.
 15. Implementation Plan이 길면 일반 메시지를 섹션 단위로 나눠 모두 보여줄 수 있지만, 화면 높이에 맞추기 위해 Plan 본문을 `clarify.question`으로 이동하거나 요약 뒤에 이어 붙이지 않는다.
 16. **Gate가 필요한 단계는 일반 메시지 출력만으로 종료하지 않는다.** 해당 Gate의 판단 근거·후보·계획을 일반 메시지로 보여준 경우, 같은 workflow turn에서 즉시 해당 `clarify` Gate를 호출한다. 사용자의 `진행해주세요`, `네`, `계속해주세요` 같은 별도 자연어 응답을 중간 단계로 요구하지 않는다.
-17. **Gate-required state에서 `clarify` 없이 사용자 입력 대기 상태로 전환하는 것을 금지한다.** Project/API Spec/Workspace/Branch/Existing Changes/Coder Model/Plan/Requirement Delta 및 Recovery 전용 Gate 모두 동일하다. 단, 이미 durable approval evidence가 있어 `REUSE` 또는 `NOT_REQUIRED`로 판정된 Gate는 재호출하지 않는다.
+17. **Gate-required state에서 `clarify` 없이 사용자 입력 대기 상태로 전환하는 것을 금지한다.** Project/Parent Tracking/API Spec/Workspace/Branch/Existing Changes/Coder Model/Plan/Requirement Delta 및 Recovery 전용 Gate 모두 동일하다. 단, 이미 durable approval evidence가 있어 `REUSE` 또는 `NOT_REQUIRED`로 판정된 Gate는 재호출하지 않는다.
 18. **설명과 승인 UI는 한 쌍이다.** 설명이 필요한 Gate는 `일반 메시지 → 즉시 clarify` 순서로 처리하며, 그 사이에 동일 계획 재출력·진행 의사 재확인·다른 비필수 질문을 삽입하지 않는다.
 19. **Plan 계열 Gate에는 승인 UI 직전 `구현 요약:`이 필수다.** Standard `[실행·검증 계획 승인]`과 Recovery `[복구 계획 승인]` 모두 상세 계획의 마지막에 1~2줄(최대 2문장)로 실제 변경 대상 + 핵심 변경 + 보존 범위 또는 중요 예외를 요약한다. 제목/목표만 반복하는 요약은 불충분하다. `구현 요약:`이 없으면 해당 Gate 입력은 READY가 아니며 `clarify`를 호출하거나 승인 상태로 전이할 수 없다.
 20. **구현 요약과 승인 UI는 연속되어야 한다.** 상세 계획 → `구현 요약:` → 즉시 canonical `clarify` 순서를 강제하며, 구현 요약 뒤에 새 분석·별도 질문·동일 계획 재출력을 삽입하지 않는다.
@@ -50,6 +50,8 @@ Hermes `clarify`는 첫 번째 choice를 Recommended로 표시하므로 현재 A
 ```text
 PROJECT_APPROVAL
 → dev-breakdown READY
+→ PARENT_TRACKING_CLASSIFIED
+→ PARENT_TRACKING_APPROVAL (NEW_PARENT | LINK_EXISTING_PARENT | PROMOTE_TO_PARENT인 경우)
 → API_SPEC_APPROVAL (DESIGN_FIRST + REQUIRED인 경우)
 → WORKSPACE_APPROVAL
 → BRANCH_APPROVAL (Git Workspace) | BRANCH_NOT_REQUIRED (Non-Git Workspace)
@@ -193,6 +195,57 @@ choices:
 ```
 
 제안 사용 시 승인한다. 다른 프로젝트 또는 Other 입력은 resolve 후 같은 Gate를 다시 표시한다.
+
+## Gate P — Parent Tracking
+
+다음 중 하나면 이 Gate는 REQUIRED다.
+
+```text
+Parent Tracking Mode = NEW_PARENT
+Parent Tracking Mode = LINK_EXISTING_PARENT
+Parent Tracking Mode = PROMOTE_TO_PARENT
+```
+
+명백한 단건 작업의 `Parent Tracking Mode = NONE`은 `NOT_REQUIRED`로 생략한다.
+
+사용자 가시 제목 규칙:
+
+```text
+[부모] <전체 작업 제목>
+[자식] <현재 Standard Task 제목>
+```
+
+관계의 authoritative key는 제목이 아니라 `Parent Task ID`다.
+
+신규 Parent:
+
+```text
+question:
+  [작업 관리 방식 승인]
+  이번 작업의 연속 작업 관리 방식을 승인할까요?
+choices:
+  - 새 부모 작업으로 묶어서 진행
+  - 단건 작업으로 진행
+```
+
+기존 Parent 연결:
+
+```text
+choices:
+  - 제안된 부모 작업에 연결
+  - 단건 작업으로 진행
+  - 다른 부모 작업 지정
+```
+
+단건 → 묶음 승격:
+
+```text
+choices:
+  - 부모 작업을 생성해 기존 작업부터 연결
+  - 현재처럼 단건 작업 유지
+```
+
+Parent는 `Execution: NON_DISPATCH` tracking card이며 worker에 unblock/dispatch하지 않는다. 전체 Child를 미리 생성하지 않고 현재 Standard Task만 생성한다. Child 완료 뒤 다음 Child를 자동 생성/dispatch하지 않는다.
 
 ## Gate A — API Spec
 

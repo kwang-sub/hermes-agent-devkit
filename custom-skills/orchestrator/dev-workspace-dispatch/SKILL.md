@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 단일 Work Unit 계획과 Git/Non-Git workspace의 버전관리 계약·Coder 모델·capability를 Kanban으로 인계한다. 알림은 동일 컨테이너의 DevKit Notification Bridge가 task_events를 비동기로 관찰한다.
-version: 0.19.0
+version: 0.20.0
 author: local
 platforms: [linux]
 metadata:
@@ -15,7 +15,7 @@ metadata:
 
 사용자 승인까지 완료된 READY **단일 Work Unit** 계획을 승인된 workspace와 Coder model snapshot과 함께 Kanban으로 인계한다. Git Workspace는 branch/diff 계약을 유지하고, 승인된 Non-Git Workspace는 branch/diff를 `N/A`로 처리한다. 이 Skill이 신규 Standard Dispatch의 표준이다.
 
-`/opt/data/shared/references/standard-work-unit-rules.md`를 적용한다.
+`/opt/data/shared/references/standard-work-unit-rules.md`와 `/opt/data/shared/references/parent-tracking-rules.md`를 적용한다.
 
 ## 1. 진입 조건
 - 실행 계획 + 검증 계획 승인 완료
@@ -34,6 +34,7 @@ metadata:
 - Coder Model Tier(DEFAULT|PREMIUM) 승인 완료
 - 승인 Tier를 `flow_model_policy.py resolve`로 해석한 `MODEL/PROVIDER` snapshot 확보
 - Managed Project root의 `.hermes/project.yaml` metadata 존재
+- Parent Tracking Mode가 `NEW_PARENT | LINK_EXISTING_PARENT | PROMOTE_TO_PARENT`이면 `[작업 관리 방식 승인]` 완료 및 Parent Task ID 확보
 
 Reviewer는 별도 모델 승인을 받지 않고 항상 Reviewer profile DEFAULT를 사용한다.
 
@@ -187,6 +188,25 @@ Data DESIGN + Follow-up MIGRATION
 
 `dev-flow-model-policy`는 runtime pin 필수다. preflight 실패 시 dispatch하지 않는다.
 
+## 7. Parent Tracking Dispatch 계약
+
+Parent Tracking Mode가 `NONE`이면 기존 단건 제목/dispatch를 그대로 사용한다.
+
+Parent Tracking이 활성화되면 다음 제목 규칙을 적용한다.
+
+```text
+Parent title: [부모] <전체 작업 제목>
+Child title:  [자식] <현재 Work Unit 제목>
+```
+
+- Parent는 `Execution: NON_DISPATCH` tracking card다.
+- Parent 생성 시 `kanban_create`는 가능하지만 `kanban_unblock`/worker dispatch는 금지한다.
+- Parent/Child 관계는 반드시 Parent Task ID로 기록한다. 제목 접두어는 사용자 식별용일 뿐 관계 key가 아니다.
+- 현재 Standard Task만 Child로 생성한다. 계획된 후속 Child는 선생성하지 않는다.
+- `PROMOTE_TO_PARENT`는 기존 Task를 복제하지 않고 새 Parent의 첫 연결 이력으로 기록한다.
+- Child가 DONE되면 Parent에 `Task ID / Job ID / Title / Result / Implementation Summary`를 append한다. Job ID를 확인할 수 없으면 `UNKNOWN`을 기록하며 추측하지 않는다.
+- Child 완료 뒤 다음 Child를 자동 생성/dispatch하지 않는다. 후속 작업은 새 Standard Flow에서 기존 Parent를 선택해 진행한다.
+
 ## 7. Kanban 생성·Dispatch 단일 경로
 
 ```text
@@ -233,6 +253,9 @@ kanban_unblock tool 정확히 1회
 Work Unit Contract 없는 Standard Task dispatch
 SPLIT_REQUIRED인데 Follow-up scope를 같은 Task에 포함
 Follow-up Work Unit 자동 Kanban 생성/dispatch
+Parent tracking card를 kanban_unblock/worker dispatch
+Parent 관계를 제목 문자열만으로 판정
+Parent 연결 Task에 `[자식]` 제목 접두어 또는 Parent Task ID 기록 누락
 Follow-up capability를 현재 Applicable Skills에 자동 추가
 board 인자 생략
 HERMES_KANBAN_BOARD fallback
@@ -266,6 +289,17 @@ provider_override == PROVIDER
 ```
 
 ## 8. Task Body Contract
+
+Parent가 있는 실제 Standard Task에는 다음 블록을 먼저 기록한다.
+
+```text
+Parent Tracking:
+- Parent Task ID: <task-id>
+- Parent Title: [부모] <title>
+- Relation: CHILD_WORK_UNIT
+```
+
+그 뒤 기존 Task Body Contract를 그대로 유지한다.
 
 ```text
 Work Unit:
