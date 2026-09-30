@@ -282,6 +282,7 @@ run_check "Custom skill metadata and progressive-disclosure contract" python3 sc
 run_check "Capability lifecycle contract" python3 scripts/check_capability_lifecycle_contract.py
 run_check "Orchestrator Direct Flow contract" python3 scripts/check_direct_flow_contract.py
 run_check "Gradle launcher isolation contract" python3 scripts/check_gradle_launcher_contract.py
+run_check "Maven launcher isolation contract" python3 scripts/check_maven_launcher_contract.py
 run_check "Standard Flow Work Unit boundary contract" python3 scripts/check_standard_work_unit_contract.py
 run_check "Markdown API specification contract" python3 scripts/check_api_spec_contract.py
 run_check "DevKit updater contract" python3 scripts/check_update_devkit_contract.py
@@ -308,6 +309,7 @@ run_check "Tirith package security preflight tests" python3 custom-skills/shared
 run_check "dev-project-resolve tests" python3 custom-skills/orchestrator/dev-project-resolve/tests/test_project_resolve.py
 run_check "dev-breakdown shell syntax" bash -n custom-skills/orchestrator/dev-breakdown/scripts/collect_project_context.sh
 run_check "hermes-java shell syntax" bash -n scripts/hermes-java
+run_check "hermes-maven shell syntax" bash -n scripts/hermes-maven
 run_check "Multi-JDK image contract" check_multi_jdk_contract
 run_check "Standalone pnpm image/runtime contract" check_pnpm_contract
 run_check "Shared capability skill contract" check_shared_capability_skills
