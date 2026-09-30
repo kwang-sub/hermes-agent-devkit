@@ -8,7 +8,7 @@ from pathlib import Path
 import sqlite3
 import time
 
-AFFINITY_DB_NAME = "devkit-session-affinity.db"
+DEFAULT_HISTORY_DB = "/opt/data/devkit-task-session-history.db"
 
 
 def _text(value: object) -> str:
@@ -19,8 +19,8 @@ def _profile_state_db(profile_home: str) -> Path:
     return Path(profile_home) / "state.db"
 
 
-def _history_db(kanban_db: str) -> Path:
-    return Path(kanban_db).resolve().parent / AFFINITY_DB_NAME
+def _history_db(history_db: str) -> Path:
+    return Path(history_db).resolve()
 
 
 def _find_latest_session(*, profile_home: str, task_id: str, workspace: str) -> str | None:
@@ -53,8 +53,8 @@ def _find_latest_session(*, profile_home: str, task_id: str, workspace: str) -> 
         conn.close()
 
 
-def _open_history(kanban_db: str) -> sqlite3.Connection:
-    path = _history_db(kanban_db)
+def _open_history(history_db: str) -> sqlite3.Connection:
+    path = _history_db(history_db)
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), timeout=1.0)
     conn.row_factory = sqlite3.Row
@@ -77,7 +77,7 @@ def _open_history(kanban_db: str) -> sqlite3.Connection:
     return conn
 
 
-def capture(*, task_id: str, profile: str, profile_home: str, workspace: str, kanban_db: str, session_mode: str) -> tuple[str | None, bool]:
+def capture(*, task_id: str, profile: str, profile_home: str, workspace: str, history_db: str, session_mode: str) -> tuple[str | None, bool]:
     session_id = _find_latest_session(
         profile_home=profile_home,
         task_id=task_id,
@@ -86,7 +86,7 @@ def capture(*, task_id: str, profile: str, profile_home: str, workspace: str, ka
     if not session_id:
         return None, False
 
-    conn = _open_history(kanban_db)
+    conn = _open_history(history_db)
     try:
         now = time.time()
         existing = conn.execute(
@@ -112,8 +112,8 @@ def capture(*, task_id: str, profile: str, profile_home: str, workspace: str, ka
         conn.close()
 
 
-def list_history(*, task_id: str, kanban_db: str) -> list[sqlite3.Row]:
-    conn = _open_history(kanban_db)
+def list_history(*, task_id: str, history_db: str) -> list[sqlite3.Row]:
+    conn = _open_history(history_db)
     try:
         return conn.execute(
             """
@@ -137,16 +137,16 @@ def main() -> int:
     sub = ap.add_subparsers(dest="command", required=True)
 
     capture_cmd = sub.add_parser("capture")
-    capture_cmd.add_argument("--task-id", default=_env("HERMES_KANBAN_TASK"))
-    capture_cmd.add_argument("--profile", default=_env("HERMES_PROFILE"))
-    capture_cmd.add_argument("--profile-home", default=_env("HERMES_HOME"))
-    capture_cmd.add_argument("--workspace", default=_env("HERMES_KANBAN_WORKSPACE"))
-    capture_cmd.add_argument("--kanban-db", default=_env("HERMES_KANBAN_DB"))
-    capture_cmd.add_argument("--session-mode", default=_env("HERMES_KANBAN_SESSION_MODE") or "UNKNOWN")
+    capture_cmd.add_argument("--task-id")
+    capture_cmd.add_argument("--profile", choices=("coder", "reviewer"))
+    capture_cmd.add_argument("--profile-home")
+    capture_cmd.add_argument("--workspace")
+    capture_cmd.add_argument("--history-db", default=DEFAULT_HISTORY_DB)
+    capture_cmd.add_argument("--session-mode", choices=("NEW", "RESUME", "UNKNOWN"), default="UNKNOWN")
 
     list_cmd = sub.add_parser("list")
     list_cmd.add_argument("--task-id", required=True)
-    list_cmd.add_argument("--kanban-db", default=_env("HERMES_KANBAN_DB"))
+    list_cmd.add_argument("--history-db", default=DEFAULT_HISTORY_DB)
 
     args = ap.parse_args()
 
@@ -156,7 +156,7 @@ def main() -> int:
             "profile": args.profile,
             "profile-home": args.profile_home,
             "workspace": args.workspace,
-            "kanban-db": args.kanban_db,
+            "history-db": args.history_db,
         }
         missing = [key for key, value in required.items() if not _text(value)]
         if missing:
@@ -166,7 +166,7 @@ def main() -> int:
             profile=args.profile,
             profile_home=args.profile_home,
             workspace=args.workspace,
-            kanban_db=args.kanban_db,
+            history_db=args.history_db,
             session_mode=args.session_mode,
         )
         if not session_id:
@@ -186,9 +186,9 @@ def main() -> int:
         print("SESSION_HISTORY_MARKER_END")
         return 0
 
-    if not args.kanban_db:
-        raise SystemExit("missing required session context: kanban-db")
-    rows = list_history(task_id=args.task_id, kanban_db=args.kanban_db)
+    if not args.history_db:
+        raise SystemExit("missing required session context: history-db")
+    rows = list_history(task_id=args.task_id, history_db=args.history_db)
     if not rows:
         print("SESSION_HISTORY_STATUS=empty")
         return 0
@@ -220,19 +220,18 @@ def self_test() -> None:
         state.commit()
         state.close()
 
-        kanban = root / "kanban.db"
-        sqlite3.connect(str(kanban)).close()
+        history = root / "history.db"
         session_id, is_new = capture(
             task_id="t1", profile="coder", profile_home=str(profile),
-            workspace="/workspace/demo", kanban_db=str(kanban), session_mode="NEW",
+            workspace="/workspace/demo", history_db=str(history), session_mode="NEW",
         )
         assert session_id == "s1" and is_new
         _, is_new_again = capture(
             task_id="t1", profile="coder", profile_home=str(profile),
-            workspace="/workspace/demo", kanban_db=str(kanban), session_mode="RESUME",
+            workspace="/workspace/demo", history_db=str(history), session_mode="RESUME",
         )
         assert not is_new_again
-        rows = list_history(task_id="t1", kanban_db=str(kanban))
+        rows = list_history(task_id="t1", history_db=str(history))
         assert len(rows) == 1
         assert rows[0]["session_id"] == "s1"
         assert rows[0]["session_mode"] == "RESUME"
