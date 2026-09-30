@@ -20,15 +20,15 @@ Parent 자체는 Coder/Reviewer에 dispatch하지 않는다.
 
 ```text
 [부모] <전체 작업 제목>
-[하위] <실제 Standard Task 제목>
+[자식] <실제 Standard Task 제목>
 ```
 
 예:
 
 ```text
 [부모] 회원가입 기능 구현
-[하위] 회원가입 UI 및 입력 검증 구현
-[하위] Supabase 회원가입 연동
+[자식] 회원가입 UI 및 입력 검증 구현
+[자식] Supabase 회원가입 연동
 ```
 
 접두어는 표시용 식별자다. Parent/Child 관계의 authoritative key는 제목 문자열이 아니라 `Parent Task ID`다. 제목 수정 시에도 ID 관계는 유지한다.
@@ -83,7 +83,7 @@ Parent는 worker에 unblock/dispatch하지 않는다. child hierarchy/status pro
 실제 Standard Task body에는 Parent가 있을 때만 다음을 추가한다.
 
 ```text
-Title: [하위] <현재 Work Unit 제목>
+Title: [자식] <현재 Work Unit 제목>
 
 Parent Tracking:
 - Parent Task ID: <task-id>
@@ -165,7 +165,7 @@ Parent Plan
 Completed Work:
 - Task ID: <task-id>
 - Job ID: <job-id | UNKNOWN>
-- Title: [하위] <task title>
+- Title: [자식] <task title>
 - Result: DONE
 - Implementation Summary: <완료 구현 요약>
 ```
@@ -183,7 +183,7 @@ Parent 선택/확정
 → 현재 Work Unit breakdown
 → 필요한 Requirement Delta
 → Workspace/Branch/Model/Plan Gate
-→ [하위] Task 생성 또는 기존 Task 수정/재개
+→ [자식] Task 생성 또는 기존 Task 수정/재개
 ```
 
 Parent가 있다는 이유로 Child의 Standard Flow 승인 계약을 생략하지 않는다.
@@ -196,7 +196,7 @@ Parent가 있다는 이유로 Child의 Standard Flow 승인 계약을 생략하�
 
 1. 새 `[부모]` tracking card 생성
 2. 기존 Task를 첫 이력/연결 작업으로 기록
-3. 이후 새 Standard Task는 `[하위]` 접두어와 Parent Task ID를 가진다
+3. 이후 새 Standard Task는 `[자식]` 접두어와 Parent Task ID를 가진다
 
 기존 Task를 복제하지 않는다.
 
