@@ -79,6 +79,9 @@ def main() -> int:
             "APPROVED_SOURCE_STATUS",
             "resume_triage.py",
             "TRIAGE_RECOVERY_CAPABILITY_UNAVAILABLE",
+            "구현 요약:",
+            "RECOVERY_PLAN_READY",
+            "최대 2문장",
             "references/recovery-details.md",
             "requires_tools: [terminal, skill_view, clarify, kanban_list, kanban_show, kanban_comment, kanban_unblock]",
         ),
@@ -111,6 +114,8 @@ def main() -> int:
             "SAME_TASK_RESUME",
             "latest Recovery Revision",
             "raw status mutation",
+            "Gate 3 구현 요약 readiness",
+            "RECOVERY_PLAN_READY=false",
         ),
         "dev-task-recovery details",
     )
