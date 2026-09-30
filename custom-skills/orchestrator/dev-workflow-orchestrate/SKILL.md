@@ -132,8 +132,8 @@ Parent Tracking Mode: NONE | NEW_PARENT | LINK_EXISTING_PARENT | PROMOTE_TO_PARE
 ```
 
 - `NONE`: 명백한 단건 작업이면 Gate 없이 진행한다.
-- `NEW_PARENT`: 새 `[부모]` tracking card를 생성하고 현재 Task를 `[하위]`로 연결한다.
-- `LINK_EXISTING_PARENT`: 기존 `[부모]` 카드에 새 `[하위]` Task를 추가하거나 연결된 Task를 수정한다.
+- `NEW_PARENT`: 새 `[부모]` tracking card를 생성하고 현재 Task를 `[자식]`로 연결한다.
+- `LINK_EXISTING_PARENT`: 기존 `[부모]` 카드에 새 `[자식]` Task를 추가하거나 연결된 Task를 수정한다.
 - `PROMOTE_TO_PARENT`: Parent 없이 시작한 기존 Task를 새 `[부모]` tracking card의 첫 이력으로 연결한다.
 
 Parent tracking 구조를 바꾸는 경우 다음 독립 Gate를 사용한다.
@@ -143,7 +143,7 @@ Parent tracking 구조를 바꾸는 경우 다음 독립 Gate를 사용한다.
 이번 작업의 연속 작업 관리 방식을 승인할까요?
 ```
 
-이 Gate는 tracking 관계만 승인하며 API/Workspace/Branch/Model/Plan 승인을 대신하지 않는다. Parent/Child 관계의 authoritative key는 제목이 아니라 Parent Task ID다. 표시는 `[부모]` / `[하위]` 제목 접두어를 사용한다.
+이 Gate는 tracking 관계만 승인하며 API/Workspace/Branch/Model/Plan 승인을 대신하지 않는다. Parent/Child 관계의 authoritative key는 제목이 아니라 Parent Task ID다. 표시는 `[부모]` / `[자식]` 제목 접두어를 사용한다.
 
 Parent는 `Execution: NON_DISPATCH`이며 Coder/Reviewer로 dispatch하지 않는다. 전체 Child 카드를 미리 만들지 않고 현재 Standard Task만 생성한다. Child 완료 후 다음 Child를 자동 실행하지 않으며, 다음 작업은 새 Standard Flow에서 기존 Parent를 선택해 진행한다.
 
@@ -297,7 +297,7 @@ NO_EXTRA_KANBAN_CONFIRMATION
 - blocked Task 복구 요청은 `dev-task-recovery`의 정확히 3-Gate 계약을 우선하며, 정상 SAME_TASK_RESUME 뒤에 일반 Plan/Requirement Delta Gate를 중복 추가하지 않는다.
 - Git Workspace의 Base SHA는 dispatch 시점 계약으로 보존한다. Non-Git Workspace는 `Base SHA: NONE`이며 snapshot을 생성하지 않는다.
 - 현재 Work Unit만 dispatch한다.
-- Parent tracking이 승인된 Task는 제목에 `[하위]`를 사용하고 Task body에 Parent Task ID를 기록한다. Parent 제목은 `[부모]`를 사용하되 관계 판정에 제목 문자열을 사용하지 않는다.
+- Parent tracking이 승인된 Task는 제목에 `[자식]`를 사용하고 Task body에 Parent Task ID를 기록한다. Parent 제목은 `[부모]`를 사용하되 관계 판정에 제목 문자열을 사용하지 않는다.
 - Parent는 실행하지 않으며 전체 하위 카드를 선생성하거나 Child 완료 뒤 다음 Child를 자동 dispatch하지 않는다.
 - Parent 없이 시작한 Task도 별도 `[작업 관리 방식 승인]` 후 `PROMOTE_TO_PARENT`로 전환할 수 있다.
 - 추가 Kanban 생성 확인 질문을 만들지 않는다.
