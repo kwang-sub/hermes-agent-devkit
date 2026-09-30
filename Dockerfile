@@ -72,6 +72,9 @@ FROM hermes-upstream-patched AS hermes-devkit-runtime
 
 USER root
 
+COPY --chmod=0755 scripts/task_session_history.py /opt/devkit/bin/task_session_history.py
+RUN /opt/hermes/.venv/bin/python /opt/devkit/bin/task_session_history.py --self-test
+
 # DevKit notification bridge: one additional s6-supervised process in the same
 # container. It reads Hermes Kanban task_events without modifying Hermes source,
 # formats developer-facing messages, and delivers through the official

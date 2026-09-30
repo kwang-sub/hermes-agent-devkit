@@ -11,6 +11,7 @@ Parent Task는 여러 Standard Task가 하나의 큰 목표를 이어서 수행�
 - 실제 실행 Job ID
 - 완료 상태와 구현 요약
 - 다음 작업이 이어갈 최소 context
+- 완료된 자식 Task의 실제 Hermes Session IDs
 
 Parent 자체는 Coder/Reviewer에 dispatch하지 않는다.
 
@@ -166,13 +167,30 @@ Completed Work:
 - Task ID: <task-id>
 - Job ID: <job-id | UNKNOWN>
 - Title: [자식] <task title>
+- Session IDs: <child TASK_SESSION_HISTORY의 실제 session ids | UNAVAILABLE>
 - Result: DONE
 - Implementation Summary: <완료 구현 요약>
 ```
 
-Job ID를 runtime에서 확인할 수 없으면 추측하지 않고 `UNKNOWN`으로 기록한다.
+Job ID를 runtime에서 확인할 수 없으면 추측하지 않고 `UNKNOWN`으로 기록한다. Session IDs는 자식 카드의 `TASK_SESSION_HISTORY` durable comments에서 읽는다. 자식에 실제 Session ID가 없으면 `UNAVAILABLE`을 기록하며 추측하지 않는다.
 
 Parent 이력은 작업 결과 추적용이다. Child의 상세 Plan/Verification 전체를 복제하지 않는다.
+
+## Parent Session 추적
+
+Parent는 `Execution: NON_DISPATCH`이므로 Coder/Reviewer 실행 Session을 직접 갖지 않는다.
+
+Parent 자체의 생성/계획 수정에 대해서는 현재 Orchestrator Session ID가 runtime에서 **안정적으로 확인 가능한 경우에만** 다음 Management History를 comment로 남긴다.
+
+```text
+PARENT_MANAGEMENT_SESSION
+- Session ID: <actual orchestrator session id>
+- Action: CREATED | PLAN_UPDATED | CHILD_LINKED
+```
+
+Orchestrator Session ID를 신뢰할 수 있게 확인할 수 없으면 `Session ID: UNAVAILABLE`을 명시하고 임의 값을 만들지 않는다.
+
+Parent에서 과거 구현 대화를 찾는 primary 경로는 Completed Work의 `Session IDs` → 해당 자식 카드의 상세 `TASK_SESSION_HISTORY`다.
 
 ## 기존 Parent에 작업 추가/수정
 
@@ -209,3 +227,4 @@ Parent가 있다는 이유로 Child의 Standard Flow 승인 계약을 생략하�
 - Child 완료 후 다음 Child를 자동 dispatch하지 않는다.
 - 새 Child 추가/수정은 새 Standard Flow 요청으로 처리한다.
 - Parent/Child 관계는 제목이 아니라 Task ID가 authoritative다.
+- Parent의 자식 Session 요약은 실제 child `TASK_SESSION_HISTORY`만 사용하며 Session ID를 추측하지 않는다.

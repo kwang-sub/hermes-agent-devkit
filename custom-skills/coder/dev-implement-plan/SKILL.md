@@ -1,24 +1,26 @@
 ---
 name: dev-implement-plan
 description: Orchestrator가 승인·dispatch한 Direct 또는 Standard Kanban 단일 Work Unit을 할당 Workspace에서 구현·검증하고 항상 Reviewer에게 인계한다.
-version: 0.26.0
+version: 0.27.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, implementation, coder, kanban, workspace, review, direct-flow, standard-flow, work-unit, capability, java, refactor, structural-quality, performance, infrastructure, runtime, container, env]
     related_skills: [dev-breakdown, dev-workspace-dispatch, dev-review-cycle, dev-code-review, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-api-spec, dev-api-contract, dev-api-docs, dev-frontend-feature, dev-infrastructure, dev-data-feature, dev-data-modeling, dev-db-migration]
-    requires_tools: [terminal, kanban_show, kanban_request_review, kanban_block, kanban_heartbeat, skill_view]
+    requires_tools: [terminal, kanban_show, kanban_comment, kanban_request_review, kanban_block, kanban_heartbeat, skill_view]
 ---
 
 # dev-implement-plan
 
-Coder는 새 mutation request의 실행 방식을 선택하거나 self-dispatch하지 않고 Orchestrator가 생성한 Kanban Task만 수행한다. Direct/Standard Task 모두 `/opt/data/shared/references/standard-work-unit-rules.md`를 적용한다. 상세 절차·retry·verification 분류가 필요할 때만 `references/implementation-details.md`를 읽는다.
+Coder는 새 mutation request의 실행 방식을 선택하거나 self-dispatch하지 않고 Orchestrator가 생성한 Kanban Task만 수행한다. Direct/Standard Task 모두 `/opt/data/shared/references/standard-work-unit-rules.md`와 `/opt/data/shared/references/session-history-rules.md`를 적용한다. 상세 절차·retry·verification 분류가 필요할 때만 `references/implementation-details.md`를 읽는다.
 
 ## 실행 순서
 
 ```text
 kanban_show
+→ task_session_history.py capture
+→ 새 Session이면 TASK_SESSION_HISTORY kanban_comment
 → Worker Context Gate 1회
 → verify_workspace.py 1회
 → Work Unit Boundary Gate
@@ -33,6 +35,30 @@ kanban_show
 ```
 
 Workspace Version Control과 Pattern References는 Task body를 재사용한다. Git Workspace는 Expected Branch/Base SHA를 검증하고, Non-Git Workspace는 `Version Control: none`, `Branch/Base SHA: NONE` 계약으로 `verify_workspace.py --version-control none`을 사용한다. 기존 변경은 preserve-first이며 reset/restore/clean/stash하지 않는다. Existing Changes Preservation Fast Path가 승인된 Git Workspace에서는 repository-wide dirty/EOL/untracked scan을 반복하지 않는다.
+
+## Session History Gate
+
+모든 실행 카드(Parent 없는 일반 단일 카드와 `[자식]` 카드)는 source mutation 전에 현재 Hermes session을 durable하게 기록한다.
+
+```bash
+python3 /opt/devkit/bin/task_session_history.py capture \
+  --task-id "<Task ID from kanban_show>" \
+  --profile coder \
+  --profile-home /opt/data/profiles/coder \
+  --workspace "<Workspace from kanban_show>" \
+  --session-mode UNKNOWN
+```
+
+Task ID와 Workspace는 현재 `kanban_show` 결과를 명시적으로 전달한다. 터미널 자식 프로세스의 Kanban ownership ENV에 의존하지 않는다.
+
+출력 처리:
+
+- `SESSION_HISTORY_STATUS=captured + SESSION_HISTORY_NEW=true`: 출력된 `TASK_SESSION_HISTORY` marker를 현재 Task에 `kanban_comment`로 정확히 한 번 기록한다.
+- `SESSION_HISTORY_STATUS=captured + SESSION_HISTORY_NEW=false`: 동일 `task_id + profile + session_id`가 이미 기록된 것이므로 comment를 추가하지 않는다.
+- `SESSION_HISTORY_STATUS=unavailable`: Session ID를 추측하지 않고 mutation 전에 capability blocker로 종료한다.
+- comment 기록 실패: session traceability 계약을 보존할 수 없으므로 source mutation 전에 `kanban_block(kind=capability)`.
+
+한 Task는 NEW/RESUME/recovery/review cycle을 거치며 여러 Session ID를 가질 수 있다. 마지막 Session ID 하나로 덮어쓰지 않는다.
 
 ## Approved Recovery Revision Contract
 
@@ -197,4 +223,5 @@ Terminal transition은 `kanban_request_review` 또는 `kanban_block` 중 정확�
 - build-script 승인 후 정책 변경은 현재 pnpm migration/dependency Work Unit의 승인된 재개로 처리하며 별도 Hermes allowlist를 만들지 않는다.
 - Standard Flow에서 승인된 Verification Provider/Environment/Lifecycle을 임의 변경하지 않는다.
 - Interactive Coder가 Kanban 없이 새 mutation request를 구현하지 않는다.
+- 실행 카드의 `TASK_SESSION_HISTORY`는 append-only이며 여러 Session ID를 마지막 값 하나로 덮어쓰지 않는다.
 - 상세 BLOCKED/retry/full-test/evidence 형식은 `references/implementation-details.md`를 따른다.

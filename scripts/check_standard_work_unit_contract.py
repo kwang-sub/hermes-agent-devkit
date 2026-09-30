@@ -14,6 +14,7 @@ DATA = ROOT / "custom-skills/shared/dev-data-feature/SKILL.md"
 MODELING = ROOT / "custom-skills/shared/dev-data-modeling/SKILL.md"
 MIGRATION = ROOT / "custom-skills/shared/dev-db-migration/SKILL.md"
 PARENT = ROOT / "shared/references/parent-tracking-rules.md"
+SESSION = ROOT / "shared/references/session-history-rules.md"
 
 
 def text(path: Path) -> str:
@@ -51,8 +52,13 @@ def main() -> int:
     require(PARENT, (
         "Parent Tracking Mode", "NEW_PARENT", "LINK_EXISTING_PARENT", "PROMOTE_TO_PARENT",
         "[부모]", "[자식]", "Parent Task ID", "Execution: NON_DISPATCH",
-        "Job ID", "Implementation Summary", "전체 하위 카드를 미리 생성하지 않는다",
+        "Job ID", "Implementation Summary", "Session IDs", "Parent Session 추적", "전체 하위 카드를 미리 생성하지 않는다",
         "다음 Child를 자동 dispatch하지 않는다",
+    ))
+
+    require(SESSION, (
+        "TASK_SESSION_HISTORY", "append-only", "일반 단일 카드", "[자식]", "[부모]",
+        "devkit-task-session-history.db", "UNAVAILABLE", "Session ID를 추측하지 않는다",
     ))
 
     require(BREAKDOWN, common + (
@@ -90,6 +96,7 @@ def main() -> int:
         "dev-db-migration",
         "Verification Contract", "Verification Provider", "Verification Approval: APPROVED",
         "Parent Tracking Dispatch 계약", "Execution: NON_DISPATCH", "Parent Task ID", "[부모]", "[자식]", "Job ID", "Implementation Summary",
+        "Session History 계약", "TASK_SESSION_HISTORY", "UNAVAILABLE",
     ))
 
     require(IMPLEMENT, common + (
@@ -101,6 +108,7 @@ def main() -> int:
         "application/test/config source를 수정하지 않는다",
         "Work Unit Boundary Respected: true",
         "Standard Flow Verification Contract Gate", "VERIFICATION_PROVIDER_UNAVAILABLE",
+        "Session History Gate", "task_session_history.py capture", "TASK_SESSION_HISTORY", "kanban_comment",
     ))
 
     require(REVIEW, common + (
@@ -110,6 +118,7 @@ def main() -> int:
         "application/test/config source mutation",
         "여러 Skill 사용 자체를 split finding으로 만들지 않는다",
         "Follow-up Work Unit을 현재 Task에 구현하도록 요구하지 않는다",
+        "Session History Review Gate", "TASK_SESSION_HISTORY", "kanban_comment",
     ))
 
     require(DATA, common + (
@@ -136,7 +145,7 @@ def main() -> int:
         "APPROVED DBA Logical Model",
     ))
 
-    print("PASS: Standard Flow single Work Unit + parent tracking contract")
+    print("PASS: Standard Flow single Work Unit + parent tracking + session history contract")
     return 0
 
 

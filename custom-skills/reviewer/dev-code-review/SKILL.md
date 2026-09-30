@@ -1,14 +1,14 @@
 ---
 name: dev-code-review
 description: 동일 Workspace의 Direct/Standard 미커밋 구현을 requirement/AC와 Work Unit·project pattern·capability·구조 품질 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
-version: 0.18.1
+version: 0.19.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, review, reviewer, kanban, quality, verification, direct-flow, standard-flow, work-unit, capability, lifecycle, java, refactor, structural-quality, performance]
     related_skills: [dev-implement-plan, dev-review-cycle, dev-workspace-dispatch, dev-java-guidelines, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-spring-refactor, dev-frontend-feature, dev-data-feature, dev-data-modeling, dev-db-migration, dev-infrastructure, dev-api-spec, dev-api-contract, dev-api-docs]
-    requires_tools: [terminal, kanban_show, kanban_request_changes, kanban_complete, kanban_block, kanban_heartbeat, skill_view]
+    requires_tools: [terminal, kanban_show, kanban_comment, kanban_request_changes, kanban_complete, kanban_block, kanban_heartbeat, skill_view]
 ---
 
 # dev-code-review
@@ -18,12 +18,26 @@ Reviewer는 같은 Workspace의 미커밋 변경을 독립 검토하며 applicat
 ## 실행 계약
 
 1. `kanban_show()`로 requirement/AC, Work Unit Contract, Pattern References, Applied Capability Skills, coder evidence를 읽는다.
-2. Task의 Workspace Version Control을 읽고 `review_context.py --version-control <git|none> --include <Changed Files>`를 한 번 실행한다. Git이면 Base SHA/branch/scope fingerprint를 검증하고, Non-Git이면 Coder가 선언한 Changed Files만 범위로 사용한다. Git Workspace의 기존 `review_context.py --include <Changed Files>` scoped review 계약은 그대로 유지한다.
-3. Git은 diff-first, Non-Git은 declared-files-first로 requirement/AC/correctness/compatibility/security/tests를 확인한다.
-4. Capability와 verification evidence를 필요한 범위에서만 검증한다.
-5. P0/P1이면 `kanban_request_changes`, 충분하면 `kanban_complete`, 판단 불가/외부 결정/반복 blocker면 `kanban_block` 중 정확히 하나를 실행한다.
+2. `/opt/data/shared/references/session-history-rules.md`에 따라 `python3 /opt/devkit/bin/task_session_history.py capture --task-id "<Task ID>" --profile reviewer --profile-home /opt/data/profiles/reviewer --workspace "<Workspace>" --session-mode UNKNOWN`를 실행한다. 새 reviewer Session이면 `TASK_SESSION_HISTORY` marker를 `kanban_comment`로 정확히 한 번 기록한다. Session ID를 확인할 수 없거나 comment 기록이 실패하면 review mutation 전에 capability blocker로 종료한다.
+3. Task의 Workspace Version Control을 읽고 `review_context.py --version-control <git|none> --include <Changed Files>`를 한 번 실행한다. Git이면 Base SHA/branch/scope fingerprint를 검증하고, Non-Git이면 Coder가 선언한 Changed Files만 범위로 사용한다. Git Workspace의 기존 `review_context.py --include <Changed Files>` scoped review 계약은 그대로 유지한다.
+4. Git은 diff-first, Non-Git은 declared-files-first로 requirement/AC/correctness/compatibility/security/tests를 확인한다.
+5. Capability와 verification evidence를 필요한 범위에서만 검증한다.
+6. P0/P1이면 `kanban_request_changes`, 충분하면 `kanban_complete`, 판단 불가/외부 결정/반복 blocker면 `kanban_block` 중 정확히 하나를 실행한다.
 
 Direct/Standard Flow에서는 scope 없는 review를 하지 않는다. Standard Flow에서는 `--include`를 반드시 제공한다. Git Workspace의 `--allow-full-scan`은 명시적 진단 전용이며 tracked와 untracked 모두 Git pathspec으로 제한한다. Non-Git Workspace는 자동 change discovery/snapshot을 하지 않고 Coder의 선언 scope만 검토한다.
+
+## Session History Review Gate
+
+Reviewer도 Coder와 별도 profile/session을 사용하므로 현재 Task에 reviewer Session History를 남긴다.
+
+```text
+TASK_SESSION_HISTORY
+- Session ID: <actual session id>
+- Profile: reviewer
+- Mode: NEW | RESUME | UNKNOWN
+```
+
+동일 `task_id + reviewer + session_id`는 한 번만 comment한다. Coder Session History를 덮어쓰거나 하나의 Session ID 필드로 축약하지 않는다.
 
 ## Recovery Revision Review Gate
 
@@ -144,4 +158,5 @@ CHANGES_REQUESTED는 original coder가 같은 Workspace에서 수정한다.
 - finding은 file/symbol, evidence, required change, expected verification을 포함한다.
 - Direct/Standard Task는 모두 Reviewer가 검토한다.
 - Recovery Task는 Original Contract와 Latest Approved Recovery Revision의 명시적 delta를 합성해 검토하며, Recovery comment 전체를 Task body 대체로 간주하지 않는다.
+- Reviewer Session History는 append-only이며 Coder/기존 reviewer Session marker를 덮어쓰지 않는다.
 - 상세 checklist/escalation은 `references/review-details.md`를 따른다.

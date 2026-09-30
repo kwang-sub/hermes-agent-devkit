@@ -161,6 +161,15 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "[OK] s6 dynamic Gateway scandir is hermes-writable"
 
 
+Invoke-DockerCheck -Label "Kanban task session history helper" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "test", "-x",
+    "/opt/devkit/bin/task_session_history.py"
+)
+Invoke-DockerCheck -Label "Kanban task session history helper self-test" -DockerArgs @(
+    "exec", "--user", "hermes", $Container,
+    "/opt/hermes/.venv/bin/python", "/opt/devkit/bin/task_session_history.py", "--self-test"
+)
+
 Invoke-DockerCheck -Label "DevKit Kanban notifier dynamic service" -DockerArgs @(
     "exec", "--user", "root", $Container, "test", "-x",
     "/run/service/devkit-notifier/run"

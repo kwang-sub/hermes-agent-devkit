@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 단일 Work Unit 계획과 Git/Non-Git workspace의 버전관리 계약·Coder 모델·capability를 Kanban으로 인계한다. 알림은 동일 컨테이너의 DevKit Notification Bridge가 task_events를 비동기로 관찰한다.
-version: 0.20.0
+version: 0.21.0
 author: local
 platforms: [linux]
 metadata:
@@ -15,7 +15,7 @@ metadata:
 
 사용자 승인까지 완료된 READY **단일 Work Unit** 계획을 승인된 workspace와 Coder model snapshot과 함께 Kanban으로 인계한다. Git Workspace는 branch/diff 계약을 유지하고, 승인된 Non-Git Workspace는 branch/diff를 `N/A`로 처리한다. 이 Skill이 신규 Standard Dispatch의 표준이다.
 
-`/opt/data/shared/references/standard-work-unit-rules.md`와 `/opt/data/shared/references/parent-tracking-rules.md`를 적용한다.
+`/opt/data/shared/references/standard-work-unit-rules.md`, `/opt/data/shared/references/parent-tracking-rules.md`, `/opt/data/shared/references/session-history-rules.md`를 적용한다.
 
 ## 1. 진입 조건
 - 실행 계획 + 검증 계획 승인 완료
@@ -204,7 +204,7 @@ Child title:  [자식] <현재 Work Unit 제목>
 - Parent/Child 관계는 반드시 Parent Task ID로 기록한다. 제목 접두어는 사용자 식별용일 뿐 관계 key가 아니다.
 - 현재 Standard Task만 Child로 생성한다. 계획된 후속 Child는 선생성하지 않는다.
 - `PROMOTE_TO_PARENT`는 기존 Task를 복제하지 않고 새 Parent의 첫 연결 이력으로 기록한다.
-- Child가 DONE되면 Parent에 `Task ID / Job ID / Title / Result / Implementation Summary`를 append한다. Job ID를 확인할 수 없으면 `UNKNOWN`을 기록하며 추측하지 않는다.
+- Child가 DONE되면 Parent에 `Task ID / Job ID / Title / Session IDs / Result / Implementation Summary`를 append한다. Job ID는 확인 불가 시 `UNKNOWN`, Session IDs는 child `TASK_SESSION_HISTORY`에서 실제 값을 찾지 못하면 `UNAVAILABLE`로 기록하며 추측하지 않는다.
 - Child 완료 뒤 다음 Child를 자동 생성/dispatch하지 않는다. 후속 작업은 새 Standard Flow에서 기존 Parent를 선택해 진행한다.
 
 ## 7. Kanban 생성·Dispatch 단일 경로
@@ -256,6 +256,8 @@ Follow-up Work Unit 자동 Kanban 생성/dispatch
 Parent tracking card를 kanban_unblock/worker dispatch
 Parent 관계를 제목 문자열만으로 판정
 Parent 연결 Task에 `[자식]` 제목 접두어 또는 Parent Task ID 기록 누락
+실행 카드의 Session History를 단일 Session ID 값으로 덮어쓰기
+발견되지 않은 Session ID를 추측해 Task/Parent에 기록
 Follow-up capability를 현재 Applicable Skills에 자동 추가
 board 인자 생략
 HERMES_KANBAN_BOARD fallback
@@ -287,6 +289,21 @@ status == blocked
 model_override == MODEL
 provider_override == PROVIDER
 ```
+
+## 8. Session History 계약
+
+Parent 없는 일반 실행 카드와 `[자식]` 카드는 동일한 Session History 계약을 사용한다.
+
+```text
+worker start
+→ task_session_history.py capture
+→ 새 session이면 TASK_SESSION_HISTORY durable comment
+→ 기존 구현/review
+```
+
+Task 생성 시점에는 NEW worker의 최종 Session ID가 아직 만들어지지 않을 수 있으므로 Task Body에 추측값을 선기록하지 않는다. 실제 worker가 시작된 뒤 profile `state.db`와 Kanban context를 대조해 기록한다.
+
+Parent는 NON_DISPATCH이므로 Coder/Reviewer execution session을 갖지 않는다. 완료 자식의 Session IDs를 Parent Completed Work에 요약하고, Orchestrator management session은 실제 ID가 확인 가능한 경우에만 기록한다.
 
 ## 8. Task Body Contract
 
