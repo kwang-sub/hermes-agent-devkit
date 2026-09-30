@@ -1,7 +1,7 @@
 ---
 name: dev-workflow-orchestrate
 description: Jira/text 개발 요청의 project·work unit·requirement delta·API spec·workspace·branch·Coder 모델·plan을 독립 clarify Gate로 승인한 뒤 단일 Work Unit만 Kanban dispatch하는 orchestrator 전용 workflow.
-version: 0.15.0
+version: 0.16.0
 author: local
 platforms: [linux]
 metadata:
@@ -175,13 +175,16 @@ Plan Approval은 Implementation만 승인하지 않고 **Execution Contract + Ve
 
 ### ⚠️ **환경 의존 검증**
 <별도 환경 검증 상세 또는 NONE>
+
+구현 요약:
+<실제 변경 대상 + 핵심 변경 + 보존 범위/중요 예외를 1~2줄, 최대 2문장으로 요약>
 ```
 
 환경 의존 검증은 Docker/실제 DB/Testcontainers/외부 서비스/browser 등 구현환경 외 capability를 요구하는 검증이다. Provider와 lifecycle은 Plan Approval의 일부다. 승인 뒤 Coder가 provider를 임의 변경하거나 fallback하지 않는다. 변경이 필요하면 Requirement Delta/Recovery의 bounded verification delta로 재승인한다.
 
 ### Plan Gate TUI 길이 계약
 
-전체 Implementation Plan은 clarify 직전 일반 메시지로 먼저 보여준다. **Plan 본문을 출력한 turn을 종료하지 않고 즉시 Plan `clarify`를 호출한다.** `clarify.questions[0].question`은 아래 문자열을 그대로 사용한다.
+전체 Implementation Plan은 clarify 직전 일반 메시지로 먼저 보여준다. Plan의 마지막에는 반드시 `구현 요약:`을 1~2줄(최대 2문장)로 출력하며, 실제 변경 대상 + 핵심 변경 + 보존 범위 또는 중요 예외를 포함한다. 제목/목표의 단순 반복은 금지한다. **`구현 요약:`이 누락되면 `PLAN_READY`가 아니므로 `clarify`를 호출할 수 없다. 요약 출력 직후 같은 turn에서 즉시 Plan `clarify`를 호출한다.** `clarify.questions[0].question`은 아래 문자열을 그대로 사용한다.
 
 ```text
 [실행·검증 계획 승인]
@@ -260,6 +263,7 @@ NO_EXTRA_KANBAN_CONFIRMATION
 
 - Project Approval / Execution+Verification Plan Approval / Requirement Delta Approval을 추측하지 않는다.
 - 승인 필요 단계에서 설명만 출력하고 자연어 재확인을 기다리지 않는다. Gate 입력 준비 즉시 canonical `clarify`를 같은 turn에서 호출한다.
+- Standard Plan Gate는 상세 실행·검증 계획의 마지막 `구현 요약:` 1~2줄이 필수이며, 누락 시 `PLAN_READY`로 전이하지 않는다.
 - Workspace/Branch/Existing Changes/Model도 Gate가 REQUIRED이면 명시적 `clarify` 승인 없이는 다음 상태로 전이하지 않는다.
 - blocked Task 복구 요청은 `dev-task-recovery`의 정확히 3-Gate 계약을 우선하며, 정상 SAME_TASK_RESUME 뒤에 일반 Plan/Requirement Delta Gate를 중복 추가하지 않는다.
 - Git Workspace의 Base SHA는 dispatch 시점 계약으로 보존한다. Non-Git Workspace는 `Base SHA: NONE`이며 snapshot을 생성하지 않는다.
