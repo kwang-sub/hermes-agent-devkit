@@ -1,7 +1,7 @@
 ---
 name: dev-workflow-orchestrate
 description: Jira/text 개발 요청의 project·work unit·requirement delta·API spec·workspace·branch·Coder 모델·plan을 독립 clarify Gate로 승인한 뒤 단일 Work Unit만 Kanban dispatch하는 orchestrator 전용 workflow.
-version: 0.14.0
+version: 0.15.0
 author: local
 platforms: [linux]
 metadata:
@@ -134,6 +134,17 @@ choices: [규격 승인, 규격 보류]
 
 서로 다른 승인 Gate를 한 질문으로 합치지 않는다.
 
+**Gate 전이 불변식:** Project/API Spec/Workspace/Branch/Existing Changes/Coder Model/Plan/Requirement Delta 중 현재 단계가 승인을 요구하고 Gate 입력이 준비되면, Orchestrator는 필요한 설명을 일반 메시지로 보여준 **같은 turn에서 즉시 해당 `clarify`를 호출한다.** 설명만 출력하고 사용자의 `네`, `진행해주세요`, `계속해주세요`를 기다린 뒤 다음 turn에서 Gate를 띄우는 흐름은 금지한다. 이미 승인 evidence가 있어 `REUSE`/`NOT_REQUIRED`인 Gate만 생략할 수 있다.
+
+```text
+GATE_REQUIRED + GATE_INPUT_READY
+→ 일반 메시지로 판단 근거/후보/계획 표시 (필요한 경우)
+→ IMMEDIATE_CLARIFY
+→ APPROVED | REVISE | BLOCKED
+```
+
+`IMMEDIATE_CLARIFY` 전에는 동일 계획을 다시 출력하거나 별도 진행 의사를 묻지 않는다.
+
 ```text
 [Project 선택]
 [API 규격 승인]
@@ -170,7 +181,7 @@ Plan Approval은 Implementation만 승인하지 않고 **Execution Contract + Ve
 
 ### Plan Gate TUI 길이 계약
 
-전체 Implementation Plan은 clarify 직전 일반 메시지로 먼저 보여준다. `clarify.questions[0].question`은 아래 문자열을 그대로 사용한다.
+전체 Implementation Plan은 clarify 직전 일반 메시지로 먼저 보여준다. **Plan 본문을 출력한 turn을 종료하지 않고 즉시 Plan `clarify`를 호출한다.** `clarify.questions[0].question`은 아래 문자열을 그대로 사용한다.
 
 ```text
 [실행·검증 계획 승인]
@@ -248,6 +259,8 @@ NO_EXTRA_KANBAN_CONFIRMATION
 ## 불변식
 
 - Project Approval / Execution+Verification Plan Approval / Requirement Delta Approval을 추측하지 않는다.
+- 승인 필요 단계에서 설명만 출력하고 자연어 재확인을 기다리지 않는다. Gate 입력 준비 즉시 canonical `clarify`를 같은 turn에서 호출한다.
+- Workspace/Branch/Existing Changes/Model도 Gate가 REQUIRED이면 명시적 `clarify` 승인 없이는 다음 상태로 전이하지 않는다.
 - blocked Task 복구 요청은 `dev-task-recovery`의 정확히 3-Gate 계약을 우선하며, 정상 SAME_TASK_RESUME 뒤에 일반 Plan/Requirement Delta Gate를 중복 추가하지 않는다.
 - Git Workspace의 Base SHA는 dispatch 시점 계약으로 보존한다. Non-Git Workspace는 `Base SHA: NONE`이며 snapshot을 생성하지 않는다.
 - 현재 Work Unit만 dispatch한다.
