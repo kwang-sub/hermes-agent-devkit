@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -eq 0 ]; then
+  echo "Usage: hermes-maven <mvnw|mvn> [args...]" >&2
+  exit 2
+fi
+
+workspace_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$workspace_root" ]; then
+  listing="$(git -C "$workspace_root" worktree list --porcelain 2>/dev/null || true)"
+  primary_root="$(printf '%s\n' "$listing" | sed -n 's/^worktree //p' | head -n 1)"
+  [ -n "$primary_root" ] || { echo "hermes-maven: cannot resolve primary worktree" >&2; exit 2; }
+else
+  search_root="$(pwd -P)"; primary_root=""
+  while [ "$search_root" != "/" ]; do
+    if [ -f "$search_root/.hermes/toolchain.env" ]; then primary_root="$search_root"; break; fi
+    search_root="$(dirname "$search_root")"
+  done
+  [ -n "$primary_root" ] || { echo "hermes-maven: no Hermes toolchain found" >&2; exit 2; }
+  workspace_root="$primary_root"
+fi
+
+toolchain_file="$primary_root/.hermes/toolchain.env"
+[ -f "$toolchain_file" ] || { echo "hermes-maven: missing canonical $toolchain_file" >&2; exit 2; }
+# shellcheck disable=SC1090
+. "$toolchain_file"
+[ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ] || { echo "hermes-maven: invalid JAVA_HOME" >&2; exit 2; }
+export JAVA_HOME PATH="$JAVA_HOME/bin:$PATH"
+
+root="${HERMES_MAVEN_ROOT:-/opt/data/maven}"
+repo="${HERMES_MAVEN_REPO_ROOT:-$root/repository}"
+dist_root="${HERMES_MAVEN_DIST_ROOT:-$root/distributions}"
+download_root="${HERMES_MAVEN_DOWNLOAD_ROOT:-$root/downloads}"
+lock_root="${HERMES_MAVEN_LOCK_ROOT:-$root/locks}"
+mkdir -p "$repo" "$dist_root" "$download_root" "$lock_root"
+
+repo_name="$(printf '%s' "$(basename "$workspace_root")" | tr -c '[:alnum:]._-' '_')"
+if git -C "$workspace_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  repo_hash="$(printf '%s' "$workspace_root" | git hash-object --stdin | cut -c1-12)"
+else
+  repo_hash="$(printf '%s' "$workspace_root" | sha256sum | awk '{print $1}' | cut -c1-12)"
+fi
+workspace_key="${repo_name}-${repo_hash}"
+workspace_lock="$lock_root/workspace-$workspace_key.lock"
+
+read_prop() { sed -n "s/^[[:space:]]*$2[[:space:]]*=[[:space:]]*//p" "$1" | tail -n1 | tr -d '\r'; }
+
+resolve_wrapper_maven() {
+  local props="$1" url file name install candidate archive tmp
+  [ -f "$props" ] || { echo "hermes-maven: Maven wrapper properties not found: $props" >&2; return 2; }
+  url="$(read_prop "$props" distributionUrl)"
+  url="$(printf '%s' "$url" | sed 's#\\:#:#g')"
+  [ -n "$url" ] || { echo "hermes-maven: distributionUrl missing" >&2; return 2; }
+  file="${url##*/}"; file="${file%%\?*}"
+  name="${file%.zip}"; name="${name%.tar.gz}"
+  case "$name" in apache-maven-*) ;; *) echo "hermes-maven: unsupported Maven distribution: $url" >&2; return 2;; esac
+  install="$dist_root/$name"; candidate="$install/$name/bin/mvn"
+  if [ -x "$candidate" ]; then printf '%s\n' "$candidate"; return 0; fi
+  exec 9>"$lock_root/distribution-$name.lock"
+  flock -w "${HERMES_MAVEN_LOCK_TIMEOUT_SECONDS:-300}" 9 || { echo "hermes-maven: distribution lock timeout" >&2; return 2; }
+  if [ -x "$candidate" ]; then printf '%s\n' "$candidate"; return 0; fi
+  archive="$download_root/$file"
+  if [ ! -s "$archive" ]; then
+    tmp="$archive.part.$$"; curl -fL --retry 3 --connect-timeout 20 "$url" -o "$tmp" || { rm -f "$tmp"; return 2; }; mv "$tmp" "$archive"
+  fi
+  tmp="$dist_root/.$name.tmp.$$"; rm -rf "$tmp"; mkdir -p "$tmp"
+  case "$file" in *.zip) unzip -q "$archive" -d "$tmp";; *.tar.gz) tar -xzf "$archive" -C "$tmp";; *) echo "hermes-maven: unsupported archive: $file" >&2; return 2;; esac
+  [ -x "$tmp/$name/bin/mvn" ] || { rm -rf "$tmp"; echo "hermes-maven: extracted Maven executable missing" >&2; return 2; }
+  rm -rf "$install"; mv "$tmp" "$install"
+  printf '%s\n' "$install/$name/bin/mvn"
+}
+
+command_name="$(basename "$1")"
+case "$command_name" in
+  mvnw)
+    wrapper_root="$(cd "$(dirname "$1")" && pwd -P)"
+    managed="$(resolve_wrapper_maven "$wrapper_root/.mvn/wrapper/maven-wrapper.properties")" || exit 2
+    shift
+    ;;
+  mvn)
+    command -v mvn >/dev/null 2>&1 || { echo "hermes-maven: mvn fallback is not installed; add Maven Wrapper to the project" >&2; exit 2; }
+    managed="$(command -v mvn)"
+    shift
+    ;;
+  *) echo "hermes-maven: only mvnw/mvn are supported" >&2; exit 2;;
+esac
+
+for arg in "$@"; do
+  case "$arg" in -Dmaven.repo.local=*|-Dmaven.repo.local) echo "hermes-maven: overriding maven.repo.local is not allowed" >&2; exit 2;; esac
+done
+
+echo "hermes-maven: local repository: $repo" >&2
+echo "hermes-maven: workspace lock: $workspace_lock" >&2
+set +e
+flock -E 73 -w "${HERMES_MAVEN_WORKSPACE_LOCK_TIMEOUT_SECONDS:-600}" "$workspace_lock" "$managed" "-Dmaven.repo.local=$repo" "$@"
+status=$?
+set -e
+[ "$status" -ne 73 ] || { echo "hermes-maven: workspace lock timeout" >&2; exit 2; }
+exit "$status"
