@@ -1,7 +1,7 @@
 ---
 name: dev-workflow-orchestrate
 description: Jira/text 개발 요청의 project·work unit·requirement delta·API spec·workspace·branch·Coder 모델·plan을 독립 clarify Gate로 승인한 뒤 단일 Work Unit만 Kanban dispatch하는 orchestrator 전용 workflow.
-version: 0.16.0
+version: 0.17.0
 author: local
 platforms: [linux]
 metadata:
@@ -14,7 +14,7 @@ metadata:
 
 Orchestrator는 요청의 상태 머신과 승인 Gate만 조정한다. application/test code, code review, commit, push, PR, merge, cleanup은 직접 하지 않는다. 사용자 가시 계획/승인 문구는 한국어다.
 
-Standard Flow 승인 UI는 `/opt/data/shared/references/approval-gate-rules.md`, Work Unit 경계는 `/opt/data/shared/references/standard-work-unit-rules.md`가 source of truth다. **한 번의 사용자 확인에서는 하나의 의사결정만 요청한다.** 선택지는 질문 본문에 번호로 쓰지 않고 `clarify`의 `choices`를 사용한다.
+Standard Flow 승인 UI는 `/opt/data/shared/references/approval-gate-rules.md`, Work Unit 경계는 `/opt/data/shared/references/standard-work-unit-rules.md`, 연속 작업 Parent 추적은 `/opt/data/shared/references/parent-tracking-rules.md`가 source of truth다. **한 번의 사용자 확인에서는 하나의 의사결정만 요청한다.** 선택지는 질문 본문에 번호로 쓰지 않고 `clarify`의 `choices`를 사용한다.
 
 ## Blocked Task Recovery 진입
 
@@ -51,6 +51,8 @@ START
 → PROJECT_APPROVED
 → dev-breakdown READY
 → WORK_UNIT_CLASSIFIED
+→ PARENT_TRACKING_CLASSIFIED
+→ PARENT_TRACKING_APPROVED | NOT_REQUIRED
 → API_SPEC_APPROVED | NOT_REQUIRED
 → WORKSPACE_APPROVED
 → BRANCH_APPROVED | BRANCH_NOT_REQUIRED
@@ -71,7 +73,7 @@ START
 → 사용자가 별도 Standard Flow로 후속 Work Unit 요청
 ```
 
-Follow-up Task를 같은 승인으로 자동 생성하지 않는다.
+Follow-up Task를 같은 승인으로 자동 생성하지 않는다. 다만 여러 Standard Task를 하나의 큰 목표로 추적해야 하면 실행되지 않는 `[부모]` tracking card를 사용할 수 있다. Parent는 후속 Task 자동 생성 권한을 갖지 않는다.
 
 ## Work Unit Boundary
 
@@ -107,6 +109,8 @@ dev-work-intake
 → [Project 선택]
 → dev-breakdown
 → Work Unit Class/Boundary 확정
+→ Parent Tracking Mode 판정
+→ [작업 관리 방식 승인] (Parent 생성/연결/승격 시)
 → [API 규격 승인] (필요 시)
 → [Workspace 선택]
 → [Branch 선택] (Git Workspace만)
@@ -118,6 +122,30 @@ dev-work-intake
 ```
 
 Coder Tier는 `DEFAULT | PREMIUM`만 허용하고 Reviewer Model은 항상 DEFAULT다. 승인 Tier는 `flow_model_policy.py resolve --tier`로 해석하고 Task에 `model=<MODEL>`, `provider=<PROVIDER>`, `dev-flow-model-policy`, `Model Escalation: REQUIRE_REAPPROVAL` snapshot을 보존한다.
+
+## Parent Tracking Gate
+
+`dev-breakdown` 뒤 현재 요청이 단건인지 연속 작업 추적이 필요한지 판정한다.
+
+```text
+Parent Tracking Mode: NONE | NEW_PARENT | LINK_EXISTING_PARENT | PROMOTE_TO_PARENT
+```
+
+- `NONE`: 명백한 단건 작업이면 Gate 없이 진행한다.
+- `NEW_PARENT`: 새 `[부모]` tracking card를 생성하고 현재 Task를 `[하위]`로 연결한다.
+- `LINK_EXISTING_PARENT`: 기존 `[부모]` 카드에 새 `[하위]` Task를 추가하거나 연결된 Task를 수정한다.
+- `PROMOTE_TO_PARENT`: Parent 없이 시작한 기존 Task를 새 `[부모]` tracking card의 첫 이력으로 연결한다.
+
+Parent tracking 구조를 바꾸는 경우 다음 독립 Gate를 사용한다.
+
+```text
+[작업 관리 방식 승인]
+이번 작업의 연속 작업 관리 방식을 승인할까요?
+```
+
+이 Gate는 tracking 관계만 승인하며 API/Workspace/Branch/Model/Plan 승인을 대신하지 않는다. Parent/Child 관계의 authoritative key는 제목이 아니라 Parent Task ID다. 표시는 `[부모]` / `[하위]` 제목 접두어를 사용한다.
+
+Parent는 `Execution: NON_DISPATCH`이며 Coder/Reviewer로 dispatch하지 않는다. 전체 Child 카드를 미리 만들지 않고 현재 Standard Task만 생성한다. Child 완료 후 다음 Child를 자동 실행하지 않으며, 다음 작업은 새 Standard Flow에서 기존 Parent를 선택해 진행한다.
 
 ## API 규격 승인 Gate
 
@@ -147,6 +175,7 @@ GATE_REQUIRED + GATE_INPUT_READY
 
 ```text
 [Project 선택]
+[작업 관리 방식 승인]
 [API 규격 승인]
 [Workspace 선택]
 [Branch 선택]
@@ -268,5 +297,8 @@ NO_EXTRA_KANBAN_CONFIRMATION
 - blocked Task 복구 요청은 `dev-task-recovery`의 정확히 3-Gate 계약을 우선하며, 정상 SAME_TASK_RESUME 뒤에 일반 Plan/Requirement Delta Gate를 중복 추가하지 않는다.
 - Git Workspace의 Base SHA는 dispatch 시점 계약으로 보존한다. Non-Git Workspace는 `Base SHA: NONE`이며 snapshot을 생성하지 않는다.
 - 현재 Work Unit만 dispatch한다.
+- Parent tracking이 승인된 Task는 제목에 `[하위]`를 사용하고 Task body에 Parent Task ID를 기록한다. Parent 제목은 `[부모]`를 사용하되 관계 판정에 제목 문자열을 사용하지 않는다.
+- Parent는 실행하지 않으며 전체 하위 카드를 선생성하거나 Child 완료 뒤 다음 Child를 자동 dispatch하지 않는다.
+- Parent 없이 시작한 Task도 별도 `[작업 관리 방식 승인]` 후 `PROMOTE_TO_PARENT`로 전환할 수 있다.
 - 추가 Kanban 생성 확인 질문을 만들지 않는다.
 - 상세 API/재작업/dispatch edge case는 `references/workflow-details.md`를 필요할 때만 읽는다.
