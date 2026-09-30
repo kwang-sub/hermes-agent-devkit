@@ -174,8 +174,9 @@ RUN ln -sf /opt/jdks/temurin-17/bin/java /usr/local/bin/java \
 
 COPY --chmod=0755 scripts/hermes-java /usr/local/bin/hermes-java
 COPY --chmod=0755 scripts/hermes-maven /usr/local/bin/hermes-maven
-RUN sed -i 's/\r$//' /usr/local/bin/hermes-maven \
-    && ! grep -q "$(printf '\\r')" /usr/local/bin/hermes-maven \
+RUN tr -d '\r' < /usr/local/bin/hermes-maven > /tmp/hermes-maven \
+    && cat /tmp/hermes-maven > /usr/local/bin/hermes-maven \
+    && rm /tmp/hermes-maven \
     && bash -n /usr/local/bin/hermes-maven
 COPY scripts/hermes-diff-check.py /usr/local/lib/hermes-diff-check.py
 RUN printf '%s\n' '#!/bin/sh' 'exec python3 /usr/local/lib/hermes-diff-check.py "$@"' > /usr/local/bin/hermes-diff-check \
