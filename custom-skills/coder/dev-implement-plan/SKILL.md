@@ -41,7 +41,7 @@ Workspace Version Control과 Pattern References는 Task body를 재사용한다.
 모든 실행 카드(Parent 없는 일반 단일 카드와 `[자식]` 카드)는 source mutation 전에 현재 Hermes session을 durable하게 기록한다.
 
 ```bash
-python3 /opt/data/shared/scripts/task_session_history.py capture
+python3 /opt/devkit/bin/task_session_history.py capture
 ```
 
 DevKit 이미지에서 helper의 canonical path가 다르면 설치된 helper 경로를 사용하되 동일 계약을 유지한다.
