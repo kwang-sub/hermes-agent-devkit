@@ -212,7 +212,7 @@ Parent Tracking Mode = PROMOTE_TO_PARENT
 
 ```text
 [부모] <전체 작업 제목>
-[하위] <현재 Standard Task 제목>
+[자식] <현재 Standard Task 제목>
 ```
 
 관계의 authoritative key는 제목이 아니라 `Parent Task ID`다.
