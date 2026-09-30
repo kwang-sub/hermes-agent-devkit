@@ -235,16 +235,18 @@ Plan Gate는 일반 메시지와 `clarify`를 명확히 분리한다.
 
 1. 전체 Implementation Plan은 `clarify` 호출 직전 일반 메시지에 표시한다.
 2. Plan이 길면 Work Unit/Goal/Design Evidence/Implementation Tasks/Verification 같은 섹션 단위로 일반 메시지를 나눌 수 있다.
-3. `clarify.questions[0].question`은 아래 문자열을 그대로 사용한다.
+3. Plan 본문의 마지막에는 `구현 요약:`을 반드시 출력한다. 실제 변경 대상 + 핵심 변경 + 보존 범위 또는 중요 예외를 1~2줄, 최대 2문장으로 압축하며 제목/목표만 반복하는 문장은 인정하지 않는다.
+4. `구현 요약:`이 누락되거나 2문장을 초과하면 `PLAN_READY=false`이며 승인 `clarify`를 호출하지 않는다. 유효한 요약 직후 같은 turn에서 Gate를 호출한다.
+5. `clarify.questions[0].question`은 아래 문자열을 그대로 사용한다.
 
 ```text
 [작업 계획 승인]
 위 Implementation Plan을 승인할까요?
 ```
 
-4. `Task`, `Project / Workspace / Branch`, `Coder Model`, `Goal`, `Design Evidence`, `Implementation Tasks`, `Acceptance Criteria`, API/환경변수/인증 계약 상세를 Plan Gate 질문에 재출력하지 않는다.
-5. 앞선 Gate에서 승인된 Workspace/Branch/Model 값은 Plan 승인 질문에 반복하지 않는다.
-6. 정보는 일반 메시지에 유지하고 결정 UI만 짧게 유지한다.
+6. `Task`, `Project / Workspace / Branch`, `Coder Model`, `Goal`, `Design Evidence`, `Implementation Tasks`, `Acceptance Criteria`, API/환경변수/인증 계약 상세를 Plan Gate 질문에 재출력하지 않는다.
+7. 앞선 Gate에서 승인된 Workspace/Branch/Model 값은 Plan 승인 질문에 반복하지 않는다.
+8. 정보는 일반 메시지에 유지하고 결정 UI만 짧게 유지한다.
 
 ## Recovery-specific 승인 예외
 

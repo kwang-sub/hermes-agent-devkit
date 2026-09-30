@@ -70,6 +70,7 @@ def main() -> int:
         "Gate 전이 불변식", "IMMEDIATE_CLARIFY",
         "Project/API Spec/Workspace/Branch/Existing Changes/Coder Model/Plan/Requirement Delta",
         "설명만 출력하고 사용자의 `네`, `진행해주세요`, `계속해주세요`를 기다린 뒤 다음 turn에서 Gate를 띄우는 흐름은 금지",
+        "구현 요약:", "PLAN_READY", "최대 2문장",
     ))
 
     require(DISPATCH, common + (

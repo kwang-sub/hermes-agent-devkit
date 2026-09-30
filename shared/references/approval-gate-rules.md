@@ -22,11 +22,13 @@
 16. **Gate가 필요한 단계는 일반 메시지 출력만으로 종료하지 않는다.** 해당 Gate의 판단 근거·후보·계획을 일반 메시지로 보여준 경우, 같은 workflow turn에서 즉시 해당 `clarify` Gate를 호출한다. 사용자의 `진행해주세요`, `네`, `계속해주세요` 같은 별도 자연어 응답을 중간 단계로 요구하지 않는다.
 17. **Gate-required state에서 `clarify` 없이 사용자 입력 대기 상태로 전환하는 것을 금지한다.** Project/API Spec/Workspace/Branch/Existing Changes/Coder Model/Plan/Requirement Delta 및 Recovery 전용 Gate 모두 동일하다. 단, 이미 durable approval evidence가 있어 `REUSE` 또는 `NOT_REQUIRED`로 판정된 Gate는 재호출하지 않는다.
 18. **설명과 승인 UI는 한 쌍이다.** 설명이 필요한 Gate는 `일반 메시지 → 즉시 clarify` 순서로 처리하며, 그 사이에 동일 계획 재출력·진행 의사 재확인·다른 비필수 질문을 삽입하지 않는다.
-19. **Blocked Task Recovery는 `dev-task-recovery`의 전용 3-Gate 계약을 사용한다.** 이 경로에서는 Board와 Task가 이미 독립 Gate로 승인되고 독립 API/Workspace/Branch/Model 결정이 필요하지 않은 bounded same-task recovery에 한해 Gate 3의 단일 `Recovery Plan` 승인이 Requirement Delta + 재개 Plan 결정을 함께 대표한다. 범위를 넘는 경우 Gate를 합치지 않고 `REPLACEMENT_REQUIRED`로 Recovery를 종료한다.
+19. **Plan 계열 Gate에는 승인 UI 직전 `구현 요약:`이 필수다.** Standard `[실행·검증 계획 승인]`과 Recovery `[복구 계획 승인]` 모두 상세 계획의 마지막에 1~2줄(최대 2문장)로 실제 변경 대상 + 핵심 변경 + 보존 범위 또는 중요 예외를 요약한다. 제목/목표만 반복하는 요약은 불충분하다. `구현 요약:`이 없으면 해당 Gate 입력은 READY가 아니며 `clarify`를 호출하거나 승인 상태로 전이할 수 없다.
+20. **구현 요약과 승인 UI는 연속되어야 한다.** 상세 계획 → `구현 요약:` → 즉시 canonical `clarify` 순서를 강제하며, 구현 요약 뒤에 새 분석·별도 질문·동일 계획 재출력을 삽입하지 않는다.
+21. **Blocked Task Recovery는 `dev-task-recovery`의 전용 3-Gate 계약을 사용한다.** 이 경로에서는 Board와 Task가 이미 독립 Gate로 승인되고 독립 API/Workspace/Branch/Model 결정이 필요하지 않은 bounded same-task recovery에 한해 Gate 3의 단일 `Recovery Plan` 승인이 Requirement Delta + 재개 Plan 결정을 함께 대표한다. 범위를 넘는 경우 Gate를 합치지 않고 `REPLACEMENT_REQUIRED`로 Recovery를 종료한다.
 
 ## clarify 사용 계약
 
-각 Gate는 독립된 `clarify` call 하나를 사용한다. 서로 의존하는 Gate를 batch `questions` 한 번에 묶지 않는다. **현재 상태가 Gate 입력 준비 완료(`*_READY`)가 되는 즉시 그 Gate의 `clarify`를 호출해야 하며, 일반 assistant 응답으로 turn을 종료해서는 안 된다.**
+각 Gate는 독립된 `clarify` call 하나를 사용한다. 서로 의존하는 Gate를 batch `questions` 한 번에 묶지 않는다. **현재 상태가 Gate 입력 준비 완료(`*_READY`)가 되는 즉시 그 Gate의 `clarify`를 호출해야 하며, 일반 assistant 응답으로 turn을 종료해서는 안 된다.** Plan 계열 Gate는 `구현 요약:`이 생성·검증된 뒤에만 `*_READY`다.
 
 ```text
 clarify
