@@ -1,7 +1,7 @@
 ---
 name: dev-task-recovery
 description: Hermes Kanban의 blocked/triage Task를 보드 선택 → 차단 카드 선택 → 원인/복구 계획 승인 3단 Gate로 분석하고, 기존 Task ID를 유지한 채 durable Contract Revision과 SAME_TASK_RESUME을 수행하는 orchestrator 전용 recovery workflow.
-version: 0.2.0
+version: 0.3.0
 author: local
 platforms: [linux]
 metadata:
@@ -297,9 +297,14 @@ Verification:
 
 Forbidden:
 - <unsafe/unrelated actions>
+
+구현 요약:
+<실제 변경 대상 + 핵심 변경 + 보존 범위/중요 예외를 1~2줄, 최대 2문장으로 요약>
 ```
 
-그 뒤 독립 `clarify` 하나만 호출한다.
+`구현 요약:`은 Gate 3 입력의 필수 요소다. Recovery Plan 제목/목표를 반복하지 말고 실제 코드/계약 변경과 유지되는 범위 또는 승인할 예외를 압축한다. 누락되거나 2문장을 초과하면 `RECOVERY_PLAN_READY`가 아니며 승인 `clarify`를 호출할 수 없다.
+
+그 뒤 유효한 `구현 요약:` 바로 다음에 독립 `clarify` 하나만 호출한다.
 
 ```text
 question:
