@@ -13,6 +13,7 @@ REVIEW = ROOT / "custom-skills/reviewer/dev-code-review/SKILL.md"
 DATA = ROOT / "custom-skills/shared/dev-data-feature/SKILL.md"
 MODELING = ROOT / "custom-skills/shared/dev-data-modeling/SKILL.md"
 MIGRATION = ROOT / "custom-skills/shared/dev-db-migration/SKILL.md"
+PARENT = ROOT / "shared/references/parent-tracking-rules.md"
 
 
 def text(path: Path) -> str:
@@ -47,6 +48,13 @@ def main() -> int:
         "Verification Contract", "Verification Provider", "환경 의존 검증",
     ))
 
+    require(PARENT, (
+        "Parent Tracking Mode", "NEW_PARENT", "LINK_EXISTING_PARENT", "PROMOTE_TO_PARENT",
+        "[부모]", "[자식]", "Parent Task ID", "Execution: NON_DISPATCH",
+        "Job ID", "Implementation Summary", "전체 하위 카드를 미리 생성하지 않는다",
+        "다음 Child를 자동 dispatch하지 않는다",
+    ))
+
     require(BREAKDOWN, common + (
         "Implementation Tasks를 만들기 전에 Work Unit Class/Boundary를 확정",
         "Data DESIGN → MIGRATION 강제 분리",
@@ -56,6 +64,7 @@ def main() -> int:
         "별도 Work Unit",
         "🛠️ **실행 계획**", "🧪 **검증 계획**", "환경 의존 검증",
         "Verification Provider", "Fallback Policy",
+        "Parent Tracking Recommendation", "Parent Tracking Reason", "[부모]", "[자식]",
     ))
 
     require(WORKFLOW, common + (
@@ -71,6 +80,7 @@ def main() -> int:
         "Project/API Spec/Workspace/Branch/Existing Changes/Coder Model/Plan/Requirement Delta",
         "설명만 출력하고 사용자의 `네`, `진행해주세요`, `계속해주세요`를 기다린 뒤 다음 turn에서 Gate를 띄우는 흐름은 금지",
         "구현 요약:", "PLAN_READY", "최대 2문장",
+        "PARENT_TRACKING_CLASSIFIED", "작업 관리 방식 승인", "NEW_PARENT", "LINK_EXISTING_PARENT", "PROMOTE_TO_PARENT", "[부모]", "[자식]",
     ))
 
     require(DISPATCH, common + (
@@ -79,6 +89,7 @@ def main() -> int:
         "Follow-up capability를 현재 Applicable Skills에 자동 추가",
         "dev-db-migration",
         "Verification Contract", "Verification Provider", "Verification Approval: APPROVED",
+        "Parent Tracking Dispatch 계약", "Execution: NON_DISPATCH", "Parent Task ID", "[부모]", "[자식]", "Job ID", "Implementation Summary",
     ))
 
     require(IMPLEMENT, common + (
@@ -125,7 +136,7 @@ def main() -> int:
         "APPROVED DBA Logical Model",
     ))
 
-    print("PASS: Standard Flow single Work Unit boundary contract")
+    print("PASS: Standard Flow single Work Unit + parent tracking contract")
     return 0
 
 
