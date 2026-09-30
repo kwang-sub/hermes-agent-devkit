@@ -34,7 +34,7 @@ Task
 
 ## Session ID 확인
 
-`scripts/task_session_history.py capture`를 사용한다.
+`/opt/devkit/bin/task_session_history.py capture`를 사용한다. Task ID/Workspace는 `kanban_show`에서 읽은 값을 명시적으로 전달하고, profile/profile-home은 현재 worker 역할에 맞게 전달한다.
 
 이 helper는 다음을 임의 추측하지 않는다.
 
@@ -43,16 +43,7 @@ Task
 - task id
 - workspace
 
-Dispatcher가 제공한 Kanban context와 Hermes profile `state.db`의 실제 `source=kanban` session/message를 대조한다.
-
-```text
-HERMES_KANBAN_TASK
-HERMES_KANBAN_WORKSPACE
-HERMES_KANBAN_DB
-HERMES_PROFILE
-HERMES_HOME
-HERMES_KANBAN_SESSION_MODE
-```
+Helper는 Hermes profile `state.db`의 실제 `source=kanban` session/message를 `Task ID + Workspace`와 대조한다. Kanban ownership ENV는 터미널 자식에서 scrub될 수 있으므로 lookup 입력으로 사용하지 않는다. History 자체는 persistent `/opt/data/devkit-task-session-history.db`에 저장한다.
 
 실제 session을 찾지 못하면 `SESSION_HISTORY_STATUS=unavailable`, `SESSION_ID=UNAVAILABLE`로 종료한다. 임의 session을 기록하지 않는다.
 
@@ -64,7 +55,7 @@ Helper는 기존 `devkit-session-affinity.db`에 별도 `task_session_history` t
 PRIMARY KEY (task_id, profile, session_id)
 ```
 
-기존 `session_affinity` table의 최신 resume binding은 변경하지 않는다. History 저장은 affinity 선택 실패를 유발해서는 안 된다.
+기존 `devkit-session-affinity.db`와 분리된 append-only history DB를 사용하므로 최신 resume binding을 변경하지 않는다.
 
 ## 카드 comment 기록
 
