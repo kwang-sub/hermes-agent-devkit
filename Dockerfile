@@ -142,7 +142,7 @@ ENV HERMES_GRADLE_DIST_ROOT=/opt/data/gradle/distributions
 ENV HERMES_GRADLE_DOWNLOAD_ROOT=/opt/data/gradle/downloads
 ENV HERMES_GRADLE_LOCK_ROOT=/opt/data/gradle/locks
 ENV HERMES_GRADLE_PROJECT_CACHE_ROOT=/opt/data/gradle/project-cache
-ENV GRADLE_USER_HOME=/opt/data/gradle/user-home
+ENV GRADLE_USER_HOME=/opt/data/gradle/user-home\n\nENV HERMES_MAVEN_ROOT=/opt/data/maven\nENV HERMES_MAVEN_REPO_ROOT=/opt/data/maven/repository\nENV HERMES_MAVEN_DIST_ROOT=/opt/data/maven/distributions\nENV HERMES_MAVEN_DOWNLOAD_ROOT=/opt/data/maven/downloads\nENV HERMES_MAVEN_LOCK_ROOT=/opt/data/maven/locks
 
 # Node projects use pnpm as the only DevKit package manager. The standalone
 # bootstrap is pinned for reproducibility; project Node/pnpm versions still come
@@ -172,7 +172,7 @@ RUN ln -sf /opt/jdks/temurin-17/bin/java /usr/local/bin/java \
     && /usr/local/bin/java -version \
     && /usr/local/bin/javac -version
 
-COPY --chmod=0755 scripts/hermes-java /usr/local/bin/hermes-java
+COPY --chmod=0755 scripts/hermes-java /usr/local/bin/hermes-java\nCOPY --chmod=0755 scripts/hermes-maven /usr/local/bin/hermes-maven\nRUN bash -n /usr/local/bin/hermes-maven
 COPY scripts/hermes-diff-check.py /usr/local/lib/hermes-diff-check.py
 RUN printf '%s\n' '#!/bin/sh' 'exec python3 /usr/local/lib/hermes-diff-check.py "$@"' > /usr/local/bin/hermes-diff-check \
     && chmod 0755 /usr/local/bin/hermes-diff-check \
