@@ -318,6 +318,17 @@ Current Task: PRESERVE_BLOCKED
 Next Flow: dev-workflow-orchestrate
 ```
 
+## 10.1 Gate 3 구현 요약 readiness
+
+Gate 3의 상세 Recovery Plan 마지막에는 반드시 다음 형식을 출력한다.
+
+```text
+구현 요약:
+<실제 변경 대상 + 핵심 변경 + 보존 범위 또는 중요 예외를 1~2줄, 최대 2문장>
+```
+
+요약은 상세 Block Cause/Contract Delta/Recovery Plan/Forbidden과 모순되면 안 된다. 제목·목표만 반복한 문구는 무효다. 누락·초과·모순이면 `RECOVERY_PLAN_READY=false`로 유지하고 `[복구 계획 승인]` clarify를 호출하지 않는다. 유효한 요약 뒤에는 새 분석/질문을 끼우지 않고 즉시 Gate 3 clarify를 호출한다.
+
 ## 11. Gate 3 승인 후 pre-mutation revalidation
 
 Gate 3 승인 직후 `kanban_comment` 전에 동일 board/task를 `kanban_show`로 다시 읽는다.
