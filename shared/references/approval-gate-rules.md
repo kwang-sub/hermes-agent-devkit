@@ -99,13 +99,13 @@ Gate 3 RECOVERY_PLAN_APPROVAL
 각 Gate는 하나의 사용자 의사결정만 가진다.
 
 - Gate 1: 어느 Board를 복구 대상으로 볼지 결정.
-- Gate 2: 어느 blocked Task를 복구할지 결정.
+- Gate 2: 어느 blocked/triage Task를 복구할지 결정.
 - Gate 3: 분석된 원인, bounded Requirement Delta, Recovery Plan, 유지 AC/검증을 합친 **하나의 Recovery Revision**을 승인할지 결정.
 
 Gate 3이 Requirement Delta와 Plan을 한 결정으로 대표할 수 있는 조건은 전부 충족되어야 한다.
 
 ```text
-task.status == blocked
+task.status in {blocked, triage}
 Recovery Mode == RETRY_SAME_CONTRACT | SAME_TASK_RESUME
 Project == REUSE
 Workspace == REUSE

@@ -61,6 +61,8 @@ JSON payload가 list 또는 `{"boards": [...]}` 형태여도 다음 normalized p
       "name": "Chagok",
       "is_current": true,
       "blocked_count": 2,
+      "triage_count": 1,
+      "recovery_count": 3,
       "total": 7
     }
   ]
@@ -113,8 +115,8 @@ Task discovery는 반드시 Orchestrator `kanban_list`를 사용한다.
 
 ```text
 board=<Gate 1 approved slug>
-status=blocked
-limit=200
+status=blocked 및 status=triage 별도 조회 후 Task ID 병합
+limit=200 (각 조회)
 ```
 
 표시 label:
@@ -324,7 +326,7 @@ Gate 3 승인 직후 `kanban_comment` 전에 동일 board/task를 `kanban_show`�
 
 ```text
 task.id == Gate 2 approved task
-task.status == blocked
+task.status == APPROVED_SOURCE_STATUS (blocked | triage)
 active/running claim 없음
 Gate 2 분석 시점 이후 더 큰 approved TASK_RECOVERY_REVISION_V<N> 없음
 ```
@@ -345,7 +347,7 @@ RECOVERY_STATUS=STALE_RECOVERY_SELECTION
 
 ```text
 selected board/task 동일
-status == blocked
+status == APPROVED_SOURCE_STATUS (blocked | triage)
 comments에 expected marker 존재
 Recovery Gate: APPROVED 존재
 Recovery Mode 일치
@@ -389,25 +391,16 @@ bounded delta가 반복적으로 확대
 Work Unit boundary를 넘기 시작함
 ```
 
-Hermes의 unblock recurrence breaker가 task를 `triage`로 올린 경우 이 v0.1 skill은 raw status mutation으로 우회하지 않는다.
+반복 차단으로 triage가 된 카드도 같은 3-Gate로 분석한다. 이전 승인과 새로운 실패 evidence를 비교하고, 해결 근거 없는 동일 계획 반복을 금지한다.
 
-## 15. Triage 제한
+## 15. Triage 재개
 
-`kanban_unblock`은 blocked Task recovery tool이다. 따라서 Gate 2는 `status=blocked`만 선택 가능하다.
-
-`triage` 카드는 별도 orchestration attention 상태다.
-
-Recovery Skill이 triage card를 발견하더라도:
-
-```text
-자동 unblock 금지
-DB 직접 UPDATE 금지
-dashboard API raw status 변경 금지
-```
-
-로 유지한다.
-
-향후 Hermes가 orchestrator-safe triage recovery tool을 제공하면 별도 version에서 확장한다.
+Gate 2에서 `APPROVED_SOURCE_STATUS=triage`를 저장한다. Gate 3 승인 후 재조회와 Revision read-back까지 실제 상태가 그대로인지 확인한다.
+Revision에는 `Source Status: triage`, `Board: <slug>`, `Task: <id>`를 기록한다.
+`resume_triage.py`는 persisted latest approved Recovery Revision, active claim/run 없음, 실제 triage 상태를 검증한 뒤 공식 `specify_triage_task`를 1회 호출한다.
+이 API는 기존 title/body/assignee와 recurrence 이력을 보존하며 부모 의존성에 따라 todo/ready로 전환한다.
+API 미지원은 `TRIAGE_RECOVERY_CAPABILITY_UNAVAILABLE`, stale 상태/Revision은 `STALE_RECOVERY_SELECTION`으로 종료한다.
+raw status mutation, DB 직접 UPDATE, triage→blocked 우회, mutation 자동 반복은 금지한다.
 
 ## 16. Re-dispatch contract
 
@@ -442,17 +435,17 @@ BLOCKER=BOARD_INVENTORY_UNAVAILABLE
 
 임의 board를 추측하지 않는다.
 
-### Blocked candidate 없음
+### blocked/triage candidate 모두 없음
 
 ```text
-RECOVERY_STATUS=NO_BLOCKED_TASK
+RECOVERY_STATUS=NO_RECOVERABLE_TASK
 ```
 
 Gate 2를 만들지 않는다.
 
 ### Task status drift
 
-Gate 2 후보 조회 후 Task가 더 이상 blocked가 아니면:
+Gate 2 후보 조회 후 Task가 선택 시 blocked/triage 상태와 달라지면:
 
 ```text
 RECOVERY_STATUS=STALE_TASK_SELECTION

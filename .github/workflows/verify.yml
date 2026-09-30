@@ -71,6 +71,10 @@ jobs:
         shell: bash
         run: python3 custom-skills/orchestrator/dev-task-recovery/tests/test_recovery_board_inventory.py
 
+      - name: Verify approved triage recovery
+        shell: bash
+        run: python3 custom-skills/orchestrator/dev-task-recovery/tests/test_resume_triage.py
+
       - name: Verify frontend capability contract
         shell: bash
         run: python3 scripts/check_frontend_capability_contract.py

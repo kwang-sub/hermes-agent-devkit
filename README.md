@@ -572,7 +572,7 @@ Standard Flow로 진행해주세요.
 
 ## 9.3 Task Recovery Flow
 
-기존 Kanban 카드가 `blocked` 상태에서 멈춘 경우 새 카드를 바로 만들지 않고 `dev-task-recovery`로 같은 Task를 복구할 수 있습니다.
+기존 Kanban 카드가 `blocked` 또는 `triage` 상태에서 멈춘 경우 새 카드를 바로 만들지 않고 `dev-task-recovery`로 같은 Task를 복구할 수 있습니다.
 
 ```text
 Recovery Flow
@@ -582,7 +582,7 @@ Recovery Flow
 → [복구 계획 승인]
 → durable Contract Revision
 → SAME_TASK_RESUME
-→ 기존 Task ID unblock
+→ 기존 Task ID 재개 (blocked: unblock / triage: 공식 specify API)
 → Coder
 → Reviewer
 ```
@@ -591,7 +591,7 @@ Recovery Flow
 
 ```text
 1. Board
-2. blocked Task
+2. blocked/triage Task
 3. Recovery Plan
 ```
 

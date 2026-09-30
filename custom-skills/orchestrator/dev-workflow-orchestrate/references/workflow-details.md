@@ -250,10 +250,10 @@ Plan Gate는 일반 메시지와 `clarify`를 명확히 분리한다.
 
 Generic 기존 카드 재작업에서는 아래 Requirement Delta Approval과 Plan Approval을 각각 수행한다.
 
-단, 사용자가 blocked Task Recovery를 명시적으로 시작했고 `dev-task-recovery`가 다음을 모두 확인한 경우에는 Recovery Gate 3 하나가 그 bounded delta와 plan의 단일 승인이다.
+단, 사용자가 blocked/triage Task Recovery를 명시적으로 시작했고 `dev-task-recovery`가 다음을 모두 확인한 경우에는 Recovery Gate 3 하나가 그 bounded delta와 plan의 단일 승인이다.
 
 ```text
-task.status == blocked
+task.status in {blocked, triage}
 same Task ID 유지
 same current deliverable
 same Work Unit Class
