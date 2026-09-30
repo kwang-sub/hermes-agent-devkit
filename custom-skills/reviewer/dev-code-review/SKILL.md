@@ -18,7 +18,7 @@ Reviewer는 같은 Workspace의 미커밋 변경을 독립 검토하며 applicat
 ## 실행 계약
 
 1. `kanban_show()`로 requirement/AC, Work Unit Contract, Pattern References, Applied Capability Skills, coder evidence를 읽는다.
-2. `/opt/data/shared/references/session-history-rules.md`에 따라 `task_session_history.py capture`를 실행한다. 새 reviewer Session이면 `TASK_SESSION_HISTORY` marker를 `kanban_comment`로 정확히 한 번 기록한다. Session ID를 확인할 수 없거나 comment 기록이 실패하면 review mutation 전에 capability blocker로 종료한다.
+2. `/opt/data/shared/references/session-history-rules.md`에 따라 `python3 /opt/devkit/bin/task_session_history.py capture --task-id "<Task ID>" --profile reviewer --profile-home /opt/data/profiles/reviewer --workspace "<Workspace>" --session-mode UNKNOWN`를 실행한다. 새 reviewer Session이면 `TASK_SESSION_HISTORY` marker를 `kanban_comment`로 정확히 한 번 기록한다. Session ID를 확인할 수 없거나 comment 기록이 실패하면 review mutation 전에 capability blocker로 종료한다.
 3. Task의 Workspace Version Control을 읽고 `review_context.py --version-control <git|none> --include <Changed Files>`를 한 번 실행한다. Git이면 Base SHA/branch/scope fingerprint를 검증하고, Non-Git이면 Coder가 선언한 Changed Files만 범위로 사용한다. Git Workspace의 기존 `review_context.py --include <Changed Files>` scoped review 계약은 그대로 유지한다.
 4. Git은 diff-first, Non-Git은 declared-files-first로 requirement/AC/correctness/compatibility/security/tests를 확인한다.
 5. Capability와 verification evidence를 필요한 범위에서만 검증한다.
