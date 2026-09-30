@@ -73,6 +73,7 @@ def normalize_boards(
         name = str(item.get("name") or slug).strip() or slug
         counts = item.get("counts") if isinstance(item.get("counts"), dict) else {}
         blocked_count = _int_or_zero(counts.get("blocked"))
+        triage_count = _int_or_zero(counts.get("triage"))
         if item.get("total") is None:
             total = sum(
                 _int_or_zero(value)
@@ -89,6 +90,8 @@ def normalize_boards(
                 "name": name,
                 "is_current": is_current,
                 "blocked_count": blocked_count,
+                "triage_count": triage_count,
+                "recovery_count": blocked_count + triage_count,
                 "total": total,
             }
         )

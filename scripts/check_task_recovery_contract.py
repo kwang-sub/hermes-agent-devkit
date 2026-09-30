@@ -37,6 +37,8 @@ def require(text: str, terms: tuple[str, ...], label: str) -> None:
 def main() -> int:
     skill = read_required(SKILL, "dev-task-recovery skill")
     details = read_required(DETAILS, "dev-task-recovery details")
+    helper = read_required(SKILL.parent / "scripts/resume_triage.py", "triage resume helper")
+    require(helper, ("specify_triage_task", "Source Status: triage", "ORCHESTRATOR_ONLY", "STALE_RECOVERY_SELECTION", "RECOVERY_REVISION_NOT_PERSISTED"), "triage resume helper")
     inventory = read_required(INVENTORY, "recovery board inventory helper")
     read_required(INVENTORY_TEST, "recovery board inventory tests")
     workflow = read_required(WORKFLOW, "dev-workflow-orchestrate skill")
@@ -73,7 +75,10 @@ def main() -> int:
             "Pre-mutation Revalidation",
             "STALE_RECOVERY_SELECTION",
             "새 Task ID 생성 금지",
-            "triage",
+            'status="triage"',
+            "APPROVED_SOURCE_STATUS",
+            "resume_triage.py",
+            "TRIAGE_RECOVERY_CAPABILITY_UNAVAILABLE",
             "references/recovery-details.md",
             "requires_tools: [terminal, skill_view, clarify, kanban_list, kanban_show, kanban_comment, kanban_unblock]",
         ),
@@ -149,7 +154,7 @@ def main() -> int:
             "RECOVERY_ENTRY",
             "durable Recovery Revision",
             "Recovery-specific 승인 예외",
-            "task.status == blocked",
+            "task.status in {blocked, triage}",
             "same Task ID 유지",
             "REPLACEMENT_REQUIRED",
         ),

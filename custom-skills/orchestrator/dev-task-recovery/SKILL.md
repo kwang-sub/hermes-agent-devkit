@@ -1,7 +1,7 @@
 ---
 name: dev-task-recovery
-description: Hermes Kanban의 blocked Task를 보드 선택 → 차단 카드 선택 → 원인/복구 계획 승인 3단 Gate로 분석하고, 기존 Task ID를 유지한 채 durable Contract Revision과 SAME_TASK_RESUME을 수행하는 orchestrator 전용 recovery workflow.
-version: 0.1.0
+description: Hermes Kanban의 blocked/triage Task를 보드 선택 → 차단 카드 선택 → 원인/복구 계획 승인 3단 Gate로 분석하고, 기존 Task ID를 유지한 채 durable Contract Revision과 SAME_TASK_RESUME을 수행하는 orchestrator 전용 recovery workflow.
+version: 0.2.0
 author: local
 platforms: [linux]
 metadata:
@@ -13,7 +13,7 @@ metadata:
 
 # dev-task-recovery
 
-기존 Kanban Task가 `blocked` 상태에서 멈췄을 때 새 카드를 우선 만들지 않고, **현재 카드의 차단 원인을 읽고 필요한 범위만 승인받아 같은 Task ID로 재개**하는 Orchestrator 전용 Workflow다.
+기존 Kanban Task가 `blocked` 또는 `triage` 상태에서 멈췄을 때 새 카드를 우선 만들지 않고, **현재 카드의 차단 원인을 읽고 필요한 범위만 승인받아 같은 Task ID로 재개**하는 Orchestrator 전용 Workflow다.
 
 사용자 진입 예:
 
@@ -35,7 +35,7 @@ Gate 1 [보드 선택]
 → read-only 원인 분석
 → Gate 3 [복구 계획 승인]
 → durable Recovery Revision
-→ same Task unblock
+→ same Task 재개 (blocked: unblock / triage: 공식 specify API)
 ```
 
 일반 Standard Flow의 Project/Workspace/Branch/Model/Plan Gate를 Recovery 정상 경로 뒤에 추가하지 않는다. Recovery 범위를 넘는 독립 결정이 필요하면 `REPLACEMENT_REQUIRED`로 종료하고 별도 Standard Flow로 넘긴다.
@@ -44,10 +44,10 @@ Gate 1 [보드 선택]
 
 ## 1. 적용 대상
 
-정상 자동 재개 대상:
+승인 후 재개 대상:
 
 ```text
-task.status == blocked
+task.status in {blocked, triage}
 현재 Task ID / Board / Workspace / Branch / Coder Model을 재사용할 수 있음
 현재 최종 Deliverable을 유지할 수 있음
 현재 blocker를 bounded delta로 해결 가능
@@ -87,7 +87,7 @@ boards rm
 현재 board pointer 변경
 ```
 
-일반 메시지에 board display name, slug, blocked count를 보여준 다음 독립 `clarify`를 호출한다.
+일반 메시지에 board display name, slug, blocked count, triage count, recovery count를 보여준 다음 독립 `clarify`를 호출한다.
 
 ```text
 question:
@@ -114,13 +114,15 @@ kanban_list(
 )
 ```
 
+위 blocked 조회와 별도로 `kanban_list(board=<APPROVED_BOARD>, status="triage", limit=200)`를 호출하고 Task ID로 병합한다. blocked가 0건이어도 triage 조회를 생략하지 않는다. 선택지에는 실제 상태를 표시한다.
+
 Task 목록 조회를 위해 `hermes kanban list` shell fallback을 사용하지 않는다.
 
 사용자에게 최소 다음을 보여준다.
 
 ```text
 <Task ID> — <Title>
-상태: BLOCKED
+상태: <실제 BLOCKED | TRIAGE>
 Assignee: <profile | none>
 ```
 
@@ -135,16 +137,19 @@ choices:
   - ...
 ```
 
-choice는 최대 20개다. 더 많은 blocked 카드가 있으면 전체 count를 알리고 `Other`에서 Task ID를 받을 수 있다. 입력된 Task ID는 반드시:
+choice는 최대 20개다. 더 많은 blocked/triage 카드가 있으면 전체 count를 알리고 `Other`에서 Task ID를 받을 수 있다. 입력된 Task ID는 반드시:
 
 ```text
 selected board에 존재
-status == blocked
+status in {blocked, triage}
 ```
 
 를 `kanban_show(board=..., task_id=...)`로 다시 확인한다.
 
-`triage`, `done`, `archived`, `running`, `review` 카드는 이 v0.1 Recovery Gate 2의 자동 재개 후보가 아니다. 특히 반복 block-loop breaker로 `triage`가 된 카드는 `kanban_unblock` 대상이 아니므로 억지로 같은 경로에서 상태를 직접 수정하지 않는다.
+`done`, `archived`, `running`, `review`, `ready`, `todo`, `scheduled`는 후보에서 제외한다.
+Gate 2에서 실제 상태를 `APPROVED_SOURCE_STATUS`로 저장한다. blocked↔triage 변경도 stale selection이다.
+
+triage는 events/runs와 기존 승인 Revision을 비교해 block-loop 원인과 이전 계획이 해결하지 못한 이유를 분석한다. 동일 실패 계획의 근거 없는 반복은 금지한다. 원인 해결 evidence 또는 새로운 bounded delta가 없으면 재개하지 않는다. 공식 triage API capability가 없으면 `TRIAGE_RECOVERY_CAPABILITY_UNAVAILABLE`로 종료한다.
 
 ## 4. 카드 선택 후 원인 분석 — 승인 없는 Read-only 단계
 
@@ -243,7 +248,7 @@ Project / Workspace / Branch / Coder Model을 새로 선택해야 함
 현재 최종 Deliverable과 다른 기능이 목표가 됨
 ```
 
-이 경우 Recovery Gate 3에서 방향을 승인받을 수는 있지만 현재 blocked Task는 자동 unblock하지 않는다. durable escalation comment를 남기고 `dev-workflow-orchestrate`의 별도 Standard Flow로 전환한다.
+이 경우 Recovery Gate 3에서 방향을 승인받을 수는 있지만 현재 blocked/triage Task는 자동 unblock하지 않는다. durable escalation comment를 남기고 `dev-workflow-orchestrate`의 별도 Standard Flow로 전환한다.
 
 ## 6. Gate 3 — 복구 계획 승인
 
@@ -262,7 +267,7 @@ Task:
 <title>
 
 Current Status:
-BLOCKED
+<실제 BLOCKED | TRIAGE>
 
 Block Cause:
 - <fact/evidence>
@@ -325,9 +330,9 @@ Gate 3 승인 직후 mutation 전에 `kanban_show(board=<APPROVED_BOARD>, task_i
 
 ```text
 task id 동일
-status == blocked
+status == APPROVED_SOURCE_STATUS (blocked | triage)
 Gate 2 분석 이후 더 최신 approved Recovery Revision이 없음
-running claim 없음
+running claim/worker PID/current run 없음
 ```
 
 하나라도 달라졌으면 `RECOVERY_STATUS=STALE_RECOVERY_SELECTION`으로 종료하고 comment/unblock을 수행하지 않는다. 사용자 Gate를 추가하지 않고 Recovery Flow를 다시 시작해야 한다.
@@ -410,7 +415,7 @@ comment 성공만 믿고 unblock하지 않는다. 같은 Task를 `kanban_show`�
 
 ```text
 task id 동일
-status == blocked
+status == APPROVED_SOURCE_STATUS (blocked | triage)
 새 comment에 예상 marker 존재
 Recovery Gate: APPROVED 존재
 Recovery Mode 일치
@@ -420,7 +425,7 @@ Recovery Mode 일치
 
 ## 9. 같은 Task 재개
 
-Read-back PASS 후에만:
+Read-back PASS 후 **blocked**일 때만:
 
 ```text
 kanban_unblock(
@@ -431,11 +436,20 @@ kanban_unblock(
 
 을 정확히 1회 호출한다.
 
+**triage**는 `kanban_unblock` 대신 다음 helper를 정확히 1회 실행한다. Hermes Python 환경에서 공식 `specify_triage_task`만 호출하며 title/body/assignee와 block recurrence를 변경하지 않는다.
+
+```bash
+/opt/hermes/.venv/bin/python /opt/custom-skills/orchestrator/dev-task-recovery/scripts/resume_triage.py --board <APPROVED_BOARD> --task-id <APPROVED_TASK> --revision-marker <EXPECTED_MARKER>
+```
+
+Revision comment에는 `Source Status: triage`, `Board: <slug>`, `Task: <id>`와 반복 차단 원인/해결 evidence를 포함한다. helper 실패 시 raw status mutation, DB 직접 UPDATE, 자동 retry, triage→blocked 우회는 금지한다.
+
 성공 후 다시 `kanban_show`를 읽고:
 
 ```text
 task id 동일
 status == ready | todo
+이미 dispatcher가 claim했다면 running + 동일 Task/계약 worker run 확인
 ```
 
 를 확인한다.
@@ -463,7 +477,7 @@ TASK_RECOVERY_ESCALATION_V1
 Recovery Gate: APPROVED
 Recovery Mode: REPLACEMENT_REQUIRED
 Reason: ...
-Current Task: PRESERVE_BLOCKED
+Current Task: PRESERVE_SOURCE_STATUS
 Next Flow: dev-workflow-orchestrate
 ```
 
@@ -475,7 +489,7 @@ comment를 남기고 read-back한다.
 
 ```text
 Gate 1 = Board 선택
-Gate 2 = blocked Task 선택
+Gate 2 = blocked/triage Task 선택
 Gate 3 = Recovery Plan 승인
 ```
 

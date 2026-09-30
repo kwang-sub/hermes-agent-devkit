@@ -78,8 +78,12 @@ def test_object_payload_filters_archived_and_prioritizes_current() -> None:
         assert [row["slug"] for row in data["boards"]] == ["chagok", "default"]
         assert data["boards"][0]["is_current"] is True
         assert data["boards"][0]["blocked_count"] == 3
+        assert data["boards"][0]["triage_count"] == 1
+        assert data["boards"][0]["recovery_count"] == 4
         assert data["boards"][0]["total"] == 11
         assert data["boards"][1]["blocked_count"] == 1
+        assert data["boards"][1]["triage_count"] == 0
+        assert data["boards"][1]["recovery_count"] == 1
         assert data["boards"][1]["total"] == 3
 
 
@@ -152,8 +156,20 @@ def test_cli_failure_fails_closed_without_switch_fallback() -> None:
         assert "permission denied" in data["error"]
 
 
+def test_triage_only_board_remains_recoverable() -> None:
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("inventory", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    rows = module.normalize_boards([{"slug": "triage-only", "counts": {"blocked": 0, "triage": 2}}], None)
+    assert rows[0]["blocked_count"] == 0
+    assert rows[0]["triage_count"] == 2
+    assert rows[0]["recovery_count"] == 2
+
+
 def main() -> int:
     tests = (
+        test_triage_only_board_remains_recoverable,
         test_object_payload_filters_archived_and_prioritizes_current,
         test_list_payload_is_supported_without_current_pointer,
         test_invalid_json_fails_closed,

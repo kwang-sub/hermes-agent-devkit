@@ -211,7 +211,7 @@ Requirement Delta:
 일반 기존-card 재작업과 `dev-task-recovery`를 구분한다.
 
 ```text
-사용자가 blocked Task Recovery를 명시
+사용자가 blocked/triage Task Recovery를 명시
 → dev-task-recovery 3-Gate 경로 우선
 
 일반 추가 요구사항/완료 Task 변경/비-blocked 재작업
