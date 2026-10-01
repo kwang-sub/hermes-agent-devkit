@@ -71,6 +71,7 @@ Direct/Standard Task 모두 Goal, Acceptance Criteria, Implementation Tasks, Tes
 - 새 구현 전 기존 Utility/Service/Policy/Validator/Converter/Mapper/Domain/Data abstraction과 library를 검색해 재사용한다.
 - Domain Logic은 프로젝트 architecture를 따르고 새 modeling style을 임의 도입하지 않는다.
 - 함수/메서드 block은 기본 `2-depth`; 반복 DB/API/File/Network I/O와 N+1을 확인한다.
+- **코드 내부 운영/개발 로그 메시지는 언어와 stack에 관계없이 영어로 작성한다.** 기존 한글 로그를 신규 코드의 선례로 사용하지 않으며, Reviewer는 변경 diff의 비영어 logging message를 공통 Coding Rule 위반으로 확인한다.
 - Stack/Capability Skill은 기존 convention을 확장할 뿐 dependency/architecture/common contract를 임의 변경하지 않는다.
 - Task의 Pattern References/Applicable Skills를 재사용해 같은 프로젝트를 역할마다 전체 재분석하지 않는다.
 

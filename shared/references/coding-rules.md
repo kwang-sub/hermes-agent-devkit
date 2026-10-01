@@ -247,7 +247,44 @@ Magic String/Number 또는 동일 의미의 새 타입을 만들기 전에 기�
 
 ---
 
-# 9. 최소 변경과 기존 Architecture 일관성을 유지한다
+# 9. 코드 로그 메시지는 영어로 작성한다
+
+운영/개발 로그로 남는 **코드 내부 logging message는 언어와 프레임워크에 관계없이 영어만 사용한다.**
+
+적용 대상 예:
+
+```text
+Java/Kotlin       → logger.info/debug/warn/error/trace, log.*
+TypeScript/JS     → logger.*, console.log/info/warn/error/debug
+Python            → logging.*, logger.*
+Shell             → 운영 로그 목적의 echo/printf
+PowerShell        → Write-Host/Output/Warning/Error/Verbose/Debug
+기타 언어         → 프로젝트의 logging framework 또는 운영 로그 출력 API
+```
+
+규칙:
+
+- 새로 추가하거나 수정하는 로그 메시지 문자열에 한글 등 비영어 자연어를 사용하지 않는다.
+- 기존 프로젝트에 한글 로그가 있더라도 이를 신규 코드의 선례로 사용하지 않는다.
+- 로그의 key/event name/status/error context도 가능한 한 영어 기술 용어로 유지한다.
+- 사용자에게 직접 노출되는 UI 문구, API의 명시적 localized response, validation message, 문서/주석은 이 규칙의 대상이 아니다.
+- exception message가 실제 운영 로그로 그대로 기록되는 프로젝트라면 신규/수정 exception message도 영어를 우선한다.
+- 외부 시스템에서 받은 원문 값이나 사용자 입력을 context로 기록해야 하는 경우 언어를 번역하지 않지만, 민감정보/PII/credential 기록 금지 규칙을 우선한다.
+- Coder는 변경한 executable source의 logging call에 비영어 자연어가 새로 포함되지 않았는지 확인한다.
+- Reviewer는 변경 diff의 logging call에 한글 로그 메시지가 있으면 style nit가 아니라 **수정이 필요한 공통 Coding Rule 위반**으로 판단한다.
+
+예:
+
+```text
+BAD  logger.info("사용자 로그인 성공: userId={}", userId)
+GOOD logger.info("User login succeeded: userId={}", userId)
+
+BAD  console.error("데이터 조회 실패", error)
+GOOD console.error("Failed to fetch data", error)
+```
+
+
+# 10. 최소 변경과 기존 Architecture 일관성을 유지한다
 
 요구사항을 만족하는 가장 작은 diff를 우선한다.
 
@@ -269,7 +306,7 @@ future-proofing만을 이유로 현재 사용되지 않는 abstraction/extension
 
 ---
 
-# 10. 변경과 직접 연결된 검증을 수행한다
+# 11. 변경과 직접 연결된 검증을 수행한다
 
 가능한 가장 좁은 targeted verification부터 실행하고 필요할 때만 범위를 넓힌다.
 
@@ -297,7 +334,7 @@ Repository/Tooling상 가능하면 Reviewer handoff 전 `git diff --check`를 �
 
 ---
 
-# 11. Stack/Capability Skill 확장 규칙
+# 12. Stack/Capability Skill 확장 규칙
 
 이 공통 규칙은 구현의 **기반 품질 계약**이다.
 
@@ -355,7 +392,7 @@ Spring Capability Skill은 가능한 경우 Java와 Kotlin을 별도 Skill로 �
 
 ---
 
-# 12. Reviewer Quality Gate
+# 13. Reviewer Quality Gate
 
 Reviewer는 correctness 검토와 함께 관련 있는 경우 다음을 확인한다.
 
