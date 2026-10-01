@@ -108,7 +108,7 @@ Java/Gradle 재검증은 `hermes-java` 기반 cached helper를 사용하고 임�
 
 ## Common Coding Review Gate
 
-`/opt/data/shared/references/coding-rules.md`와 project pattern을 기준으로 기존 abstraction 재사용, scope, 기본 `2-depth`, 반복 I/O/N+1, API response/error, JPA query 선택, test adequacy를 확인한다. Style/nit만으로 승인을 막지 않는다.
+`/opt/data/shared/references/coding-rules.md`와 project pattern을 기준으로 기존 abstraction 재사용, scope, 기본 `2-depth`, 반복 I/O/N+1, API response/error, JPA query 선택, test adequacy를 확인한다. 변경된 executable source의 logging call에 한글 등 비영어 자연어 로그 메시지가 있으면 공통 Coding Rule 위반으로 수정 요청한다. 사용자 UI/localized response/문서/주석은 로그 언어 Gate로 판정하지 않는다. 그 외 Style/nit만으로 승인을 막지 않는다.
 
 ## Capability Lifecycle Review Gate
 
