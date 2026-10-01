@@ -94,6 +94,44 @@ Parent Tracking:
 
 실제 Task는 기존 Standard Flow의 Work Unit/Workspace/API/Verification/Model 계약을 그대로 사용한다.
 
+## Parent 관계와 실행 순서 분리
+
+Parent/Child 관계와 Work Unit 실행 순서는 서로 다른 계약이다.
+
+```text
+Structural Parent:
+- Parent Task ID: <approved-parent-task-id | NONE>
+- Relation: CHILD_WORK_UNIT
+
+Execution Ordering:
+- Mode: INDEPENDENT | SEQUENTIAL
+- Depends On Task IDs: <task-id[, ...] | NONE>
+```
+
+규칙:
+
+- `kanban_create.parents`는 **승인된 구조적 Parent Task ID 전용**이다. Parent Tracking Mode가 활성화된 Child라면 승인된 Parent Task ID만 넣는다.
+- 직전 Task, 이전 완료 Task, 선행 Work Unit, Reviewer 대상 Task를 실행 순서라는 이유로 `parents`에 넣지 않는다.
+- 실행 순서는 Task body의 `Execution Ordering` 계약으로 별도 기록한다.
+- `Mode: SEQUENTIAL`이고 `Depends On Task IDs`가 있으면 Orchestrator가 해당 Task 상태를 확인해 모두 `DONE`일 때만 현재 Child를 unblock/dispatch한다.
+- `Mode: INDEPENDENT`이면 실행 선행 Task가 없으며 Parent 상태와 무관하게 일반 dispatch 계약을 따른다.
+- Parent는 `Execution: NON_DISPATCH` tracking card이므로 Parent의 `BLOCKED`/`READY` 상태를 Child의 실행 선행 조건으로 사용하지 않는다.
+- Parent Tracking이 없는 단건 Task는 구조적 `parents`를 만들지 않는다. 실행 순서가 필요해도 `Depends On Task IDs`만 사용한다.
+- Task 생성 후 read-back에서 실제 Parent 관계가 승인된 Parent Task ID와 다르면 `PARENT_RELATION_MISMATCH`로 처리하고 unblock/dispatch하지 않는다.
+
+예:
+
+```text
+[부모] P
+├─ [자식] A   Execution Ordering: INDEPENDENT
+├─ [자식] B   Execution Ordering: SEQUENTIAL, Depends On: A
+└─ [자식] C   Execution Ordering: SEQUENTIAL, Depends On: B
+
+구조 관계: P → A, P → B, P → C
+실행 순서: A → B → C
+금지 관계: P → A → B → C
+```
+
 ## Parent 생성 시점
 
 신규 요청에서는 `dev-breakdown`이 Work Unit과 follow-up을 분석한 뒤 Parent 필요성을 판정한다.
@@ -227,4 +265,8 @@ Parent가 있다는 이유로 Child의 Standard Flow 승인 계약을 생략하�
 - Child 완료 후 다음 Child를 자동 dispatch하지 않는다.
 - 새 Child 추가/수정은 새 Standard Flow 요청으로 처리한다.
 - Parent/Child 관계는 제목이 아니라 Task ID가 authoritative다.
+- `kanban_create.parents`는 구조적 Parent 관계에만 사용하고 실행 순서를 표현하지 않는다.
+- 실행 순서는 `Execution Ordering / Depends On Task IDs`로 분리하며 선행 Task 완료 여부는 unblock/dispatch 전에 확인한다.
+- Parent 상태는 Child 실행 선행 조건이 아니다.
+- 생성 후 실제 Parent가 승인된 Parent Task ID와 다르면 `PARENT_RELATION_MISMATCH`로 중단한다.
 - Parent의 자식 Session 요약은 실제 child `TASK_SESSION_HISTORY`만 사용하며 Session ID를 추측하지 않는다.
