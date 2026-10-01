@@ -1,7 +1,7 @@
 ---
 name: dev-workflow-orchestrate
 description: Jira/text 개발 요청의 project·work unit·requirement delta·API spec·workspace·branch·Coder 모델·plan을 독립 clarify Gate로 승인한 뒤 단일 Work Unit만 Kanban dispatch하는 orchestrator 전용 workflow.
-version: 0.17.0
+version: 0.18.0
 author: local
 platforms: [linux]
 metadata:
@@ -146,6 +146,8 @@ Parent tracking 구조를 바꾸는 경우 다음 독립 Gate를 사용한다.
 이 Gate는 tracking 관계만 승인하며 API/Workspace/Branch/Model/Plan 승인을 대신하지 않는다. Parent/Child 관계의 authoritative key는 제목이 아니라 Parent Task ID다. 표시는 `[부모]` / `[자식]` 제목 접두어를 사용한다.
 
 Parent는 `Execution: NON_DISPATCH`이며 Coder/Reviewer로 dispatch하지 않는다. 전체 Child 카드를 미리 만들지 않고 현재 Standard Task만 생성한다. Child 완료 후 다음 Child를 자동 실행하지 않으며, 다음 작업은 새 Standard Flow에서 기존 Parent를 선택해 진행한다.
+
+Parent/Child 계층과 실행 순서는 반드시 분리한다. `kanban_create.parents`에는 승인된 구조적 Parent Task ID만 사용한다. 직전 Task가 선행 조건이면 Parent로 바꾸지 않고 현재 Task의 `Execution Ordering: SEQUENTIAL / Depends On Task IDs`에 기록한다. Parent 자체의 상태는 Child 실행 여부를 결정하지 않는다.
 
 ## API 규격 승인 Gate
 
@@ -298,6 +300,9 @@ NO_EXTRA_KANBAN_CONFIRMATION
 - Git Workspace의 Base SHA는 dispatch 시점 계약으로 보존한다. Non-Git Workspace는 `Base SHA: NONE`이며 snapshot을 생성하지 않는다.
 - 현재 Work Unit만 dispatch한다.
 - Parent tracking이 승인된 Task는 제목에 `[자식]`를 사용하고 Task body에 Parent Task ID를 기록한다. Parent 제목은 `[부모]`를 사용하되 관계 판정에 제목 문자열을 사용하지 않는다.
+- `kanban_create.parents`는 승인된 구조적 Parent Task ID 전용이며 직전/선행 Task를 실행 순서 목적으로 넣지 않는다.
+- 실행 순서는 `Execution Ordering / Depends On Task IDs`로 별도 기록하고, 선행 Task가 모두 DONE인 경우에만 unblock/dispatch한다.
+- Parent의 BLOCKED/NON_DISPATCH 상태는 Child의 실행 dependency가 아니다.
 - Parent는 실행하지 않으며 전체 하위 카드를 선생성하거나 Child 완료 뒤 다음 Child를 자동 dispatch하지 않는다.
 - Parent 없이 시작한 Task도 별도 `[작업 관리 방식 승인]` 후 `PROMOTE_TO_PARENT`로 전환할 수 있다.
 - 추가 Kanban 생성 확인 질문을 만들지 않는다.
