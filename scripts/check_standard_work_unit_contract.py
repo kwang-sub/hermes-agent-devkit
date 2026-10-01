@@ -54,6 +54,8 @@ def main() -> int:
         "[부모]", "[자식]", "Parent Task ID", "Execution: NON_DISPATCH",
         "Job ID", "Implementation Summary", "Session IDs", "Parent Session 추적", "전체 하위 카드를 미리 생성하지 않는다",
         "다음 Child를 자동 dispatch하지 않는다",
+        "kanban_create.parents", "Execution Ordering", "Depends On Task IDs",
+        "PARENT_RELATION_MISMATCH", "금지 관계: P → A → B → C",
     ))
 
     require(SESSION, (
@@ -87,6 +89,7 @@ def main() -> int:
         "설명만 출력하고 사용자의 `네`, `진행해주세요`, `계속해주세요`를 기다린 뒤 다음 turn에서 Gate를 띄우는 흐름은 금지",
         "구현 요약:", "PLAN_READY", "최대 2문장",
         "PARENT_TRACKING_CLASSIFIED", "작업 관리 방식 승인", "NEW_PARENT", "LINK_EXISTING_PARENT", "PROMOTE_TO_PARENT", "[부모]", "[자식]",
+        "kanban_create.parents", "Execution Ordering", "Depends On Task IDs",
     ))
 
     require(DISPATCH, common + (
@@ -96,6 +99,8 @@ def main() -> int:
         "dev-db-migration",
         "Verification Contract", "Verification Provider", "Verification Approval: APPROVED",
         "Parent Tracking Dispatch 계약", "Execution: NON_DISPATCH", "Parent Task ID", "[부모]", "[자식]", "Job ID", "Implementation Summary",
+        "kanban_create.parents", "Execution Ordering", "Depends On Task IDs",
+        "PARENT_RELATION_MISMATCH", "EXECUTION_DEPENDENCY_PENDING",
         "Session History 계약", "TASK_SESSION_HISTORY", "UNAVAILABLE",
     ))
 
