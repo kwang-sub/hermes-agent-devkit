@@ -50,6 +50,15 @@ RUN python3 /tmp/patch_hermes_kanban_model_transition.py --self-test \
     && grep -q 'def _devkit_run_flow_model_transition' /opt/hermes/tools/kanban_tools.py \
     && rm /tmp/patch_hermes_kanban_model_transition.py
 
+# Show parent/child mapping directly on Kanban cards without duplicating cards:
+# compact relation handle when collapsed, linked task title/status when expanded.
+COPY scripts/patch_hermes_kanban_relation_preview.py /tmp/patch_hermes_kanban_relation_preview.py
+RUN python3 /tmp/patch_hermes_kanban_relation_preview.py --self-test \
+    && python3 /tmp/patch_hermes_kanban_relation_preview.py --hermes-root /opt/hermes \
+    && python3 /tmp/patch_hermes_kanban_relation_preview.py --check-only --hermes-root /opt/hermes \
+    && /opt/hermes/.venv/bin/python -m py_compile /opt/hermes/plugins/kanban/dashboard/plugin_api.py \
+    && rm /tmp/patch_hermes_kanban_relation_preview.py
+
 # Fail the upstream compatibility stage immediately if a patched Hermes module no
 # longer compiles or the canonical CLI entry point disappears.
 RUN test -x /opt/hermes/.venv/bin/hermes \
