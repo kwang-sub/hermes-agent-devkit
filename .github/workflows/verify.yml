@@ -31,6 +31,18 @@ jobs:
         shell: bash
         run: bash scripts/verify.sh
 
+      - name: Verify bounded session history and comment delivery
+        shell: bash
+        run: python3 scripts/test_task_session_history.py
+
+      - name: Verify shared session history across all flows
+        shell: bash
+        run: |
+          python3 scripts/check_session_history_contract.py
+          python3 scripts/check_standard_work_unit_contract.py
+          python3 scripts/check_direct_flow_contract.py
+          python3 scripts/check_task_recovery_contract.py
+
       - name: Verify English code logging policy contract
         shell: bash
         run: python3 scripts/check_logging_language_contract.py

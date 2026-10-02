@@ -1,14 +1,14 @@
 ---
 name: dev-review-cycle
 description: 동일 Kanban card/workspace에서 Direct와 Standard Flow의 Coder→Reviewer 필수 review loop와 승인된 모델 전이를 보존하는 프로토콜.
-version: 0.7.0
+version: 0.8.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, review, workflow, coder, reviewer, kanban, model, direct-flow, standard-flow]
     related_skills: [dev-implement-plan, dev-code-review, dev-flow-model-policy]
-    requires_tools: [kanban_show, kanban_request_review, kanban_request_changes, kanban_complete, kanban_block, terminal]
+    requires_tools: [kanban_show, kanban_request_review, kanban_request_changes, kanban_complete, kanban_block, kanban_comment, terminal]
 ---
 
 # dev-review-cycle
@@ -43,6 +43,14 @@ Coder running (approved Coder model)
 - lifecycle tool 실패 시 수동 model mutation/환경변수 주입으로 우회하지 않고 `kanban_block(kind=capability)`한다.
 - retry/review cycle에서 ENV를 다시 해석하지 않는다. 동일 Task는 승인 당시 snapshot을 유지한다.
 - Coder Model/Provider 변경이나 PREMIUM escalation은 사용자 재승인 없이는 금지한다.
+
+## 세션 이력 보완 — SESSION_HISTORY_FINALIZE
+
+Standard / Direct / Recovery / CHANGES_REQUESTED는 `/opt/data/shared/references/session-history-rules.md`의 `SESSION_HISTORY_BEST_EFFORT_V1`을 공통 적용한다. Coder/Reviewer 시작 capture는 해당 역할 entrypoint에서 수행한다. 별도 Flow별 추적 helper는 만들지 않는다.
+
+미확인/comment 미완료일 때만 현재 역할의 `capture --phase finalize`를 최대 1회 호출한다. 이미 `SESSION_HISTORY_COMMENT_PENDING=false`로 기록된 추적은 생략한다. Coder는 `kanban_request_review` 직전, Reviewer는 `kanban_complete` / `kanban_request_changes` 직전, 다른 원인으로 중단하면 `kanban_block` 직전이다. 성공한 marker는 중복 없이 comment/ack-comment하고, 보완 실패는 최종 근거에 보존한다. 보완을 위해 terminal transition 뒤 도구 호출이나 background 수집기를 만들지 않는다.
+
+`unavailable`만으로 BLOCK하지 않는다. Task/Workspace/승인·검증·lifecycle 오류는 기존 blocker를 유지한다. Reviewer ID를 Coder 누락에 대신 넣거나 새 Recovery 세션으로 과거 미확인이 복구됐다고 기록하지 않는다.
 
 ## 허용 전이
 - `Flow: DIRECT | STANDARD` Coder 구현 완료 → verification/handoff evidence → `kanban_request_review`.
