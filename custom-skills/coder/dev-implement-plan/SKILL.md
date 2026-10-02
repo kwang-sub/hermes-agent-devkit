@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: Orchestrator가 승인·dispatch한 Direct 또는 Standard Kanban 단일 Work Unit을 할당 Workspace에서 구현·검증하고 항상 Reviewer에게 인계한다.
-version: 0.27.0
+version: 0.28.0
 author: local
 platforms: [linux]
 metadata:
@@ -20,7 +20,7 @@ Coder는 새 mutation request의 실행 방식을 선택하거나 self-dispatch�
 ```text
 kanban_show
 → task_session_history.py capture
-→ 새 Session이면 TASK_SESSION_HISTORY kanban_comment
+→ SESSION_HISTORY_BEST_EFFORT_V1: 실제 marker/receipt 또는 미확인 warning
 → Worker Context Gate 1회
 → verify_workspace.py 1회
 → Work Unit Boundary Gate
@@ -31,14 +31,15 @@ kanban_show
 → IMPLEMENTATION_STABLE
 → 필요한 final regression
 → scoped change_summary.py
+→ SESSION_HISTORY_FINALIZE (pending일 때만)
 → kanban_request_review | kanban_block
 ```
 
 Workspace Version Control과 Pattern References는 Task body를 재사용한다. Git Workspace는 Expected Branch/Base SHA를 검증하고, Non-Git Workspace는 `Version Control: none`, `Branch/Base SHA: NONE` 계약으로 `verify_workspace.py --version-control none`을 사용한다. 기존 변경은 preserve-first이며 reset/restore/clean/stash하지 않는다. Existing Changes Preservation Fast Path가 승인된 Git Workspace에서는 repository-wide dirty/EOL/untracked scan을 반복하지 않는다.
 
-## Session History Gate
+## Session History Gate — SESSION_HISTORY_BEST_EFFORT_V1
 
-모든 실행 카드(Parent 없는 일반 단일 카드와 `[자식]` 카드)는 source mutation 전에 현재 Hermes session을 durable하게 기록한다.
+모든 실행 카드(Parent 없는 일반 단일 카드와 `[자식]` 카드)는 공통 `session-history-rules.md`를 따른다. Standard / Direct / Recovery / CHANGES_REQUESTED에 동일하게 적용한다.
 
 ```bash
 python3 /opt/devkit/bin/task_session_history.py capture \
@@ -46,19 +47,19 @@ python3 /opt/devkit/bin/task_session_history.py capture \
   --profile coder \
   --profile-home /opt/data/profiles/coder \
   --workspace "<Workspace from kanban_show>" \
-  --session-mode UNKNOWN
+  --session-mode UNKNOWN --phase start
 ```
 
-Task ID와 Workspace는 현재 `kanban_show` 결과를 명시적으로 전달한다. 터미널 자식 프로세스의 Kanban ownership ENV에 의존하지 않는다.
+Task ID/Workspace는 `kanban_show`, profile/profile-home은 현재 역할에서 명시적으로 전달한다. 터미널의 scrub된 Kanban ownership ENV로 추측하지 않는다. Helper만 최대 3회 제한 재시도하며 외부 retry/sleep loop는 금지한다.
 
-출력 처리:
+- `SESSION_HISTORY_STATUS=captured`: `SESSION_HISTORY_COMMENT_PENDING`을 확인한다. pending이면 기존 Task comments와 실제 `Session ID + Profile` marker를 대조하고 없을 때만 `TASK_SESSION_HISTORY`를 `kanban_comment`한다. 성공/기존 marker 확인 후 `ack-comment`한다.
+- `SESSION_HISTORY_NEW=false`는 DB 중복일 뿐 comment 성공 증거가 아니다. receipt 성공 뒤에만 추적을 resolved로 처리한다.
+- `SESSION_HISTORY_STATUS=unavailable`: `TASK_SESSION_HISTORY_WARNING`을 한 번 기록하고 계속한다. 세션 미확인만으로 `kanban_block`하지 않는다. warning 기록 실패도 미확인의 간접 blocker로 만들지 않고 최종 근거에 남긴다.
+- `error` / captured marker·receipt 기록 오류: 시작 시 기존 capability 오류로 source mutation 전에 중단한다. `invalid`는 context blocker다. Task/Workspace/승인/검증 Gate는 완화하지 않는다.
 
-- `SESSION_HISTORY_STATUS=captured + SESSION_HISTORY_NEW=true`: 출력된 `TASK_SESSION_HISTORY` marker를 현재 Task에 `kanban_comment`로 정확히 한 번 기록한다.
-- `SESSION_HISTORY_STATUS=captured + SESSION_HISTORY_NEW=false`: 동일 `task_id + profile + session_id`가 이미 기록된 것이므로 comment를 추가하지 않는다.
-- `SESSION_HISTORY_STATUS=unavailable`: Session ID를 추측하지 않고 mutation 전에 capability blocker로 종료한다.
-- comment 기록 실패: session traceability 계약을 보존할 수 없으므로 source mutation 전에 `kanban_block(kind=capability)`.
+**SESSION_HISTORY_FINALIZE:** 미확인/comment 미완료일 때만 구현·검증 완료 후 `kanban_request_review` 직전 또는 다른 원인의 `kanban_block` 직전에 같은 context로 `capture --phase finalize`를 1회 실행한다. 이미 확인한 ID가 있으면 `--session-id`로 고정한다. 성공하면 같은 Task marker/receipt를 보완하고, 계속 미확인/추적 오류이면 handoff에 상태·원인을 남긴 뒤 원래 전이를 수행한다. 완료된 추적은 재조회하지 않는다. 잘못된 실행 context에는 보완하지 않는다.
 
-한 Task는 NEW/RESUME/recovery/review cycle을 거치며 여러 Session ID를 가질 수 있다. 마지막 Session ID 하나로 덮어쓰지 않는다.
+여러 Session ID를 마지막 하나로 덮어쓰지 않는다. Reviewer/새 Recovery 세션으로 과거 Coder 누락을 대신 채우지 않는다. 상세 comment 중복/응답 유실 처리는 공통 reference가 source of truth다.
 
 ## Approved Recovery Revision Contract
 
