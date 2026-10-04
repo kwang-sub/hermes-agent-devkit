@@ -42,6 +42,10 @@ if not design_template_path.is_file() or not design_guard_path.is_file():
     raise SystemExit("Design Reference template/guard is missing")
 design_template = design_template_path.read_text(encoding="utf-8")
 design_guard = design_guard_path.read_text(encoding="utf-8")
+design_contract_path = design_template_path.with_name("screen-spec-contract.md")
+if not design_contract_path.is_file():
+    raise SystemExit("Screen Spec behavior contract is missing")
+design_contract = design_contract_path.read_text(encoding="utf-8")
 frontend_test = (ROOT / "custom-skills/shared/dev-frontend-test/SKILL.md").read_text(encoding="utf-8")
 typescript = (ROOT / "custom-skills/shared/dev-typescript-guidelines/SKILL.md").read_text(encoding="utf-8")
 typescript_reference_path = ROOT / "custom-skills/shared/dev-typescript-guidelines/references/official-typescript-practices.md"
@@ -189,6 +193,36 @@ checks = {
         "_assert_owned_by_current_user", "internal Node state owner mismatch",
         '"pnpm-workspace.yaml"', "package.json/pnpm-lock.yaml/pnpm-workspace.yaml",
         "prepare_isolated_package", "isolated_package_root", "NODE_WORKSPACE_SYNC=ready",
+    )),
+    "screen behavior contract": (design_contract, (
+        "spec_version: 2", "behavior_status", "CONFIRMED", "PROPOSED", "UNKNOWN",
+        "화면 기능 목록", "UI 요소 및 기능 연결", "기능별 동작 명세", "기능별 검증 조건",
+        "노출/숨김과 활성/비활성", "미노출 사유", "LEGACY_NOT_CHECKED", "STRUCTURE_PASS",
+        "--require-behavior-contract", "--require-approved-behavior", "CODE_DRIVEN",
+    )),
+    "screen behavior template": (design_template, (
+        "spec_version: 2", "behavior_status: DRAFT", "## 화면 기능 목록",
+        "## UI 요소 및 기능 연결", "## 기능별 동작 명세", "## 기능별 검증 조건",
+        "연결 UI ID", "연결 기능 ID", "확정 상태", "근거", "노출 조건", "활성화 / 표시 규칙",
+        "관련 UI", "실행 시점", "사전 조건 / 입력 검증", "정상 결과", "상태 / 예외 처리",
+        "화면 이동 / 저장", "플랫폼 차이", "기대 결과", "검증 방법",
+    )),
+    "screen behavior guard": (design_guard, (
+        "validate_behavior", "validate_details", "FEATURE_COLUMNS", "UI_COLUMNS", "AC_COLUMNS",
+        "--require-behavior-contract", "--require-approved-behavior", "LEGACY_NOT_CHECKED", "STRUCTURE_PASS",
+        "non-reciprocal feature/UI mapping", "missing acceptance coverage", "missing behavior details",
+    )),
+    "screen behavior design producer": (design, (
+        "screen-spec-contract.md", "spec_version: 2", "behavior_status", "--require-behavior-contract",
+        "--require-approved-behavior", "LEGACY_NOT_CHECKED", "STRUCTURE_PASS",
+    )),
+    "screen behavior implementation consumer": (frontend, (
+        "Screen Spec 동작 계약", "screen-spec-contract.md", "--require-behavior-contract",
+        "--require-approved-behavior", "F/UI/AC ID", "CODE_DRIVEN",
+    )),
+    "screen behavior verification consumer": (frontend_test, (
+        "Screen Spec 기능별 검증", "screen-spec-contract.md", "F/UI/AC ID",
+        "LEGACY_NOT_CHECKED", "STRUCTURE_PASS", "PASS | FAIL | NOT_RUN",
     )),
     "design reference": (design, (
         "Design Source", "IMAGE", "FIGMA", "DRAFT", "REFERENCE", "APPROVED",

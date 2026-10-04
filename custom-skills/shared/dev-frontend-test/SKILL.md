@@ -1,7 +1,7 @@
 ---
 name: dev-frontend-test
 description: frontend 변경에서 기존 Vitest/Jest/Testing Library/Storybook/Playwright/Cypress stack을 감지해 functional·component·e2e·design conformance·visual regression 검증을 선택하는 capability skill.
-version: 0.3.4
+version: 0.4.0
 author: local
 platforms: [linux]
 metadata:
@@ -66,6 +66,19 @@ Approved IMAGE/Figma reference 기반 첫 구현
 ```
 
 snapshot만으로 behavior correctness를 대체하지 않는다.
+
+## Screen Spec 기능별 검증
+
+`../dev-design-reference/references/screen-spec-contract.md`의 F/UI/AC ID를 검증 근거와 연결한다.
+신규/의미 있게 수정한 명세는 `--require-behavior-contract` 검사 대상이다. 구형 명세는
+`LEGACY_NOT_CHECKED`로 구분하며 전체 기존 화면을 일괄 실패 처리하지 않는다.
+`STRUCTURE_PASS`는 동작 테스트 PASS가 아니다. 기능별 노출/활성화 조건, 트리거, 정상 결과,
+필요한 입력 오류/빈 결과/실패·재시도/중복 방지와 웹·모바일 대체 조작을 검증한다.
+모든 기능의 AC에 `PASS | FAIL | NOT_RUN`과 실제 test/수동 확인 근거를 남긴다.
+요약 표는 `AC ID | 기능 ID | UI ID | 플랫폼/상태 | 검증 방법/증거 | 결과` 형식을 사용한다.
+기존 테스트 도구와 accessible query를 우선하고 문서 ID를 이유로 DOM/test-id나 새 도구를 강제하지 않는다.
+정적 카드/안내문과 자동 조회도 검증하되 해당하지 않는 오류 상태를 억지로 만들지 않는다.
+문서 구조, 기능 동작, 디자인 일치, 시각 회귀 결과는 서로 대체하지 않고 별도로 보고한다.
 
 ## View Strategy / Platform Verification
 

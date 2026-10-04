@@ -1,7 +1,7 @@
 ---
 name: dev-design-reference
 description: 승인된 이미지 또는 Figma 디자인 자료를 Frontend 구현용 Normalized Design Evidence로 변환하고 GitHub Reference Package 계약을 관리하는 shared capability skill.
-version: 0.2.0
+version: 0.3.0
 author: local
 platforms: [linux]
 metadata:
@@ -88,6 +88,12 @@ reference.tablet.png
 이미지는 **보이는 계약**, `screen-spec.md`는 **보이지 않는 동작 계약**이다.
 
 `screen-spec.md` 권장 template은 `references/screen-spec-template.md`를 사용한다.
+
+신규/의미 있게 수정한 명세는 `spec_version: 2`를 사용한다. 기능 목록, UI 요소 연결,
+기능별 동작 명세, 기능별 검증 조건의 canonical 규칙은 `references/screen-spec-contract.md`에 있다.
+이미지의 디자인 `status`와 동작의 `behavior_status`는 별도다. 디자인 승인으로 동작을 자동 승인하지 않는다.
+기능 ID → UI ID → AC ID를 연결하고, OBSERVED/기존 코드 근거와 PROPOSED/UNKNOWN을 구분한다.
+기능 동작을 바꾸면 기존 디자인 승인과 별개로 `behavior_status: DRAFT`에서 변경된 동작을 다시 확인한다.
 
 ## Screen Specification 최소 정보
 
@@ -231,11 +237,19 @@ python3 /opt/custom-skills/shared/dev-design-reference/scripts/screen_spec_guard
   --spec "docs/ui/screens/<screen>/screen-spec.md"
 ```
 
-이 helper는 frontmatter와 reference 접근성만 확인하는 lightweight guard다. 이미지 내용/디자인 품질 검증이나 full Markdown parser를 가장하지 않는다.
+기존 버전 없는/v1 명세는 읽을 수 있으며 `BEHAVIOR_CONTRACT_STATUS=LEGACY_NOT_CHECKED`를 반환한다.
+신규/의미 있는 동작 변경의 구조 확인에는 `--require-behavior-contract`를 추가한다.
+승인된 동작을 구현할 때는 `--require-approved-behavior`로 v2와 별도 동작 승인 기록을 확인한다.
+기획 단계의 DRAFT 명세에는 승인 옵션을 강제하지 않는다. 자세한 호출 기준은 `references/screen-spec-contract.md`를 따른다.
+v2의 `STRUCTURE_PASS`는 필수 설명/ID/양방향 연결/상세/AC의 구조 검증만 의미한다.
+이미지 내용/기능 정확성/디자인 품질/실제 승인 여부나 full Markdown parser를 가장하지 않는다.
 
 ## Reviewer 계약
 
 Reviewer는 Coder가 남긴 Normalized Design Evidence를 먼저 재사용한다.
+Screen Spec의 기능 목록과 실제 UI를 양방향으로 대조하고, 노출/활성화 조건·실행 결과·필요한 예외
+처리·플랫폼 차이·AC별 검증 근거를 확인한다. 구조 검사만 통과했다고 기능 검증을 PASS로 하지 않는다.
+이미지에 없는 제품 동작과 승인/기존 구현의 근거가 충돌하면 관련 기능의 미확정 사항으로 남긴다.
 
 원본 Reference를 다시 읽는 경우:
 

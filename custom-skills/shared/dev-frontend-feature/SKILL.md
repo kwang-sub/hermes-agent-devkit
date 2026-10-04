@@ -1,7 +1,7 @@
 ---
 name: dev-frontend-feature
 description: Frontend 작업의 canonical entry point로 승인된 Design Reference 또는 기존 코드 기준을 TypeScript·React/Next.js·UI/UX·API contract·test capability와 조합한다.
-version: 0.4.2
+version: 0.5.0
 author: local
 platforms: [linux]
 metadata:
@@ -178,6 +178,20 @@ API Impact: NONE | SHARED_CONTRACT | CONTRACT_CHANGE
 Responsive / Breakpoint Source:
 Desktop/Mobile Verification Matrix:
 ```
+
+## Screen Spec 동작 계약
+
+Screen Spec을 신규 작성하거나 기능/UI/상태 흐름을 의미 있게 바꾸면
+`../dev-design-reference/references/screen-spec-contract.md`와 v2 template을 사용한다.
+REFERENCE_DRIVEN뿐 아니라 CODE_DRIVEN의 기존 Screen Spec에도 적용한다. 검사를 위해 새 이미지/Figma를 강제하지 않는다.
+기능 목록 → UI ID/노출·활성화 규칙 → 실행 시점/검증/정상·예외 결과 → AC ID를 대조한 후 구현한다.
+신규/의미 있게 수정한 명세는 `screen_spec_guard.py --require-behavior-contract`로 구조를 확인한다.
+해당 명세의 승인 동작을 구현할 때는 `--require-approved-behavior`로 별도 동작 승인 기록을 확인한다.
+명세를 바꾸지 않는 기존 승인 범위의 구현 수정에는 새로운 승인 Gate를 만들지 않는다.
+디자인 승인을 제품 동작 승인으로 간주하지 않고, 기능 변경 시 동작 승인 상태/근거를 갱신한다.
+UNKNOWN은 임의 구현하지 않는다. 확인 가능한 기존 규칙은 재사용하고 실제 제품 결정만 기존 승인 흐름에 연결한다.
+자동 조회/정보 표시와 조건부 UI도 누락하지 않는다. 웹/모바일은 기능 ID를 공유하고 차이만 기록한다.
+구현과 Screen Spec을 같은 변경에서 갱신하며 handoff에 F/UI/AC ID별 구현·검증 근거를 남긴다.
 
 ## Coder 실행 순서
 
