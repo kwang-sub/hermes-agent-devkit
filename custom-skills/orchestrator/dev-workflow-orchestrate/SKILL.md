@@ -1,13 +1,13 @@
 ---
 name: dev-workflow-orchestrate
 description: Jira/text 개발 요청의 project·work unit·requirement delta·API spec·workspace·branch·Coder 모델·plan을 독립 clarify Gate로 승인한 뒤 단일 Work Unit만 Kanban dispatch하는 orchestrator 전용 workflow.
-version: 0.18.0
+version: 0.19.0
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, workflow, orchestrator, approval, clarify, gate, work-unit, requirement-delta, api, spec, dispatch, kanban, model, performance]
-    related_skills: [dev-work-intake, dev-project-resolve, dev-project-bootstrap, dev-breakdown, dev-api-spec, dev-skill-preflight, dev-workspace-dispatch, dev-flow-model-policy, dev-task-recovery]
+    related_skills: [dev-work-intake, dev-project-resolve, dev-project-bootstrap, dev-breakdown, dev-api-spec, dev-skill-preflight, dev-workspace-dispatch, dev-flow-model-policy, dev-task-recovery, dev-feature-docs]
 ---
 
 # dev-workflow-orchestrate
@@ -15,6 +15,18 @@ metadata:
 Orchestrator는 요청의 상태 머신과 승인 Gate만 조정한다. application/test code, code review, commit, push, PR, merge, cleanup은 직접 하지 않는다. 사용자 가시 계획/승인 문구는 한국어다.
 
 Standard Flow 승인 UI는 `/opt/data/shared/references/approval-gate-rules.md`, Work Unit 경계는 `/opt/data/shared/references/standard-work-unit-rules.md`, 연속 작업 Parent 추적은 `/opt/data/shared/references/parent-tracking-rules.md`가 source of truth다. **한 번의 사용자 확인에서는 하나의 의사결정만 요청한다.** 선택지는 질문 본문에 번호로 쓰지 않고 `clarify`의 `choices`를 사용한다.
+
+## 기능 문서 선택적 연결 — Standard Flow
+
+Project 확인 뒤 실행계획 확정 전에 `skill_view("dev-feature-docs")`로 관련 문서를 읽기 전용 확인한다. 로드/탐색 실패나 문서 부재는 Flow를 차단하지 않는다. 명시적 지정 → 같은 작업의 승인 연결 → `docs/features/README.md` → 개별 기능 문서 순서이며, 자동 검색은 선택한 프로젝트의 `docs/features`로 제한한다.
+
+제목 유사성만으로 연결하지 않는다. 목적·합의된 기능을 대조해 `상태 갱신 대상`과 `참고 전용`을 구분한다. 명확한 연결만 기존 실행계획에 문서 경로·해당 범위·사용 방식·쓰기 workspace로 표시하고 기존 Plan Approval에 포함한다. 별도 Gate, 필수 Task field, Feature ID, Coder/Reviewer 필수 skill pin을 추가하지 않는다. 애매하면 자동 갱신 없이 기존 작업을 진행한다.
+
+승인된 경로는 기존 Task 본문으로 인계하고 재개/마무리에서 재검색·자동 재연결하지 않는다. 문서 범위가 바뀌거나 승인 worktree에 문서가 없으면 참고 전용/반영 미완료로 처리한다. 기존 workspace 밖의 primary 문서를 대신 수정하지 않는다.
+
+Orchestrator는 승인된 부가 문서 범위만 관리하며 application/test 구현·code review는 기존 역할을 유지한다. 기존 진행 응답/상태 조회에서 실제 착수를 확인하면 `진행 중`, 현재 합의 범위 전체의 구현·검증·Reviewer 근거를 확인하면 `구현 완료`를 부분 반영한다. 계획/승인/등록만으로 착수 처리하거나 일부 Task DONE으로 전체 완료 처리하지 않는다. 미관찰 결과는 다음 기존 조회/재개에서 보완하며 실시간 갱신을 보장하지 않는다. 상태용 watcher/polling/lifecycle hook은 추가하지 않는다.
+
+문서 문제만으로 Task를 BLOCKED/실패로 변경하지 않는다. `구현 결과`와 `기능 문서 반영 결과`를 구분해 보고한다. 기존 상태 머신, clarify 질문, dispatch 횟수와 실행·검증 blocker는 그대로 유지한다. 상세는 `dev-feature-docs/references/standard-flow.md`를 따른다.
 
 ## Blocked Task Recovery 진입
 

@@ -1,13 +1,13 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 단일 Work Unit 계획과 Git/Non-Git workspace의 버전관리 계약·Coder 모델·capability를 Kanban으로 인계한다. 알림은 동일 컨테이너의 DevKit Notification Bridge가 task_events를 비동기로 관찰한다.
-version: 0.22.0
+version: 0.22.1
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, git, workspace, branch, kanban, dispatch, orchestrator, work-unit, capability, infrastructure, desired-state, preflight, notification, model, api, spec, performance]
-    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-api-spec, dev-infrastructure, dev-skill-preflight, dev-workflow-orchestrate, dev-flow-model-policy]
+    related_skills: [dev-project-bootstrap, dev-project-pattern, dev-breakdown, dev-api-spec, dev-infrastructure, dev-skill-preflight, dev-workflow-orchestrate, dev-flow-model-policy, dev-feature-docs]
     requires_tools: [terminal, skill_view, kanban_create, kanban_show, kanban_unblock, clarify]
 ---
 
@@ -16,6 +16,14 @@ metadata:
 사용자 승인까지 완료된 READY **단일 Work Unit** 계획을 승인된 workspace와 Coder model snapshot과 함께 Kanban으로 인계한다. Git Workspace는 branch/diff 계약을 유지하고, 승인된 Non-Git Workspace는 branch/diff를 `N/A`로 처리한다. 이 Skill이 신규 Standard Dispatch의 표준이다.
 
 `/opt/data/shared/references/standard-work-unit-rules.md`, `/opt/data/shared/references/parent-tracking-rules.md`, `/opt/data/shared/references/session-history-rules.md`를 적용한다.
+
+## 선택적 기능 문서 인계
+
+Standard 승인 계획에 관련 기능 문서가 있으면 문서 경로·해당 범위·사용 방식(`상태 갱신 대상` 또는 `참고 전용`)·쓰기 workspace를 기존 Task 본문의 한국어 자유 형식 설명으로 보존한다. 별도 기계 파싱 키/필수 field는 만들지 않는다. 연결이 없으면 기존 본문을 그대로 사용한다.
+
+이 정보는 진입 조건이나 새로운 승인 Gate가 아니다. `prepare_dispatch.py`, `kanban_create` args/schema, read-back 검증, unblock 횟수, `kanban_create.skills`를 변경하지 않는다. Orchestrator 전용 `dev-feature-docs`를 Coder/Reviewer에 필수 pin하지 않는다. 문서 누락/모호함/반영 실패만으로 dispatch를 차단하지 않는다.
+
+Coder/Reviewer는 기존 구현·검증 근거를 제공하며 문서 검색·연결 변경·기능 범위 확장을 반복하지 않는다. Orchestrator가 기존 진행 조회/마무리에서 문서 상태를 관찰 기반으로 보완한다. 카드 생성/대기만으로 진행 중으로 기록하지 않는다. 문서 상태를 위해 새 Task, callback, notifier 변경을 만들지 않는다.
 
 ## 1. 진입 조건
 - 실행 계획 + 검증 계획 승인 완료
