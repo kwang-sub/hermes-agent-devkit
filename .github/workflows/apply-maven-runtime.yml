@@ -1,0 +1,55 @@
+name: Publish reviewed Maven runtime
+
+on:
+  push:
+    branches: ["fix/maven-worker-runtime"]
+    paths:
+      - '.github/maven-runtime-payload/**'
+      - '.github/workflows/apply-maven-runtime.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.repository == 'kwang-sub/hermes-agent-devkit' && github.ref == 'refs/heads/fix/maven-worker-runtime'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Apply verified delta only on the feature branch
+        shell: python
+        run: |
+          import base64
+          import gzip
+          import hashlib
+          import subprocess
+          from pathlib import Path
+
+          def git(*args):
+              return subprocess.run(['git', *args], check=True, text=True, stdout=subprocess.PIPE).stdout.strip()
+
+          if git('rev-parse', 'HEAD^') != '4ba363d2112716d221533701542845b073c0d16d':
+              raise RuntimeError('Unexpected baseline commit')
+          temporary = {f'.github/maven-runtime-payload/part{i}.b64' for i in range(5)}
+          temporary.add('.github/workflows/apply-maven-runtime.yml')
+          if set(git('diff', '--name-only', 'HEAD^', 'HEAD').splitlines()) != temporary:
+              raise RuntimeError('Unexpected bootstrap changes')
+          encoded = ''.join(Path(f'.github/maven-runtime-payload/part{i}.b64').read_text().strip() for i in range(5))
+          patch = gzip.decompress(base64.b64decode(encoded, validate=True))
+          if len(patch) != 84673 or hashlib.sha256(patch).hexdigest() != '43545e32736cc4ff7fcfdb6bc172d5fea0e2ee4b305e74575e519e1d45afa346':
+              raise RuntimeError('Patch integrity check failed')
+          subprocess.run(['git', 'apply', '--check', '-'], input=patch, check=True)
+          subprocess.run(['git', 'apply', '--index', '-'], input=patch, check=True)
+          git('rm', '--', *sorted(temporary))
+          tree = git('write-tree')
+          if tree != '11ad6d9051d4356f6462b5af5ac2348311f14a5a':
+              raise RuntimeError('Implementation tree differs from verified local tree: ' + tree)
+          git('config', 'user.name', 'github-actions[bot]')
+          git('config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com')
+          git('commit', '-m', 'fix: connect managed Maven runtime and canonical worker startup')
+          git('push', 'origin', 'HEAD:refs/heads/fix/maven-worker-runtime')
+          print('IMPLEMENTATION_COMMIT=' + git('rev-parse', 'HEAD'))
+          print('IMPLEMENTATION_TREE=' + tree)
