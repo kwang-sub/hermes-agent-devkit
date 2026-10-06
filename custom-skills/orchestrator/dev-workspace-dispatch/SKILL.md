@@ -17,6 +17,10 @@ metadata:
 
 `/opt/data/shared/references/standard-work-unit-rules.md`, `/opt/data/shared/references/parent-tracking-rules.md`, `/opt/data/shared/references/session-history-rules.md`를 적용한다.
 
+## Worker 실행 환경 인계
+
+Direct/Standard/Recovery는 기존 Coder/Reviewer entrypoint를 그대로 사용한다. 실제 worker query의 `DEVKIT_WORKER_STARTUP_V1`이 현재 Skill 로드·기존 Gate 순서를 안내한다. Maven 검증이 있으면 승인된 build root/Wrapper·goal/profile/module/selector와 네트워크 허용 여부를 기존 검증 계획에 보존하고 `/opt/data/shared/references/maven-worker-runtime.md`의 canonical launcher/helper를 안내한다. 별도 필수 Task field/승인 Gate/카드 재생성/검증 provider 교체는 추가하지 않는다. 환경 복구만으로 차단 카드를 자동 unblock하지 않는다.
+
 ## 선택적 기능 문서 인계
 
 Standard 승인 계획에 관련 기능 문서가 있으면 문서 경로·해당 범위·사용 방식(`상태 갱신 대상` 또는 `참고 전용`)·쓰기 workspace를 기존 Task 본문의 한국어 자유 형식 설명으로 보존한다. 별도 기계 파싱 키/필수 field는 만들지 않는다. 연결이 없으면 기존 본문을 그대로 사용한다.

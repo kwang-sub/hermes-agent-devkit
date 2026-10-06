@@ -34,6 +34,9 @@ RUN python3 /tmp/patch_hermes_tirith_profile_guard.py --self-test \
     && grep -q 'DEVKIT_TIRITH_PROFILE_GUARD_V1' /opt/hermes/tools/tirith_security.py \
     && rm /tmp/patch_hermes_tirith_profile_guard.py
 
+COPY scripts/devkit_worker_startup.py /opt/hermes/hermes_cli/devkit_worker_startup.py
+RUN python3 -m py_compile /opt/hermes/hermes_cli/devkit_worker_startup.py
+
 COPY scripts/devkit_session_affinity.py /opt/hermes/hermes_cli/devkit_session_affinity.py
 RUN python3 /opt/hermes/hermes_cli/devkit_session_affinity.py --self-test
 
@@ -154,7 +157,13 @@ ENV HERMES_GRADLE_DIST_ROOT=/opt/data/gradle/distributions
 ENV HERMES_GRADLE_DOWNLOAD_ROOT=/opt/data/gradle/downloads
 ENV HERMES_GRADLE_LOCK_ROOT=/opt/data/gradle/locks
 ENV HERMES_GRADLE_PROJECT_CACHE_ROOT=/opt/data/gradle/project-cache
-ENV GRADLE_USER_HOME=/opt/data/gradle/user-home\n\nENV HERMES_MAVEN_ROOT=/opt/data/maven\nENV HERMES_MAVEN_REPO_ROOT=/opt/data/maven/repository\nENV HERMES_MAVEN_DIST_ROOT=/opt/data/maven/distributions\nENV HERMES_MAVEN_DOWNLOAD_ROOT=/opt/data/maven/downloads\nENV HERMES_MAVEN_LOCK_ROOT=/opt/data/maven/locks
+ENV GRADLE_USER_HOME=/opt/data/gradle/user-home
+
+ENV HERMES_MAVEN_ROOT=/opt/data/maven
+ENV HERMES_MAVEN_REPO_ROOT=/opt/data/maven/repository
+ENV HERMES_MAVEN_DIST_ROOT=/opt/data/maven/distributions
+ENV HERMES_MAVEN_DOWNLOAD_ROOT=/opt/data/maven/downloads
+ENV HERMES_MAVEN_LOCK_ROOT=/opt/data/maven/locks
 
 # Node projects use pnpm as the only DevKit package manager. The standalone
 # bootstrap is pinned for reproducibility; project Node/pnpm versions still come

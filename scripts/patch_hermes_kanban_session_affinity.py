@@ -232,11 +232,36 @@ def _patch_single_worker_guard(source: str) -> tuple[str, bool]:
     return source, changed
 
 
+STARTUP_MARKER = "from hermes_cli.devkit_worker_startup import with_worker_startup"
+STARTUP_SOURCE = "    " + STARTUP_MARKER + "\n    cmd = with_worker_startup(cmd, profile_arg)\n"
+
+
+def _patch_worker_startup(source: str) -> tuple[str, bool]:
+    if STARTUP_MARKER in source:
+        if source.count(STARTUP_MARKER) != 1 or "cmd = with_worker_startup(cmd, profile_arg)" not in source:
+            raise RuntimeError("incomplete Kanban startup prompt adapter")
+        return source, False
+    # Both supported spawn layouts have a complete argv at these boundaries.
+    # Do not change the claim/run ID/security environment or session selection.
+    if source.count(CURRENT_ANCHOR) == 1:
+        anchor = CURRENT_ANCHOR
+    else:
+        anchor = '''    cmd.extend([
+        "chat",
+        "-q", prompt,
+    ])
+'''
+        if source.count(anchor) != 1:
+            raise RuntimeError("compatible Kanban startup argv boundary not found")
+    return source.replace(anchor, anchor + STARTUP_SOURCE, 1), True
+
+
 def patch_source(path: Path) -> str:
     source = path.read_text(encoding="utf-8")
     source, session_changed = _patch_session_affinity(source)
     source, worker_changed = _patch_single_worker_guard(source)
-    changed = session_changed or worker_changed
+    source, startup_changed = _patch_worker_startup(source)
+    changed = session_changed or worker_changed or startup_changed
     if changed:
         path.write_text(source, encoding="utf-8")
     strict_compile(path)
@@ -312,6 +337,8 @@ def self_test() -> None:
         assert patch_source(legacy) == "patched"
         assert patch_source(legacy) == "already-patched"
         legacy_text = legacy.read_text(encoding="utf-8")
+        assert STARTUP_MARKER in legacy_text
+        assert "cmd = with_worker_startup(cmd, profile_arg)" in legacy_text
         assert CONTEXT_MARKER in legacy_text
         assert 'cmd.extend(["--resume", _devkit_session.session_id])' in legacy_text
         assert SINGLE_WORKER_HELPER_MARKER in legacy_text
@@ -325,6 +352,7 @@ def self_test() -> None:
         assert patch_source(current) == "patched"
         assert patch_source(current) == "already-patched"
         current_text = current.read_text(encoding="utf-8")
+        assert STARTUP_MARKER in current_text
         assert CONTEXT_MARKER in current_text
         assert '_devkit_chat_index = cmd.index("chat")' in current_text
         assert 'cmd[_devkit_chat_index:_devkit_chat_index]' in current_text

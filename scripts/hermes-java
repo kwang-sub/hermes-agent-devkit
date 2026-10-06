@@ -6,6 +6,17 @@ if [ "$#" -eq 0 ]; then
   exit 2
 fi
 
+# Maven commands share this entrypoint but must never fall through to raw mvnw.
+# Dispatch before Gradle-specific cache initialization and toolchain loading.
+case "$1" in -h|--help) echo 'Usage: hermes-java <command> [args...]'; exit 0;; esac
+case "$(basename "$1")" in
+  mvnw|mvn)
+    maven_launcher="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/hermes-maven"
+    [ -x "$maven_launcher" ] || { echo 'MAVEN_BLOCKER=MAVEN_LAUNCHER_MISSING' >&2; exit 2; }
+    exec "$maven_launcher" "$@"
+    ;;
+esac
+
 workspace_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 workspace_is_git=true
 

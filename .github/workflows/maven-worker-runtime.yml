@@ -1,0 +1,42 @@
+name: Maven worker runtime
+
+on:
+  push:
+    branches: [dev, 'fix/**', 'feat/**', 'feature/**']
+    paths:
+      - 'scripts/hermes-*'
+      - 'scripts/*maven*'
+      - 'scripts/*worker*'
+      - 'scripts/patch_hermes_kanban_session_affinity.py'
+      - 'custom-skills/coder/dev-implement-plan/**'
+      - 'Dockerfile'
+      - '.github/workflows/maven-worker-runtime.yml'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  maven-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        maven: ['3.6.3', '3.9.9']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Managed launcher and worker regression
+        run: |
+          python3 scripts/test_hermes_maven.py
+          python3 scripts/test_maven_worker_runtime.py
+          python3 scripts/test_maven_verification_cached.py
+          python3 scripts/check_maven_launcher_contract.py
+      - name: Actual Maven cold cache, Java 17 compile, JUnit and offline rerun
+        run: python3 scripts/smoke_maven_runtime.py --version "${{ matrix.maven }}"

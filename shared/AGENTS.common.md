@@ -89,6 +89,10 @@ Direct/Standard Task 모두 Goal, Acceptance Criteria, Implementation Tasks, Tes
 - Temp 입력 파일을 읽기 전에 존재 여부를 확인한다. 존재하지 않으면 임의 경로를 추측하지 말고 사용자에게 파일 접근 실패를 명확히 알린다.
 - host Temp mount는 입력 파일 확인용 read-only 영역이다. 파일 생성·수정·삭제 대상이나 작업 산출물 저장 위치로 사용하지 않는다.
 
+## Worker 시작 / Maven
+- 실제 Kanban Worker는 첫 `kanban_show` 후 현재 역할 Skill(Coder `dev-implement-plan`, Reviewer `dev-code-review`)을 로드하고 지정 세션 기록·context·workspace Gate부터 수행한다. 새/재개 및 Direct/Standard/Recovery에서 동일하며 helper 위치·사용법을 재탐색하지 않는다.
+- Maven은 `/usr/local/bin/hermes-maven` 또는 이를 위임하는 `hermes-java ./mvnw ...`를 사용한다. `mvn`/raw `mvnw`/HOME `.m2` 부재만으로 차단하거나 전체 디스크에서 executable/JAR를 탐색하지 않는다. 실제 검증은 `/opt/custom-skills/coder/dev-implement-plan/scripts/maven_verification_cached.py`를 canonical 경로로 사용하며 동일 request/scope의 PASS는 재사용하고 fresh 실행만 내부 bounded `maven_verification.py`로 수행한다. 상세는 `/opt/data/shared/references/maven-worker-runtime.md`다.
+
 ## Scope / safety / verification
 - 요구사항에 직접 필요한 최소 diff만 만들고 unrelated refactor/format/upgrade를 섞지 않는다.
 - 관련 있을 때 null/failure/compatibility/transaction/concurrency/security를 위험 기반으로 확인한다.

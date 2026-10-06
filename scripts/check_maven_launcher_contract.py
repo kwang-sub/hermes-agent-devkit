@@ -26,8 +26,52 @@ def main() -> int:
         "ENV HERMES_MAVEN_REPO_ROOT=/opt/data/maven/repository",
         "COPY --chmod=0755 scripts/hermes-maven /usr/local/bin/hermes-maven",
     ):
-        if term not in dockerfile:
+        if term not in dockerfile.splitlines():
             failures.append(f"Dockerfile missing: {term}")
+    java = (ROOT / "scripts/hermes-java").read_text(encoding="utf-8")
+    if 'exec "$maven_launcher" "$@"' not in java:
+        failures.append("hermes-java must delegate Maven before raw execution")
+    if java.index('exec "$maven_launcher" "$@"') > java.index('gradle_root='):
+        failures.append("Maven delegation must precede Gradle state initialization")
+    for path in (
+        "AGENTS.md", "shared/AGENTS.common.md",
+        "custom-skills/coder/dev-implement-plan/SKILL.md",
+        "custom-skills/reviewer/dev-code-review/SKILL.md",
+        "custom-skills/orchestrator/dev-workspace-dispatch/SKILL.md",
+    ):
+        if "maven-worker-runtime.md" not in (ROOT / path).read_text(encoding="utf-8"):
+            failures.append(f"Maven canonical worker contract not linked: {path}")
+    for path, term in (
+        ("Dockerfile", "COPY scripts/devkit_worker_startup.py /opt/hermes/hermes_cli/devkit_worker_startup.py"),
+        ("scripts/patch_hermes_kanban_session_affinity.py", "cmd = with_worker_startup(cmd, profile_arg)"),
+        ("scripts/verify-container-runtime.ps1", "hermes-maven"),
+    ):
+        if term not in (ROOT / path).read_text(encoding="utf-8"):
+            failures.append(f"Maven runtime delivery missing: {path}")
+    cached = ROOT / "custom-skills/coder/dev-implement-plan/scripts/maven_verification_cached.py"
+    if not cached.is_file():
+        failures.append("missing Maven cached verification helper")
+    else:
+        cached_text = cached.read_text(encoding="utf-8")
+        for term in (
+            "VERIFICATION_REQUEST_SHA256",
+            "VERIFICATION_SCOPE_SHA256",
+            "VERIFICATION_EVIDENCE=REUSED",
+            "PRIMARY_REUSED=true",
+            "SOURCE_CHANGED_DURING_VERIFICATION",
+            "maven_verification.py",
+        ):
+            if term not in cached_text:
+                failures.append(f"maven_verification_cached.py missing: {term}")
+    for path in (
+        "shared/AGENTS.common.md",
+        "custom-skills/coder/dev-implement-plan/SKILL.md",
+        "custom-skills/reviewer/dev-code-review/SKILL.md",
+        "shared/references/maven-worker-runtime.md",
+    ):
+        text = (ROOT / path).read_text(encoding="utf-8")
+        if "maven_verification_cached.py" not in text:
+            failures.append(f"Maven cached verification contract not linked: {path}")
     if failures:
         for failure in failures:
             print(f"[FAIL] {failure}")

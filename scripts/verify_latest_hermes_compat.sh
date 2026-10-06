@@ -102,6 +102,14 @@ JSON
         /opt/hermes/.venv/bin/python - <<"PY"
 from pathlib import Path
 
+from hermes_cli.devkit_worker_startup import with_worker_startup
+for profile in ("coder", "reviewer"):
+    argv = ["hermes", "--resume", "probe", "chat", "-q", "work kanban task t_probe"]
+    patched = with_worker_startup(argv, profile)
+    assert "DEVKIT_WORKER_STARTUP_V1" in patched[-1]
+    assert patched[:-1] == argv[:-1]
+    assert with_worker_startup(patched, profile) == patched
+
 from agent.delegation_context import KANBAN_ENV_KEYS, delegated_child_subprocess_env
 from agent.transports.hermes_tools_mcp_server import EXPOSED_TOOLS
 
@@ -226,6 +234,13 @@ PY
         test -f /opt/data/shared/scripts/flow_model_policy.py
     '
 
+printf '[RUN ] Maven managed runtime as the non-root worker user\n'
+docker run --rm --user hermes \
+    --entrypoint /opt/hermes/.venv/bin/python \
+    --mount "type=bind,source=$REPO_ROOT/custom-skills,target=/opt/custom-skills,readonly" \
+    --mount "type=bind,source=$REPO_ROOT/scripts,target=/opt/devkit-tests,readonly" \
+    "$IMAGE_NAME" /opt/devkit-tests/smoke_maven_runtime.py --launcher-dir /usr/local/bin
+
 printf '[RUN ] Latest Hermes live s6 notifier smoke\n'
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 docker volume rm -f "$DATA_VOLUME" >/dev/null 2>&1 || true
@@ -263,5 +278,27 @@ docker exec "$CONTAINER_NAME" test -x /run/service/devkit-notifier/run
 test "$(docker exec "$CONTAINER_NAME" cat /proc/1/comm | tr -d '\r')" = "s6-svscan"
 docker exec --user hermes "$CONTAINER_NAME" \
     /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_notifier.py --self-test
+
+docker exec -i --user hermes "$CONTAINER_NAME" /opt/hermes/.venv/bin/python - <<'PYTHON'
+from pathlib import Path
+import os
+import tempfile
+expected = {
+    "GRADLE_USER_HOME": "/opt/data/gradle/user-home",
+    "HERMES_MAVEN_ROOT": "/opt/data/maven",
+    "HERMES_MAVEN_REPO_ROOT": "/opt/data/maven/repository",
+    "HERMES_MAVEN_DIST_ROOT": "/opt/data/maven/distributions",
+    "HERMES_MAVEN_DOWNLOAD_ROOT": "/opt/data/maven/downloads",
+    "HERMES_MAVEN_LOCK_ROOT": "/opt/data/maven/locks",
+}
+for key, value in expected.items():
+    assert os.environ.get(key) == value, key
+    if key.startswith("HERMES_MAVEN_"):
+        directory = Path(value)
+        directory.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryFile(dir=directory):
+            pass
+print("PASS: actual Docker ENV and persistent Maven cache writable by hermes")
+PYTHON
 
 printf '[PASS] Latest Hermes base image, pinned Git/pnpm bootstrap, project Node runtime, DevKit patches, and live dynamic notifier supervision are compatible.\n'

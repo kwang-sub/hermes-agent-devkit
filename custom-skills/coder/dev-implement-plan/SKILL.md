@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: Orchestrator가 승인·dispatch한 Direct 또는 Standard Kanban 단일 Work Unit을 할당 Workspace에서 구현·검증하고 항상 Reviewer에게 인계한다.
-version: 0.28.0
+version: 0.29.0
 author: local
 platforms: [linux]
 metadata:
@@ -14,6 +14,10 @@ metadata:
 # dev-implement-plan
 
 Coder는 새 mutation request의 실행 방식을 선택하거나 self-dispatch하지 않고 Orchestrator가 생성한 Kanban Task만 수행한다. Direct/Standard Task 모두 `/opt/data/shared/references/standard-work-unit-rules.md`와 `/opt/data/shared/references/session-history-rules.md`를 적용한다. 상세 절차·retry·verification 분류가 필요할 때만 `references/implementation-details.md`를 읽는다.
+
+## 시작 계약 전달
+
+실제 spawn query의 `DEVKIT_WORKER_STARTUP_V1`은 이 Skill을 첫 `kanban_show` 직후 로드하도록 안내한다. 새/재개 worker, Direct/Standard/Recovery/CHANGES_REQUESTED에서 같은 절차다. source read 또는 raw `git branch/status/rev-parse` 전에 아래 시작 Gate를 수행한다. 지정 helper를 `find`/`--help`로 재탐색하지 않는다. 런타임 안내는 tool guard나 승인 정책을 대체하지 않는다.
 
 ## 실행 순서
 
@@ -195,6 +199,8 @@ isolated restore가 `ERR_PNPM_IGNORED_BUILDS`로 실패하면 일반 build 실�
 이미 `pnpm-workspace.yaml > allowBuilds`에 동일 matcher가 boolean으로 결정되어 있으면 재승인을 요청하지 않는다. `dangerouslyAllowAllBuilds=true`, `strictDepBuilds=false`, `pnpm approve-builds --all`, bare package 전체 true 승인은 자동 사용하지 않는다.
 
 Gate PASS 이후 test/lint/typecheck/build는 `node_runtime.py` Linux isolated workspace만 사용한다.
+
+Maven 프로젝트는 `/opt/data/shared/references/maven-worker-runtime.md`를 적용한다. 진단은 `/usr/local/bin/hermes-maven --diagnose ./mvnw`, 승인 compile/test/package/verify는 `/opt/custom-skills/coder/dev-implement-plan/scripts/maven_verification_cached.py`를 canonical 경로로 실행한다. 이 helper가 동일 verification request + executable scope의 PASS fingerprint를 재사용하며 fresh 실행이 필요할 때만 내부 `maven_verification.py` bounded engine을 호출한다. `hermes-java ./mvnw`도 관리형 Maven에 위임한다. raw `mvn`/`./mvnw` 또는 HOME `.m2` 탐색으로 우회하지 않으며, `READY`/빈 cache/미실행 보안 거부를 compile 결과와 혼동하지 않는다. `MAVEN_STATUS=BLOCKED`이면 실제 blocker/evidence를 기록하고 동일 명령 재탐색·반복을 중단한다. 기본 compile 300초, test/package/verify 600초이며 승인된 HTTP 검증 요구는 그대로 보존한다.
 
 Java/Gradle은 기존 toolchain과 canonical cached verification helper를 사용하고 동일 PASS fingerprint를 불필요하게 재실행하지 않는다. raw `./gradlew ...` 또는 `gradle ...` 직접 실행은 금지하며, 단순 bounded 진단이 필요하면 `hermes-java ./gradlew ...`, COMPILE/TARGETED_TEST는 `gradle_verification_cached.py`만 사용한다. 최종 scope 확정 후 **scoped change_summary.py**를 실행한다. Standard Flow에서 `--include` 없이 호출하지 않는다. Git Workspace는 기존 diff/fingerprint handoff를 사용한다. Non-Git Workspace는 `change_summary.py --version-control none --include <changed-path>`로 Coder가 실제 변경 파일을 명시하며 Hermes가 snapshot이나 자동 diff를 만들지 않는다. 결과의 Changed Files와 verification evidence를 handoff한다.
 

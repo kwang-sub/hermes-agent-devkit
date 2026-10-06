@@ -234,6 +234,19 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification_
 
 `GRADLE_STATUS=BLOCKED`이면 Reviewer가 direct `hermes-java ./gradlew`로 우회하지 않고 blocker evidence를 유지한다.
 
+Maven도 동일한 evidence reuse 원칙을 적용한다. Coder와 동일한 `--scope-path`와 승인 command를 아래 canonical cached helper에 전달한다.
+
+```bash
+python3 /opt/custom-skills/coder/dev-implement-plan/scripts/maven_verification_cached.py \
+  --workspace "<Workspace>" \
+  --wrapper ./mvnw \
+  --mode TARGETED_TEST \
+  --scope-path "<same-covered-path>" \
+  -- -B -Dtest=<same-selector> test
+```
+
+동일 request/scope의 PASS이면 `VERIFICATION_EVIDENCE=REUSED`, `PRIMARY_REUSED=true`여야 하며 Maven primary를 다시 실행하지 않는다. production/test/build/toolchain 또는 승인 Maven command가 변경됐거나 evidence/fingerprint가 누락·실패·BLOCKED이면 fresh verification이 필요하다. `MAVEN_STATUS=BLOCKED`는 raw Maven으로 우회 재시도하지 않는다.
+
 ## Common Coding Review Gate
 - `/opt/data/shared/references/coding-rules.md`와 project pattern을 기준으로 기존 abstraction 재사용, scope, `2-depth`, 반복 I/O/N+1을 확인한다.
 - Style/nit만으로 승인을 막지 않는다.

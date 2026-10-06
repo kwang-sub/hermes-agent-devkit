@@ -17,6 +17,7 @@ Coder run은 다음 순서를 고정한다.
 ```text
 kanban_show
 → dev-implement-plan load
+→ task_session_history.py capture (SESSION_HISTORY_BEST_EFFORT_V1)
 → Worker Context Gate 정확히 1회
 → WORKER CONTEXT valid
 → verify_workspace.py 단독 1회
@@ -403,9 +404,13 @@ API DESIGN Work Unit에서 후속 IMPLEMENTATION이 제외되어 있으면 contr
 
 구조 점검 evidence는 `Structural quality check: PASS | REFACTORED | ESCALATED`로 남긴다.
 
+## Maven 검증
+
+`/opt/data/shared/references/maven-worker-runtime.md`가 canonical 계약이다. `hermes-java ./mvnw`는 `hermes-maven`에 위임한다. 원본 CRLF wrapper/HOME `.m2`/global Maven 부재가 아니라 지정 launcher와 `/opt/data/maven`의 실제 실행 근거로 판단한다. 실제 검증은 `maven_verification_cached.py`를 사용한다. 동일 verification request + executable scope의 기존 PASS는 `VERIFICATION_EVIDENCE=REUSED`, `PRIMARY_REUSED=true`로 재사용하고, fresh 실행이 필요한 경우에만 내부 `maven_verification.py` bounded engine을 한 번 호출한다. test/package/verify는 기본 600초, compile은 기본 300초다. 보안 거부는 NOT_EXECUTED이며 미설치 증거가 아니다.
+
 ## Java / Gradle 검증
 
-Java/Gradle/Maven 프로젝트는 Bootstrap의 `.hermes/toolchain.env`를 사용한다. JDK/Gradle/Maven을 task-time에 설치하지 않는다.
+Java/Gradle/Maven 프로젝트는 Bootstrap의 `.hermes/toolchain.env`를 사용한다. 전역 JDK/Gradle/Maven 설치나 버전 변경은 task-time에 하지 않는다. 이미 승인된 Wrapper 배포본의 DevKit cache 준비는 허용된 네트워크 정책 안에서 canonical launcher만 수행한다.
 
 Gradle compile/targeted test의 canonical 실행은 `scripts/gradle_verification_cached.py`다. 기본 verification timeout은 600초이며 600초를 초과할 수 없다.
 
