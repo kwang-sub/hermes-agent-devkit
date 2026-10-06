@@ -1,0 +1,40 @@
+name: Maven worker runtime
+
+on:
+  push:
+    branches: ["fix/maven-worker-runtime"]
+  pull_request:
+    paths:
+      - 'scripts/hermes-*'
+      - 'scripts/*maven*'
+      - '.github/workflows/maven-worker-runtime.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Existing launcher and updater regression baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/verify.sh
+          python3 scripts/test_hermes_java.py
+          python3 scripts/test_hermes_java_internal_state.py
+          python3 scripts/check_update_devkit_contract.py
+      - name: Snapshot tracked baseline for offline regression reproduction
+        if: always()
+        shell: bash
+        run: git archive --format=tar.gz HEAD > "$RUNNER_TEMP/devkit-baseline.tar.gz"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: devkit-regression-baseline
+          path: ${{ runner.temp }}/devkit-baseline.tar.gz
+          retention-days: 1
