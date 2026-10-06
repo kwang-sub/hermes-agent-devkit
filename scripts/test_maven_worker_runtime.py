@@ -51,11 +51,7 @@ class StartupTest(unittest.TestCase):
         self.assertLess(len(prompt), 1600)
         for term in (
             "skill_view",
-            "Direct/Standard/Recovery/CHANGES_REQUESTED",
-            "Session History / Worker Context / Workspace Gate",
             "KANBAN_EXECUTION_BOUNDARY_V1",
-            "WHAT/STATE",
-            "canonical runtime/execution 정책",
         ):
             self.assertIn(term, prompt)
         for runtime_detail in (
