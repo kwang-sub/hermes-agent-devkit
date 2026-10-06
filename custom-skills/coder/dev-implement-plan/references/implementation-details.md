@@ -23,7 +23,8 @@ kanban_show
 → verify_workspace.py 단독 1회
 → STATUS=valid
 → Work Unit Boundary Gate
-→ 필요한 target source/test만 탐색
+→ Bounded Pre-Mutation Impact Scan (최대 2-hop)
+→ IMPACT_SUMMARY / IMPLEMENTATION_SCOPE_READY
 → 현재 Work Unit만 구현
 → targeted verification
 → IMPLEMENTATION_STABLE
@@ -539,6 +540,12 @@ Follow-up Required: <YES|NO>
 Follow-up Work Unit: <...|NONE>
 Excluded Follow-up Scope: <...|NONE>
 Work Unit Boundary Respected: true
+IMPACT_SUMMARY:
+- Target: <...>
+- In Scope: <...>
+- Out of Scope: <...|NONE>
+- Compatibility: <...|NONE>
+- Decision: IMPLEMENT
 Changed Files:
 - ...
 Verification Mode: <mode>
