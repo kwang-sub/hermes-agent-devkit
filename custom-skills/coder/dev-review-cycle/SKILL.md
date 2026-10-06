@@ -28,6 +28,7 @@ Coder running (approved Coder model)
 ```
 
 ## Worker Context 불변식
+- `/opt/data/shared/references/kanban-execution-boundary.md`의 `KANBAN_EXECUTION_BOUNDARY_V1`을 적용한다. Kanban worker의 canonical identity와 lifecycle은 Task/Board/Workspace에서 오지만 launcher/timeout/retry/cache/process cleanup 같은 runtime HOW는 Kanban state에서 읽지 않는다.
 - Kanban worker의 canonical identity는 현재 chat session이 아니라 Kanban Task/Board/Workspace다.
 - 서버/컨테이너 재시작으로 이전 session이 없어져도 동일 Card를 requeue/unblock하고 dispatcher가 다시 spawn한다. Session affinity가 유효하면 RESUME, 없으면 NEW로 안전하게 시작한다.
 - `HERMES_KANBAN_TASK`, `HERMES_KANBAN_BOARD`, `HERMES_KANBAN_DB`, `HERMES_KANBAN_WORKSPACE`, `HERMES_PROFILE`, `HERMES_SESSION_SOURCE=kanban`, `HERMES_KANBAN_CONTEXT_VERSION=1`은 dispatcher가 매 spawn마다 재구성하는 worker context다.
