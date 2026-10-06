@@ -7,10 +7,10 @@ import re
 ROOT = Path(__file__).resolve().parents[1]
 
 COMMON_REQUIRED = (
-    "Hermes container 내부의 모든 Gradle 실행은 raw `./gradlew ...` 또는 `gradle ...`을 직접 호출하지 않는다.",
-    "`hermes-java ./gradlew ...`",
-    "`dev-implement-plan/scripts/gradle_verification_cached.py`",
-    "/opt/data/gradle",
+    "Build/test 실행은 현재 역할 Skill과 canonical runtime contract를 사용한다.",
+    "관리형 runtime이 있는 Maven/Gradle/Node 작업에서 raw executable fallback",
+    "launcher/helper/cache/timeout/process-cleanup",
+    "공통 Process Execution 계층",
 )
 
 PROFILE_REQUIRED = {
