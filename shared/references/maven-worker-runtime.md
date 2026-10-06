@@ -29,13 +29,13 @@ Git Workspace는 primary worktree의 `.hermes/toolchain.env`, Non-Git은 현재 
 ## 승인된 compile/test 실행
 
 ```bash
-python3 /opt/custom-skills/coder/dev-implement-plan/scripts/maven_verification.py \
+python3 /opt/custom-skills/coder/dev-implement-plan/scripts/maven_verification_cached.py \
   --workspace "<approved build root>" --wrapper ./mvnw --mode COMPILE \
   -- -B -DskipTests compile
 ```
 
 ```bash
-python3 /opt/custom-skills/coder/dev-implement-plan/scripts/maven_verification.py \
+python3 /opt/custom-skills/coder/dev-implement-plan/scripts/maven_verification_cached.py \
   --workspace "<approved build root>" --wrapper ./mvnw --mode TARGETED_TEST \
   -- -B -Dtest=<approved-test-selector> test
 ```
@@ -44,7 +44,7 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/maven_verification.p
 
 기본 제한은 COMPILE 300초, TARGETED_TEST/PACKAGE/VERIFY 600초다. `HERMES_MAVEN_COMPILE_TIMEOUT_SECONDS`, `HERMES_MAVEN_VERIFY_TIMEOUT_SECONDS` 또는 승인된 `--timeout-seconds`로 지정한다. helper는 한 번 실행하고 시간 초과 시 프로세스 그룹과 자식 프로세스를 종료·회수한다. 실패 후 같은 명령/`--info` 변형/백그라운드 대기/raw Maven 우회를 반복하지 않는다. 원인 수정 또는 승인된 환경 복구 후 재검증한다.
 
-`MAVEN_STATUS`, `MAVEN_BLOCKER`, exit code, 소요 시간, `MAVEN_LOG`, `MAVEN_EVIDENCE`를 handoff한다. raw command args 대신 SHA-256을 receipt에 보관해 credential 노출을 줄인다. 실제 승인 command는 secret을 제거한 형태로 Task 근거에 별도 기록한다. Maven의 기존 incremental/dependency cache는 재사용하지만 이 helper는 Gradle fingerprint 자동 PASS 재사용 기능을 제공하지 않는다. Reviewer는 변경 후 최신 evidence인지 검토하고 필요한 재검증만 실행한다.
+`maven_verification_cached.py`는 verification request, Maven arguments SHA-256, executable `--scope-path`와 자동 포함되는 `pom.xml`/Wrapper/toolchain 설정의 SHA-256을 저장한다. 동일 Task의 request/scope가 모두 같고 기존 결과가 PASS이면 `VERIFICATION_EVIDENCE=REUSED`, `PRIMARY_REUSED=true`로 종료하며 Maven primary를 다시 실행하지 않는다. scope 또는 command/build 설정이 바뀌면 기존 PASS를 폐기하고 fresh bounded verification을 수행한다. 실행 도중 scope가 바뀌면 `SOURCE_CHANGED_DURING_VERIFICATION`으로 evidence를 무효화한다. 실패/BLOCKED evidence는 재사용하지 않는다.\n\n`MAVEN_STATUS`, `MAVEN_BLOCKER`, exit code, 소요 시간, `MAVEN_LOG`, `MAVEN_EVIDENCE`, `Verification Request SHA256`, `Verification Scope SHA256`를 handoff한다. raw command args 대신 SHA-256을 receipt에 보관해 credential 노출을 줄인다. 실제 승인 command는 secret을 제거한 형태로 Task 근거에 별도 기록한다. Reviewer는 동일 scope이면 같은 cached helper로 evidence를 재사용하고, source/test/build/toolchain 또는 승인 command가 달라진 경우에만 fresh verification을 실행한다.
 
 ## 차단 분류와 재개
 
