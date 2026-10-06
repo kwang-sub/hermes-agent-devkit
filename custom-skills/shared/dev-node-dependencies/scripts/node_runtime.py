@@ -6,9 +6,15 @@ import fcntl
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
 import time
+
+_CUSTOM_SKILLS_ROOT = Path(__file__).resolve().parents[3]
+_PROCESS_EXECUTION_LIB = _CUSTOM_SKILLS_ROOT / '_lib'
+if str(_PROCESS_EXECUTION_LIB) not in sys.path:
+    sys.path.insert(0, str(_PROCESS_EXECUTION_LIB))
+
+from process_execution import run_inherit
 
 from node_environment_gate import EnvironmentGateError, validate_project_environment
 from node_workspace import (
@@ -217,16 +223,38 @@ def main() -> int:
             print("NODE_RUNTIME_OUTPUT_POLICY=linux-isolated-workspace;workspace-serialized")
             sys.stdout.flush()
 
-            result = subprocess.run(
+            raw_timeout = os.getenv("HERMES_NODE_COMMAND_TIMEOUT_SECONDS", "").strip()
+            command_timeout: int | None = None
+            if raw_timeout:
+                try:
+                    command_timeout = int(raw_timeout)
+                except ValueError as exc:
+                    raise RuntimeErrorPolicy(
+                        "HERMES_NODE_COMMAND_TIMEOUT_SECONDS must be a positive integer"
+                    ) from exc
+                if command_timeout < 1:
+                    raise RuntimeErrorPolicy(
+                        "HERMES_NODE_COMMAND_TIMEOUT_SECONDS must be a positive integer"
+                    )
+
+            result = run_inherit(
                 command,
                 cwd=isolated_package_root,
                 env=env,
-                check=False,
+                timeout_seconds=command_timeout,
             )
+            if result.timed_out:
+                print("NODE_RUNTIME_STATUS=BLOCKED", file=sys.stderr)
+                print("NODE_RUNTIME_BLOCKER_CLASS=NODE_COMMAND_TIMEOUT", file=sys.stderr)
+                print(
+                    f"NODE_RUNTIME_BLOCKER=command exceeded {command_timeout} seconds",
+                    file=sys.stderr,
+                )
+                return 2
         finally:
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
             lock_handle.close()
-        return result.returncode
+        return int(result.returncode or 0)
     except EnvironmentGateError as exc:
         print("NODE_RUNTIME_STATUS=BLOCKED", file=sys.stderr)
         print(f"NODE_RUNTIME_BLOCKER_CLASS={exc.blocker_class}", file=sys.stderr)
