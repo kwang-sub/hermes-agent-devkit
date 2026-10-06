@@ -48,6 +48,30 @@ def main() -> int:
     ):
         if term not in (ROOT / path).read_text(encoding="utf-8"):
             failures.append(f"Maven runtime delivery missing: {path}")
+    cached = ROOT / "custom-skills/coder/dev-implement-plan/scripts/maven_verification_cached.py"
+    if not cached.is_file():
+        failures.append("missing Maven cached verification helper")
+    else:
+        cached_text = cached.read_text(encoding="utf-8")
+        for term in (
+            "VERIFICATION_REQUEST_SHA256",
+            "VERIFICATION_SCOPE_SHA256",
+            "VERIFICATION_EVIDENCE=REUSED",
+            "PRIMARY_REUSED=true",
+            "SOURCE_CHANGED_DURING_VERIFICATION",
+            "maven_verification.py",
+        ):
+            if term not in cached_text:
+                failures.append(f"maven_verification_cached.py missing: {term}")
+    for path in (
+        "shared/AGENTS.common.md",
+        "custom-skills/coder/dev-implement-plan/SKILL.md",
+        "custom-skills/reviewer/dev-code-review/SKILL.md",
+        "shared/references/maven-worker-runtime.md",
+    ):
+        text = (ROOT / path).read_text(encoding="utf-8")
+        if "maven_verification_cached.py" not in text:
+            failures.append(f"Maven cached verification contract not linked: {path}")
     if failures:
         for failure in failures:
             print(f"[FAIL] {failure}")
