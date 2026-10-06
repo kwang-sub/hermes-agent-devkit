@@ -87,6 +87,15 @@ USER root
 COPY --chmod=0755 scripts/task_session_history.py /opt/devkit/bin/task_session_history.py
 RUN /opt/hermes/.venv/bin/python /opt/devkit/bin/task_session_history.py --self-test
 
+# Before normal s6 services start, reclaim only Kanban claims whose worker
+# fingerprint belongs to a previous container/VM instantiation. The dispatcher
+# remains the only component that creates the replacement worker.
+COPY --chmod=0755 scripts/devkit_kanban_boot_recovery.py /opt/devkit/bin/devkit_kanban_boot_recovery.py
+COPY --chmod=0755 docker/cont-init.d/018-devkit-kanban-boot-recovery /etc/cont-init.d/018-devkit-kanban-boot-recovery
+RUN sed -i 's/\r$//' /etc/cont-init.d/018-devkit-kanban-boot-recovery \
+    && sh -n /etc/cont-init.d/018-devkit-kanban-boot-recovery \
+    && /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_boot_recovery.py --self-test
+
 # DevKit notification bridge: one additional s6-supervised process in the same
 # container. It reads Hermes Kanban task_events without modifying Hermes source,
 # formats developer-facing messages, and delivers through the official
