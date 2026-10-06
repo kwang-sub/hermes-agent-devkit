@@ -1,7 +1,7 @@
 ---
 name: dev-code-review
 description: 동일 Workspace의 Direct/Standard 미커밋 구현을 requirement/AC와 Work Unit·project pattern·capability·구조 품질 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
-version: 0.20.0
+version: 0.21.0
 author: local
 platforms: [linux]
 metadata:
@@ -109,6 +109,8 @@ Follow-up Work Unit을 현재 Task에 구현하도록 요구하지 않는다.
 Git Workspace에서는 Coder의 `Verification Final: true`, command/result, verification/effective scope fingerprint, `Work Unit Boundary Respected: true`가 실제 diff와 일치하면 PASS evidence를 재사용한다. 동일 scope PASS를 독립성 확보만을 이유로 반복 실행하지 않는다. Non-Git Workspace에는 fingerprint 재사용 Gate가 없으므로 선언된 변경 파일을 직접 읽고 필요한 최소 verification을 fresh 실행한다.
 
 Coder PASS 이후 executable source/test/build/toolchain이 바뀌었거나 fingerprint/evidence가 불일치하면 fresh verification을 요구한다. `GRADLE_STATUS=BLOCKED`를 같은 primary command로 우회 재시도하지 않는다.
+
+Maven 검증은 `/opt/data/shared/references/maven-worker-runtime.md`를 따른다. Coder의 `MAVEN_STATUS/MAVEN_BLOCKER/MAVEN_EVIDENCE`와 변경 이후 최신 실제 결과를 검토한다. 추가 검증이 필요하면 `/opt/custom-skills/coder/dev-implement-plan/scripts/maven_verification.py`로 실행하며 raw `mvn`/`mvnw`/HOME cache 탐색으로 우회하지 않는다. launcher READY 또는 compile PASS를 승인된 실제 HTTP 검증 완료로 간주하지 않는다.
 
 Java/Gradle 재검증은 `hermes-java` 기반 cached helper를 사용하고 임의 JDK/host Java로 우회하지 않는다. raw `./gradlew ...` 또는 `gradle ...` 직접 실행도 금지하며, fresh verification이 필요하면 동일 canonical cached helper를 사용한다.
 

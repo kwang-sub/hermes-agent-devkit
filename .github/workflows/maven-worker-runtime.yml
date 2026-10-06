@@ -2,39 +2,40 @@ name: Maven worker runtime
 
 on:
   push:
-    branches: ["fix/maven-worker-runtime"]
-  pull_request:
+    branches: [dev, 'fix/**', 'feat/**', 'feature/**']
     paths:
       - 'scripts/hermes-*'
       - 'scripts/*maven*'
+      - 'scripts/*worker*'
+      - 'scripts/patch_hermes_kanban_session_affinity.py'
+      - 'custom-skills/coder/dev-implement-plan/**'
+      - 'Dockerfile'
       - '.github/workflows/maven-worker-runtime.yml'
+  pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  baseline:
+  maven-runtime:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        maven: ['3.6.3', '3.9.9']
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Existing launcher and updater regression baseline
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash scripts/verify.sh
-          python3 scripts/test_hermes_java.py
-          python3 scripts/test_hermes_java_internal_state.py
-          python3 scripts/check_update_devkit_contract.py
-      - name: Snapshot tracked baseline for offline regression reproduction
-        if: always()
-        shell: bash
-        run: git archive --format=tar.gz HEAD > "$RUNNER_TEMP/devkit-baseline.tar.gz"
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - uses: actions/setup-java@v4
         with:
-          name: devkit-regression-baseline
-          path: ${{ runner.temp }}/devkit-baseline.tar.gz
-          retention-days: 1
+          distribution: temurin
+          java-version: '17'
+      - name: Managed launcher and worker regression
+        run: |
+          python3 scripts/test_hermes_maven.py
+          python3 scripts/test_maven_worker_runtime.py
+          python3 scripts/check_maven_launcher_contract.py
+      - name: Actual Maven cold cache, Java 17 compile, JUnit and offline rerun
+        run: python3 scripts/smoke_maven_runtime.py --version "${{ matrix.maven }}"

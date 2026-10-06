@@ -121,6 +121,37 @@ Invoke-DockerCheck -Label "Temurin JDK 21 javac" -DockerArgs @(
 Invoke-DockerCheck -Label "hermes-java launcher" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "test", "-x", "/usr/local/bin/hermes-java"
 )
+Invoke-DockerCheck -Label "hermes-maven launcher" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "/usr/local/bin/hermes-maven", "--help"
+)
+
+$MavenRuntimeCheck = @'
+from pathlib import Path
+import os
+import tempfile
+from hermes_cli.devkit_worker_startup import with_worker_startup
+
+for key in ("HERMES_MAVEN_ROOT", "HERMES_MAVEN_REPO_ROOT", "HERMES_MAVEN_DIST_ROOT", "HERMES_MAVEN_DOWNLOAD_ROOT", "HERMES_MAVEN_LOCK_ROOT"):
+    value = os.environ.get(key, "")
+    if not value.startswith("/") or "\\n" in value or "\n" in value:
+        raise SystemExit(f"Invalid Maven runtime environment: {key}")
+    root = Path(value)
+    root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryFile(dir=root):
+        pass
+assert os.environ.get("GRADLE_USER_HOME") == "/opt/data/gradle/user-home"
+query = with_worker_startup(["hermes", "chat", "-q", "work kanban task t_runtime_probe"], "coder")[-1]
+assert "DEVKIT_WORKER_STARTUP_V1" in query
+assert "dev-implement-plan" in query and "hermes-maven" in query
+print("Managed Maven cache and worker startup contract valid")
+'@
+
+$MavenRuntimeCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
+if ($LASTEXITCODE -ne 0) {
+    throw "[FAIL] Managed Maven runtime/cache contract. Rebuild/recreate the DevKit container and verify volume permissions."
+}
+Write-Host "[OK] Managed Maven runtime/cache contract"
+
 Invoke-DockerExactOutputCheck -Label "Standalone pnpm 12.5.1 runtime" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "/usr/local/bin/pnpm", "--version"
 ) -Expected "12.5.1"
