@@ -23,7 +23,8 @@ kanban_show
 → verify_workspace.py 단독 1회
 → STATUS=valid
 → Work Unit Boundary Gate
-→ 필요한 target source/test만 탐색
+→ Bounded Pre-Mutation Impact Scan (최대 2-hop)
+→ IMPACT_SUMMARY / IMPLEMENTATION_SCOPE_READY
 → 현재 Work Unit만 구현
 → targeted verification
 → IMPLEMENTATION_STABLE
@@ -36,7 +37,7 @@ kanban_show
 
 Task body의 `Coder Provider` snapshot을 기준으로 검증 경로를 분리한다.
 
-**`openai-codex` Worker**는 Codex native shell에 Kanban ownership 환경변수를 노출하지 않는 upstream Hermes 보안 경계를 그대로 유지한다. 실행 순서의 **초기 `kanban_show` 응답을 Worker Context Gate로 정확히 1회 사용**하며 같은 목적으로 별도 context tool을 추가 호출하지 않는다.
+**`openai-codex` Worker**는 Codex native shell에 Kanban ownership 환경변수를 노출하지 않는 upstream Hermes 보안 경계를 그대로 유지한다. 실행 순서의 **초기 `kanban_show` 응답을 Worker Context Gate로 정확히 1회 사용**하며 같은 목적으로 별도 context tool을 추가 호출하지 않는다. 응답이 spillover artifact를 가리키면 그 **정확한 artifact path를 전용 read로 최대 1회 확장**해 Task body/comments/runs를 합친 `Task Snapshot`으로 유지한다. spillover를 읽기 위해 inline Python, shell JSON parser, `hermes_tools` exec 또는 경로 재탐색을 사용하지 않는다.
 
 ```text
 초기 kanban_show 정확히 1회
@@ -310,9 +311,18 @@ DIRECT_SCOPE_EXCEEDED
 
 를 남기고 `kanban_block`한다. Direct Task를 내부에서 Standard 범위로 조용히 확장하지 않는다.
 
-## Source / Scope 계약
+## Source / Scope 계약 — Bounded Pre-Mutation Impact Scan
 
-Task의 `Project Pattern Summary`, `Pattern References`, `Goal`, `Acceptance Criteria`, `Implementation Tasks`, Work Unit Contract, 기존 변경 baseline을 재사용한다. 실제 source와 충돌하지 않는 한 프로젝트 전체를 다시 분석하지 않는다.
+Task의 `Project Pattern Summary`, `Pattern References`, `Goal`, `Acceptance Criteria`, `Implementation Tasks`, Work Unit Contract, 기존 변경 baseline과 최초 `Task Snapshot`을 재사용한다. 실제 source와 충돌하지 않는 한 프로젝트 전체를 다시 분석하지 않는다. 이 단계는 Orchestrator Plan을 다시 만드는 단계가 아니라 **production mutation 직전의 bounded compatibility check**다.
+
+### Scan boundary
+
+1. **Mutation anchor 확정:** 승인된 Implementation Tasks에서 실제 변경할 file/symbol/endpoint/config key를 잡는다.
+2. **1-hop:** anchor의 direct caller/reference, controller/route mapping, validation/interceptor/filter, 직접 persistence/query 사용을 한 번에 찾는다.
+3. **2-hop 조건부 확장:** 1-hop 근거가 security/session, history/audit, persistence/query key, shared compatibility, external/API contract 경계를 실제로 가리킬 때만 그 경계의 직접 소비자를 확인한다.
+4. **STOP:** 현재 Work Unit의 구현 가능 여부와 승인 범위 초과 여부를 판정할 근거가 확보되면 종료한다. 2-hop 이후 transitive architecture 탐색은 하지 않는다.
+
+`grep/find/read`는 **변경 식별자와 관찰된 직접 근거**에만 사용한다. `혹시 더 있을까` 목적의 repository-wide scan, 예상 파일 연속 probe, 같은 symbol의 반복 검색, 호출 그래프 전체 작성은 금지한다. 파일/JSON/Task artifact 읽기에 전용 도구가 있으면 terminal inline `python3 -c`, `from hermes_tools import read_file`, Python `Path` traversal 또는 shell parser를 사용하지 않는다. dedicated tool이 실제로 제공하지 못하는 계산/변환에만 terminal/script를 사용한다.
 
 첫 production patch 전에 다음을 만족한다.
 
@@ -321,10 +331,19 @@ SOURCE_EVIDENCE_READY
 Target:
 - <file/symbol>
 Direct Impact:
-- <caller/callee/persistence boundary>
+- <1-hop caller/mapping/validation/persistence>
+Conditional Impact:
+- <2-hop security/history/audit/query/external boundary | NONE>
 Tests:
-- <existing test path>
+- <existing test path | NONE>
 Open Questions: NONE
+
+IMPACT_SUMMARY
+Target: <short target>
+In Scope: <direct impacts included by approved Work Unit>
+Out of Scope: <approval delta required impacts | NONE>
+Compatibility: <legacy/alias/history/security impact | NONE>
+Decision: IMPLEMENT | ESCALATE
 
 IMPLEMENTATION_SCOPE_READY
 Production:
@@ -337,6 +356,8 @@ Excluded:
 - <Work Unit의 Excluded Follow-up Scope + directly checked unchanged>
 ```
 
+`IMPACT_SUMMARY`는 이후 handoff/recovery에서 source 전문 대신 재사용하는 compact evidence다. 이미 확인한 영향은 새 evidence가 충돌하지 않는 한 다시 탐색하지 않는다. `Decision: ESCALATE`이면 source mutation을 시작하지 않고 실제 out-of-scope impact와 필요한 승인 delta만 blocker/triage 근거로 남긴다. `Decision: IMPLEMENT`이면 더 넓은 영향 탐색 없이 현재 Work Unit 구현으로 진행한다.
+
 DESIGN/AUDIT Work Unit에서는 Production scope가 비어 있을 수 있다.
 
 탐색 규칙:
@@ -344,6 +365,7 @@ DESIGN/AUDIT Work Unit에서는 Production scope가 비어 있을 수 있다.
 - 같은 목적 symbol은 한 grep으로 묶는다.
 - 큰 파일은 필요한 symbol 주변만 읽는다.
 - `Open Questions: NONE`이면 반복 grep/find/read를 종료한다.
+- 최초 `kanban_show` + spillover Task Snapshot을 같은 작업 정보 확인에 재사용한다. lifecycle contract가 명시적으로 stale revalidation을 요구하는 경우 외에는 discovery 목적으로 `kanban_show`를 반복하지 않는다.
 - 존재가 확인되지 않은 예상 test 파일을 연속 probe하지 않는다.
 - 기존 사용자 변경을 reset/restore/clean/stash하지 않는다.
 
@@ -518,6 +540,12 @@ Follow-up Required: <YES|NO>
 Follow-up Work Unit: <...|NONE>
 Excluded Follow-up Scope: <...|NONE>
 Work Unit Boundary Respected: true
+IMPACT_SUMMARY:
+- Target: <...>
+- In Scope: <...>
+- Out of Scope: <...|NONE>
+- Compatibility: <...|NONE>
+- Decision: IMPLEMENT
 Changed Files:
 - ...
 Verification Mode: <mode>

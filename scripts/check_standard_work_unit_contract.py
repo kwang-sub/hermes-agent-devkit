@@ -9,6 +9,7 @@ BREAKDOWN = ROOT / "custom-skills/orchestrator/dev-breakdown/SKILL.md"
 WORKFLOW = ROOT / "custom-skills/orchestrator/dev-workflow-orchestrate/SKILL.md"
 DISPATCH = ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/SKILL.md"
 IMPLEMENT = ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md"
+IMPLEMENT_DETAILS = ROOT / "custom-skills/coder/dev-implement-plan/references/implementation-details.md"
 REVIEW = ROOT / "custom-skills/reviewer/dev-code-review/SKILL.md"
 DATA = ROOT / "custom-skills/shared/dev-data-feature/SKILL.md"
 MODELING = ROOT / "custom-skills/shared/dev-data-modeling/SKILL.md"
@@ -88,6 +89,7 @@ def main() -> int:
         "Project/API Spec/Workspace/Branch/Existing Changes/Coder Model/Plan/Requirement Delta",
         "설명만 출력하고 사용자의 `네`, `진행해주세요`, `계속해주세요`를 기다린 뒤 다음 turn에서 Gate를 띄우는 흐름은 금지",
         "구현 요약:", "PLAN_READY", "최대 2문장",
+        "repository-wide/exhaustive impact analysis", "Bounded Pre-Mutation Impact Scan",
         "PARENT_TRACKING_CLASSIFIED", "작업 관리 방식 승인", "NEW_PARENT", "LINK_EXISTING_PARENT", "PROMOTE_TO_PARENT", "[부모]", "[자식]",
         "kanban_create.parents", "Execution Ordering", "Depends On Task IDs",
     ))
@@ -114,6 +116,17 @@ def main() -> int:
         "Work Unit Boundary Respected: true",
         "Standard Flow Verification Contract Gate", "VERIFICATION_PROVIDER_UNAVAILABLE",
         "Session History Gate", "task_session_history.py capture", "TASK_SESSION_HISTORY", "kanban_comment",
+        "Bounded Pre-Mutation Impact Scan", "최대 2-hop", "Impact Summary", "Reference Lazy-Load",
+    ))
+
+    require(IMPLEMENT_DETAILS, (
+        "Bounded Pre-Mutation Impact Scan",
+        "Task Snapshot",
+        "1-hop",
+        "2-hop",
+        "IMPACT_SUMMARY",
+        "inline `python3 -c`",
+        "discovery 목적으로 `kanban_show`를 반복하지 않는다",
     ))
 
     require(REVIEW, common + (
@@ -123,7 +136,7 @@ def main() -> int:
         "application/test/config source mutation",
         "여러 Skill 사용 자체를 split finding으로 만들지 않는다",
         "Follow-up Work Unit을 현재 Task에 구현하도록 요구하지 않는다",
-        "Session History Review Gate", "TASK_SESSION_HISTORY", "kanban_comment",
+        "Session History Review Gate", "TASK_SESSION_HISTORY", "kanban_comment", "IMPACT_SUMMARY",
     ))
 
     require(DATA, common + (
