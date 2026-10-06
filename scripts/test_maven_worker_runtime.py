@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression tests for worker prompt delivery and bounded Maven verification."""
+"""Regression tests for worker startup responsibility and bounded Maven verification."""
 from __future__ import annotations
 
 import importlib.util
@@ -30,7 +30,11 @@ class StartupTest(unittest.TestCase):
                 self.assertEqual(argv[-1], "work kanban task t_demo")
                 self.assertEqual(result[:-1], argv[:-1])
                 self.assertEqual(result[-1].count(MARKER), 1)
-                self.assertIn("hermes-maven", result[-1])
+                self.assertIn("KANBAN_EXECUTION_BOUNDARY_V1", result[-1])
+                expected_skill = "dev-implement-plan" if profile == "coder" else "dev-code-review"
+                self.assertIn(f'skill_view("{expected_skill}")', result[-1])
+                self.assertNotIn("hermes-maven", result[-1])
+                self.assertNotIn("maven_verification.py", result[-1])
                 self.assertEqual(result, with_worker_startup(result, profile))
 
     def test_unknown_role_is_unchanged(self) -> None:
@@ -42,11 +46,27 @@ class StartupTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 with_worker_startup(argv, "coder")
 
-    def test_prompt_remains_bounded(self) -> None:
+    def test_prompt_remains_bounded_and_policy_only(self) -> None:
         prompt = with_worker_startup(["hermes", "-q", "work kanban task t_demo"], "coder")[-1]
         self.assertLess(len(prompt), 1600)
-        for term in ("skill_view", "verify_workspace.py", "단독 1회", "Direct/Standard/Recovery/CHANGES_REQUESTED", "보안", "SESSION_HISTORY_BEST_EFFORT_V1"):
+        for term in (
+            "skill_view",
+            "Direct/Standard/Recovery/CHANGES_REQUESTED",
+            "Session History / Worker Context / Workspace Gate",
+            "KANBAN_EXECUTION_BOUNDARY_V1",
+            "WHAT/STATE",
+            "canonical runtime/execution 정책",
+        ):
             self.assertIn(term, prompt)
+        for runtime_detail in (
+            "verify_workspace.py",
+            "hermes-maven",
+            "maven_verification.py",
+            "gradle_verification.py",
+            "/opt/data/maven",
+            "/opt/data/gradle",
+        ):
+            self.assertNotIn(runtime_detail, prompt)
 
     def test_patched_current_and_legacy_spawn_deliver_actual_prompt(self) -> None:
         fake_package = types.ModuleType("hermes_cli")
