@@ -1,0 +1,23 @@
+#!/command/with-contenv sh
+set -u
+
+case "${HERMES_KANBAN_BOOT_RECOVERY_ENABLED:-true}" in
+    1|true|TRUE|yes|YES|on|ON)
+        ;;
+    0|false|FALSE|no|NO|off|OFF)
+        echo "[BOOT-RECOVERY] disabled"
+        exit 0
+        ;;
+    *)
+        echo "[BOOT-RECOVERY] invalid HERMES_KANBAN_BOOT_RECOVERY_ENABLED; preserving all tasks" >&2
+        exit 0
+        ;;
+esac
+
+# This runs during s6 cont-init before normal services/dispatchers start.
+# It only releases claims proven to belong to a previous instantiation.
+if ! s6-setuidgid hermes /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_boot_recovery.py; then
+    echo "[BOOT-RECOVERY] helper failed; preserving startup and leaving Kanban state untouched where possible" >&2
+fi
+
+exit 0
