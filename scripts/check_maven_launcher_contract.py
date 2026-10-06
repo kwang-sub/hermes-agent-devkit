@@ -48,6 +48,18 @@ def main() -> int:
     ):
         if term not in (ROOT / path).read_text(encoding="utf-8"):
             failures.append(f"Maven runtime delivery missing: {path}")
+
+    runtime_verifier = (ROOT / "scripts/verify-container-runtime.ps1").read_text(encoding="utf-8")
+    for term in (
+        'skill_view("dev-implement-plan")',
+        "KANBAN_EXECUTION_BOUNDARY_V1",
+        'assert "hermes-maven" not in query',
+        'assert "maven_verification.py" not in query',
+    ):
+        if term not in runtime_verifier:
+            failures.append(f"runtime verifier missing worker boundary assertion: {term}")
+    if 'assert "dev-implement-plan" in query and "hermes-maven" in query' in runtime_verifier:
+        failures.append("runtime verifier still requires Maven HOW in worker startup prompt")
     cached = ROOT / "custom-skills/coder/dev-implement-plan/scripts/maven_verification_cached.py"
     if not cached.is_file():
         failures.append("missing Maven cached verification helper")
