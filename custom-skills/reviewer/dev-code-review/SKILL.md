@@ -110,7 +110,7 @@ Git Workspace에서는 Coder의 `Verification Final: true`, command/result, veri
 
 Coder PASS 이후 executable source/test/build/toolchain이 바뀌었거나 fingerprint/evidence가 불일치하면 fresh verification을 요구한다. `GRADLE_STATUS=BLOCKED`를 같은 primary command로 우회 재시도하지 않는다.
 
-Maven 검증은 `/opt/data/shared/references/maven-worker-runtime.md`를 따른다. Coder의 `MAVEN_STATUS/MAVEN_BLOCKER/MAVEN_EVIDENCE`와 변경 이후 최신 실제 결과를 검토한다. 추가 검증이 필요하면 `/opt/custom-skills/coder/dev-implement-plan/scripts/maven_verification.py`로 실행하며 raw `mvn`/`mvnw`/HOME cache 탐색으로 우회하지 않는다. launcher READY 또는 compile PASS를 승인된 실제 HTTP 검증 완료로 간주하지 않는다.
+Maven 검증은 `/opt/data/shared/references/maven-worker-runtime.md`를 따른다. Coder의 `MAVEN_STATUS/MAVEN_BLOCKER/MAVEN_EVIDENCE`, `Verification Request SHA256`, `Verification Scope SHA256`와 변경 이후 최신 결과를 검토한다. 추가 검증이 필요하면 `/opt/custom-skills/coder/dev-implement-plan/scripts/maven_verification_cached.py`로 동일 `--scope-path`를 사용한다. scope가 동일하면 `VERIFICATION_EVIDENCE=REUSED`, `PRIMARY_REUSED=true`여야 하며 Maven primary를 다시 실행하지 않는다. raw `mvn`/`mvnw`/HOME cache 탐색으로 우회하지 않는다. launcher READY 또는 compile PASS를 승인된 실제 HTTP 검증 완료로 간주하지 않는다.
 
 Java/Gradle 재검증은 `hermes-java` 기반 cached helper를 사용하고 임의 JDK/host Java로 우회하지 않는다. raw `./gradlew ...` 또는 `gradle ...` 직접 실행도 금지하며, fresh verification이 필요하면 동일 canonical cached helper를 사용한다.
 
