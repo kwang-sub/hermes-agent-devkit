@@ -281,11 +281,13 @@ class SessionHistoryTest(unittest.TestCase):
         self.assertIn("SESSION_HISTORY_RECHECK_REQUIRED=true", output)
         self.assertNotIn("SESSION_HISTORY_MARKER_BEGIN", output)
 
-    def test_cli_real_error_is_nonzero_and_has_sanitized_diagnostics(self):
+    def test_cli_real_error_is_exit_zero_warning_and_has_sanitized_diagnostics(self):
         with patch.object(history, "_find_latest_session", side_effect=PermissionError("SECRET_RAW_CONTENT")):
             code, output = self.cli()
-        self.assertEqual(code, 3)
+        self.assertEqual(code, 0)
         self.assertIn("SESSION_HISTORY_STATUS=error", output)
+        self.assertIn("SESSION_HISTORY_ACTION=CONTINUE_WITH_WARNING", output)
+        self.assertIn("SESSION_HISTORY_RECHECK_REQUIRED=true", output)
         self.assertIn("SESSION_HISTORY_ERROR_TYPE=PermissionError", output)
         self.assertNotIn("SECRET_RAW_CONTENT", output)
 
