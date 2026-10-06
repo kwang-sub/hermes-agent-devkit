@@ -281,13 +281,26 @@ class SessionHistoryTest(unittest.TestCase):
         self.assertIn("SESSION_HISTORY_RECHECK_REQUIRED=true", output)
         self.assertNotIn("SESSION_HISTORY_MARKER_BEGIN", output)
 
-    def test_cli_real_error_is_nonzero_and_has_sanitized_diagnostics(self):
+    def test_cli_real_error_is_exit_zero_warning_and_has_sanitized_diagnostics(self):
         with patch.object(history, "_find_latest_session", side_effect=PermissionError("SECRET_RAW_CONTENT")):
             code, output = self.cli()
-        self.assertEqual(code, 3)
+        self.assertEqual(code, 0)
         self.assertIn("SESSION_HISTORY_STATUS=error", output)
+        self.assertIn("SESSION_HISTORY_ACTION=CONTINUE_WITH_WARNING", output)
+        self.assertIn("SESSION_HISTORY_RECHECK_REQUIRED=true", output)
         self.assertIn("SESSION_HISTORY_ERROR_TYPE=PermissionError", output)
         self.assertNotIn("SECRET_RAW_CONTENT", output)
+
+    def test_cli_ack_storage_error_is_exit_zero_warning(self):
+        self.add_session()
+        self.run_capture()
+        with patch.object(history, "acknowledge_comment", side_effect=sqlite3.OperationalError("db locked")):
+            code, output = self.cli("ack-comment", "--profile", "coder", "--session-id", "s1")
+        self.assertEqual(code, 0)
+        self.assertIn("SESSION_HISTORY_STATUS=error", output)
+        self.assertIn("SESSION_HISTORY_REASON=HISTORY_DB_ERROR", output)
+        self.assertIn("SESSION_HISTORY_ACTION=CONTINUE_WITH_WARNING", output)
+        self.assertIn("SESSION_HISTORY_RECHECK_REQUIRED=true", output)
 
     def test_cli_invalid_is_exit_two(self):
         code, output = self.cli("capture", "--attempts", "100")

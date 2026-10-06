@@ -293,9 +293,12 @@ def _print_capture(result: CaptureResult, *, profile: str, session_mode: str, ph
     if result.status == "unavailable":
         print("SESSION_HISTORY_ACTION=CONTINUE_WITH_WARNING")
         return 0
-    if result.status in ("invalid", "error"):
-        print("SESSION_HISTORY_ACTION=" + ("BLOCK_CONTEXT" if result.status == "invalid" else "REPORT_TRACE_ERROR"))
-        return 2 if result.status == "invalid" else 3
+    if result.status == "invalid":
+        print("SESSION_HISTORY_ACTION=BLOCK_CONTEXT")
+        return 2
+    if result.status == "error":
+        print("SESSION_HISTORY_ACTION=CONTINUE_WITH_WARNING")
+        return 0
     print("SESSION_HISTORY_ACTION=CONTINUE")
     print(f"SESSION_HISTORY_NEW={str(result.is_new).lower()}")
     print(f"SESSION_HISTORY_COMMENT_PENDING={str(result.comment_pending).lower()}")
@@ -360,7 +363,9 @@ def main(argv: list[str] | None = None) -> int:
         print("SESSION_HISTORY_STATUS=error")
         print("SESSION_HISTORY_REASON=HISTORY_DB_ERROR")
         print(f"SESSION_HISTORY_ERROR_TYPE={type(exc).__name__}")
-        return 3
+        print("SESSION_HISTORY_RECHECK_REQUIRED=true")
+        print("SESSION_HISTORY_ACTION=CONTINUE_WITH_WARNING")
+        return 0
     if not rows:
         print("SESSION_HISTORY_STATUS=empty")
         return 0

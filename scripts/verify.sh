@@ -292,6 +292,8 @@ run_check "Markdown API specification contract" python3 scripts/check_api_spec_c
 run_check "DevKit updater contract" python3 scripts/check_update_devkit_contract.py
 run_check "Hermes TUI semantic input discovery patch" python3 scripts/patch_hermes_tui_semantic_input.py --self-test
 run_check "Kanban task/profile session-affinity runtime" python3 scripts/devkit_session_affinity.py --self-test
+run_check "Session history best-effort contract" python3 scripts/check_session_history_contract.py
+run_check "Session history regression tests" python3 scripts/test_task_session_history.py
 run_check "DevKit Kanban notification bridge" python3 scripts/devkit_kanban_notifier.py --self-test
 run_check "DevKit notifier dynamic s6 run syntax" sh -n docker/devkit-svscan.d/devkit-notifier/run
 run_check "DevKit notifier boot policy syntax" sh -n docker/cont-init.d/019-devkit-kanban-notifier-policy

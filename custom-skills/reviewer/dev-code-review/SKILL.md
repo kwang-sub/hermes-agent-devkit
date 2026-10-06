@@ -39,7 +39,7 @@ TASK_SESSION_HISTORY
 
 - `captured`: `SESSION_HISTORY_COMMENT_PENDING`이면 기존 marker를 확인하고 없을 때만 `kanban_comment`한다. 성공/정확한 기존 marker 확인 후 `ack-comment --profile reviewer`한다. `SESSION_HISTORY_NEW=false`만으로 전달 성공을 가정하지 않는다.
 - `unavailable`: `TASK_SESSION_HISTORY_WARNING`을 한 번 남기고 review를 계속한다. 세션 미확인만으로 `kanban_block`하지 않는다. warning comment 실패는 최종 근거에 남긴다.
-- 시작 시 `error` / captured marker·receipt 기록 오류는 기존 capability 오류로 review mutation 전에 중단한다. `invalid`는 context blocker다. 실제 승인·Workspace·검증 오류를 세션 경고로 바꾸지 않는다.
+- 시작 시 `error` / captured marker·receipt 기록 오류는 `TASK_SESSION_HISTORY_WARNING`으로 남기고 review를 계속한다. `SESSION_HISTORY_RECHECK_REQUIRED=true`를 유지하고 finalize에서 1회 보완한다. `invalid`는 context blocker다. 실제 승인·Workspace·검증 오류를 세션 경고로 바꾸지 않는다.
 
 **SESSION_HISTORY_FINALIZE:** 미확인/comment 미완료일 때만 판정 확정 후 `kanban_complete` / `kanban_request_changes` / `kanban_block` 직전에 같은 reviewer context로 `capture --phase finalize`를 대기 없이 1회 실행한다. 이미 확인한 ID가 있으면 `--session-id`로 고정한다. 성공하면 같은 Task marker/receipt를 보완한다. 미확인/추적 오류는 verdict에 남기고 원래 판정/차단 사유를 보존한다. 완료된 추적은 재조회하지 않으며 잘못된 실행 context에는 보완하지 않는다.
 
