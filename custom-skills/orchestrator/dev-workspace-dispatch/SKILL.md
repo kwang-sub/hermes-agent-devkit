@@ -19,7 +19,7 @@ metadata:
 
 ## Worker 계약 인계
 
-Direct/Standard/Recovery는 기존 Coder/Reviewer entrypoint를 그대로 사용한다. 실제 worker query의 `DEVKIT_WORKER_STARTUP_V1`은 현재 역할 Skill과 공통 Gate를 로드하도록 안내할 뿐 launcher/timeout/retry/cache/helper 경로 같은 실행 HOW를 정의하지 않는다. `KANBAN_EXECUTION_BOUNDARY_V1`에 따라 Task에는 승인된 Work Unit·Workspace·모델 snapshot·Verification 의도/요구사항과 lifecycle state를 보존하고, Maven/Gradle/Node의 실제 실행법은 역할 Skill과 shared runtime/execution 정책이 결정한다. 별도 필수 Task field/승인 Gate/카드 재생성/검증 provider 교체는 추가하지 않는다. 환경 복구만으로 차단 카드를 자동 unblock하지 않는다.
+Direct/Standard/Recovery는 기존 Coder/Reviewer entrypoint를 그대로 사용한다. 실제 worker query의 `DEVKIT_WORKER_STARTUP_V1`은 현재 역할 Skill과 공통 Gate를 로드하도록 안내할 뿐 launcher/timeout/retry/cache/helper 경로 같은 실행 HOW를 정의하지 않는다. `KANBAN_EXECUTION_BOUNDARY_V1`에 따라 Task에는 승인된 Work Unit·Workspace·모델 snapshot·Verification 의도/요구사항과 lifecycle state를 보존하고, Maven/Gradle/Node의 실제 실행법은 역할 Skill과 shared runtime/execution 정책이 결정한다. Maven HOW의 canonical reference는 `/opt/data/shared/references/maven-worker-runtime.md`이며 이 내용을 Task body나 startup prompt에 복제하지 않는다. 별도 필수 Task field/승인 Gate/카드 재생성/검증 provider 교체는 추가하지 않는다. 환경 복구만으로 차단 카드를 자동 unblock하지 않는다.
 
 ## 선택적 기능 문서 인계
 
