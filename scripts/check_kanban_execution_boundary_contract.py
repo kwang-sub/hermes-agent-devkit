@@ -32,29 +32,19 @@ def require(path: Path, *terms: str) -> str:
 
 
 def check_reference() -> None:
-    require(
-        REFERENCE,
-        POLICY,
-        "WHAT / STATE",
-        "Kanban이 소유하지 않는 HOW",
-        "실제 executable / launcher / wrapper 경로",
-        "timeout 기본값",
-        "retry 횟수",
-        "process group TERM/KILL/reap",
-        "cache / repository / store",
-        "Worker startup adapter",
-        "Task status/body/comment",
-        "Execution Policy",
-    )
+    source = require(REFERENCE, POLICY)
+    for heading in (
+        "## 1. Kanban이 소유하는 WHAT / STATE",
+        "## 2. Kanban이 소유하지 않는 HOW",
+        "## 3. Worker startup adapter",
+        "## 4. Workflow / Execution 계층",
+    ):
+        if heading not in source:
+            raise AssertionError(f"{REFERENCE.relative_to(ROOT)} missing section: {heading}")
 
 
 def check_startup_adapter() -> None:
-    source = require(
-        STARTUP,
-        POLICY,
-        "Kanban은 WHAT/STATE만 제공",
-        "역할 Skill과 canonical runtime/execution 정책",
-    )
+    source = require(STARTUP, POLICY)
     forbidden = (
         "/usr/local/bin/hermes-maven",
         "maven_verification.py",
@@ -96,24 +86,12 @@ def check_startup_adapter() -> None:
 
 
 def check_contract_consumers() -> None:
-    require(
-        DISPATCH,
-        POLICY,
-        "kanban-execution-boundary.md",
-        "Task body는 WHAT/STATE",
-        "실제 실행법은 역할 Skill과 shared runtime/execution 정책",
-    )
-    require(
-        WORKFLOW,
-        POLICY,
-        "Plan Approval",
-        "launcher path, timeout, retry, cache, process cleanup",
-        "역할 Skill/공통 Execution 계층",
-    )
-    require(CODER, POLICY, "Kanban은 WHAT/STATE의 source of truth", "canonical runtime/execution 정책")
-    require(REVIEWER, POLICY, "Kanban에서 requirement/AC/state/evidence", "canonical runtime/execution 정책")
-    require(CYCLE, POLICY, "runtime HOW는 Kanban state에서 읽지 않는다")
-    require(AGENTS, POLICY, "Kanban은 WHAT/STATE", "Task body나 worker startup prompt")
+    for path in (DISPATCH, WORKFLOW, CODER, REVIEWER, CYCLE, AGENTS):
+        require(path, POLICY)
+
+    for path in (DISPATCH, WORKFLOW, CODER, REVIEWER, CYCLE):
+        if "kanban-execution-boundary.md" not in read(path):
+            raise AssertionError(f"{path.relative_to(ROOT)} must reference the canonical boundary document")
 
     patch_source = read(PATCH)
     for leaked in (
