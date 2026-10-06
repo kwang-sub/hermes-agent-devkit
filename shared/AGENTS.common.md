@@ -47,6 +47,8 @@ Direct는 current workspace/current branch 고정 경로다. 다른 workspace/�
 ## Kanban 계약
 Direct/Standard Task 모두 Goal, Acceptance Criteria, Implementation Tasks, Test Plan, Risks, Work Unit Contract, Workspace, Expected/Base Branch, Base SHA, Coder model snapshot, Reviewer DEFAULT를 보존한다. 구현 완료 후 Coder는 항상 Reviewer에게 인계한다.
 
+`KANBAN_EXECUTION_BOUNDARY_V1`을 적용한다. Kanban은 WHAT/STATE(Task scope, 관계, 순서, lifecycle, 승인 snapshot, verification 의도/결과)의 source of truth다. launcher/wrapper, timeout, retry, process cleanup, cache/store, 내부 log/evidence 경로 같은 HOW는 역할 Skill·Project Toolchain·shared runtime/execution policy의 책임이다. Task body나 worker startup prompt를 HOW의 runtime config 저장소로 확장하지 않는다.
+
 이미 dispatch된 Task의 추가 요구사항은 Interactive Coder가 직접 반영하지 않는다. Orchestrator의 Requirement Delta/Work Unit 재평가 계약을 사용하고, 경계를 넘으면 새 Standard Flow로 분리한다.
 
 ## 사용자 가시 언어 정책
@@ -90,7 +92,7 @@ Direct/Standard Task 모두 Goal, Acceptance Criteria, Implementation Tasks, Tes
 - host Temp mount는 입력 파일 확인용 read-only 영역이다. 파일 생성·수정·삭제 대상이나 작업 산출물 저장 위치로 사용하지 않는다.
 
 ## Worker 시작 / Maven
-- 실제 Kanban Worker는 첫 `kanban_show` 후 현재 역할 Skill(Coder `dev-implement-plan`, Reviewer `dev-code-review`)을 로드하고 지정 세션 기록·context·workspace Gate부터 수행한다. 새/재개 및 Direct/Standard/Recovery에서 동일하며 helper 위치·사용법을 재탐색하지 않는다.
+- 실제 Kanban Worker startup adapter는 첫 `kanban_show` 후 현재 역할 Skill(Coder `dev-implement-plan`, Reviewer `dev-code-review`)을 로드하고 지정 세션 기록·context·workspace Gate를 시작하도록 안내하는 역할만 한다. 새/재개 및 Direct/Standard/Recovery에서 동일하며 Maven/Gradle/Node launcher·timeout·retry·cache/helper 경로 같은 실행 HOW는 startup prompt가 정의하지 않는다.
 - Maven은 `/usr/local/bin/hermes-maven` 또는 이를 위임하는 `hermes-java ./mvnw ...`를 사용한다. `mvn`/raw `mvnw`/HOME `.m2` 부재만으로 차단하거나 전체 디스크에서 executable/JAR를 탐색하지 않는다. 실제 검증은 `/opt/custom-skills/coder/dev-implement-plan/scripts/maven_verification_cached.py`를 canonical 경로로 사용하며 동일 request/scope의 PASS는 재사용하고 fresh 실행만 내부 bounded `maven_verification.py`로 수행한다. 상세는 `/opt/data/shared/references/maven-worker-runtime.md`다.
 
 ## Scope / safety / verification
