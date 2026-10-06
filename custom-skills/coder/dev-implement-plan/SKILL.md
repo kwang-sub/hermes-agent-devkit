@@ -29,7 +29,8 @@ kanban_show
 → verify_workspace.py 1회
 → Work Unit Boundary Gate
 → Standard Flow Verification Contract Gate
-→ 필요한 source/test만 bounded read
+→ Bounded Pre-Mutation Impact Scan (최대 2-hop)
+→ Impact Summary / Implementation Scope 확정
 → 현재 Work Unit만 구현
 → targeted verification
 → IMPLEMENTATION_STABLE
@@ -40,6 +41,10 @@ kanban_show
 ```
 
 Workspace Version Control과 Pattern References는 Task body를 재사용한다. Git Workspace는 Expected Branch/Base SHA를 검증하고, Non-Git Workspace는 `Version Control: none`, `Branch/Base SHA: NONE` 계약으로 `verify_workspace.py --version-control none`을 사용한다. 기존 변경은 preserve-first이며 reset/restore/clean/stash하지 않는다. Existing Changes Preservation Fast Path가 승인된 Git Workspace에서는 repository-wide dirty/EOL/untracked scan을 반복하지 않는다.
+
+## Bounded Pre-Mutation Impact Scan
+
+첫 production mutation 전에 승인된 변경 식별자/파일을 기준으로 **최대 2-hop**만 확인한다. 1-hop은 direct caller/reference/mapping/validation, 2-hop은 실제 1-hop 근거가 security/session/history/audit/persistence/external contract 경계를 가리킬 때만 확장한다. 프로젝트 전체 architecture 분석이나 `혹시 더 있을까` 식 반복 탐색은 하지 않는다. 최초 `kanban_show`와 그 spillover를 Task Snapshot으로 재사용하고 같은 정보 확인을 위한 `kanban_show`를 반복하지 않는다. read-only 탐색은 전용 `read/find/grep`을 우선하며 파일/JSON 확인을 위한 inline `python3 -c`·`hermes_tools` exec·Path traversal을 만들지 않는다. 범위가 확정되면 짧은 `Impact Summary`로 압축하고, 승인 범위를 넘는 영향이 확인되면 source mutation 없이 기존 blocker/triage 경로로 넘긴다. 상세 scan/stop/evidence 형식은 필요할 때만 `references/implementation-details.md`의 Source/Scope 절을 읽는다.
 
 ## Session History Gate — SESSION_HISTORY_BEST_EFFORT_V1
 
