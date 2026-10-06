@@ -15,11 +15,11 @@ metadata:
 
 사용자 승인까지 완료된 READY **단일 Work Unit** 계획을 승인된 workspace와 Coder model snapshot과 함께 Kanban으로 인계한다. Git Workspace는 branch/diff 계약을 유지하고, 승인된 Non-Git Workspace는 branch/diff를 `N/A`로 처리한다. 이 Skill이 신규 Standard Dispatch의 표준이다.
 
-`/opt/data/shared/references/standard-work-unit-rules.md`, `/opt/data/shared/references/parent-tracking-rules.md`, `/opt/data/shared/references/session-history-rules.md`를 적용한다.
+`/opt/data/shared/references/standard-work-unit-rules.md`, `/opt/data/shared/references/parent-tracking-rules.md`, `/opt/data/shared/references/session-history-rules.md`, `/opt/data/shared/references/kanban-execution-boundary.md`를 적용한다.
 
-## Worker 실행 환경 인계
+## Worker 계약 인계
 
-Direct/Standard/Recovery는 기존 Coder/Reviewer entrypoint를 그대로 사용한다. 실제 worker query의 `DEVKIT_WORKER_STARTUP_V1`이 현재 Skill 로드·기존 Gate 순서를 안내한다. Maven 검증이 있으면 승인된 build root/Wrapper·goal/profile/module/selector와 네트워크 허용 여부를 기존 검증 계획에 보존하고 `/opt/data/shared/references/maven-worker-runtime.md`의 canonical launcher/helper를 안내한다. 별도 필수 Task field/승인 Gate/카드 재생성/검증 provider 교체는 추가하지 않는다. 환경 복구만으로 차단 카드를 자동 unblock하지 않는다.
+Direct/Standard/Recovery는 기존 Coder/Reviewer entrypoint를 그대로 사용한다. 실제 worker query의 `DEVKIT_WORKER_STARTUP_V1`은 현재 역할 Skill과 공통 Gate를 로드하도록 안내할 뿐 launcher/timeout/retry/cache/helper 경로 같은 실행 HOW를 정의하지 않는다. `KANBAN_EXECUTION_BOUNDARY_V1`에 따라 Task에는 승인된 Work Unit·Workspace·모델 snapshot·Verification 의도/요구사항과 lifecycle state를 보존하고, Maven/Gradle/Node의 실제 실행법은 역할 Skill과 shared runtime/execution 정책이 결정한다. 별도 필수 Task field/승인 Gate/카드 재생성/검증 provider 교체는 추가하지 않는다. 환경 복구만으로 차단 카드를 자동 unblock하지 않는다.
 
 ## 선택적 기능 문서 인계
 
@@ -329,6 +329,8 @@ Task 생성 시점에는 NEW worker의 최종 Session ID가 아직 만들어지�
 Parent는 NON_DISPATCH이므로 Coder/Reviewer execution session을 갖지 않는다. 완료 자식의 Session IDs를 Parent Completed Work에 요약하고, Orchestrator management session은 실제 ID가 확인 가능한 경우에만 기록한다.
 
 ## 8. Task Body Contract
+
+Task body는 WHAT/STATE와 승인 evidence를 보존한다. launcher path, timeout 기본값, retry/kill/cache/log 내부 경로 같은 runtime HOW를 Task body의 source of truth로 추가하지 않는다. Verification의 command/goal은 승인 의도 evidence로 보존할 수 있지만 실제 실행은 현재 역할 Skill의 canonical adapter를 사용한다.
 
 Parent가 있는 실제 Standard Task에는 다음 블록을 먼저 기록한다.
 
