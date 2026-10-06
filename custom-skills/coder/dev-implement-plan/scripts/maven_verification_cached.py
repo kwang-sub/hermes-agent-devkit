@@ -253,6 +253,8 @@ def main() -> int:
         print("MAVEN_STATUS=PASS")
         print("MAVEN_BLOCKER=NONE")
         print(f"MAVEN_EVIDENCE={evidence}")
+        if cached.get("primary_log"):
+            print(f"MAVEN_LOG={cached['primary_log']}")
         if cached.get("primary_elapsed_seconds") is not None:
             print(f"PRIMARY_ORIGINAL_DURATION_SECONDS={cached['primary_elapsed_seconds']}")
         print(f"VERIFICATION_TOTAL_DURATION_SECONDS={time.monotonic() - total_started:.1f}")
@@ -303,6 +305,7 @@ def main() -> int:
 
     if returncode == 0 and status == "PASS" and blocker == "NONE":
         primary_evidence = parse_field(output, "MAVEN_EVIDENCE")
+        primary_log = parse_field(output, "MAVEN_LOG")
         primary_elapsed = parse_field(output, "MAVEN_ELAPSED_SECONDS")
         write_evidence(
             evidence,
@@ -317,6 +320,7 @@ def main() -> int:
                 "arguments_sha256": arguments_sha,
                 "engine_sha256": sha256_file(engine),
                 "primary_evidence": primary_evidence,
+                "primary_log": primary_log,
                 "primary_elapsed_seconds": primary_elapsed,
             },
         )
@@ -324,6 +328,7 @@ def main() -> int:
         print("PRIMARY_REUSED=false")
         print("FRESH_VERIFICATION_REQUIRED=false")
         print(f"MAVEN_CACHED_EVIDENCE={evidence}")
+        print(f"MAVEN_EVIDENCE={evidence}")
         print(f"VERIFICATION_TOTAL_DURATION_SECONDS={time.monotonic() - total_started:.1f}")
         return 0
 
