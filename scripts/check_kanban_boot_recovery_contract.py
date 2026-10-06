@@ -44,9 +44,10 @@ def main() -> int:
     forbid(HELPER, (
         "UPDATE tasks SET status",
         "subprocess.Popen",
-        "spawn_worker(",
-        "claim_task(",
-        "claim_review_task(",
+        "kb.claim_task(",
+        "kb.claim_review_task(",
+        "kbd.spawn_worker(",
+        "_default_spawn(",
     ))
 
     require(BOOT, (
