@@ -142,8 +142,11 @@ for key in ("HERMES_MAVEN_ROOT", "HERMES_MAVEN_REPO_ROOT", "HERMES_MAVEN_DIST_RO
 assert os.environ.get("GRADLE_USER_HOME") == "/opt/data/gradle/user-home"
 query = with_worker_startup(["hermes", "chat", "-q", "work kanban task t_runtime_probe"], "coder")[-1]
 assert "DEVKIT_WORKER_STARTUP_V1" in query
-assert "dev-implement-plan" in query and "hermes-maven" in query
-print("Managed Maven cache and worker startup contract valid")
+assert 'skill_view("dev-implement-plan")' in query
+assert "KANBAN_EXECUTION_BOUNDARY_V1" in query
+assert "hermes-maven" not in query
+assert "maven_verification.py" not in query
+print("Managed Maven cache and worker startup boundary contract valid")
 '@
 
 $MavenRuntimeCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
