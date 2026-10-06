@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +41,35 @@ def test_capture_timeout() -> None:
     )
     assert result.timed_out
     assert result.duration < 10
+
+
+def test_timeout_kills_child_when_process_leader_exits_first() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        pid_file = Path(tmp) / "child.pid"
+        parent_code = (
+            "import pathlib, subprocess, sys, time; "
+            "child=\"import os, pathlib, signal, sys, time; "
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+            "pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(60)\"; "
+            "subprocess.Popen([sys.executable, '-c', child, sys.argv[1]]); "
+            "p=pathlib.Path(sys.argv[1]); "
+            "deadline=time.monotonic()+2; "
+            "\nwhile not p.exists() and time.monotonic() < deadline: time.sleep(0.01)\n"
+            "time.sleep(60)"
+        )
+        result, _stdout, _stderr = run_capture(
+            [sys.executable, "-c", parent_code, str(pid_file)],
+            cwd=REPO_ROOT,
+            timeout_seconds=1,
+        )
+        assert result.timed_out
+        assert pid_file.is_file()
+        child_pid = int(pid_file.read_text(encoding="utf-8"))
+        child_proc = Path("/proc") / str(child_pid)
+        deadline = time.monotonic() + 2
+        while child_proc.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not child_proc.exists(), f"timed-out child process survived cleanup: pid={child_pid}"
 
 
 def test_stream_redirection() -> None:
@@ -102,6 +132,7 @@ def main() -> int:
     tests = (
         test_capture_success,
         test_capture_timeout,
+        test_timeout_kills_child_when_process_leader_exits_first,
         test_stream_redirection,
         test_inherited_exit_code,
         test_adapters_use_shared_execution,
