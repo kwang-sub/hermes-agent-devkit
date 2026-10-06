@@ -58,10 +58,9 @@ Task ID/Workspace는 `kanban_show`, profile/profile-home은 현재 역할에서 
 
 - `SESSION_HISTORY_STATUS=captured`: `SESSION_HISTORY_COMMENT_PENDING`을 확인한다. pending이면 기존 Task comments와 실제 `Session ID + Profile` marker를 대조하고 없을 때만 `TASK_SESSION_HISTORY`를 `kanban_comment`한다. 성공/기존 marker 확인 후 `ack-comment`한다.
 - `SESSION_HISTORY_NEW=false`는 DB 중복일 뿐 comment 성공 증거가 아니다. receipt 성공 뒤에만 추적을 resolved로 처리한다.
-- `SESSION_HISTORY_STATUS=unavailable`: `TASK_SESSION_HISTORY_WARNING`을 한 번 기록하고 계속한다. 세션 미확인만으로 `kanban_block`하지 않는다. warning 기록 실패도 미확인의 간접 blocker로 만들지 않고 최종 근거에 남긴다.
-- `error` / captured marker·receipt 기록 오류: `TASK_SESSION_HISTORY_WARNING`으로 남기고 source mutation을 계속한다. `SESSION_HISTORY_RECHECK_REQUIRED=true`를 유지하고 finalize에서 1회 보완한다. `invalid`는 context blocker다. Task/Workspace/승인/검증 Gate는 완화하지 않는다.
+- `SESSION_HISTORY_STATUS=unavailable` 또는 `error`: 시작 시 durable warning comment를 만들지 않고 `SESSION_HISTORY_RECHECK_REQUIRED=true`와 sanitized status/reason을 현재 worker 근거에 유지한 채 source mutation을 계속한다. captured marker·receipt 기록 오류도 같은 pending trace로 처리한다. `invalid`는 context blocker다. Task/Workspace/승인/검증 Gate는 완화하지 않는다.
 
-**SESSION_HISTORY_FINALIZE:** 미확인/comment 미완료일 때만 구현·검증 완료 후 `kanban_request_review` 직전 또는 다른 원인의 `kanban_block` 직전에 같은 context로 `capture --phase finalize`를 1회 실행한다. 이미 확인한 ID가 있으면 `--session-id`로 고정한다. 성공하면 같은 Task marker/receipt를 보완하고, 계속 미확인/추적 오류이면 handoff에 상태·원인을 남긴 뒤 원래 전이를 수행한다. 완료된 추적은 재조회하지 않는다. 잘못된 실행 context에는 보완하지 않는다.
+**SESSION_HISTORY_FINALIZE:** 미확인/comment 미완료일 때만 구현·검증 완료 후 `kanban_request_review` 직전 또는 다른 원인의 `kanban_block` 직전에 같은 context로 `capture --phase finalize`를 1회 실행한다. 이미 확인한 ID가 있으면 `--session-id`로 고정한다. 성공하면 같은 Task marker/receipt를 보완한다. 계속 미확인/추적 오류이거나 marker/receipt 보완이 실패하면 그때만 `TASK_SESSION_HISTORY_WARNING`을 최대 1회 durable comment로 남기고 handoff에 상태·원인을 보존한 뒤 원래 전이를 수행한다. 완료된 추적은 재조회하지 않는다. 잘못된 실행 context에는 보완하지 않는다.
 
 여러 Session ID를 마지막 하나로 덮어쓰지 않는다. Reviewer/새 Recovery 세션으로 과거 Coder 누락을 대신 채우지 않는다. 상세 comment 중복/응답 유실 처리는 공통 reference가 source of truth다.
 
