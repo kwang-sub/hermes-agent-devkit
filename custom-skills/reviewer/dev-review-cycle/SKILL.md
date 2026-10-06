@@ -49,7 +49,7 @@ Coder running (approved Coder model)
 
 Standard / Direct / Recovery / CHANGES_REQUESTED는 `/opt/data/shared/references/session-history-rules.md`의 `SESSION_HISTORY_BEST_EFFORT_V1`을 공통 적용한다. Coder/Reviewer 시작 capture는 해당 역할 entrypoint에서 수행한다. 별도 Flow별 추적 helper는 만들지 않는다.
 
-미확인/comment 미완료일 때만 현재 역할의 `capture --phase finalize`를 최대 1회 호출한다. 이미 `SESSION_HISTORY_COMMENT_PENDING=false`로 기록된 추적은 생략한다. Coder는 `kanban_request_review` 직전, Reviewer는 `kanban_complete` / `kanban_request_changes` 직전, 다른 원인으로 중단하면 `kanban_block` 직전이다. 성공한 marker는 중복 없이 comment/ack-comment하고, 보완 실패는 최종 근거에 보존한다. 보완을 위해 terminal transition 뒤 도구 호출이나 background 수집기를 만들지 않는다.
+미확인/comment 미완료일 때만 현재 역할의 `capture --phase finalize`를 최대 1회 호출한다. 이미 `SESSION_HISTORY_COMMENT_PENDING=false`로 기록된 추적은 생략한다. Coder는 `kanban_request_review` 직전, Reviewer는 `kanban_complete` / `kanban_request_changes` 직전, 다른 원인으로 중단하면 `kanban_block` 직전이다. 성공한 marker는 중복 없이 comment/ack-comment하고, finalize 이후에도 미확인/추적 오류 또는 marker/receipt 보완 실패가 남을 때만 `TASK_SESSION_HISTORY_WARNING`을 최대 1회 durable comment로 기록한다. 보완을 위해 terminal transition 뒤 도구 호출이나 background 수집기를 만들지 않는다.
 
 `unavailable`만으로 BLOCK하지 않는다. Task/Workspace/승인·검증·lifecycle 오류는 기존 blocker를 유지한다. Reviewer ID를 Coder 누락에 대신 넣거나 새 Recovery 세션으로 과거 미확인이 복구됐다고 기록하지 않는다.
 

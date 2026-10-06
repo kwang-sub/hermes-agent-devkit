@@ -64,7 +64,6 @@ def main() -> int:
             if term not in cached_text:
                 failures.append(f"maven_verification_cached.py missing: {term}")
     for path in (
-        "shared/AGENTS.common.md",
         "custom-skills/coder/dev-implement-plan/SKILL.md",
         "custom-skills/reviewer/dev-code-review/SKILL.md",
         "shared/references/maven-worker-runtime.md",

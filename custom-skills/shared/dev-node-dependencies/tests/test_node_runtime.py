@@ -104,7 +104,8 @@ def make_workspace(base: Path) -> tuple[Path, dict[str, str], Path]:
         'printf "npm_config_store_dir=%s\\n" "$npm_config_store_dir" >> "$NODE_RUNTIME_TEST_LOG"\n'
         'printf "XDG_CACHE_HOME=%s\\n" "$XDG_CACHE_HOME" >> "$NODE_RUNTIME_TEST_LOG"\n'
         'printf "TMPDIR=%s\\n" "$TMPDIR" >> "$NODE_RUNTIME_TEST_LOG"\n'
-        'printf "ARGS=%s\\n" "$*" >> "$NODE_RUNTIME_TEST_LOG"\n',
+        'printf "ARGS=%s\\n" "$*" >> "$NODE_RUNTIME_TEST_LOG"\n'
+        'if [ -n "${PNPM_TEST_SLEEP_SECONDS:-}" ]; then sleep "$PNPM_TEST_SLEEP_SECONDS"; fi\n',
     )
     env = os.environ.copy()
     env.update(
@@ -252,6 +253,7 @@ def test_verification_runs_in_linux_isolated_workspace() -> None:
             "NODE_RUNTIME_OUTPUT_POLICY=linux-isolated-workspace;workspace-serialized"
             in result.stdout
         )
+        assert "NODE_RUNTIME_COMMAND_TIMEOUT_SECONDS=600" in result.stdout
 
 
 def test_internal_node_modules_survive_sync_but_generated_output_is_reset() -> None:
@@ -400,6 +402,33 @@ def test_workspace_lock_blocks_concurrent_verification() -> None:
         assert "timed out waiting for Node workspace lock" in result.stderr
 
 
+def test_command_timeout_defaults_to_600_and_can_be_overridden() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        workspace, env, fake_pnpm = make_workspace(base)
+        prepare_restored_workspace(workspace, env)
+        env["HERMES_NODE_COMMAND_TIMEOUT_SECONDS"] = "1"
+        env["PNPM_TEST_SLEEP_SECONDS"] = "2"
+
+        result = run_runtime(workspace, env, [str(fake_pnpm), "run", "build"])
+        assert result.returncode == 2
+        assert "NODE_RUNTIME_COMMAND_TIMEOUT_SECONDS=1" in result.stdout
+        assert "NODE_RUNTIME_BLOCKER_CLASS=NODE_COMMAND_TIMEOUT" in result.stderr
+        assert "command exceeded 1 seconds" in result.stderr
+
+
+def test_invalid_command_timeout_is_blocked() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        workspace, env, fake_pnpm = make_workspace(base)
+        prepare_restored_workspace(workspace, env)
+        env["HERMES_NODE_COMMAND_TIMEOUT_SECONDS"] = "invalid"
+
+        result = run_runtime(workspace, env, [str(fake_pnpm), "run", "build"])
+        assert result.returncode == 2
+        assert "HERMES_NODE_COMMAND_TIMEOUT_SECONDS must be a positive integer" in result.stderr
+
+
 def test_dependency_mutation_is_rejected_to_preserve_tirith_guard() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
@@ -526,6 +555,8 @@ def main() -> int:
         test_internal_node_modules_survive_sync_but_generated_output_is_reset,
         test_dependency_fingerprint_change_invalidates_linux_node_modules,
         test_pnpm_workspace_policy_change_invalidates_linux_node_modules,
+        test_command_timeout_defaults_to_600_and_can_be_overridden,
+        test_invalid_command_timeout_is_blocked,
         test_environment_gate_blocks_dangerous_global_build_allow,
         test_environment_gate_blocks_broad_build_approval,
         test_environment_gate_accepts_exact_build_approval,

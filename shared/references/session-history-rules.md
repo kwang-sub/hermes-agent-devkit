@@ -12,12 +12,11 @@ Kanban Task와 Hermes 대화 세션의 연결은 **append-only execution history
 
 ## 공통 정책 — SESSION_HISTORY_BEST_EFFORT_V1
 
-Session History는 추적 메타데이터다. `unavailable`만으로 구현/review를 BLOCK하지 않는다. Worker Context, Task/Workspace/승인, Work Unit, Verification Provider의 필수 Gate는 그대로 유지한다. `VERIFICATION_PROVIDER_UNAVAILABLE`을 세션 경고로 바꾸지 않는다.
+Session History는 추적 메타데이터다. `unavailable/error`만으로 구현/review를 BLOCK하지 않는다. Worker Context, Task/Workspace/승인, Work Unit, Verification Provider의 필수 Gate는 그대로 유지한다. `VERIFICATION_PROVIDER_UNAVAILABLE`을 세션 경고로 바꾸지 않는다.
 
 - `captured` (exit 0): 실제 ID를 기록하고 comment delivery를 확인한다.
-- `unavailable` (exit 0): `TASK_SESSION_HISTORY_WARNING`과 원인을 남기고 계속한다. `SESSION_ID=UNAVAILABLE`을 실제 session row나 `TASK_SESSION_HISTORY` marker에 넣지 않는다.
-- `error` (exit 3): DB 권한/손상/schema/helper 오류다. 시작 시에는 기존 capability 오류 처리로 구현/review mutation 전에 중단한다. 세션 미확인과 동일하게 삼키지 않는다.
-- `error` (exit 0): state/history DB 조회·저장 같은 추적 계층 오류다. `TASK_SESSION_HISTORY_WARNING`과 sanitized error type을 남기고 구현/review를 계속한다. `SESSION_HISTORY_RECHECK_REQUIRED=true`를 유지하고 finalize에서 1회 보완한다.
+- `unavailable` (exit 0): 시작 시에는 pending 추적으로만 유지하고 계속한다. `SESSION_ID=UNAVAILABLE`을 실제 session row나 `TASK_SESSION_HISTORY` marker에 넣지 않는다. finalize에서도 미확인이면 그때만 `TASK_SESSION_HISTORY_WARNING`을 durable comment로 남긴다.
+- `error` (exit 0): state/history DB 조회·저장 같은 추적 계층 오류다. 시작 시에는 sanitized error type과 `SESSION_HISTORY_RECHECK_REQUIRED=true`만 현재 worker 근거에 보존하고 구현/review를 계속한다. finalize에서 1회 보완하고 끝까지 실패한 경우에만 `TASK_SESSION_HISTORY_WARNING`을 durable comment로 남긴다.
 - `invalid` / CLI 입력 오류 (exit 2): Task/Profile/Workspace 등 입력 계약을 수정해야 한다. 기존 context blocker를 유지한다.
 
 `STATE_DB_MISSING`과 `SESSION_MATCH_NOT_FOUND`를 구분한다. 진단을 위해 raw 대화 내용, credential, 다른 프로젝트 DB를 수집하지 않는다. 조회가 이른 시점이라는 가정만으로 원인을 단정하지 않는다.
@@ -77,18 +76,21 @@ Worker 시작 시 `kanban_show`의 Task/Workspace와 현재 역할의 profile-ho
 kanban_show
 → task_session_history.py capture --phase start
 → captured: comment 전달 확인
-→ unavailable: TASK_SESSION_HISTORY_WARNING + 계속
+→ unavailable/error: pending trace + 계속
 → 기존 Worker Context / Workspace / 구현 / review Gate
 ```
 
-Warning은 현재 Worker 실행에서 한 번만 comment한다. 상태/원인/역할/Task를 기록하고 `SESSION_HISTORY_RECHECK_REQUIRED=true`를 유지한다. Warning comment 자체가 실패해도 단순 미확인을 간접 BLOCK 사유로 바꾸지 않는다. 실패 근거를 최종 handoff/verdict에 남긴다. 반복 warning으로 카드를 채우지 않는다.
+시작 capture의 `unavailable/error`에서는 durable warning comment를 만들지 않는다. `SESSION_HISTORY_RECHECK_REQUIRED=true`와 sanitized status/reason만 현재 worker 근거에 유지하고 구현/review를 계속한다. 이렇게 시작 시점의 일시적인 session 등록 지연이 Kanban 카드 노이즈로 남지 않게 한다.
+
+finalize 이후에도 추적이 해결되지 않았을 때만 다음 durable warning 형식을 사용한다.
 
 ```text
 TASK_SESSION_HISTORY_WARNING
 - Task ID: <actual task id>
 - Profile: coder | reviewer
-- Status: unavailable
-- Reason: STATE_DB_MISSING | SESSION_MATCH_NOT_FOUND
+- Status: unavailable | error
+- Reason: STATE_DB_MISSING | SESSION_MATCH_NOT_FOUND | STATE_DB_ERROR | HISTORY_DB_ERROR
+- Error Type: <sanitized type | NONE>
 - Action: CONTINUE_WITH_WARNING
 ```
 
@@ -110,7 +112,7 @@ python3 /opt/devkit/bin/task_session_history.py ack-comment \
 
 Reviewer는 `--profile reviewer`를 사용한다. capture에 별도 `--history-db`를 썼다면 ack에도 같은 경로를 전달한다. 실제 comment 성공/존재 확인 없이 ack하지 않는다. marker가 이미 있으면 ack만 하므로 기존 DB 업그레이드나 ack 재시도에서 중복 comment하지 않는다.
 
-시작 시 captured marker 기록/receipt가 실패하면 `TASK_SESSION_HISTORY_WARNING`으로 남기고 mutation/review를 계속한다. 원인은 세션 미확인과 구분해 실제 추적 기록 오류로 보존하며 `SESSION_HISTORY_RECHECK_REQUIRED=true`를 유지한다. 성공한 receipt 뒤에만 `SESSION_HISTORY_RECHECK_REQUIRED=false`로 관리한다.
+시작 시 captured marker 기록/receipt가 실패해도 durable warning comment를 즉시 만들지 않는다. 원인은 세션 미확인과 구분해 현재 worker 근거에 보존하며 `SESSION_HISTORY_RECHECK_REQUIRED=true`를 유지하고 mutation/review를 계속한다. 성공한 receipt 뒤에만 `SESSION_HISTORY_RECHECK_REQUIRED=false`로 관리한다.
 
 ## 인계·종료 직전 보완 — SESSION_HISTORY_FINALIZE
 
@@ -120,9 +122,9 @@ Reviewer는 `--profile reviewer`를 사용한다. capture에 별도 `--history-d
 - Reviewer: 판정 확정 후, `kanban_complete` 또는 `kanban_request_changes` 직전.
 - 다른 원인으로 차단: `kanban_block` 직전. 잘못된 Task/Workspace/권한 context라면 잘못된 카드에 보완하지 않고 원래 context blocker를 유지한다.
 
-이미 확인한 ID의 comment만 미완료라면 `--session-id "<verified ID>"`로 고정해 다른 세션으로 바뀌지 않게 한다. ID 자체가 미확인이면 ID를 추측해 인자로 넣지 않는다. 성공하면 같은 Task에 실제 이력을 추가하고 시작 경고가 보완됐음을 한국어로 남긴다. 시작 경고를 삭제하거나 덮어쓰지 않는다.
+이미 확인한 ID의 comment만 미완료라면 `--session-id "<verified ID>"`로 고정해 다른 세션으로 바뀌지 않게 한다. ID 자체가 미확인이면 ID를 추측해 인자로 넣지 않는다. 성공하면 같은 Task에 실제 이력을 추가한다.
 
-finalize의 미확인/추적 저장·comment 오류는 status/reason을 최종 handoff/verdict에 남기되, **세션 보완 실패만으로 기존 구현·검증·리뷰 판정/차단 사유를 바꾸지 않는다.** 잘못된 실행 context는 여전히 차단한다. 보완을 다시 호출하는 무한 루프나 terminal transition 후 도구 호출을 만들지 않는다.
+finalize에서도 `unavailable/error`이거나 marker/receipt 보완이 실패하면 그때만 현재 Worker 실행에 대해 `TASK_SESSION_HISTORY_WARNING` durable comment를 최대 1회 남긴다. 상태/원인/역할/Task와 `Action: CONTINUE_WITH_WARNING`을 기록하고, comment 자체가 실패하면 최종 handoff/verdict에만 근거를 보존한다. **세션 보완 실패만으로 기존 구현·검증·리뷰 판정/차단 사유를 바꾸지 않는다.** 잘못된 실행 context는 여전히 차단한다. 보완을 다시 호출하는 무한 루프나 terminal transition 후 도구 호출을 만들지 않는다.
 
 ```text
 SESSION_HISTORY_FINALIZE (pending일 때만, 최대 1회)

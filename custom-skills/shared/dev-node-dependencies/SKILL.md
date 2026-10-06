@@ -494,6 +494,8 @@ python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py 
   -- pnpm run <script>
 ```
 
+runtime helper는 source를 다시 동기화한 후 **각 pnpm 검증 command에 기본 600초 timeout**을 적용한다. `HERMES_NODE_COMMAND_TIMEOUT_SECONDS`로 명시적 override할 수 있으며, timeout 시 `NODE_COMMAND_TIMEOUT`으로 차단하고 동일 command를 자동 재시도하지 않는다.
+
 runtime helper는 source를 다시 동기화한 후:
 
 ```text
@@ -550,6 +552,7 @@ Dependency Fingerprint: ...
 Dependencies Ready: true | false
 Verification Package Root: ...
 Install Timeout Seconds: 600 | NOT_REQUIRED
+Node Command Timeout Seconds: 600 | <override>
 Manifest Updated: true | false | not_required
 Lockfile Updated: true | false | not_required
 Verification:

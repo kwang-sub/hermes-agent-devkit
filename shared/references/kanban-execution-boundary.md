@@ -33,7 +33,7 @@ Parent/Child 관계와 실행 선행 관계는 서로 다른 상태다. Parent �
 다음은 Task status/body/comment를 runtime configuration source로 사용하지 않는다.
 
 - 실제 executable / launcher / wrapper 경로
-- Maven / Gradle / npm / pnpm / yarn adapter 선택 세부
+- build-tool adapter 선택 세부 (현재 DevKit 지원: Maven / Gradle / pnpm)
 - timeout 기본값과 phase별 timeout
 - idle / stuck detection 방식
 - retry 횟수, retry delay, 동일 command 재실행 정책

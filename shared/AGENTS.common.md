@@ -91,18 +91,18 @@ Direct/Standard Task 모두 Goal, Acceptance Criteria, Implementation Tasks, Tes
 - Temp 입력 파일을 읽기 전에 존재 여부를 확인한다. 존재하지 않으면 임의 경로를 추측하지 말고 사용자에게 파일 접근 실패를 명확히 알린다.
 - host Temp mount는 입력 파일 확인용 read-only 영역이다. 파일 생성·수정·삭제 대상이나 작업 산출물 저장 위치로 사용하지 않는다.
 
-## Worker 시작 / Maven
-- 실제 Kanban Worker startup adapter는 첫 `kanban_show` 후 현재 역할 Skill(Coder `dev-implement-plan`, Reviewer `dev-code-review`)을 로드하고 지정 세션 기록·context·workspace Gate를 시작하도록 안내하는 역할만 한다. 새/재개 및 Direct/Standard/Recovery에서 동일하며 Maven/Gradle/Node launcher·timeout·retry·cache/helper 경로 같은 실행 HOW는 startup prompt가 정의하지 않는다.
-- Maven은 `/usr/local/bin/hermes-maven` 또는 이를 위임하는 `hermes-java ./mvnw ...`를 사용한다. `mvn`/raw `mvnw`/HOME `.m2` 부재만으로 차단하거나 전체 디스크에서 executable/JAR를 탐색하지 않는다. 실제 검증은 `/opt/custom-skills/coder/dev-implement-plan/scripts/maven_verification_cached.py`를 canonical 경로로 사용하며 동일 request/scope의 PASS는 재사용하고 fresh 실행만 내부 bounded `maven_verification.py`로 수행한다. 상세는 `/opt/data/shared/references/maven-worker-runtime.md`다.
+## Worker 시작 / Build Runtime
+- 실제 Kanban Worker startup adapter는 첫 `kanban_show` 후 현재 역할 Skill(Coder `dev-implement-plan`, Reviewer `dev-code-review`)을 로드하고 지정 세션 기록·context·workspace Gate를 시작하도록 안내하는 역할만 한다. 새/재개 및 Direct/Standard/Recovery에서 동일하며 build-tool launcher·timeout·retry·cache/helper 경로 같은 실행 HOW는 startup prompt가 정의하지 않는다.
+- Build/test 실행 HOW는 현재 역할 Skill과 canonical runtime contract를 따른다. Maven은 `/opt/data/shared/references/maven-worker-runtime.md`, Gradle은 Coder/Reviewer의 canonical Gradle verification contract, Node/pnpm은 `dev-node-dependencies`가 source of truth다. 관리형 runtime이 있는 도구를 raw executable로 우회하지 않으며 launcher/helper/cache/timeout 세부를 이 전역 문서에 복제하지 않는다.
 
 ## Scope / safety / verification
 - 요구사항에 직접 필요한 최소 diff만 만들고 unrelated refactor/format/upgrade를 섞지 않는다.
 - 관련 있을 때 null/failure/compatibility/transaction/concurrency/security를 위험 기반으로 확인한다.
 - secret, credential, token, password, raw PII를 source/context/Kanban/log에 기록하지 않는다.
 - 사용자 변경을 reset/restore/clean/stash/commit하거나 덮어쓰지 않는다. publication 요청 전 commit, push, PR, merge 금지.
-- Coder worker의 workspace/branch/base 검증은 `dev-implement-plan/scripts/verify_workspace.py`를 **단독 command로 1회** 실행한다. `STATUS=valid`이면 같은 terminal invocation의 추가 Git/toolchain probe나 별도 중복 workspace probe를 금지한다.
-- Hermes container 내부의 모든 Gradle 실행은 raw `./gradlew ...` 또는 `gradle ...`을 직접 호출하지 않는다. 단순 bounded 진단은 `hermes-java ./gradlew ...`, COMPILE/TARGETED_TEST 검증은 `dev-implement-plan/scripts/gradle_verification_cached.py`를 canonical 경로로 사용한다.
-- canonical helper가 `hermes-java`를 통해 `/opt/data/gradle`의 project cache/build output/workspace lock 격리를 적용하도록 유지한다. `GRADLE_STATUS=BLOCKED`이면 timed-out primary command, `compileJava`, `--info` 변형, background wait를 임의 반복하거나 raw Gradle로 우회하지 않고 helper blocker evidence로 종료한다.
+- Worker context/workspace/branch/base 검증은 현재 역할 Skill의 canonical Gate를 따르고 같은 근거를 얻기 위한 중복 probe를 만들지 않는다.
+- Build/test 실행은 현재 역할 Skill과 canonical runtime contract를 사용한다. 관리형 runtime이 있는 Maven/Gradle/Node 작업에서 raw executable fallback으로 검증 정책을 우회하지 않는다.
+- launcher/helper/cache/timeout/process-cleanup 같은 실행 HOW는 각 canonical runtime contract와 공통 Process Execution 계층에만 정의하고 전역 AGENTS에는 복제하지 않는다.
 - targeted test부터 실행하고 실제 command/result, 미실행 이유, residual risk를 기록한다.
 - `BLOCKED`에는 evidence, blocker, 필요한 입력, 재개 조건을 남긴다.
 - 계획/진행 보고는 한국어로 작성한다.

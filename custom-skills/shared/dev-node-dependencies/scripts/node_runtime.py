@@ -28,6 +28,7 @@ from node_workspace import (
 
 
 DEFAULT_LOCK_TIMEOUT = int(os.getenv("HERMES_NODE_WORKSPACE_LOCK_TIMEOUT_SECONDS", "600"))
+DEFAULT_COMMAND_TIMEOUT = 600
 PNPM_MUTATING_SUBCOMMANDS = {"i", "install", "add", "remove", "rm", "update", "dlx"}
 
 
@@ -223,19 +224,21 @@ def main() -> int:
             print("NODE_RUNTIME_OUTPUT_POLICY=linux-isolated-workspace;workspace-serialized")
             sys.stdout.flush()
 
-            raw_timeout = os.getenv("HERMES_NODE_COMMAND_TIMEOUT_SECONDS", "").strip()
-            command_timeout: int | None = None
-            if raw_timeout:
-                try:
-                    command_timeout = int(raw_timeout)
-                except ValueError as exc:
-                    raise RuntimeErrorPolicy(
-                        "HERMES_NODE_COMMAND_TIMEOUT_SECONDS must be a positive integer"
-                    ) from exc
-                if command_timeout < 1:
-                    raise RuntimeErrorPolicy(
-                        "HERMES_NODE_COMMAND_TIMEOUT_SECONDS must be a positive integer"
-                    )
+            raw_timeout = os.getenv(
+                "HERMES_NODE_COMMAND_TIMEOUT_SECONDS", str(DEFAULT_COMMAND_TIMEOUT)
+            ).strip()
+            try:
+                command_timeout = int(raw_timeout)
+            except ValueError as exc:
+                raise RuntimeErrorPolicy(
+                    "HERMES_NODE_COMMAND_TIMEOUT_SECONDS must be a positive integer"
+                ) from exc
+            if command_timeout < 1:
+                raise RuntimeErrorPolicy(
+                    "HERMES_NODE_COMMAND_TIMEOUT_SECONDS must be a positive integer"
+                )
+            print(f"NODE_RUNTIME_COMMAND_TIMEOUT_SECONDS={command_timeout}")
+            sys.stdout.flush()
 
             result = run_inherit(
                 command,

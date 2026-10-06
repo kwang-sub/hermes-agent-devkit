@@ -29,6 +29,8 @@ def check_workers(root: Path) -> None:
         "VERIFICATION_PROVIDER_UNAVAILABLE", "terminal transition 후", "백그라운드",
         "devkit-task-session-history.db", "task_session_history_comments",
         "error` (exit 0)", "SESSION_HISTORY_RECHECK_REQUIRED=true",
+        "시작 capture의 `unavailable/error`에서는 durable warning comment를 만들지 않는다",
+        "finalize에서도 `unavailable/error`이거나 marker/receipt 보완이 실패하면 그때만",
     ))
     common = (POLICY, FINALIZE, "session-history-rules.md", "--phase start", "--phase finalize",
               "SESSION_HISTORY_COMMENT_PENDING", "TASK_SESSION_HISTORY_WARNING", "ack-comment",
@@ -44,6 +46,9 @@ def check_workers(root: Path) -> None:
         "captured marker 기록/receipt가 실패하면 기존 capability 오류 처리로 mutation 전에 중단한다",
         "captured marker·receipt 기록 오류는 기존 capability 오류로 source mutation 전에 중단한다",
         "captured marker·receipt 기록 오류는 기존 capability 오류로 review mutation 전에 중단한다",
+        "`error` (exit 3)",
+        "`unavailable`: `TASK_SESSION_HISTORY_WARNING`을 한 번 남기고 review를 계속한다",
+        "`SESSION_HISTORY_STATUS=unavailable`: `TASK_SESSION_HISTORY_WARNING`을 한 번 기록하고 계속한다",
     )
     reference = (root / REFERENCE).read_text(encoding="utf-8")
     for rule in old_rules:

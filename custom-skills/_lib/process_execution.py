@@ -19,33 +19,56 @@ class ProcessExecutionResult:
 TimeoutProbe = Callable[[subprocess.Popen], None]
 
 
+def _process_group_exists(pgid: int) -> bool:
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def terminate_process_group(
     process: subprocess.Popen,
     *,
     terminate_timeout: float = 3.0,
     kill_timeout: float = 3.0,
 ) -> None:
-    """Terminate a managed process session and reap its descendants."""
+    """Terminate the whole managed process session, even if its leader exits first."""
+    pgid = process.pid
     try:
-        os.killpg(process.pid, signal.SIGTERM)
+        os.killpg(pgid, signal.SIGTERM)
     except ProcessLookupError:
+        if process.poll() is None:
+            try:
+                process.wait(timeout=kill_timeout)
+            except subprocess.TimeoutExpired:
+                pass
         return
 
-    try:
-        process.wait(timeout=terminate_timeout)
-        return
-    except subprocess.TimeoutExpired:
-        pass
+    deadline = time.monotonic() + terminate_timeout
+    while _process_group_exists(pgid) and time.monotonic() < deadline:
+        remaining = max(0.0, deadline - time.monotonic())
+        if process.poll() is None:
+            try:
+                process.wait(timeout=min(0.1, remaining))
+            except subprocess.TimeoutExpired:
+                pass
+        else:
+            time.sleep(min(0.05, remaining))
 
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+    if _process_group_exists(pgid):
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
-    try:
-        process.wait(timeout=kill_timeout)
-    except subprocess.TimeoutExpired:
-        pass
+    if process.poll() is None:
+        try:
+            process.wait(timeout=kill_timeout)
+        except subprocess.TimeoutExpired:
+            pass
 
 
 def _handle_timeout(
