@@ -204,6 +204,24 @@ Invoke-DockerCheck -Label "Kanban task session history helper self-test" -Docker
     "/opt/hermes/.venv/bin/python", "/opt/devkit/bin/task_session_history.py", "--self-test"
 )
 
+$BootRecoveryEnvEntry = @($ContainerEnv | Where-Object { $_ -like "HERMES_KANBAN_BOOT_RECOVERY_ENABLED=*" }) | Select-Object -First 1
+if ($BootRecoveryEnvEntry -ne "HERMES_KANBAN_BOOT_RECOVERY_ENABLED=true") {
+    throw "[FAIL] Kanban boot recovery default. Expected 'HERMES_KANBAN_BOOT_RECOVERY_ENABLED=true', got '$BootRecoveryEnvEntry'."
+}
+
+Invoke-DockerCheck -Label "Kanban boot recovery helper" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "test", "-x",
+    "/opt/devkit/bin/devkit_kanban_boot_recovery.py"
+)
+Invoke-DockerCheck -Label "Kanban boot recovery helper self-test" -DockerArgs @(
+    "exec", "--user", "hermes", $Container,
+    "/opt/hermes/.venv/bin/python", "/opt/devkit/bin/devkit_kanban_boot_recovery.py", "--self-test"
+)
+Invoke-DockerCheck -Label "Kanban boot recovery upstream compatibility dry-run" -DockerArgs @(
+    "exec", "--user", "hermes", $Container,
+    "/opt/hermes/.venv/bin/python", "/opt/devkit/bin/devkit_kanban_boot_recovery.py", "--dry-run"
+)
+
 Invoke-DockerCheck -Label "DevKit Kanban notifier dynamic service" -DockerArgs @(
     "exec", "--user", "root", $Container, "test", "-x",
     "/run/service/devkit-notifier/run"
