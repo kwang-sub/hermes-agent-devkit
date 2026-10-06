@@ -36,6 +36,7 @@ jobs:
         run: |
           python3 scripts/test_hermes_maven.py
           python3 scripts/test_maven_worker_runtime.py
+          python3 scripts/test_maven_verification_cached.py
           python3 scripts/check_maven_launcher_contract.py
       - name: Actual Maven cold cache, Java 17 compile, JUnit and offline rerun
         run: python3 scripts/smoke_maven_runtime.py --version "${{ matrix.maven }}"
