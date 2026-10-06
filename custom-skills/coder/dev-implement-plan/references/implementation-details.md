@@ -406,7 +406,7 @@ API DESIGN Work Unit에서 후속 IMPLEMENTATION이 제외되어 있으면 contr
 
 ## Maven 검증
 
-`/opt/data/shared/references/maven-worker-runtime.md`가 canonical 계약이다. `hermes-java ./mvnw`는 `hermes-maven`에 위임한다. 원본 CRLF wrapper/HOME `.m2`/global Maven 부재가 아니라 지정 launcher와 `/opt/data/maven`의 실제 실행 근거로 판단한다. `maven_verification.py`의 한 번의 bounded 실행과 receipt를 사용하며 test/package/verify는 기본 600초, compile은 기본 300초다. 보안 거부는 NOT_EXECUTED이며 미설치 증거가 아니다.
+`/opt/data/shared/references/maven-worker-runtime.md`가 canonical 계약이다. `hermes-java ./mvnw`는 `hermes-maven`에 위임한다. 원본 CRLF wrapper/HOME `.m2`/global Maven 부재가 아니라 지정 launcher와 `/opt/data/maven`의 실제 실행 근거로 판단한다. 실제 검증은 `maven_verification_cached.py`를 사용한다. 동일 verification request + executable scope의 기존 PASS는 `VERIFICATION_EVIDENCE=REUSED`, `PRIMARY_REUSED=true`로 재사용하고, fresh 실행이 필요한 경우에만 내부 `maven_verification.py` bounded engine을 한 번 호출한다. test/package/verify는 기본 600초, compile은 기본 300초다. 보안 거부는 NOT_EXECUTED이며 미설치 증거가 아니다.
 
 ## Java / Gradle 검증
 
