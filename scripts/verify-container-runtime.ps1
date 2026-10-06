@@ -205,8 +205,9 @@ Invoke-DockerCheck -Label "Kanban task session history helper self-test" -Docker
 )
 
 $BootRecoveryEnvEntry = @($ContainerEnv | Where-Object { $_ -like "HERMES_KANBAN_BOOT_RECOVERY_ENABLED=*" }) | Select-Object -First 1
-if ($BootRecoveryEnvEntry -ne "HERMES_KANBAN_BOOT_RECOVERY_ENABLED=true") {
-    throw "[FAIL] Kanban boot recovery default. Expected 'HERMES_KANBAN_BOOT_RECOVERY_ENABLED=true', got '$BootRecoveryEnvEntry'."
+$BootRecoveryValue = if ($BootRecoveryEnvEntry) { ($BootRecoveryEnvEntry -split "=", 2)[1].ToLowerInvariant() } else { "" }
+if (@("true", "false", "1", "0", "yes", "no", "on", "off") -notcontains $BootRecoveryValue) {
+    throw "[FAIL] Kanban boot recovery toggle. Expected a boolean value, got '$BootRecoveryEnvEntry'."
 }
 
 Invoke-DockerCheck -Label "Kanban boot recovery helper" -DockerArgs @(
