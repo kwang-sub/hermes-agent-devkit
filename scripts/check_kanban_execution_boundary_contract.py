@@ -43,7 +43,7 @@ def check_reference() -> None:
         "process group TERM/KILL/reap",
         "cache / repository / store",
         "Worker startup adapter",
-        "Task body나 startup prompt",
+        "Task status/body/comment",
         "Execution Policy",
     )
 
