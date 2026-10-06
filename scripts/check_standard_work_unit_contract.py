@@ -9,6 +9,7 @@ BREAKDOWN = ROOT / "custom-skills/orchestrator/dev-breakdown/SKILL.md"
 WORKFLOW = ROOT / "custom-skills/orchestrator/dev-workflow-orchestrate/SKILL.md"
 DISPATCH = ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/SKILL.md"
 IMPLEMENT = ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md"
+IMPLEMENT_DETAILS = ROOT / "custom-skills/coder/dev-implement-plan/references/implementation-details.md"
 REVIEW = ROOT / "custom-skills/reviewer/dev-code-review/SKILL.md"
 DATA = ROOT / "custom-skills/shared/dev-data-feature/SKILL.md"
 MODELING = ROOT / "custom-skills/shared/dev-data-modeling/SKILL.md"
@@ -116,6 +117,16 @@ def main() -> int:
         "Standard Flow Verification Contract Gate", "VERIFICATION_PROVIDER_UNAVAILABLE",
         "Session History Gate", "task_session_history.py capture", "TASK_SESSION_HISTORY", "kanban_comment",
         "Bounded Pre-Mutation Impact Scan", "최대 2-hop", "Impact Summary", "Reference Lazy-Load",
+    ))
+
+    require(IMPLEMENT_DETAILS, (
+        "Bounded Pre-Mutation Impact Scan",
+        "Task Snapshot",
+        "1-hop",
+        "2-hop",
+        "IMPACT_SUMMARY",
+        "inline `python3 -c`",
+        "discovery 목적으로 `kanban_show`를 반복하지 않는다",
     ))
 
     require(REVIEW, common + (
