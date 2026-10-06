@@ -12,7 +12,7 @@ Kanban Task와 Hermes 대화 세션의 연결은 **append-only execution history
 
 ## 공통 정책 — SESSION_HISTORY_BEST_EFFORT_V1
 
-Session History는 추적 메타데이터다. `unavailable`만으로 구현/review를 BLOCK하지 않는다. Worker Context, Task/Workspace/승인, Work Unit, Verification Provider의 필수 Gate는 그대로 유지한다. `VERIFICATION_PROVIDER_UNAVAILABLE`을 세션 경고로 바꾸지 않는다.
+Session History는 추적 메타데이터다. `unavailable/error`만으로 구현/review를 BLOCK하지 않는다. Worker Context, Task/Workspace/승인, Work Unit, Verification Provider의 필수 Gate는 그대로 유지한다. `VERIFICATION_PROVIDER_UNAVAILABLE`을 세션 경고로 바꾸지 않는다.
 
 - `captured` (exit 0): 실제 ID를 기록하고 comment delivery를 확인한다.
 - `unavailable` (exit 0): 시작 시에는 pending 추적으로만 유지하고 계속한다. `SESSION_ID=UNAVAILABLE`을 실제 session row나 `TASK_SESSION_HISTORY` marker에 넣지 않는다. finalize에서도 미확인이면 그때만 `TASK_SESSION_HISTORY_WARNING`을 durable comment로 남긴다.
@@ -82,12 +82,15 @@ kanban_show
 
 시작 capture의 `unavailable/error`에서는 durable warning comment를 만들지 않는다. `SESSION_HISTORY_RECHECK_REQUIRED=true`와 sanitized status/reason만 현재 worker 근거에 유지하고 구현/review를 계속한다. 이렇게 시작 시점의 일시적인 session 등록 지연이 Kanban 카드 노이즈로 남지 않게 한다.
 
+finalize 이후에도 추적이 해결되지 않았을 때만 다음 durable warning 형식을 사용한다.
+
 ```text
 TASK_SESSION_HISTORY_WARNING
 - Task ID: <actual task id>
 - Profile: coder | reviewer
-- Status: unavailable
-- Reason: STATE_DB_MISSING | SESSION_MATCH_NOT_FOUND
+- Status: unavailable | error
+- Reason: STATE_DB_MISSING | SESSION_MATCH_NOT_FOUND | STATE_DB_ERROR | HISTORY_DB_ERROR
+- Error Type: <sanitized type | NONE>
 - Action: CONTINUE_WITH_WARNING
 ```
 
