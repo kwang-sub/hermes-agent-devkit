@@ -12,10 +12,16 @@ import json
 import os
 from pathlib import Path
 import re
-import signal
-import subprocess
+import sys
 import time
 import uuid
+
+_CUSTOM_SKILLS_ROOT = Path(__file__).resolve().parents[3]
+_PROCESS_EXECUTION_LIB = _CUSTOM_SKILLS_ROOT / '_lib'
+if str(_PROCESS_EXECUTION_LIB) not in sys.path:
+    sys.path.insert(0, str(_PROCESS_EXECUTION_LIB))
+
+from process_execution import run_to_stream
 
 
 MAX_TAIL_BYTES = 128 * 1024
@@ -29,25 +35,6 @@ def positive_seconds(value: str) -> int:
     if seconds <= 0:
         raise argparse.ArgumentTypeError("timeout must be a positive integer")
     return seconds
-
-
-def stop_group(process: subprocess.Popen[bytes]) -> None:
-    """Reap Maven and its children before returning a timeout result."""
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
-    try:
-        process.wait(timeout=2)
-    except subprocess.TimeoutExpired:
-        pass
-    finally:
-        # A child may survive after the original launcher has already exited.
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        process.wait()
 
 
 def tail(path: Path) -> str:
@@ -91,18 +78,16 @@ def verify(workspace: Path, wrapper: str, args: list[str], launcher: Path,
     with log_path.open("wb") as stream:
         log_path.chmod(0o600)
         try:
-            process = subprocess.Popen(command, cwd=workspace, stdout=stream,
-                                       stderr=subprocess.STDOUT, start_new_session=True)
+            execution = run_to_stream(
+                command,
+                cwd=workspace,
+                stream=stream,
+                timeout_seconds=timeout_seconds,
+            )
             executed = True
-            try:
-                code = process.wait(timeout=timeout_seconds)
-            except subprocess.TimeoutExpired:
-                stop_group(process)
-                code = process.returncode
+            code = execution.returncode
+            if execution.timed_out:
                 blocker = "MAVEN_COMMAND_TIMEOUT"
-            except BaseException:
-                stop_group(process)
-                raise
         except OSError:
             blocker = "MAVEN_LAUNCHER_EXEC_FAILED"
     if blocker == "NONE" and code != 0:
