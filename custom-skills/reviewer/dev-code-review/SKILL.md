@@ -13,7 +13,7 @@ metadata:
 
 # dev-code-review
 
-Reviewer는 같은 Workspace의 미커밋 변경을 독립 검토하며 application/test/config source를 수정하지 않는다. 상세 severity/checklist/retry는 필요할 때만 `references/review-details.md`를 읽는다.
+Reviewer는 같은 Workspace의 미커밋 변경을 독립 검토하며 application/test/config source를 수정하지 않는다. `/opt/data/shared/references/kanban-execution-boundary.md`의 `KANBAN_EXECUTION_BOUNDARY_V1`에 따라 Kanban에서 requirement/AC/state/evidence를 읽되 launcher/timeout/retry/cache 같은 HOW는 Task body에서 재구성하지 않고 현재 role Skill과 canonical runtime/execution 정책을 사용한다. 상세 severity/checklist/retry는 필요할 때만 `references/review-details.md`를 읽는다.
 
 ## 실행 계약
 
