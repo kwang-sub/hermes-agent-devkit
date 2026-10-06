@@ -284,6 +284,7 @@ run_check "Orchestrator Direct Flow contract" python3 scripts/check_direct_flow_
 run_check "Gradle launcher isolation contract" python3 scripts/check_gradle_launcher_contract.py
 run_check "Maven launcher isolation contract" python3 scripts/check_maven_launcher_contract.py
 run_check "Managed Maven executable regression" python3 scripts/test_hermes_maven.py
+run_check "Shared process execution policy" python3 scripts/test_process_execution.py
 run_check "Maven verifier and worker startup delivery" python3 scripts/test_maven_worker_runtime.py
 run_check "Maven cached verification evidence reuse" python3 scripts/test_maven_verification_cached.py
 run_check "Standard Flow Work Unit boundary contract" python3 scripts/check_standard_work_unit_contract.py

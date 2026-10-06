@@ -8,11 +8,17 @@ from pathlib import Path
 import re
 import shlex
 import shutil
-import signal
 import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
+
+_CUSTOM_SKILLS_ROOT = Path(__file__).resolve().parents[3]
+_PROCESS_EXECUTION_LIB = _CUSTOM_SKILLS_ROOT / '_lib'
+if str(_PROCESS_EXECUTION_LIB) not in sys.path:
+    sys.path.insert(0, str(_PROCESS_EXECUTION_LIB))
+
+from process_execution import run_capture as run_process_capture
 
 DEFAULT_CAPABILITY_TIMEOUT = int(os.getenv('HERMES_GRADLE_CAPABILITY_TIMEOUT_SECONDS', '180'))
 DEFAULT_VERIFY_TIMEOUT = int(os.getenv('HERMES_GRADLE_VERIFY_TIMEOUT_SECONDS', '240'))
@@ -333,26 +339,6 @@ def capture_java_thread_dumps(leader_pid: int) -> list[JavaThreadDump]:
     return dumps
 
 
-def _terminate_group(proc: subprocess.Popen[str]) -> None:
-    try:
-        os.killpg(proc.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    try:
-        proc.wait(timeout=3)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-    try:
-        os.killpg(proc.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
-    try:
-        proc.wait(timeout=3)
-    except subprocess.TimeoutExpired:
-        pass
-
-
 def run_bounded(
     cmd: list[str],
     cwd: Path,
@@ -360,37 +346,33 @@ def run_bounded(
     *,
     capture_java_diagnostics: bool = False,
 ) -> RunResult:
-    started = time.monotonic()
+    timeout_processes: list[str] = []
+    timeout_thread_dumps: list[JavaThreadDump] = []
+
+    def timeout_probe(proc: subprocess.Popen) -> None:
+        timeout_processes.extend(capture_process_group(proc.pid))
+        if capture_java_diagnostics:
+            timeout_thread_dumps.extend(capture_java_thread_dumps(proc.pid))
+
     env = os.environ.copy()
     env['HERMES_GRADLE_BOUNDED_HELPER'] = '1'
-    proc = subprocess.Popen(
+    execution, stdout, stderr = run_process_capture(
         cmd,
         cwd=cwd,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=True,
+        timeout_seconds=timeout,
         env=env,
+        timeout_probe=timeout_probe,
     )
-    try:
-        stdout, stderr = proc.communicate(timeout=timeout)
-        return RunResult(cmd, proc.returncode, stdout, stderr, time.monotonic() - started)
-    except subprocess.TimeoutExpired:
-        snapshots = capture_process_group(proc.pid)
-        thread_dumps = capture_java_thread_dumps(proc.pid) if capture_java_diagnostics else []
-        _terminate_group(proc)
-        stdout, stderr = proc.communicate()
-        return RunResult(
-            cmd,
-            None,
-            stdout,
-            stderr,
-            time.monotonic() - started,
-            timed_out=True,
-            timeout_processes=snapshots,
-            timeout_thread_dumps=thread_dumps,
-        )
-
+    return RunResult(
+        cmd,
+        None if execution.timed_out else execution.returncode,
+        stdout,
+        stderr,
+        execution.duration,
+        timed_out=execution.timed_out,
+        timeout_processes=timeout_processes,
+        timeout_thread_dumps=timeout_thread_dumps,
+    )
 
 def compact_tail(result: RunResult) -> str:
     text = '\n'.join(part for part in (result.stdout.strip(), result.stderr.strip()) if part)
