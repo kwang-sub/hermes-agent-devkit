@@ -17,6 +17,7 @@ Session History는 추적 메타데이터다. `unavailable`만으로 구현/revi
 - `captured` (exit 0): 실제 ID를 기록하고 comment delivery를 확인한다.
 - `unavailable` (exit 0): `TASK_SESSION_HISTORY_WARNING`과 원인을 남기고 계속한다. `SESSION_ID=UNAVAILABLE`을 실제 session row나 `TASK_SESSION_HISTORY` marker에 넣지 않는다.
 - `error` (exit 3): DB 권한/손상/schema/helper 오류다. 시작 시에는 기존 capability 오류 처리로 구현/review mutation 전에 중단한다. 세션 미확인과 동일하게 삼키지 않는다.
+- `error` (exit 0): state/history DB 조회·저장 같은 추적 계층 오류다. `TASK_SESSION_HISTORY_WARNING`과 sanitized error type을 남기고 구현/review를 계속한다. `SESSION_HISTORY_RECHECK_REQUIRED=true`를 유지하고 finalize에서 1회 보완한다.
 - `invalid` / CLI 입력 오류 (exit 2): Task/Profile/Workspace 등 입력 계약을 수정해야 한다. 기존 context blocker를 유지한다.
 
 `STATE_DB_MISSING`과 `SESSION_MATCH_NOT_FOUND`를 구분한다. 진단을 위해 raw 대화 내용, credential, 다른 프로젝트 DB를 수집하지 않는다. 조회가 이른 시점이라는 가정만으로 원인을 단정하지 않는다.
@@ -109,7 +110,7 @@ python3 /opt/devkit/bin/task_session_history.py ack-comment \
 
 Reviewer는 `--profile reviewer`를 사용한다. capture에 별도 `--history-db`를 썼다면 ack에도 같은 경로를 전달한다. 실제 comment 성공/존재 확인 없이 ack하지 않는다. marker가 이미 있으면 ack만 하므로 기존 DB 업그레이드나 ack 재시도에서 중복 comment하지 않는다.
 
-시작 시 captured marker 기록/receipt가 실패하면 기존 capability 오류 처리로 mutation 전에 중단한다. 원인은 세션 미확인이 아니라 실제 기록 오류로 구분한다. 성공한 receipt 뒤에만 `SESSION_HISTORY_RECHECK_REQUIRED=false`로 관리한다.
+시작 시 captured marker 기록/receipt가 실패하면 `TASK_SESSION_HISTORY_WARNING`으로 남기고 mutation/review를 계속한다. 원인은 세션 미확인과 구분해 실제 추적 기록 오류로 보존하며 `SESSION_HISTORY_RECHECK_REQUIRED=true`를 유지한다. 성공한 receipt 뒤에만 `SESSION_HISTORY_RECHECK_REQUIRED=false`로 관리한다.
 
 ## 인계·종료 직전 보완 — SESSION_HISTORY_FINALIZE
 
