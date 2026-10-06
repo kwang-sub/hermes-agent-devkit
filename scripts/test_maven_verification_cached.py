@@ -84,6 +84,8 @@ class CachedMavenVerificationTest(unittest.TestCase):
         self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
         self.assertIn("VERIFICATION_EVIDENCE=EXECUTED", first.stdout)
         self.assertIn("PRIMARY_REUSED=false", first.stdout)
+        fresh_evidence = [line for line in first.stdout.splitlines() if line.startswith("MAVEN_EVIDENCE=")][-1]
+        self.assertIn(str(self.evidence), fresh_evidence)
         self.assertEqual(self.counter_value(), 1)
 
         second = self.run_helper()
