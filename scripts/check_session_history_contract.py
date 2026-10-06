@@ -28,6 +28,7 @@ def check_workers(root: Path) -> None:
         "SESSION_HISTORY_COMMENT_PENDING", "ack-comment", "0.5초", "최대 3회", "1회 조회",
         "VERIFICATION_PROVIDER_UNAVAILABLE", "terminal transition 후", "백그라운드",
         "devkit-task-session-history.db", "task_session_history_comments",
+        "error` (exit 0)", "SESSION_HISTORY_RECHECK_REQUIRED=true",
     ))
     common = (POLICY, FINALIZE, "session-history-rules.md", "--phase start", "--phase finalize",
               "SESSION_HISTORY_COMMENT_PENDING", "TASK_SESSION_HISTORY_WARNING", "ack-comment",
@@ -40,6 +41,9 @@ def check_workers(root: Path) -> None:
         "Session ID를 추측하지 않고 mutation 전에 capability blocker로 종료한다",
         "Session ID를 확인할 수 없거나 comment 기록이 실패하면 review mutation 전에 capability blocker로 종료한다",
         "Session History가 enabled된 DevKit에서 기록 없이 구현을 진행하지 않는다",
+        "captured marker 기록/receipt가 실패하면 기존 capability 오류 처리로 mutation 전에 중단한다",
+        "captured marker·receipt 기록 오류는 기존 capability 오류로 source mutation 전에 중단한다",
+        "captured marker·receipt 기록 오류는 기존 capability 오류로 review mutation 전에 중단한다",
     )
     reference = (root / REFERENCE).read_text(encoding="utf-8")
     for rule in old_rules:
