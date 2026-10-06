@@ -203,7 +203,7 @@ Git Workspace에서는 Workspace와 Branch가 별도 Gate다. Non-Git Workspace�
 
 ## 실행·검증 계획 승인 Gate
 
-Plan Approval은 Implementation만 승인하지 않고 **Execution Contract + Verification Contract**를 함께 승인한다. 일반 메시지에서 반드시 다음 canonical heading을 사용한다.
+Plan Approval은 Implementation만 승인하지 않고 **Execution Contract + Verification Contract**를 함께 승인한다. 여기서 Execution Contract는 구현 순서·범위·환경 제약 같은 승인 대상이며 launcher path, timeout, retry, cache, process cleanup 같은 runtime HOW를 Kanban 계약으로 승인하는 단계가 아니다. runtime HOW는 `/opt/data/shared/references/kanban-execution-boundary.md`의 `KANBAN_EXECUTION_BOUNDARY_V1`에 따라 역할 Skill/공통 Execution 계층이 책임진다. 일반 메시지에서 반드시 다음 canonical heading을 사용한다.
 
 ```text
 ## 🛠️ **실행 계획**

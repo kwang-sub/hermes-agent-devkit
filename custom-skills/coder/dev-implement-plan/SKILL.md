@@ -13,7 +13,7 @@ metadata:
 
 # dev-implement-plan
 
-Coder는 새 mutation request의 실행 방식을 선택하거나 self-dispatch하지 않고 Orchestrator가 생성한 Kanban Task만 수행한다. Direct/Standard Task 모두 `/opt/data/shared/references/standard-work-unit-rules.md`와 `/opt/data/shared/references/session-history-rules.md`를 적용한다. 상세 절차·retry·verification 분류가 필요할 때만 `references/implementation-details.md`를 읽는다.
+Coder는 새 mutation request의 실행 방식을 선택하거나 self-dispatch하지 않고 Orchestrator가 생성한 Kanban Task만 수행한다. Direct/Standard Task 모두 `/opt/data/shared/references/standard-work-unit-rules.md`, `/opt/data/shared/references/session-history-rules.md`, `/opt/data/shared/references/kanban-execution-boundary.md`의 `KANBAN_EXECUTION_BOUNDARY_V1`을 적용한다. Kanban은 WHAT/STATE의 source of truth이며 launcher/timeout/retry/cache/process cleanup 같은 HOW는 이 Skill과 canonical runtime/execution 정책에서 결정한다. 상세 절차·retry·verification 분류가 필요할 때만 `references/implementation-details.md`를 읽는다.
 
 ## 시작 계약 전달
 
