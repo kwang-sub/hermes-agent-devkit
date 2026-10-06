@@ -288,6 +288,7 @@ run_check "Shared process execution policy" python3 scripts/test_process_executi
 run_check "Maven verifier and worker startup delivery" python3 scripts/test_maven_worker_runtime.py
 run_check "Maven cached verification evidence reuse" python3 scripts/test_maven_verification_cached.py
 run_check "Standard Flow Work Unit boundary contract" python3 scripts/check_standard_work_unit_contract.py
+run_check "Kanban execution responsibility boundary" python3 scripts/check_kanban_execution_boundary_contract.py
 run_check "Markdown API specification contract" python3 scripts/check_api_spec_contract.py
 run_check "DevKit updater contract" python3 scripts/check_update_devkit_contract.py
 run_check "Hermes TUI semantic input discovery patch" python3 scripts/patch_hermes_tui_semantic_input.py --self-test
