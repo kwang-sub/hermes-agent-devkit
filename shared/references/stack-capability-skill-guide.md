@@ -382,18 +382,16 @@ enum/paging/auth
 
 ## 14. Verification
 
-Frontend/Node는 기존 package manager/test runner를 사용한다. dependency 변경이면 package manager compatibility와 canonical lockfile 검증을 먼저 통과해야 한다.
+Frontend/Node는 기존 package manager/test runner와 `VERIFICATION_LEVEL_POLICY_V1`을 사용한다. dependency 변경이면 package manager compatibility와 canonical lockfile 검증을 먼저 통과해야 한다. 일반 source 변경의 기본 검증은 project canonical typecheck/check이며 build는 기본 단계가 아니다.
 
 ```text
 Frontend Environment Gate + pnpm build policy (Node 기반 Frontend이면 항상)
 → Official docs/version evidence (외부 기술 변경 시)
 → Node dependency preflight (dependency mutation 시)
 → Tirith package preflight (해당 시)
-→ affected functional/component test
-→ typecheck
-→ lint
-→ related integration/e2e
-→ 필요한 경우 build
+→ STATIC_COMPILE: project canonical typecheck/check (+ project-mandatory lint)
+→ TARGETED_TEST: affected functional/component/integration/e2e 중 실제 risk/AC에 필요한 범위
+→ PACKAGE_BUILD: build/dependency/framework build-time/deploy artifact 영향이 있을 때만 build
 → 필요한 경우 DESIGN_CONFORMANCE
 → 승인 후 필요한 경우 VISUAL_REGRESSION baseline/검증
 ```
