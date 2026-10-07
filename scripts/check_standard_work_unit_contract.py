@@ -56,7 +56,7 @@ def main() -> int:
         "Job ID", "Implementation Summary", "Session IDs", "Parent Session 추적", "전체 하위 카드를 미리 생성하지 않는다",
         "다음 Child를 자동 dispatch하지 않는다",
         "kanban_create.parents", "Execution Ordering", "Depends On Task IDs",
-        "Parent Task ID", "Relation: CHILD_WORK_UNIT", "native `parents`는 실행 dependency",
+        "Parent Task ID", "Relation: CHILD_WORK_UNIT",
         "PARENT_TRACKING_METADATA_MISMATCH", "NATIVE_PARENT_LINK_PRESENT",
         "LEGACY_NATIVE_PARENT_LINK", "구조적 Parent Tracking에 사용하지 않는다",
         "native task_links: NONE",
@@ -95,6 +95,7 @@ def main() -> int:
         "repository-wide/exhaustive impact analysis", "Bounded Pre-Mutation Impact Scan",
         "PARENT_TRACKING_CLASSIFIED", "작업 관리 방식 승인", "NEW_PARENT", "LINK_EXISTING_PARENT", "PROMOTE_TO_PARENT", "[부모]", "[자식]",
         "kanban_create.parents", "Execution Ordering", "Depends On Task IDs",
+        "Parent Task ID", "Relation: CHILD_WORK_UNIT", "native `parents`는 실행 dependency",
     ))
 
     require(DISPATCH, common + (
