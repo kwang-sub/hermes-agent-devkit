@@ -16,6 +16,7 @@ MODELING = ROOT / "custom-skills/shared/dev-data-modeling/SKILL.md"
 MIGRATION = ROOT / "custom-skills/shared/dev-db-migration/SKILL.md"
 PARENT = ROOT / "shared/references/parent-tracking-rules.md"
 SESSION = ROOT / "shared/references/session-history-rules.md"
+RELATION_PREVIEW = ROOT / "scripts/patch_hermes_kanban_relation_preview.py"
 
 
 def text(path: Path) -> str:
@@ -66,6 +67,18 @@ def main() -> int:
         "TASK_SESSION_HISTORY", "append-only", "일반 단일 카드", "[자식]", "[부모]",
         "devkit-task-session-history.db", "UNAVAILABLE", "Session ID를 추측하지 않는다",
     ))
+
+    require(RELATION_PREVIEW, (
+        "DEVKIT_KANBAN_RELATION_PREVIEW_API_V2",
+        "_devkit_tracking_parent_id",
+        "Parent Task ID",
+        "CHILD_WORK_UNIT",
+        "Native task_links are Hermes execution dependencies",
+        "SELECT id, title, status, body FROM tasks ORDER BY id",
+        "t.relation_preview.progress",
+    ))
+    if "Native task_links stays authoritative" in text(RELATION_PREVIEW):
+        raise SystemExit("Kanban relation preview must not treat native task_links as DevKit tracking hierarchy")
 
     require(BREAKDOWN, common + (
         "Implementation Tasks를 만들기 전에 Work Unit Class/Boundary를 확정",
