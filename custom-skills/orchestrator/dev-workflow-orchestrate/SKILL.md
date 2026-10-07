@@ -1,7 +1,7 @@
 ---
 name: dev-workflow-orchestrate
 description: Jira/text 개발 요청의 project·work unit·requirement delta·API spec·workspace·branch·Coder 모델·plan을 독립 clarify Gate로 승인한 뒤 단일 Work Unit만 Kanban dispatch하는 orchestrator 전용 workflow.
-version: 0.19.0
+version: 0.20.0
 author: local
 platforms: [linux]
 metadata:
@@ -159,7 +159,7 @@ Parent tracking 구조를 바꾸는 경우 다음 독립 Gate를 사용한다.
 
 Parent는 `Execution: NON_DISPATCH`이며 Coder/Reviewer로 dispatch하지 않는다. 전체 Child 카드를 미리 만들지 않고 현재 Standard Task만 생성한다. Child 완료 후 다음 Child를 자동 실행하지 않으며, 다음 작업은 새 Standard Flow에서 기존 Parent를 선택해 진행한다.
 
-Parent/Child 계층과 실행 순서는 반드시 분리한다. `kanban_create.parents`에는 승인된 구조적 Parent Task ID만 사용한다. 직전 Task가 선행 조건이면 Parent로 바꾸지 않고 현재 Task의 `Execution Ordering: SEQUENTIAL / Depends On Task IDs`에 기록한다. Parent 자체의 상태는 Child 실행 여부를 결정하지 않는다.
+Parent/Child 계층과 실행 순서는 반드시 분리한다. 구조적 Parent는 Child body의 `Parent Task ID` / `Relation: CHILD_WORK_UNIT` metadata로만 기록하고 `kanban_create.parents`는 비워 둔다. Hermes native `parents`는 실행 dependency 의미이므로 관리 관계 표현에 사용하지 않는다. 직전 Task가 선행 조건이면 현재 Task의 `Execution Ordering: SEQUENTIAL / Depends On Task IDs`에 기록하고 Orchestrator가 완료 상태를 확인한다. Parent 자체의 상태는 Child 실행 여부를 결정하지 않는다.
 
 ## API 규격 승인 Gate
 
