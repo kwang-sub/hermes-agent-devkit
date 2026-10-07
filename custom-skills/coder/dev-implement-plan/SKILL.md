@@ -1,7 +1,7 @@
 ---
 name: dev-implement-plan
 description: Orchestrator가 승인·dispatch한 Direct 또는 Standard Kanban 단일 Work Unit을 할당 Workspace에서 구현·검증하고 항상 Reviewer에게 인계한다.
-version: 0.29.0
+version: 0.30.0
 author: local
 platforms: [linux]
 metadata:
@@ -13,7 +13,7 @@ metadata:
 
 # dev-implement-plan
 
-Coder는 새 mutation request의 실행 방식을 선택하거나 self-dispatch하지 않고 Orchestrator가 생성한 Kanban Task만 수행한다. Direct/Standard Task 모두 `/opt/data/shared/references/standard-work-unit-rules.md`, `/opt/data/shared/references/session-history-rules.md`, `/opt/data/shared/references/kanban-execution-boundary.md`의 `KANBAN_EXECUTION_BOUNDARY_V1`을 적용한다. Kanban은 WHAT/STATE의 source of truth이며 launcher/timeout/retry/cache/process cleanup 같은 HOW는 이 Skill과 canonical runtime/execution 정책에서 결정한다. 상세 절차·retry·verification 분류가 필요할 때만 `references/implementation-details.md`를 읽는다.
+Coder는 새 mutation request의 실행 방식을 선택하거나 self-dispatch하지 않고 Orchestrator가 생성한 Kanban Task만 수행한다. Direct/Standard Task 모두 `/opt/data/shared/references/standard-work-unit-rules.md`, `/opt/data/shared/references/session-history-rules.md`, `/opt/data/shared/references/kanban-execution-boundary.md`의 `KANBAN_EXECUTION_BOUNDARY_V1`, `/opt/data/shared/references/verification-level-policy.md`의 `VERIFICATION_LEVEL_POLICY_V1`을 적용한다. Kanban은 WHAT/STATE의 source of truth이며 launcher/timeout/retry/cache/process cleanup 같은 HOW는 이 Skill과 canonical runtime/execution 정책에서 결정한다. 상세 절차·retry·verification 분류가 필요할 때만 `references/implementation-details.md`를 읽는다.
 
 ## 시작 계약 전달
 
@@ -185,6 +185,9 @@ Standard Flow Coder는 구현 전에 Task body의 승인된 Verification Contrac
 
 ```text
 Verification Target
+Verification Level
+Verification Escalation Reason
+Project Verification Source
 Verification Method
 Verification Provider
 Environment Dependency
@@ -206,14 +209,17 @@ isolated restore가 `ERR_PNPM_IGNORED_BUILDS`로 실패하면 일반 build 실�
 
 이미 `pnpm-workspace.yaml > allowBuilds`에 동일 matcher가 boolean으로 결정되어 있으면 재승인을 요청하지 않는다. `dangerouslyAllowAllBuilds=true`, `strictDepBuilds=false`, `pnpm approve-builds --all`, bare package 전체 true 승인은 자동 사용하지 않는다.
 
-Gate PASS 이후 test/lint/typecheck/build는 `node_runtime.py` Linux isolated workspace만 사용한다.
+Gate PASS 이후 Node 검증은 `VERIFICATION_LEVEL_POLICY_V1`에 따라 최소 수준부터 선택하고 `node_runtime.py` Linux isolated workspace만 사용한다. 일반 TypeScript/source 변경의 기본은 project canonical `typecheck`/`check`이며, `build`는 `PACKAGE_BUILD` 승격 근거가 있을 때만 실행한다.
 
-Maven 프로젝트는 `/opt/data/shared/references/maven-worker-runtime.md`를 적용한다. 진단은 `/usr/local/bin/hermes-maven --diagnose ./mvnw`, 승인 compile/test/package/verify는 `/opt/custom-skills/coder/dev-implement-plan/scripts/maven_verification_cached.py`를 canonical 경로로 실행한다. 이 helper가 동일 verification request + executable scope의 PASS fingerprint를 재사용하며 fresh 실행이 필요할 때만 내부 `maven_verification.py` bounded engine을 호출한다. `hermes-java ./mvnw`도 관리형 Maven에 위임한다. raw `mvn`/`./mvnw` 또는 HOME `.m2` 탐색으로 우회하지 않으며, `READY`/빈 cache/미실행 보안 거부를 compile 결과와 혼동하지 않는다. `MAVEN_STATUS=BLOCKED`이면 실제 blocker/evidence를 기록하고 동일 명령 재탐색·반복을 중단한다. 기본 compile 300초, test/package/verify 600초이며 승인된 HTTP 검증 요구는 그대로 보존한다.
+Maven 프로젝트는 `/opt/data/shared/references/maven-worker-runtime.md`와 `VERIFICATION_LEVEL_POLICY_V1`을 적용한다. 일반 source 변경은 `COMPILE` mode의 project canonical compile/testCompile 계열부터 시작하고, 관련 behavior 검증이 필요할 때 `TARGETED_TEST`, artifact/build 자체가 scope일 때만 `PACKAGE`/`VERIFY`로 승격한다. 진단은 `/usr/local/bin/hermes-maven --diagnose ./mvnw`, 실제 검증은 `/opt/custom-skills/coder/dev-implement-plan/scripts/maven_verification_cached.py`를 canonical 경로로 실행한다. 동일 verification request + executable scope의 PASS fingerprint는 재사용한다. raw `mvn`/`./mvnw` 또는 HOME `.m2` 탐색으로 우회하지 않으며 `MAVEN_STATUS=BLOCKED`이면 실제 blocker/evidence를 기록한다. 불필요한 `PACKAGE_BUILD`를 실행해 생긴 timeout을 현재 Task blocker로 만들지 않는다.
 
-Java/Gradle은 기존 toolchain과 canonical cached verification helper를 사용하고 동일 PASS fingerprint를 불필요하게 재실행하지 않는다. raw `./gradlew ...` 또는 `gradle ...` 직접 실행은 금지하며, 단순 bounded 진단이 필요하면 `hermes-java ./gradlew ...`, COMPILE/TARGETED_TEST는 `gradle_verification_cached.py`만 사용한다. 최종 scope 확정 후 **scoped change_summary.py**를 실행한다. Standard Flow에서 `--include` 없이 호출하지 않는다. Git Workspace는 기존 diff/fingerprint handoff를 사용한다. Non-Git Workspace는 `change_summary.py --version-control none --include <changed-path>`로 Coder가 실제 변경 파일을 명시하며 Hermes가 snapshot이나 자동 diff를 만들지 않는다. 결과의 Changed Files와 verification evidence를 handoff한다.
+Java/Gradle은 기존 toolchain과 `VERIFICATION_LEVEL_POLICY_V1`의 최소 수준을 적용하고 canonical cached verification helper를 사용한다. 일반 source 변경은 COMPILE, behavior 검증이 필요할 때 TARGETED_TEST를 사용하며 `build`/`assemble`/`bootJar`/`war` 같은 artifact task는 `PACKAGE_BUILD` 승격 근거가 있을 때만 실행한다. 동일 PASS fingerprint는 불필요하게 재실행하지 않는다. raw `./gradlew ...` 또는 `gradle ...` 직접 실행은 금지하며, 단순 bounded 진단이 필요하면 `hermes-java ./gradlew ...`, COMPILE/TARGETED_TEST는 `gradle_verification_cached.py`만 사용한다. 최종 scope 확정 후 **scoped change_summary.py**를 실행한다. Standard Flow에서 `--include` 없이 호출하지 않는다. Git Workspace는 기존 diff/fingerprint handoff를 사용한다. Non-Git Workspace는 `change_summary.py --version-control none --include <changed-path>`로 Coder가 실제 변경 파일을 명시하며 Hermes가 snapshot이나 자동 diff를 만들지 않는다. 결과의 Changed Files와 verification evidence를 handoff한다.
 
 ```text
 Work Unit Boundary Respected: true
+Verification Level: STATIC_COMPILE | TARGETED_TEST | PACKAGE_BUILD
+Verification Escalation Reason: <NONE | evidence>
+Project Verification Source: TASK_APPROVED | PROJECT_SCRIPT | CI | BUILD_TOOL_DEFAULT
 Verification Final: true
 Review Risk: REVIEW_REQUIRED
 ```
