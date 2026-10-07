@@ -57,7 +57,7 @@ Direct에서 생략하는 것은 `dev-breakdown`의 광범위한 planning 단계
 - API Spec Gate = NOT_REQUIRED
 - Infrastructure Impact = NO
 - 별도 설계 artifact가 선행 input으로 필요하지 않음
-- bounded compile/targeted test로 검증 가능
+- `VERIFICATION_LEVEL_POLICY_V1`의 `STATIC_COMPILE` 또는 bounded `TARGETED_TEST`로 검증 가능하며 artifact/package/build 자체 검증이 필수면 Standard로 보낸다.
 ```
 
 다음 중 하나면 **Standard Flow**다.

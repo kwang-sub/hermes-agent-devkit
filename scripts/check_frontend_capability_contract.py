@@ -65,8 +65,14 @@ nextjs_reference = nextjs_reference_path.read_text(encoding="utf-8")
 figma = (ROOT / "custom-skills/shared/dev-figma-design/SKILL.md").read_text(encoding="utf-8")
 figma_script = (ROOT / "custom-skills/shared/dev-figma-design/scripts/figma_context.py").read_text(encoding="utf-8")
 stack = (ROOT / "shared/references/stack-capability-skill-guide.md").read_text(encoding="utf-8")
+verification_policy = (ROOT / "shared/references/verification-level-policy.md").read_text(encoding="utf-8")
 
 checks = {
+    "verification level policy": (verification_policy, (
+        "VERIFICATION_LEVEL_POLICY_V1", "STATIC_COMPILE", "TARGETED_TEST", "PACKAGE_BUILD",
+        "일반 application source 변경의 기본값이 아니다", "Node / TypeScript",
+        "Project Verification Source",
+    )),
     "project pattern": (pattern, (
         "dev-tech-dispatch", "dev-frontend-feature", "dev-design-reference", "Frontend Capability Hints",
         "Frontend Mode: REFERENCE_DRIVEN | CODE_DRIVEN", "Design Source: IMAGE | FIGMA | EXISTING_CODE",
@@ -104,6 +110,8 @@ checks = {
     )),
     "frontend entry": (frontend, (
         "canonical entry", "REFERENCE_DRIVEN", "CODE_DRIVEN",
+        "VERIFICATION_LEVEL_POLICY_V1", "STATIC_COMPILE", "TARGETED_TEST", "PACKAGE_BUILD",
+        "일반 TypeScript/React source 변경의 기본은 project canonical typecheck/check",
         "View Strategy / Implementation Architecture", "SHARED", "RESPONSIVE", "HYBRID", "SPLIT_VIEW",
         "src/features/<feature>/", "Shared / Split 책임", "API Boundary", "Desktop/Mobile Verification Matrix",
         "Design Source", "IMAGE", "FIGMA", "EXISTING_CODE", "dev-design-reference",
@@ -128,6 +136,9 @@ checks = {
     )),
     "node dependency skill": (node_dependencies, (
         "pnpm 하나만 사용한다", "devEngines.runtime", "devEngines.packageManager",
+        "Node Verification Level Boundary", "VERIFICATION_LEVEL_POLICY_V1",
+        "STATIC_COMPILE", "TARGETED_TEST", "PACKAGE_BUILD",
+        "일반 Node/TypeScript source 변경은 `pnpm run build`를 기본 final gate로 사용하지 않는다",
         "pnpm-lock.yaml", "package-lock.json", "migration blocker", "PACKAGE_MANAGER_ROOT",
         "Frontend Environment Gate", "node_environment_gate.py", "PROJECT_TOOLCHAIN_MIGRATION_REQUIRED",
         "SOURCE_VERIFICATION_POLICY=FORBIDDEN", "source worktree", "fallback",
@@ -244,6 +255,9 @@ checks = {
     )),
     "frontend test": (frontend_test, (
         "Storybook", "Playwright", "FUNCTIONAL", "COMPONENT", "E2E",
+        "Verification Level / Budget", "VERIFICATION_LEVEL_POLICY_V1",
+        "STATIC_COMPILE", "TARGETED_TEST", "PACKAGE_BUILD",
+        "일반 `.ts/.tsx` source 수정에서 `pnpm run build`를 기본 final gate로 실행하지 않는다",
         "View Strategy / Platform Verification", "Desktop/Mobile Verification Matrix", "Shared owner check",
         "VISUAL_CONFORMANCE", "VISUAL_REGRESSION", "Design Conformance", "Visual Regression",
         "Approved Implementation", "Browser Screenshot Golden", "toHaveScreenshot",
@@ -299,7 +313,9 @@ checks = {
         "https://api.figma.com", "X-Figma-Token", "Authorization", "/v1/files/", "/v1/images/", "HERMES_WRITE_SAFE_ROOT", "MAX_DEPTH = 6",
     )),
     "stack guide": (stack, (
-        "dev-frontend-feature", "dev-design-reference", "dev-official-docs-context", "dev-typescript-guidelines", "dev-frontend-guidelines",
+        "dev-frontend-feature",
+        "VERIFICATION_LEVEL_POLICY_V1", "STATIC_COMPILE", "TARGETED_TEST", "PACKAGE_BUILD",
+        "일반 source 변경의 기본 검증은 project canonical typecheck/check이며 build는 기본 단계가 아니다", "dev-design-reference", "dev-official-docs-context", "dev-typescript-guidelines", "dev-frontend-guidelines",
         "dev-nextjs-feature", "dev-node-dependencies", "dev-figma-design", "REFERENCE_DRIVEN", "CODE_DRIVEN",
         "실제 installed/resolved version", "DEPENDENCY_DECLARATION_COMPATIBILITY", "EXTRANEOUS", "analysis_incomplete", "Tirith",
         "DESIGN_CONFORMANCE", "VISUAL_REGRESSION", "Storybook", "Stack Detection != Skill Loading",

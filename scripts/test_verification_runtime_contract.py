@@ -35,6 +35,43 @@ def main() -> int:
 
     implement = (ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md").read_text(encoding="utf-8")
     implement_details = (ROOT / "custom-skills/coder/dev-implement-plan/references/implementation-details.md").read_text(encoding="utf-8")
+    verification_policy = (ROOT / "shared/references/verification-level-policy.md").read_text(encoding="utf-8")
+    breakdown = (ROOT / "custom-skills/orchestrator/dev-breakdown/SKILL.md").read_text(encoding="utf-8")
+    direct_flow = (ROOT / "custom-skills/orchestrator/dev-direct-flow/SKILL.md").read_text(encoding="utf-8")
+    require(
+        verification_policy,
+        (
+            "VERIFICATION_LEVEL_POLICY_V1",
+            "STATIC_COMPILE",
+            "TARGETED_TEST",
+            "PACKAGE_BUILD",
+            "일반 application source 변경의 기본값이 아니다",
+            "Project Verification Source",
+            "Maven",
+            "Gradle",
+            "Node / TypeScript",
+        ),
+        "risk-based verification level policy",
+    )
+    require(
+        breakdown,
+        (
+            "VERIFICATION_LEVEL_POLICY_V1",
+            "Verification Level: STATIC_COMPILE | TARGETED_TEST | PACKAGE_BUILD",
+            "일반 source 변경의 기본 검증으로 계획하지 않는다",
+        ),
+        "orchestrator verification level planning",
+    )
+    require(
+        direct_flow,
+        (
+            "VERIFICATION_LEVEL_POLICY_V1",
+            "STATIC_COMPILE",
+            "TARGETED_TEST",
+            "artifact/package/build 자체 검증이 필수면 Standard",
+        ),
+        "direct-flow verification level boundary",
+    )
     require(
         implement,
         (
@@ -44,6 +81,8 @@ def main() -> int:
             "scoped change_summary.py",
             "kanban_request_review | kanban_block",
             "references/implementation-details.md",
+            "VERIFICATION_LEVEL_POLICY_V1",
+            "Verification Level: STATIC_COMPILE | TARGETED_TEST | PACKAGE_BUILD",
         ),
         "dev-implement-plan compact runtime entry",
     )
@@ -74,6 +113,11 @@ def main() -> int:
             "fresh Gradle verification을 반드시 다시 실행한다",
             "GRADLE_STATUS=BLOCKED",
             "kanban_block",
+            "Risk-based Verification Level",
+            "STATIC_COMPILE",
+            "TARGETED_TEST",
+            "PACKAGE_BUILD",
+            "단순 TypeScript/React source 변경에서 `pnpm run build`를 기본 final gate로 실행하지 않는다",
         ),
         "dev-implement-plan runtime detail policy",
     )
@@ -157,6 +201,8 @@ def main() -> int:
             "GRADLE_STATUS=BLOCKED",
             "hermes-java",
             "references/review-details.md",
+            "VERIFICATION_LEVEL_POLICY_V1",
+            "Reviewer는 독립성 확보만을 이유로 `STATIC_COMPILE`을 `PACKAGE_BUILD`로 승격하지 않으며",
         ),
         "reviewer compact verification entry",
     )
@@ -169,6 +215,8 @@ def main() -> int:
             "재실행이 **필수**인 경우",
             "Gradle primary를 다시 실행하면 안 된다",
             "GRADLE_STATUS=BLOCKED",
+            "Verification Level: STATIC_COMPILE | TARGETED_TEST | PACKAGE_BUILD",
+            "package/build를 추가 실행하지 않는다",
         ),
         "reviewer verification reuse detail policy",
     )

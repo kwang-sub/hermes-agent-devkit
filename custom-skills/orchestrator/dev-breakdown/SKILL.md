@@ -1,7 +1,7 @@
 ---
 name: dev-breakdown
 description: managed 프로젝트의 실제 코드·디자인 Reference·데이터 근거와 기존 project pattern으로 단일 Work Unit의 한국어 Implementation Plan을 생성하며 구현하지 않는 orchestrator 전용 skill.
-version: 0.19.0
+version: 0.20.0
 author: local
 platforms: [linux]
 metadata:
@@ -193,10 +193,13 @@ Frontend canonical Applicable Skill은 `dev-frontend-feature`. 필요 시 `dev-a
 
 ## Verification Plan 계약
 
-Standard Flow는 구현 전에 검증 방식을 선정한다. Coder가 구현 후 임의로 검증 provider를 발명하는 구조를 사용하지 않는다.
+Standard Flow는 구현 전에 `/opt/data/shared/references/verification-level-policy.md`의 `VERIFICATION_LEVEL_POLICY_V1`로 검증 수준과 방식을 선정한다. 기본 후보는 `STATIC_COMPILE`이며 실제 behavior/AC가 필요하면 `TARGETED_TEST`, artifact/build 자체가 영향 범위일 때만 `PACKAGE_BUILD`로 승격한다. Coder가 구현 후 임의로 검증 provider를 발명하는 구조를 사용하지 않는다.
 
 ```text
 Verification Target: <무엇을 증명할지>
+Verification Level: STATIC_COMPILE | TARGETED_TEST | PACKAGE_BUILD
+Verification Escalation Reason: <NONE | 구체 근거>
+Project Verification Source: TASK_APPROVED | PROJECT_SCRIPT | CI | BUILD_TOOL_DEFAULT
 Verification Method: <canonical command/script/test>
 Verification Provider: PROJECT_CANONICAL | LOCAL_RUNTIME | DOCKER | TESTCONTAINERS | CI | EXTERNAL_SERVICE | NONE
 Environment Dependency: NONE | REQUIRED
@@ -206,6 +209,7 @@ Fallback Policy: REAPPROVAL_REQUIRED | NOT_REQUIRED
 ```
 
 - compile/test/lint/typecheck/migration_guard처럼 현재 project/toolchain에서 바로 수행 가능한 표준 검증은 계획에 표시하되 별도 provider 승인을 만들지 않는다.
+- Maven `package`/Gradle `build|assemble|bootJar|war`/Node `build`는 일반 source 변경의 기본 검증으로 계획하지 않는다. build/dependency/packaging/resource/deployment/framework build-time behavior 또는 명시적 AC가 있을 때만 `PACKAGE_BUILD`로 계획한다.
 - Docker, 실제 DB, Testcontainers, 외부 API/Supabase, Redis/Kafka, browser/E2E 등 별도 환경이 필요한 검증은 `⚠️ 환경 의존 검증`에 provider·필요 환경·lifecycle을 명시한다.
 - 프로젝트가 이미 제공하는 canonical verification을 우선한다. Hermes/DevKit이 프로젝트에 없는 공용 검증 인프라를 기본 생성하지 않는다.
 - 승인된 provider가 실행 불가하면 다른 provider로 자동 fallback하지 않고 재승인 대상으로 올린다.
@@ -216,6 +220,6 @@ Fallback Policy: REAPPROVAL_REQUIRED | NOT_REQUIRED
 
 ## 필수 출력
 
-Task Identity; Project/working tree; Goal/Requirement; Assumptions/Out of Scope; Work Unit Contract; Parent Tracking Recommendation/Reason/Suggested Titles; Project Pattern Summary; API/Data/Infrastructure/Frontend 계약(해당 시); Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Data Capability Hints; Acceptance Criteria; **🛠️ 실행 계획**; **🧪 검증 계획**(Target/Method/Provider/Environment/Lifecycle); **⚠️ 환경 의존 검증**; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
+Task Identity; Project/working tree; Goal/Requirement; Assumptions/Out of Scope; Work Unit Contract; Parent Tracking Recommendation/Reason/Suggested Titles; Project Pattern Summary; API/Data/Infrastructure/Frontend 계약(해당 시); Findings; Affected Areas; Implementation Tasks; Applicable Skills; Frontend Capability Hints; Data Capability Hints; Acceptance Criteria; **🛠️ 실행 계획**; **🧪 검증 계획**(Target/Level/Escalation Reason/Project Verification Source/Method/Provider/Environment/Lifecycle); **⚠️ 환경 의존 검증**; Automated/Manual/Regression Test Plan; Dependencies; Risks; Open Questions; Dispatch Handoff; `READY | BLOCKED`와 이유.
 
 상세 분석 절차와 출력 template은 `references/planning-details.md`를 따른다.

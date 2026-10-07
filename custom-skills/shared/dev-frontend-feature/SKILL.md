@@ -1,7 +1,7 @@
 ---
 name: dev-frontend-feature
 description: Frontend 작업의 canonical entry point로 승인된 Design Reference 또는 기존 코드 기준을 TypeScript·React/Next.js·UI/UX·API contract·test capability와 조합한다.
-version: 0.5.0
+version: 0.5.1
 author: local
 platforms: [linux]
 metadata:
@@ -210,7 +210,7 @@ UNKNOWN은 임의 구현하지 않는다. 확인 가능한 기존 규칙은 재�
 12. 최소 변경 구현
 13. 의미 있는 stateful/shared UI면 기존 Storybook catalog 갱신 검토
 14. UI 변경이면 dev-ui-ux quality gate
-15. affected test/typecheck/lint/build + Desktop/Mobile verification matrix 수행
+15. `VERIFICATION_LEVEL_POLICY_V1`로 `STATIC_COMPILE → TARGETED_TEST → PACKAGE_BUILD` 중 필요한 최소 수준을 선택하고 Desktop/Mobile verification matrix 수행. 일반 source 변경에서 build를 기본 final gate로 사용하지 않음
 16. handoff evidence 기록
 ```
 
@@ -235,7 +235,7 @@ BLOCKER_CLASS=PROJECT_TOOLCHAIN_MIGRATION_REQUIRED
 
 Gate는 pnpm의 표준 build policy도 함께 확인한다. `dangerouslyAllowAllBuilds=true`, `strictDepBuilds=false`, non-boolean `allowBuilds` placeholder, exact version이 아닌 broad `true` 승인은 BLOCK한다. dependency restore 중 `ERR_PNPM_IGNORED_BUILDS`가 발생하면 `dev-node-dependencies`의 one-time build approval 절차를 사용한다. 이미 `pnpm-workspace.yaml > allowBuilds`에서 결정된 동일 exact package/version은 다시 승인받지 않는다.
 
-Gate PASS 이후 test/lint/typecheck/build는 반드시 `node_runtime.py`를 통해 Linux isolated workspace에서 실행한다. dependency mutation이 필요한 경우에만 같은 capability의 mutation preflight/Tirith 경로를 추가 적용한다.
+Gate PASS 이후 test/lint/typecheck/build는 반드시 `node_runtime.py`를 통해 Linux isolated workspace에서 실행한다. 검증 수준은 `/opt/data/shared/references/verification-level-policy.md`를 따르며 일반 TypeScript/React source 변경의 기본은 project canonical typecheck/check다. affected behavior test가 있으면 `TARGETED_TEST`, dependency/build config/Next.js build-time behavior/deploy artifact 등 실제 근거가 있을 때만 `PACKAGE_BUILD`로 `build`를 실행한다. dependency mutation이 필요한 경우에만 같은 capability의 mutation preflight/Tirith 경로를 추가 적용한다.
 
 ## Lazy capability
 

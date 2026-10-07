@@ -1,7 +1,7 @@
 ---
 name: dev-node-dependencies
 description: Node.js 프로젝트의 Frontend 실행 전 pnpm toolchain 환경 Gate와 dependency 추가·삭제·복원, pnpm-lock.yaml 검증, Tirith security preflight를 제공하는 공통 capability skill.
-version: 0.2.4
+version: 0.2.5
 author: local
 platforms: [linux]
 metadata:
@@ -275,6 +275,18 @@ Hermes 전용 allowlist 파일 생성
 ```
 
 `pnpm-workspace.yaml`은 dependency fingerprint에 포함된다. 따라서 build policy 변경 후 기존 isolated `node_modules`를 그대로 정상 상태로 간주하지 않고 frozen restore를 다시 수행한다. pnpm의 side-effects cache는 별도 정책 변경 없이 그대로 활용하므로 동일 package build 결과의 재사용은 pnpm 표준 동작에 맡긴다.
+
+## Node Verification Level Boundary
+
+Dependency/toolchain 준비가 끝난 뒤 application 검증 수준은 `/opt/data/shared/references/verification-level-policy.md`의 `VERIFICATION_LEVEL_POLICY_V1`을 따른다.
+
+```text
+STATIC_COMPILE → project canonical typecheck/check
+TARGETED_TEST  → affected test selector
+PACKAGE_BUILD  → dependency/build config/lockfile/framework build-time/deploy artifact 또는 명시적 AC가 있을 때만 build
+```
+
+`node_runtime.py`는 선택된 검증 command를 Linux isolated workspace에서 실행하는 canonical runtime이며 검증 수준을 무조건 build로 올리는 도구가 아니다. 일반 Node/TypeScript source 변경은 `pnpm run build`를 기본 final gate로 사용하지 않는다.
 
 ## Dependency Preflight
 
