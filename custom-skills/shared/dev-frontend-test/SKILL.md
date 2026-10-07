@@ -1,7 +1,7 @@
 ---
 name: dev-frontend-test
 description: frontend 변경에서 기존 Vitest/Jest/Testing Library/Storybook/Playwright/Cypress stack을 감지해 functional·component·e2e·design conformance·visual regression 검증을 선택하는 capability skill.
-version: 0.4.0
+version: 0.5.0
 author: local
 platforms: [linux]
 metadata:
@@ -218,7 +218,23 @@ Visual Regression: PASS | FAIL | NOT_RUN | NOT_REQUIRED
 → 도입 필요 시 별도 dependency 결정
 ```
 
-## Verification Budget
+## Verification Level / Budget
+
+`/opt/data/shared/references/verification-level-policy.md`의 `VERIFICATION_LEVEL_POLICY_V1`을 적용한다.
+
+```text
+STATIC_COMPILE
+→ project canonical typecheck/check
+→ project가 canonical check에 포함한 lint/static analysis 보존
+
+TARGETED_TEST
+→ behavior/bug/AC와 직접 연결된 affected test만 추가
+
+PACKAGE_BUILD
+→ dependency/build config/lockfile/bundler/framework build-time behavior/deploy artifact 또는 명시적 AC가 있을 때만 build
+```
+
+일반 `.ts/.tsx` source 수정에서 `pnpm run build`를 기본 final gate로 실행하지 않는다.
 
 - affected spec/story/page부터 확인한다.
 - 여러 test를 runner가 지원하면 한 invocation으로 묶는다.
@@ -292,6 +308,9 @@ dependency 추가는 source package root에서 exact `pnpm add --lockfile-only .
 Skill: dev-frontend-test
 Detected test/catalog stack
 Verification Modes
+Verification Level: STATIC_COMPILE | TARGETED_TEST | PACKAGE_BUILD
+Verification Escalation Reason: <NONE | evidence>
+Project Verification Source: TASK_APPROVED | PROJECT_SCRIPT | CI | BUILD_TOOL_DEFAULT
 View Strategy: SHARED | RESPONSIVE | HYBRID | SPLIT_VIEW | N/A
 Desktop/Mobile Verification Matrix
 Affected tests/stories/pages
