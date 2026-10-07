@@ -53,8 +53,9 @@ RUN python3 /tmp/patch_hermes_kanban_model_transition.py --self-test \
     && grep -q 'def _devkit_run_flow_model_transition' /opt/hermes/tools/kanban_tools.py \
     && rm /tmp/patch_hermes_kanban_model_transition.py
 
-# Show parent/child mapping directly on Kanban cards without duplicating cards:
-# compact relation handle when collapsed, linked task title/status when expanded.
+# Show DevKit tracking parent/child mapping directly on Kanban cards without
+# creating Hermes native task_links (those are execution dependencies). The preview
+# derives relationships from Child task body metadata and never links/unlinks cards.
 COPY scripts/patch_hermes_kanban_relation_preview.py /tmp/patch_hermes_kanban_relation_preview.py
 RUN python3 /tmp/patch_hermes_kanban_relation_preview.py --self-test \
     && python3 /tmp/patch_hermes_kanban_relation_preview.py --hermes-root /opt/hermes \
