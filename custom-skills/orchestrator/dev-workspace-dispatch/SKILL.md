@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 단일 Work Unit 계획과 Git/Non-Git workspace의 버전관리 계약·Coder 모델·capability를 Kanban으로 인계한다. 알림은 동일 컨테이너의 DevKit Notification Bridge가 task_events를 비동기로 관찰한다.
-version: 0.23.0
+version: 0.23.1
 author: local
 platforms: [linux]
 metadata:
@@ -210,6 +210,17 @@ Parent Tracking이 활성화되면 다음 제목 규칙을 적용한다.
 Parent title: [부모] <전체 작업 제목>
 Child title:  [자식] <현재 Work Unit 제목>
 ```
+
+Child Task body에는 다음 key를 그대로 사용한다.
+
+```text
+Parent Tracking:
+- Parent Task ID: <approved-parent-task-id>
+- Parent Title: [부모] <title>
+- Relation: CHILD_WORK_UNIT
+```
+
+이 block이 관리 관계의 machine-readable 계약이며 dashboard relation preview도 같은 key를 읽는다.
 
 - Parent는 `Execution: NON_DISPATCH` tracking card다.
 - Parent 생성 시 `kanban_create`는 가능하지만 `kanban_unblock`/worker dispatch는 금지한다.
