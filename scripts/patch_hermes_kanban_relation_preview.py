@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""Patch Hermes Kanban dashboard to show expandable parent/child relation previews.
+"""Patch Hermes Kanban dashboard to show expandable DevKit tracking relationships.
 
-The DevKit keeps the native task_links table as the authoritative relationship.
-This patch only enriches the board payload and renders a compact relation preview;
-it never duplicates or moves cards.
+DevKit structural parent/child tracking is stored in each Child task body under
+the Parent Tracking block. Hermes native task_links are execution dependencies
+and are deliberately not used for DevKit tracking previews. This patch only
+enriches the board payload and renders a compact relation preview; it never
+duplicates, moves, links, or unlinks cards.
 """
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
-MARKER_API = "DEVKIT_KANBAN_RELATION_PREVIEW_API_V1"
-MARKER_UI = "DEVKIT_KANBAN_RELATION_PREVIEW_UI_V1"
-MARKER_CSS = "DEVKIT_KANBAN_RELATION_PREVIEW_CSS_V1"
+MARKER_API = "DEVKIT_KANBAN_RELATION_PREVIEW_API_V2"
+MARKER_UI = "DEVKIT_KANBAN_RELATION_PREVIEW_UI_V2"
+MARKER_CSS = "DEVKIT_KANBAN_RELATION_PREVIEW_CSS_V2"
 
 API_ANCHOR = '''        progress: dict[str, dict[str, int]] = {}  # per parent: children done / total, rendered as "N/M"
         for row in conn.execute(
@@ -22,25 +24,70 @@ API_ANCHOR = '''        progress: dict[str, dict[str, int]] = {}  # per parent: 
             p["done"] += row["cstatus"] == "done"
 '''
 
-API_REPLACEMENT = API_ANCHOR + f'''        # {MARKER_API}: one aggregate relationship query for compact card previews.
-        # Native task_links stays authoritative; this is display-only metadata.
-        relation_preview: dict[str, dict[str, list[dict[str, str]]]] = {{}}
-        for row in conn.execute(
-            """
-            SELECT l.parent_id, p.title AS parent_title, p.status AS parent_status,
-                   l.child_id, c.title AS child_title, c.status AS child_status
-              FROM task_links l
-              JOIN tasks p ON p.id = l.parent_id
-              JOIN tasks c ON c.id = l.child_id
-             ORDER BY l.parent_id, l.child_id
-            """
-        ).fetchall():
-            relation_preview.setdefault(row["child_id"], {{"parents": [], "children": []}})["parents"].append({{
-                "id": row["parent_id"], "title": row["parent_title"], "status": row["parent_status"]
+API_REPLACEMENT = API_ANCHOR + f'''        # {MARKER_API}: DevKit structural tracking comes from Child task body metadata.
+        # Native task_links are Hermes execution dependencies and MUST NOT be treated as tracking hierarchy.
+        def _devkit_tracking_parent_id(body: Optional[str]) -> Optional[str]:
+            if not body:
+                return None
+            lines = body.splitlines()
+            for index, raw in enumerate(lines):
+                if raw.strip() != "Parent Tracking:":
+                    continue
+                fields: dict[str, str] = {{}}
+                for candidate in lines[index + 1:index + 9]:
+                    item = candidate.strip()
+                    if not item:
+                        continue
+                    if not item.startswith("- "):
+                        break
+                    item = item[2:]
+                    if ":" not in item:
+                        continue
+                    key, value = item.split(":", 1)
+                    fields[key.strip()] = value.strip()
+                parent_id = fields.get("Parent Task ID", "")
+                relation = fields.get("Relation", "")
+                if (
+                    relation == "CHILD_WORK_UNIT"
+                    and parent_id.startswith("t_")
+                    and all(ch.isalnum() or ch in "_-" for ch in parent_id)
+                ):
+                    return parent_id
+            return None
+
+        # One board-wide query keeps the preview independent from native task_links and avoids N+1 reads.
+        tracking_rows = conn.execute(
+            "SELECT id, title, status, body FROM tasks ORDER BY id"
+        ).fetchall()
+        tracking_by_id = {{row["id"]: row for row in tracking_rows}}
+        relation_preview: dict[str, dict[str, Any]] = {{}}
+        for row in tracking_rows:
+            parent_id = _devkit_tracking_parent_id(row["body"])
+            if not parent_id:
+                continue
+            parent = tracking_by_id.get(parent_id)
+            if parent is None:
+                continue
+            child_preview = relation_preview.setdefault(
+                row["id"], {{"parents": [], "children": [], "progress": None}}
+            )
+            parent_preview = relation_preview.setdefault(
+                parent_id, {{"parents": [], "children": [], "progress": None}}
+            )
+            child_preview["parents"].append({{
+                "id": parent_id, "title": parent["title"], "status": parent["status"]
             }})
-            relation_preview.setdefault(row["parent_id"], {{"parents": [], "children": []}})["children"].append({{
-                "id": row["child_id"], "title": row["child_title"], "status": row["child_status"]
+            parent_preview["children"].append({{
+                "id": row["id"], "title": row["title"], "status": row["status"]
             }})
+
+        for preview in relation_preview.values():
+            children = preview["children"]
+            if children:
+                preview["progress"] = {{
+                    "done": sum(child["status"] in ("done", "archived") for child in children),
+                    "total": len(children),
+                }}
 '''
 
 API_ASSIGN_ANCHOR = '''            d["progress"] = progress.get(t.id)  # None when the task has no children
@@ -90,7 +137,9 @@ UI_RENDER_REPLACEMENT = f'''          h("div", {{ className: "hermes-kanban-card
                       h("span", {{ className: "hermes-kanban-relation-caret" }}, relationsExpanded ? "▾" : "▸"),
                       " 하위 작업 ",
                       (t.relation_preview.children || []).length,
-                      t.progress && t.progress.total > 0 ? " · 완료 " + t.progress.done + "/" + t.progress.total : "",
+                      t.relation_preview.progress && t.relation_preview.progress.total > 0
+                        ? " · 완료 " + t.relation_preview.progress.done + "/" + t.relation_preview.progress.total
+                        : "",
                     ),
                 relationsExpanded
                   ? h("div", {{ className: "hermes-kanban-relation-details" }},
@@ -231,9 +280,14 @@ def self_test() -> None:
     patched_ui = replace_once(ui, UI_HOOK_ANCHOR, UI_HOOK_REPLACEMENT, "selftest ui state")
     patched_ui = replace_once(patched_ui, UI_RENDER_ANCHOR, UI_RENDER_REPLACEMENT, "selftest ui render")
     assert MARKER_API in patched_api
-    assert "relation_preview" in patched_api
+    assert "_devkit_tracking_parent_id" in patched_api
+    assert "Parent Task ID" in patched_api
+    assert "CHILD_WORK_UNIT" in patched_api
+    assert "SELECT id, title, status, body FROM tasks ORDER BY id" in patched_api
+    assert "Native task_links are Hermes execution dependencies" in patched_api
     assert MARKER_UI in patched_ui
     assert "relationsExpanded" in patched_ui
+    assert "t.relation_preview.progress" in patched_ui
     assert "↳ 부모 " in patched_ui
     assert "하위 작업 " in patched_ui
     assert MARKER_CSS in CSS_BLOCK

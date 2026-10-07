@@ -16,6 +16,7 @@ MODELING = ROOT / "custom-skills/shared/dev-data-modeling/SKILL.md"
 MIGRATION = ROOT / "custom-skills/shared/dev-db-migration/SKILL.md"
 PARENT = ROOT / "shared/references/parent-tracking-rules.md"
 SESSION = ROOT / "shared/references/session-history-rules.md"
+RELATION_PREVIEW = ROOT / "scripts/patch_hermes_kanban_relation_preview.py"
 
 
 def text(path: Path) -> str:
@@ -56,13 +57,28 @@ def main() -> int:
         "Job ID", "Implementation Summary", "Session IDs", "Parent Session 추적", "전체 하위 카드를 미리 생성하지 않는다",
         "다음 Child를 자동 dispatch하지 않는다",
         "kanban_create.parents", "Execution Ordering", "Depends On Task IDs",
-        "PARENT_RELATION_MISMATCH", "금지 관계: P → A → B → C",
+        "Parent Task ID", "Relation: CHILD_WORK_UNIT",
+        "PARENT_TRACKING_METADATA_MISMATCH", "NATIVE_PARENT_LINK_PRESENT",
+        "LEGACY_NATIVE_PARENT_LINK", "구조적 Parent Tracking에 사용하지 않는다",
+        "native task_links: NONE",
     ))
 
     require(SESSION, (
         "TASK_SESSION_HISTORY", "append-only", "일반 단일 카드", "[자식]", "[부모]",
         "devkit-task-session-history.db", "UNAVAILABLE", "Session ID를 추측하지 않는다",
     ))
+
+    require(RELATION_PREVIEW, (
+        "DEVKIT_KANBAN_RELATION_PREVIEW_API_V2",
+        "_devkit_tracking_parent_id",
+        "Parent Task ID",
+        "CHILD_WORK_UNIT",
+        "Native task_links are Hermes execution dependencies",
+        "SELECT id, title, status, body FROM tasks ORDER BY id",
+        "t.relation_preview.progress",
+    ))
+    if "Native task_links stays authoritative" in text(RELATION_PREVIEW):
+        raise SystemExit("Kanban relation preview must not treat native task_links as DevKit tracking hierarchy")
 
     require(BREAKDOWN, common + (
         "Implementation Tasks를 만들기 전에 Work Unit Class/Boundary를 확정",
@@ -92,6 +108,7 @@ def main() -> int:
         "repository-wide/exhaustive impact analysis", "Bounded Pre-Mutation Impact Scan",
         "PARENT_TRACKING_CLASSIFIED", "작업 관리 방식 승인", "NEW_PARENT", "LINK_EXISTING_PARENT", "PROMOTE_TO_PARENT", "[부모]", "[자식]",
         "kanban_create.parents", "Execution Ordering", "Depends On Task IDs",
+        "Parent Task ID", "Relation: CHILD_WORK_UNIT", "native `parents`는 실행 dependency",
     ))
 
     require(DISPATCH, common + (
@@ -102,7 +119,8 @@ def main() -> int:
         "Verification Contract", "Verification Provider", "Verification Approval: APPROVED",
         "Parent Tracking Dispatch 계약", "Execution: NON_DISPATCH", "Parent Task ID", "[부모]", "[자식]", "Job ID", "Implementation Summary",
         "kanban_create.parents", "Execution Ordering", "Depends On Task IDs",
-        "PARENT_RELATION_MISMATCH", "EXECUTION_DEPENDENCY_PENDING",
+        "parents=[]", "PARENT_TRACKING_METADATA_MISMATCH", "NATIVE_PARENT_LINK_PRESENT",
+        "EXECUTION_DEPENDENCY_PENDING", "legacy `kanban_create.parents` 카드",
         "Session History 계약", "TASK_SESSION_HISTORY", "UNAVAILABLE",
     ))
 

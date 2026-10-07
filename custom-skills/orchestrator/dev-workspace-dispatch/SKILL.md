@@ -1,7 +1,7 @@
 ---
 name: dev-workspace-dispatch
 description: 승인된 단일 Work Unit 계획과 Git/Non-Git workspace의 버전관리 계약·Coder 모델·capability를 Kanban으로 인계한다. 알림은 동일 컨테이너의 DevKit Notification Bridge가 task_events를 비동기로 관찰한다.
-version: 0.22.1
+version: 0.23.1
 author: local
 platforms: [linux]
 metadata:
@@ -211,10 +211,21 @@ Parent title: [부모] <전체 작업 제목>
 Child title:  [자식] <현재 Work Unit 제목>
 ```
 
+Child Task body에는 다음 key를 그대로 사용한다.
+
+```text
+Parent Tracking:
+- Parent Task ID: <approved-parent-task-id>
+- Parent Title: [부모] <title>
+- Relation: CHILD_WORK_UNIT
+```
+
+이 block이 관리 관계의 machine-readable 계약이며 dashboard relation preview도 같은 key를 읽는다.
+
 - Parent는 `Execution: NON_DISPATCH` tracking card다.
 - Parent 생성 시 `kanban_create`는 가능하지만 `kanban_unblock`/worker dispatch는 금지한다.
-- Parent/Child 관계는 반드시 Parent Task ID로 기록한다. 제목 접두어는 사용자 식별용일 뿐 관계 key가 아니다.
-- `kanban_create.parents`는 **승인된 구조적 Parent Task ID 전용**이다. 직전 Task/선행 Task를 실행 순서 목적으로 넣지 않는다.
+- Parent/Child 관계는 Child body의 `Parent Task ID` + `Relation: CHILD_WORK_UNIT` metadata로 기록한다. 제목 접두어는 사용자 식별용일 뿐 관계 key가 아니다.
+- `kanban_create.parents`는 DevKit 구조적 Parent Tracking에 사용하지 않는다. Hermes native `parents`/`task_links`는 실행 dependency이므로 Parent Tracking Child 생성 시 비워 둔다.
 - 실행 순서는 Task body의 `Execution Ordering: Mode / Depends On Task IDs`로 별도 기록한다.
 - `SEQUENTIAL`이면 `Depends On Task IDs`의 모든 Task가 `DONE`인지 확인한 뒤에만 현재 Child를 unblock/dispatch한다. Parent의 상태는 이 확인 대상이 아니다.
 - 현재 Standard Task만 Child로 생성한다. 계획된 후속 Child는 선생성하지 않는다.
@@ -231,13 +242,14 @@ prepare_dispatch.py 정확히 한 번
 → dev-skill-preflight
 → approved API Spec contract 확인 (REQUIRED일 때)
 → approved model snapshot 확인
-→ Parent Tracking이면 kanban_create.parents=<APPROVED_PARENT_TASK_ID>만 사용
+→ Parent Tracking이면 Child body에 Parent Task ID / Relation: CHILD_WORK_UNIT 기록
 → 실행 순서는 Task body의 Execution Ordering / Depends On Task IDs로 기록
-→ kanban_create(board=BOARD, initial_status="blocked", model=MODEL, provider=PROVIDER, skills=VALIDATED_SKILLS + dev-flow-model-policy)
+→ kanban_create(board=BOARD, initial_status="blocked", parents=[], model=MODEL, provider=PROVIDER, skills=VALIDATED_SKILLS + dev-flow-model-policy)
 → kanban_show 정확히 1회
-→ 등록 read-back 계약 검증(Parent Tracking이면 actual parent == approved Parent Task ID)
+→ 등록 read-back 계약 검증(Parent Tracking metadata == approved Parent Task ID, native parents 없음)
 → SEQUENTIAL이면 Depends On Task IDs가 모두 DONE인지 검증
-→ parent mismatch면 PARENT_RELATION_MISMATCH로 중단
+→ metadata mismatch면 PARENT_TRACKING_METADATA_MISMATCH로 중단
+→ native parent link가 있으면 NATIVE_PARENT_LINK_PRESENT로 중단
 → 선행 Task 미완료면 EXECUTION_DEPENDENCY_PENDING으로 blocked 유지
 → kanban_unblock tool 정확히 1회
 → ready 전환 후 worker dispatch
@@ -275,10 +287,12 @@ SPLIT_REQUIRED인데 Follow-up scope를 같은 Task에 포함
 Follow-up Work Unit 자동 Kanban 생성/dispatch
 Parent tracking card를 kanban_unblock/worker dispatch
 Parent 관계를 제목 문자열만으로 판정
-- 실행 선행 Task를 `kanban_create.parents`에 넣어 구조적 Parent처럼 연결
-- 승인된 Parent Task ID와 read-back 실제 Parent가 다른데도 unblock/dispatch
+- 구조적 Parent Tracking을 `kanban_create.parents`/native `task_links`로 연결
+- 승인된 Parent Task ID와 read-back Child body의 Parent Tracking metadata가 다른데도 unblock/dispatch
+- 새 Parent Tracking Child에 native parent link가 존재하는데 자동 unlink/우회
 - Parent의 BLOCKED/NON_DISPATCH 상태를 Child 실행 dependency로 사용
 Parent 연결 Task에 `[자식]` 제목 접두어 또는 Parent Task ID 기록 누락
+legacy `kanban_create.parents` 카드의 native link를 unrelated dispatch에서 자동 unlink
 실행 카드의 Session History를 단일 Session ID 값으로 덮어쓰기
 발견되지 않은 Session ID를 추측해 Task/Parent에 기록
 Follow-up capability를 현재 Applicable Skills에 자동 추가

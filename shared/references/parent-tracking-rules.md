@@ -110,14 +110,14 @@ Execution Ordering:
 
 규칙:
 
-- `kanban_create.parents`는 **승인된 구조적 Parent Task ID 전용**이다. Parent Tracking Mode가 활성화된 Child라면 승인된 Parent Task ID만 넣는다.
-- 직전 Task, 이전 완료 Task, 선행 Work Unit, Reviewer 대상 Task를 실행 순서라는 이유로 `parents`에 넣지 않는다.
-- 실행 순서는 Task body의 `Execution Ordering` 계약으로 별도 기록한다.
+- DevKit의 **구조적 Parent Tracking은 Task body metadata만 사용**한다. `Parent Task ID` + `Relation: CHILD_WORK_UNIT`이 authoritative relationship이다.
+- `kanban_create.parents` / Hermes native `task_links`는 실행 dependency 의미를 가지므로 **구조적 Parent Tracking에 사용하지 않는다**. Parent Tracking Child 생성 시 `parents` 인자는 생략하거나 빈 목록으로 둔다.
+- 직전 Task, 이전 완료 Task, 선행 Work Unit, Reviewer 대상 Task도 DevKit이 native `parents`로 연결하지 않는다. 실행 순서는 Task body의 `Execution Ordering` 계약으로만 기록한다.
 - `Mode: SEQUENTIAL`이고 `Depends On Task IDs`가 있으면 Orchestrator가 해당 Task 상태를 확인해 모두 `DONE`일 때만 현재 Child를 unblock/dispatch한다.
 - `Mode: INDEPENDENT`이면 실행 선행 Task가 없으며 Parent 상태와 무관하게 일반 dispatch 계약을 따른다.
 - Parent는 `Execution: NON_DISPATCH` tracking card이므로 Parent의 `BLOCKED`/`READY` 상태를 Child의 실행 선행 조건으로 사용하지 않는다.
-- Parent Tracking이 없는 단건 Task는 구조적 `parents`를 만들지 않는다. 실행 순서가 필요해도 `Depends On Task IDs`만 사용한다.
-- Task 생성 후 read-back에서 실제 Parent 관계가 승인된 Parent Task ID와 다르면 `PARENT_RELATION_MISMATCH`로 처리하고 unblock/dispatch하지 않는다.
+- Task 생성 후 read-back에서 Child body의 `Parent Task ID` / `Relation`이 승인 계약과 다르면 `PARENT_TRACKING_METADATA_MISMATCH`로 처리하고 unblock/dispatch하지 않는다.
+- read-back에서 DevKit이 만들지 않은 native parent link가 현재 새 Child에 존재하면 `NATIVE_PARENT_LINK_PRESENT`로 처리하고 자동 unlink/우회하지 않는다.
 
 예:
 
@@ -127,10 +127,21 @@ Execution Ordering:
 ├─ [자식] B   Execution Ordering: SEQUENTIAL, Depends On: A
 └─ [자식] C   Execution Ordering: SEQUENTIAL, Depends On: B
 
-구조 관계: P → A, P → B, P → C
-실행 순서: A → B → C
-금지 관계: P → A → B → C
+관리 관계(metadata): P → A, P → B, P → C
+실행 순서(body): A → B → C
+native task_links: NONE
+금지 관계: P → A → B → C 를 Hermes native parents로 표현
 ```
+
+## Legacy native parent link 처리
+
+이 정책 적용 전에 DevKit이 구조적 Parent를 `kanban_create.parents`로 생성한 기존 Child는 `LEGACY_NATIVE_PARENT_LINK`로 본다.
+
+- 신규 Standard Flow/dispatch는 같은 방식을 반복하지 않는다.
+- 기존 카드의 native link를 unrelated 작업에서 자동 unlink하지 않는다.
+- 기존 Task를 재개해야 하면 사용자가 직접 정리하거나 승인된 Recovery/Requirement Delta에서만 native link 제거를 수행한다.
+- Parent/Child 목록 표시는 native `task_links`가 아니라 Child body의 Parent Tracking metadata를 사용하므로 기존/신규 UI tracking은 실행 dependency와 분리한다.
+- legacy 카드에 body metadata가 이미 있으면 그것을 관리 관계의 source of truth로 사용한다. metadata가 없으면 제목만으로 관계를 추측하지 않는다.
 
 ## Parent 생성 시점
 
@@ -265,8 +276,10 @@ Parent가 있다는 이유로 Child의 Standard Flow 승인 계약을 생략하�
 - Child 완료 후 다음 Child를 자동 dispatch하지 않는다.
 - 새 Child 추가/수정은 새 Standard Flow 요청으로 처리한다.
 - Parent/Child 관계는 제목이 아니라 Task ID가 authoritative다.
-- `kanban_create.parents`는 구조적 Parent 관계에만 사용하고 실행 순서를 표현하지 않는다.
+- 구조적 Parent Tracking은 Child body의 `Parent Task ID` / `Relation: CHILD_WORK_UNIT` metadata만 사용한다.
+- `kanban_create.parents` / native `task_links`를 구조적 Parent Tracking에 사용하지 않는다.
 - 실행 순서는 `Execution Ordering / Depends On Task IDs`로 분리하며 선행 Task 완료 여부는 unblock/dispatch 전에 확인한다.
 - Parent 상태는 Child 실행 선행 조건이 아니다.
-- 생성 후 실제 Parent가 승인된 Parent Task ID와 다르면 `PARENT_RELATION_MISMATCH`로 중단한다.
+- 생성 후 Parent Tracking metadata가 승인된 Parent Task ID와 다르면 `PARENT_TRACKING_METADATA_MISMATCH`로 중단한다.
+- 기존 legacy native link는 unrelated 작업에서 자동 unlink하지 않는다.
 - Parent의 자식 Session 요약은 실제 child `TASK_SESSION_HISTORY`만 사용하며 Session ID를 추측하지 않는다.

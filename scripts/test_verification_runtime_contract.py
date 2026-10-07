@@ -159,6 +159,10 @@ def main() -> int:
             "kanban_show",
             "expected_run_id",
             "obsolete DevKit kanban worker-context module still exists",
+            "DEVKIT_KANBAN_RELATION_PREVIEW_API_V2",
+            "_devkit_tracking_parent_id",
+            "DEVKIT_KANBAN_RELATION_PREVIEW_UI_V2",
+            "DEVKIT_KANBAN_RELATION_PREVIEW_CSS_V2",
         ),
         "upstream Codex scoped Kanban runtime gate",
     )
