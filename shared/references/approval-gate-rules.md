@@ -340,7 +340,7 @@ choices:
 
 > Plan Approval scope: **Execution + Verification Plan**
 
-Plan 본문은 `## 🛠️ **실행 계획**`, `## 🧪 **검증 계획**`, 필요 시 `### ⚠️ **환경 의존 검증**`으로 구분해 **반드시 일반 메시지로 먼저 전부 보여준다.** 검증 계획에는 Target/Method/Provider/Required Environment/Lifecycle/Fallback Policy를 포함한다. 환경 의존 provider는 이 Gate 승인 후 Coder가 임의 변경할 수 없다.
+Plan 본문은 `## 🛠️ **실행 계획**`, `## 🧪 **검증 계획**`, 필요 시 `### ⚠️ **환경 의존 검증**`으로 구분해 **반드시 일반 메시지로 먼저 전부 보여준다.** 검증 계획에는 Target/Verification Level/Escalation Reason/Project Verification Source/Method/Provider/Required Environment/Lifecycle/Fallback Policy를 포함한다. `PACKAGE_BUILD`는 build/dependency/packaging/deployment/framework build-time 영향 또는 명시적 AC 근거가 있을 때만 승인 계획에 넣는다. 환경 의존 provider는 이 Gate 승인 후 Coder가 임의 변경할 수 없다.
 
 Implementation Plan 본문은 **반드시 일반 메시지로 먼저 전부 보여준다.** Plan이 길면 Goal/Design Evidence/Implementation Tasks/Verification 등 의미 있는 섹션 단위로 일반 메시지를 나눌 수 있다. 이때도 Plan 본문을 `clarify.question` 안으로 옮기지 않는다.
 
