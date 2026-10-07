@@ -56,7 +56,10 @@ def main() -> int:
         "Job ID", "Implementation Summary", "Session IDs", "Parent Session 추적", "전체 하위 카드를 미리 생성하지 않는다",
         "다음 Child를 자동 dispatch하지 않는다",
         "kanban_create.parents", "Execution Ordering", "Depends On Task IDs",
-        "PARENT_RELATION_MISMATCH", "금지 관계: P → A → B → C",
+        "Parent Task ID", "Relation: CHILD_WORK_UNIT", "native `parents`는 실행 dependency",
+        "PARENT_TRACKING_METADATA_MISMATCH", "NATIVE_PARENT_LINK_PRESENT",
+        "LEGACY_NATIVE_PARENT_LINK", "구조적 Parent Tracking에 사용하지 않는다",
+        "native task_links: NONE",
     ))
 
     require(SESSION, (
@@ -102,7 +105,8 @@ def main() -> int:
         "Verification Contract", "Verification Provider", "Verification Approval: APPROVED",
         "Parent Tracking Dispatch 계약", "Execution: NON_DISPATCH", "Parent Task ID", "[부모]", "[자식]", "Job ID", "Implementation Summary",
         "kanban_create.parents", "Execution Ordering", "Depends On Task IDs",
-        "PARENT_RELATION_MISMATCH", "EXECUTION_DEPENDENCY_PENDING",
+        "parents=[]", "PARENT_TRACKING_METADATA_MISMATCH", "NATIVE_PARENT_LINK_PRESENT",
+        "EXECUTION_DEPENDENCY_PENDING", "legacy `kanban_create.parents` 카드",
         "Session History 계약", "TASK_SESSION_HISTORY", "UNAVAILABLE",
     ))
 
