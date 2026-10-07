@@ -426,15 +426,27 @@ API DESIGN Work Unit에서 후속 IMPLEMENTATION이 제외되어 있으면 contr
 
 구조 점검 evidence는 `Structural quality check: PASS | REFACTORED | ESCALATED`로 남긴다.
 
+## Risk-based Verification Level
+
+모든 stack은 `/opt/data/shared/references/verification-level-policy.md`의 `VERIFICATION_LEVEL_POLICY_V1`을 적용한다. 검증은 `STATIC_COMPILE → TARGETED_TEST → PACKAGE_BUILD`로 승격하며, 일반 source 변경의 기본값은 `STATIC_COMPILE`이다. project script/CI/AGENTS/build convention이 있으면 DevKit fallback보다 우선한다. 사용자가 승인한 Verification Contract가 더 높은 level을 명시하면 임의 하향하지 않는다.
+
+`PACKAGE_BUILD`는 build/dependency/packaging/resource/deployment/framework build-time behavior 또는 명시적 AC가 artifact 생성을 요구할 때만 사용한다. "더 확실해 보인다"는 이유만으로 Maven package, Gradle build/assemble, Node build를 실행하지 않는다.
+
 ## Maven 검증
 
-`/opt/data/shared/references/maven-worker-runtime.md`가 canonical 계약이다. `hermes-java ./mvnw`는 `hermes-maven`에 위임한다. 원본 CRLF wrapper/HOME `.m2`/global Maven 부재가 아니라 지정 launcher와 `/opt/data/maven`의 실제 실행 근거로 판단한다. 실제 검증은 `maven_verification_cached.py`를 사용한다. 동일 verification request + executable scope의 기존 PASS는 `VERIFICATION_EVIDENCE=REUSED`, `PRIMARY_REUSED=true`로 재사용하고, fresh 실행이 필요한 경우에만 내부 `maven_verification.py` bounded engine을 한 번 호출한다. test/package/verify는 기본 600초, compile은 기본 300초다. 보안 거부는 NOT_EXECUTED이며 미설치 증거가 아니다.
+`/opt/data/shared/references/maven-worker-runtime.md`가 canonical 실행 계약이다. 실제 검증은 `maven_verification_cached.py`를 사용한다.
+
+- `STATIC_COMPILE`: project canonical compile/testCompile 계열. 기본 예시는 `-B -DskipTests test-compile`.
+- `TARGETED_TEST`: 승인된 selector의 관련 테스트.
+- `PACKAGE_BUILD`: 근거가 있을 때만 `PACKAGE`/`VERIFY`.
+
+동일 verification request + executable scope의 PASS는 `VERIFICATION_EVIDENCE=REUSED`, `PRIMARY_REUSED=true`로 재사용한다. test/package/verify는 기본 600초, compile은 기본 300초다. 보안 거부는 NOT_EXECUTED이며 미설치 증거가 아니다. 필요하지 않은 package를 임의 실행해 발생한 timeout을 Task blocker로 만들지 않는다.
 
 ## Java / Gradle 검증
 
 Java/Gradle/Maven 프로젝트는 Bootstrap의 `.hermes/toolchain.env`를 사용한다. 전역 JDK/Gradle/Maven 설치나 버전 변경은 task-time에 하지 않는다. 이미 승인된 Wrapper 배포본의 DevKit cache 준비는 허용된 네트워크 정책 안에서 canonical launcher만 수행한다.
 
-Gradle compile/targeted test의 canonical 실행은 `scripts/gradle_verification_cached.py`다. 기본 verification timeout은 600초이며 600초를 초과할 수 없다.
+Gradle compile/targeted test의 canonical 실행은 `scripts/gradle_verification_cached.py`다. `STATIC_COMPILE`은 project canonical compile task, `TARGETED_TEST`는 affected selector를 사용한다. `build`/`assemble`/`bootJar`/`war`는 `PACKAGE_BUILD` 승격 근거가 있을 때만 실행한다. 기본 verification timeout은 600초이며 600초를 초과할 수 없다.
 
 Hermes container에서는 raw `./gradlew ...` 또는 `gradle ...`을 직접 호출하지 않는다. bounded 진단은 `hermes-java ./gradlew ...`를 사용하고, compile/targeted test는 cached helper가 `hermes-java`를 통해 `/opt/data/gradle` 격리를 적용하도록 유지한다.
 
@@ -449,13 +461,31 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification_
 
 규칙:
 - 여러 targeted test는 가능한 한 한 invocation으로 합친다.
-- 구현 중에는 targeted test 또는 필요한 integration/module test만 사용한다.
-- 전체 `test`는 `IMPLEMENTATION_STABLE` 이후 final regression gate에서만 실행한다.
+- 구현 중에는 현재 Verification Level에 필요한 최소 검증만 사용한다.
+- 전체 `test`는 `IMPLEMENTATION_STABLE` 이후 final regression gate에서 실제 risk/AC가 요구할 때만 실행한다.
 - 한 stable verification cycle에서 full test는 기본 1회다.
 - 실제 BUILD_FAILURE는 source/test 수정 후 최소 재검증할 수 있다.
 - PASS evidence의 scope/request fingerprint가 동일하면 재사용하며 같은 Gradle command를 다시 실행하지 않는다.
 - PASS 이후 covered production/test/build/toolchain 파일이 바뀌면 **fresh Gradle verification을 반드시 다시 실행한다.**
 - `GRADLE_STATUS=BLOCKED`이면 direct Gradle 반복이나 우회 wrapper를 만들지 않고 `kanban_block`한다.
+
+### Node / TypeScript 검증
+
+첫 Node command 전에 `node_environment_gate.py`를 통과하고 검증은 `node_runtime.py` Linux isolated workspace에서 수행한다.
+
+- `STATIC_COMPILE`: project canonical `typecheck`/`check` 우선. project가 필수로 묶은 lint/static analysis가 있으면 그대로 사용한다.
+- `TARGETED_TEST`: 기존 runner의 affected test selector.
+- `PACKAGE_BUILD`: bundler/framework config, dependency/lockfile/build script, SSR/SSG/build-time behavior, deploy artifact 또는 명시적 AC가 요구할 때만 `pnpm run build`.
+
+`package.json` scripts와 CI convention이 DevKit fallback보다 우선한다. 단순 TypeScript/React source 변경에서 `pnpm run build`를 기본 final gate로 실행하지 않는다.
+
+### Verification Level Evidence
+
+```text
+Verification Level: STATIC_COMPILE | TARGETED_TEST | PACKAGE_BUILD
+Verification Escalation Reason: <NONE | evidence>
+Project Verification Source: TASK_APPROVED | PROJECT_SCRIPT | CI | BUILD_TOOL_DEFAULT
+```
 
 ### Gradle PASS Evidence 재사용 계약
 
