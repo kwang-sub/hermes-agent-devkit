@@ -339,6 +339,15 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[OK] Tirith routed-profile guard runtime contract"
 
+Invoke-DockerCheck -Label "Kanban tracking relation preview API v2" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "sh", "-lc",
+    "grep -q DEVKIT_KANBAN_RELATION_PREVIEW_API_V2 /opt/hermes/plugins/kanban/dashboard/plugin_api.py && grep -q _devkit_tracking_parent_id /opt/hermes/plugins/kanban/dashboard/plugin_api.py"
+)
+Invoke-DockerCheck -Label "Kanban tracking relation preview UI v2" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "sh", "-lc",
+    "grep -q DEVKIT_KANBAN_RELATION_PREVIEW_UI_V2 /opt/hermes/plugins/kanban/dashboard/dist/index.js && grep -q DEVKIT_KANBAN_RELATION_PREVIEW_CSS_V2 /opt/hermes/plugins/kanban/dashboard/dist/style.css"
+)
+
 $UpstreamCodexKanbanContractCheck = @'
 from pathlib import Path
 
