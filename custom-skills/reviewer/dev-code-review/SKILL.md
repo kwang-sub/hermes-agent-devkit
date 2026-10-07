@@ -1,7 +1,7 @@
 ---
 name: dev-code-review
 description: 동일 Workspace의 Direct/Standard 미커밋 구현을 requirement/AC와 Work Unit·project pattern·capability·구조 품질 계약 기준으로 독립 검토하고 승인·수정요청·차단한다.
-version: 0.21.0
+version: 0.22.0
 author: local
 platforms: [linux]
 metadata:
@@ -13,7 +13,7 @@ metadata:
 
 # dev-code-review
 
-Reviewer는 같은 Workspace의 미커밋 변경을 독립 검토하며 application/test/config source를 수정하지 않는다. `/opt/data/shared/references/kanban-execution-boundary.md`의 `KANBAN_EXECUTION_BOUNDARY_V1`에 따라 Kanban에서 requirement/AC/state/evidence를 읽되 launcher/timeout/retry/cache 같은 HOW는 Task body에서 재구성하지 않고 현재 role Skill과 canonical runtime/execution 정책을 사용한다. 상세 severity/checklist/retry는 필요할 때만 `references/review-details.md`를 읽는다.
+Reviewer는 같은 Workspace의 미커밋 변경을 독립 검토하며 application/test/config source를 수정하지 않는다. `/opt/data/shared/references/kanban-execution-boundary.md`의 `KANBAN_EXECUTION_BOUNDARY_V1`과 `/opt/data/shared/references/verification-level-policy.md`의 `VERIFICATION_LEVEL_POLICY_V1`에 따라 Kanban에서 requirement/AC/state/evidence를 읽되 launcher/timeout/retry/cache 같은 HOW는 Task body에서 재구성하지 않고 현재 role Skill과 canonical runtime/execution 정책을 사용한다. 상세 severity/checklist/retry는 필요할 때만 `references/review-details.md`를 읽는다.
 
 ## 실행 계약
 
@@ -105,7 +105,7 @@ Follow-up Work Unit을 현재 Task에 구현하도록 요구하지 않는다.
 
 ## Verification Evidence Reuse
 
-Git Workspace에서는 Coder의 `Verification Final: true`, command/result, verification/effective scope fingerprint, `Work Unit Boundary Respected: true`가 실제 diff와 일치하면 PASS evidence를 재사용한다. 동일 scope PASS를 독립성 확보만을 이유로 반복 실행하지 않는다. Coder의 `IMPACT_SUMMARY`는 review 탐색의 navigation evidence로 재사용하며, 실제 diff/requirement와 충돌하지 않는 한 같은 caller/history/security 범위를 repository-wide로 다시 탐색하지 않는다. 단, Impact Summary 자체가 diff보다 우선하는 source of truth는 아니다. Non-Git Workspace에는 fingerprint 재사용 Gate가 없으므로 선언된 변경 파일을 직접 읽고 필요한 최소 verification을 fresh 실행한다.
+Git Workspace에서는 Coder의 `Verification Final: true`, `Verification Level`, command/result, verification/effective scope fingerprint, `Work Unit Boundary Respected: true`가 실제 diff와 일치하면 PASS evidence를 재사용한다. Reviewer는 독립성 확보만을 이유로 `STATIC_COMPILE`을 `PACKAGE_BUILD`로 승격하지 않으며, 더 높은 수준이 필요하면 build/dependency/packaging/deployment/framework build-time 영향 또는 uncovered P0/P1 behavior 근거를 명시한다. 동일 scope PASS를 독립성 확보만을 이유로 반복 실행하지 않는다. Coder의 `IMPACT_SUMMARY`는 review 탐색의 navigation evidence로 재사용하며, 실제 diff/requirement와 충돌하지 않는 한 같은 caller/history/security 범위를 repository-wide로 다시 탐색하지 않는다. 단, Impact Summary 자체가 diff보다 우선하는 source of truth는 아니다. Non-Git Workspace에는 fingerprint 재사용 Gate가 없으므로 선언된 변경 파일을 직접 읽고 필요한 최소 verification을 fresh 실행한다.
 
 Coder PASS 이후 executable source/test/build/toolchain이 바뀌었거나 fingerprint/evidence가 불일치하면 fresh verification을 요구한다. `GRADLE_STATUS=BLOCKED`를 같은 primary command로 우회 재시도하지 않는다.
 
