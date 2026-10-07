@@ -192,6 +192,7 @@ Workspace change scan mode: skipped-approved-preservation
 Coder evidence 재사용 조건:
 - command와 결과가 명시됨
 - `Verification Final: true`
+- `Verification Level: STATIC_COMPILE | TARGETED_TEST | PACKAGE_BUILD`와 escalation reason이 현재 diff/risk에 적합함
 - `Verification Request SHA256`와 `Verification Scope SHA256`가 있음
 - Coder `Effective Scope SHA256`와 Reviewer `EFFECTIVE_SCOPE_SHA256`가 일치
 - PASS 이후 executable source/test/build/toolchain 변경 없음
@@ -221,6 +222,8 @@ python3 /opt/custom-skills/coder/dev-implement-plan/scripts/gradle_verification_
 ```
 
 현재 scope가 Coder PASS와 동일하면 helper가 `VERIFICATION_EVIDENCE=REUSED`, `PRIMARY_REUSED=true`로 끝나야 한다. 이 경로에서 **Gradle primary를 다시 실행하면 안 된다**.
+
+Reviewer는 `/opt/data/shared/references/verification-level-policy.md`를 적용한다. 동일 scope의 유효한 PASS를 재사용할 때 package/build를 추가 실행하지 않는다. Coder level보다 상향하려면 현재 diff가 build/dependency/packaging/deployment/framework build-time artifact를 실제로 바꾸거나 기존 evidence가 P0/P1 가능성을 검증하지 못한다는 근거가 있어야 한다.
 
 재실행이 **필수**인 경우:
 - Coder PASS 이후 executable production/test/build/toolchain 파일이 수정됨
