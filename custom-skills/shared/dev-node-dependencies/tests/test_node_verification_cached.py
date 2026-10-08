@@ -123,11 +123,33 @@ class PnpmEvidenceTests(unittest.TestCase):
             cached, "isolated_workspace_ready", return_value=True,
         ), patch.object(cached, "execute_runtime", return_value=0) as runner:
             self.assertEqual(self.run_cached(), 0)
-            (self.workspace / ".env.local").write_text("FEATURE_ENABLED=true\\n")
+            (self.workspace / ".env.local").write_text("FEATURE_ENABLED=true\n")
             self.assertEqual(self.run_cached(), 0)
             (self.workspace / "tsconfig.paths.json").write_text('{"compilerOptions": {}}')
             self.assertEqual(self.run_cached(), 0)
             self.assertEqual(runner.call_count, 3)
+
+    def test_isolated_workspace_readiness_requires_matching_restore_marker(self):
+        import os
+        import shutil
+        from node_workspace import dependency_fingerprint, internal_paths
+
+        root = Path(self.temp.name) / "node-root"
+        paths = internal_paths(root, self.workspace, self.workspace)
+        isolated = paths["isolated_package_root"]
+        isolated.mkdir(parents=True)
+        for name in ("package.json", "pnpm-lock.yaml"):
+            shutil.copy2(self.workspace / name, isolated / name)
+        marker = paths["dependency_fingerprint"]
+        marker.write_text(dependency_fingerprint(self.workspace) + "\n")
+        with patch.dict(os.environ, {"HERMES_NODE_ROOT": str(root)}):
+            self.assertTrue(cached.isolated_workspace_ready(self.workspace, self.workspace))
+            (isolated / "pnpm-lock.yaml").write_text("different lockfile")
+            self.assertFalse(cached.isolated_workspace_ready(self.workspace, self.workspace))
+            shutil.copy2(self.workspace / "pnpm-lock.yaml", isolated / "pnpm-lock.yaml")
+            self.assertTrue(cached.isolated_workspace_ready(self.workspace, self.workspace))
+            marker.unlink()
+            self.assertFalse(cached.isolated_workspace_ready(self.workspace, self.workspace))
 
     def test_reject_mutation_command_or_invalid_scope(self):
         with self.assertRaises(cached.RuntimeErrorPolicy):
