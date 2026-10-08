@@ -12,6 +12,14 @@ import sys
 import time
 from typing import Any
 
+_CUSTOM_LIB = Path(__file__).resolve().parents[1] / "custom-skills" / "_lib"
+if not _CUSTOM_LIB.is_dir():
+    _CUSTOM_LIB = Path("/opt/custom-skills/_lib")
+if str(_CUSTOM_LIB) not in sys.path:
+    sys.path.insert(0, str(_CUSTOM_LIB))
+from task_handoff import cleanup_completed_handoff
+
+
 TRUE_VALUES = {"1", "true", "yes", "on"}
 SUPPORTED_EVENTS = {
     "created",
@@ -189,6 +197,7 @@ def fetch_events(db_path: Path, after_id: int, limit: int = DEFAULT_BATCH_SIZE) 
                 t.title,
                 t.assignee,
                 t.status,
+                t.workspace_path,
                 t.result,
                 t.model_override,
                 t.provider_override,
@@ -391,6 +400,15 @@ def process_board(
                 ok, detail = send_message(message, platform=platform, target=target, hermes_cli=hermes_cli)
                 if not ok:
                     return processed, False, f"{board}: delivery failed event={event_id} kind={event.get('kind')}: {detail}"
+        # Independent of Reviewer lifecycle; also runs with notifications disabled.
+        # Keep completion cleanup best-effort and limited to internal Git metadata.
+        if event.get("kind") == "completed" and str(event.get("status") or "").lower() in {"done", "completed"}:
+            workspace = str(event.get("workspace_path") or "").strip()
+            if workspace:
+                cleanup_completed_handoff(
+                    board_db=db_path, workspace=Path(workspace),
+                    task_id=str(event.get("task_id") or ""),
+                )
         advance_cursor(state, board, db_path, event_id)
         processed += 1
     return processed, True, ""
@@ -481,6 +499,7 @@ def self_test() -> None:
                 title TEXT,
                 assignee TEXT,
                 status TEXT,
+                workspace_path TEXT DEFAULT '',
                 result TEXT,
                 model_override TEXT,
                 provider_override TEXT,
@@ -501,7 +520,7 @@ def self_test() -> None:
             """
         )
         conn.execute(
-            "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO tasks(id,title,assignee,status,result,model_override,provider_override,created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             ("t_1", "테스트 작업", "coder", "blocked", None, "gpt-test", "openai", "orchestrator"),
         )
         conn.execute("INSERT INTO task_runs VALUES (1, 'coder')")

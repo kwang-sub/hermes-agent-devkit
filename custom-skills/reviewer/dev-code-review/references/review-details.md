@@ -152,6 +152,7 @@ Coder가 `Excluded Follow-up Scope`를 구현했거나 Task의 Work Unit Class�
 
 ```bash
 python3 /opt/custom-skills/reviewer/dev-code-review/scripts/review_context.py \
+  --task-id "<Task ID from kanban_show>" \
   --workspace "<Workspace>" \
   --expected-workspace "<Workspace>" \
   --expected-branch "<Expected Branch>" \
