@@ -73,6 +73,6 @@ def with_worker_startup(argv: list[str], profile: str) -> list[str]:
             "Task.skills 원본은 유지하고 Coder는 dev-implement-plan을 따른다. "
             "Reviewer 검토는 필수이며 다른 누락 Skill은 우회하지 않는다."
         )
-    query_position = result.index(argv[index])
+    query_position = next(i for i, token in enumerate(result) if token in {"-q", "--query"}) + 1
     result[query_position] += reminder
     return result
