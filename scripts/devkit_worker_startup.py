@@ -62,7 +62,8 @@ def with_worker_startup(argv: list[str], profile: str) -> list[str]:
         f"\n\n[{MARKER}]\n"
         f"할당된 작업만 수행한다. 첫 kanban_show 결과를 재사용하고 skill_view(\"{skill}\")로 현재 역할 계약을 로드한다. "
         "Direct/Standard/Recovery/CHANGES_REQUESTED와 새/재개 세션에 같은 역할 계약을 적용한다. "
-        "source mutation 전에 역할 Skill의 Session History / Worker Context / Workspace Gate를 수행한다. "
+        "source mutation 전에 역할 Skill의 Session History / Provider별 Worker Context / Workspace Gate를 수행한다. "
+        "Codex native shell은 Kanban ownership ENV가 scrub되므로 최초 kanban_show를 Worker Context 근거로 사용하고 Shell 환경변수 검사기를 호출하지 않는다. "
         "KANBAN_EXECUTION_BOUNDARY_V1에 따라 Kanban은 WHAT/STATE만 제공하며 launcher, timeout, retry, cache, process cleanup 같은 HOW는 역할 Skill과 canonical runtime/execution 정책에서 결정한다. "
         "Kanban Task body나 startup prompt를 실행정책의 source of truth로 사용하지 않는다."
     )
