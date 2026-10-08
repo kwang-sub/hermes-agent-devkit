@@ -86,7 +86,7 @@ def _intent(body: str, title: str, expected_parent: str | None) -> bool:
             return True
         if not INLINE_PARENT_RE.search(line):
             continue
-        if "tracking only" in line.lower() or RELATION in line:
+        if "tracking only" in line.lower() or HEADER in line or RELATION in line:
             return True
         if title.lstrip().startswith("[자식]") and index <= 5:
             return True
