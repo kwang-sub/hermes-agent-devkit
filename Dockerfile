@@ -101,6 +101,7 @@ RUN sed -i 's/\r$//' /etc/cont-init.d/018-devkit-kanban-boot-recovery \
 # container. It reads Hermes Kanban task_events without modifying Hermes source,
 # formats developer-facing messages, and delivers through the official
 # `hermes send` scripting surface.
+COPY --chmod=0755 scripts/task_artifacts.py /opt/devkit/bin/task_artifacts.py
 COPY --chmod=0755 scripts/devkit_kanban_notifier.py /opt/devkit/bin/devkit_kanban_notifier.py
 COPY --chmod=0755 docker/cont-init.d/019-devkit-kanban-notifier-policy /etc/cont-init.d/019-devkit-kanban-notifier-policy
 COPY --chmod=0755 docker/devkit-svscan.d/devkit-notifier/run /opt/devkit/svscan/devkit-notifier/run
