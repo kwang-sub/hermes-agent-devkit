@@ -32,7 +32,7 @@ kanban_show
 → Bounded Pre-Mutation Impact Scan (최대 2-hop)
 → Impact Summary / Implementation Scope 확정
 → 현재 Work Unit만 구현
-→ targeted verification
+→ scoped change_summary.py --task-id "<Task ID>" --check-only (cheap static gate)\n→ targeted verification
 → IMPLEMENTATION_STABLE
 → 필요한 final regression
 → scoped change_summary.py
@@ -209,7 +209,7 @@ isolated restore가 `ERR_PNPM_IGNORED_BUILDS`로 실패하면 일반 build 실�
 
 이미 `pnpm-workspace.yaml > allowBuilds`에 동일 matcher가 boolean으로 결정되어 있으면 재승인을 요청하지 않는다. `dangerouslyAllowAllBuilds=true`, `strictDepBuilds=false`, `pnpm approve-builds --all`, bare package 전체 true 승인은 자동 사용하지 않는다.
 
-Gate PASS 이후 Node 검증은 `VERIFICATION_LEVEL_POLICY_V1`에 따라 최소 수준부터 선택하고 `node_runtime.py` Linux isolated workspace만 사용한다. 일반 TypeScript/source 변경의 기본은 project canonical `typecheck`/`check`이며, `build`는 `PACKAGE_BUILD` 승격 근거가 있을 때만 실행한다.
+Gate PASS 이후 Node 검증은 `VERIFICATION_LEVEL_POLICY_V1`에 따라 최소 수준부터 선택하고 `node_runtime.py` Linux isolated workspace만 사용한다. 일반 TypeScript/source 변경의 기본은 project canonical `typecheck`/`check`이며, `build`는 `PACKAGE_BUILD` 승격 근거가 있을 때만 실행한다. 실제 Node 검증은 `node_verification_cached.py --workspace <Workspace> --mode STATIC_COMPILE|TARGETED_TEST|PACKAGE_BUILD --scope-path <covered-file> -- pnpm run <project-script>`를 canonical cache entrypoint로 사용하고 내부에서 `node_runtime.py`의 Linux isolated execution을 호출한다.
 
 Maven 프로젝트는 `/opt/data/shared/references/maven-worker-runtime.md`와 `VERIFICATION_LEVEL_POLICY_V1`을 적용한다. 일반 source 변경은 `COMPILE` mode의 project canonical compile/testCompile 계열부터 시작하고, 관련 behavior 검증이 필요할 때 `TARGETED_TEST`, artifact/build 자체가 scope일 때만 `PACKAGE`/`VERIFY`로 승격한다. 진단은 `/usr/local/bin/hermes-maven --diagnose ./mvnw`, 실제 검증은 `/opt/custom-skills/coder/dev-implement-plan/scripts/maven_verification_cached.py`를 canonical 경로로 실행한다. 동일 verification request + executable scope의 PASS fingerprint는 재사용한다. raw `mvn`/`./mvnw` 또는 HOME `.m2` 탐색으로 우회하지 않으며 `MAVEN_STATUS=BLOCKED`이면 실제 blocker/evidence를 기록한다. 불필요한 `PACKAGE_BUILD`를 실행해 생긴 timeout을 현재 Task blocker로 만들지 않는다.
 
