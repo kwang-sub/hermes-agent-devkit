@@ -118,6 +118,25 @@ class PnpmEvidenceTests(unittest.TestCase):
                 ), 0)
             self.assertEqual(runner.call_count, 2)
 
+    def test_fresh_verification_cannot_seed_reusable_pass_cache(self):
+        with patch.object(cached, "validate_project_environment"), patch.object(
+            cached, "isolated_workspace_ready", return_value=True,
+        ), patch.object(cached, "execute_runtime", return_value=0) as runner:
+            arguments = {
+                "workspace": self.workspace,
+                "cwd": self.workspace,
+                "mode": "TARGETED_TEST",
+                "command": ["pnpm", "run", "test"],
+                "scope_paths": ["app.ts"],
+                "evidence_root": self.evidence,
+            }
+            self.assertEqual(cached.run(**arguments, no_reuse=True), 0)
+            self.assertEqual(cached.run(**arguments), 0)
+            self.assertEqual(cached.run(**arguments), 0)
+            # no-reuse result was recorded, but it cannot suppress the next
+            # fresh test; only the second call establishes reusable evidence.
+            self.assertEqual(runner.call_count, 2)
+
     def test_env_and_secondary_config_mutations_invalidate_cache(self):
         with patch.object(cached, "validate_project_environment"), patch.object(
             cached, "isolated_workspace_ready", return_value=True,
