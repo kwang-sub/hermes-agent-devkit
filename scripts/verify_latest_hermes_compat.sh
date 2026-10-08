@@ -120,8 +120,10 @@ assert "sdlc-review" not in coder_argv[:coder_argv.index("-q")]
 assert "dev-java-guidelines" in coder_argv
 assert "DEVKIT_LEGACY_REVIEW_PIN_SKIP_V1" in coder_argv[-1]
 assert with_worker_startup(coder_argv, "coder") == coder_argv
-reviewer_argv = with_worker_startup(legacy_pins, "reviewer")
-assert reviewer_argv[:-1] == legacy_pins[:-1]
+reviewer_pins = list(legacy_pins)
+reviewer_pins[reviewer_pins.index("-p") + 1] = "reviewer"
+reviewer_argv = with_worker_startup(reviewer_pins, "reviewer")
+assert reviewer_argv[:-1] == reviewer_pins[:-1]
 assert "DEVKIT_LEGACY_REVIEW_PIN_SKIP_V1" not in reviewer_argv[-1]
 assert Path("/opt/custom-skills/reviewer/sdlc-review/SKILL.md").is_file()
 assert not Path("/opt/custom-skills/coder/sdlc-review/SKILL.md").exists()
