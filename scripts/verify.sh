@@ -295,6 +295,7 @@ run_check "Hermes TUI semantic input discovery patch" python3 scripts/patch_herm
 run_check "Kanban task/profile session-affinity runtime" python3 scripts/devkit_session_affinity.py --self-test
 run_check "Session history best-effort contract" python3 scripts/check_session_history_contract.py
 run_check "Session history regression tests" python3 scripts/test_task_session_history.py
+run_check "Task-scoped handoff and terminal cleanup" python3 scripts/test_task_handoff.py
 run_check "DevKit Kanban boot recovery self-test" python3 scripts/devkit_kanban_boot_recovery.py --self-test
 run_check "DevKit Kanban boot recovery contract" python3 scripts/check_kanban_boot_recovery_contract.py
 run_check "DevKit Kanban boot recovery syntax" sh -n docker/cont-init.d/018-devkit-kanban-boot-recovery
