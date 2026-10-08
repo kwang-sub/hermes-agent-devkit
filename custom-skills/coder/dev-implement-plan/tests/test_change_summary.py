@@ -47,8 +47,12 @@ class ChangeSummaryTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def run_helper(self, *includes: str, compact: bool = False, allow_full_scan: bool = False) -> subprocess.CompletedProcess[str]:
+    def run_helper(self, *includes: str, compact: bool = False, allow_full_scan: bool = False, check_only: bool = False, task_id: str | None = None) -> subprocess.CompletedProcess[str]:
         cmd = [sys.executable, str(SCRIPT), "--workspace", str(self.repo)]
+        if check_only:
+            cmd.append("--check-only")
+        if task_id:
+            cmd.extend(["--task-id", task_id])
         if compact:
             cmd.append("--compact")
         if allow_full_scan:
@@ -74,6 +78,43 @@ class ChangeSummaryTests(unittest.TestCase):
         state = json.loads(handoff_state(self.repo).read_text(encoding="utf-8"))
         self.assertEqual(state["effective_scope_sha256"], fingerprint(proc.stdout))
         self.assertEqual(state["effective_paths"], ["new.md", "tracked.txt"])
+
+    def test_check_only_never_modifies_existing_task_handoff(self) -> None:
+        (self.repo / "tracked.txt").write_text("changed\\n", encoding="utf-8")
+        original = self.run_helper("tracked.txt", task_id="t_scope")
+        self.assertEqual(original.returncode, 0, original.stderr)
+        task_handoff = Path(git(
+            self.repo, "rev-parse", "--git-path",
+            "hermes/task-handoffs/t_scope/current.json",
+        ))
+        if not task_handoff.is_absolute():
+            task_handoff = self.repo / task_handoff
+        original_bytes = task_handoff.read_bytes()
+        # Changing a source after final verification must not erase the old
+        # handoff during cheap preflight; final write replaces it later.
+        (self.repo / "tracked.txt").write_text("new changes\\n", encoding="utf-8")
+        check = self.run_helper("tracked.txt", check_only=True, task_id="t_scope")
+        self.assertEqual(check.returncode, 0, check.stderr)
+        self.assertIn("PREFLIGHT_SCOPE_ONLY=true", check.stdout)
+        self.assertEqual(task_handoff.read_bytes(), original_bytes)
+        bad_path = self.repo / "bad.md"
+        bad_path.write_text("bad trailing space \\n", encoding="utf-8")
+        invalid = self.run_helper("bad.md", check_only=True, task_id="t_scope")
+        self.assertNotEqual(invalid.returncode, 0)
+        self.assertEqual(task_handoff.read_bytes(), original_bytes)
+
+    def test_check_only_does_not_create_handoff(self) -> None:
+        (self.repo / "tracked.txt").write_text("changed\\n", encoding="utf-8")
+        check = self.run_helper("tracked.txt", check_only=True, task_id="t_new")
+        self.assertEqual(check.returncode, 0, check.stderr)
+        raw = git(
+            self.repo, "rev-parse", "--git-path",
+            "hermes/task-handoffs/t_new/current.json",
+        )
+        path = Path(raw)
+        if not path.is_absolute():
+            path = self.repo / path
+        self.assertFalse(path.exists())
 
     def test_standard_flow_requires_scoped_include(self) -> None:
         proc = self.run_helper()
