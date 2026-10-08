@@ -286,6 +286,7 @@ run_check "Maven launcher isolation contract" python3 scripts/check_maven_launch
 run_check "Managed Maven executable regression" python3 scripts/test_hermes_maven.py
 run_check "Shared process execution policy" python3 scripts/test_process_execution.py
 run_check "Maven verifier and worker startup delivery" python3 scripts/test_maven_worker_runtime.py
+run_check "Provider-aware Worker Context Gate regression" python3 custom-skills/coder/dev-implement-plan/tests/test_verify_worker_context.py
 run_check "Maven cached verification evidence reuse" python3 scripts/test_maven_verification_cached.py
 run_check "Canonical Parent Tracking physical newline contract" python3 scripts/test_parent_tracking_body.py
 run_check "Hermes Kanban parent tracking writer adapter compatibility" python3 scripts/patch_hermes_parent_tracking_body.py --self-test
