@@ -59,6 +59,21 @@ Kanban worker startup adapter는 다음만 수행한다.
 
 startup adapter가 Maven/Gradle/Node launcher path, timeout, cache, retry, verification helper path를 직접 지정하지 않는다. 해당 HOW가 바뀌어도 Kanban dispatcher patch를 수정하지 않는 것이 목표다.
 
+### Legacy Reviewer Skill Pin 호환
+
+기존 Kanban Task에 남은 `sdlc-review`는 Reviewer 전용 호환 Skill이다.
+구버전 Task가 이를 Coder에게도 `--skills`로 전달하면 Hermes가
+`kanban_show` 전에 `Unknown skill(s): sdlc-review`로 종료할 수 있다.
+
+`DEVKIT_LEGACY_REVIEW_PIN_SKIP_V1`은 실제 Worker startup argv 경계에서
+**Coder의 `sdlc-review` 사전 로드 인자만** 제외한다.
+- Kanban의 승인된 `task.skills` 기록·Task ID·workspace·branch·run ownership은 수정하지 않는다.
+- Coder는 `dev-implement-plan`을 사용하고 Reviewer는
+  `custom-skills/reviewer/sdlc-review` shim을 통해 `dev-code-review`를 수행한다.
+- 알 수 없는 다른 Skill, 새 Task의 잘못된 pin, 역할/승인 오류는 무시하지 않는다.
+- Direct/Standard/Recovery/CHANGES_REQUESTED 및 새/재개 Worker에서 동일하게 적용한다.
+- 별도 검증 provider 전환, 재할당, 자동 unblock이나 Reviewer 생략을 허용하지 않는다.
+
 ## 4. Workflow / Execution 계층
 
 Workflow는 승인된 WHAT을 실행 가능한 contract로 전달하되 runtime implementation detail을 Task에 복제하지 않는다.
