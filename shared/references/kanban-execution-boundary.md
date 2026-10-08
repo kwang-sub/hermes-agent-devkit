@@ -59,6 +59,22 @@ Kanban worker startup adapter는 다음만 수행한다.
 
 startup adapter가 Maven/Gradle/Node launcher path, timeout, cache, retry, verification helper path를 직접 지정하지 않는다. 해당 HOW가 바뀌어도 Kanban dispatcher patch를 수정하지 않는 것이 목표다.
 
+### WORKER_CONTEXT_PROVIDER_GATE_V2
+
+Coder Worker Context 검증은 실행 Provider에 따라 분리한다. `openai-codex`는
+Hermes가 Kanban ownership을 MCP 도구에만 제공하고 Codex native Shell에는
+제공하지 않으므로 **초기 `kanban_show`의 Task/Run/Context 정보**를 사용한다.
+다른 Worker는 역할 Skill의 Env 기반 Gate를 사용한다. 실행 Provider가
+불명확하면 추측하지 않고 차단한다.
+
+Codex/delegated Shell에서 Env 기반 helper를 호출해 발생한
+`WORKER_CONTEXT_BLOCKER=WRONG_VERIFICATION_PATH`는 작업의 run
+소유권을 잃었다는 증거가 아니다. 해당 Shell에서 재시도하거나
+`HERMES_KANBAN_TASK`를 주입하지 않는다. 소유권과 lifecycle mutation은
+기존 Hermes MCP run-id/claim-bound 검사가 강제하며, `kanban_show` 응답만으로
+새 권한을 부여하지 않는다. Direct/Standard/Recovery/CHANGES_REQUESTED와
+새/재개 세션에서 같은 규칙을 사용한다.
+
 ### Legacy Reviewer Skill Pin 호환
 
 기존 Kanban Task에 남은 `sdlc-review`는 Reviewer 전용 호환 Skill이다.
