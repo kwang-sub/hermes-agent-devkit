@@ -11,6 +11,12 @@ import subprocess
 import sys
 
 
+_TASK_LIB = Path(__file__).resolve().parents[3] / "_lib"
+if str(_TASK_LIB) not in sys.path:
+    sys.path.insert(0, str(_TASK_LIB))
+from task_handoff import handoff_path, clear_handoff, save_handoff
+
+
 class SummaryError(RuntimeError):
     pass
 
@@ -26,6 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Summarize scoped Git changes for implementation verification.")
     parser.add_argument("--workspace", default=".")
     parser.add_argument("--version-control", choices=("git", "none"), default="git")
+    parser.add_argument("--task-id", help="Task-scoped Handoff; mandatory in active worker contract")
     parser.add_argument("--include", action="append", default=[])
     parser.add_argument("--allow-full-scan", action="store_true", help="Explicit diagnostic mode only. Allows repository-wide change discovery.")
     parser.add_argument("--compact", action="store_true", help="Print only handoff-critical summary fields without changing the process exit code.")
@@ -116,26 +123,22 @@ def effective_scope_sha256(root: Path, paths: list[str]) -> str:
     return digest.hexdigest()
 
 
-def handoff_state_path(root: Path) -> Path:
-    raw = run(["git", "-C", str(root), "rev-parse", "--git-path", "hermes/review-handoff.json"]).stdout.strip()
-    path = Path(raw)
-    return path if path.is_absolute() else (root / path).resolve()
+def handoff_state_path(root: Path, task_id: str | None = None) -> Path:
+    return handoff_path(root, task_id)
 
 
-def clear_handoff_state(root: Path) -> None:
-    try:
-        handoff_state_path(root).unlink()
-    except FileNotFoundError:
-        pass
+def clear_handoff_state(root: Path, task_id: str | None = None) -> None:
+    clear_handoff(root, task_id)
 
 
-def write_handoff_state(root: Path, includes: list[str], effective_paths: list[str], fingerprint: str) -> None:
-    path = handoff_state_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"workspace": str(root), "scope": includes, "effective_paths": effective_paths, "effective_scope_sha256": fingerprint, "status": "valid"}
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
-    tmp.replace(path)
+def write_handoff_state(
+    root: Path, includes: list[str], effective_paths: list[str],
+    fingerprint: str, task_id: str | None = None,
+) -> None:
+    save_handoff(
+        root, scope=includes, effective_paths=effective_paths,
+        fingerprint=fingerprint, task_id=task_id,
+    )
 
 
 def print_summary(*, root: Path, includes: list[str], scan_mode: str, tracked: list[str], eol_only: list[str], untracked: list[str], fingerprint: str, whitespace_errors: list[str], compact: bool) -> None:
@@ -192,7 +195,7 @@ def main() -> int:
         return 0
 
     root = repo_root(workspace)
-    clear_handoff_state(root)
+    clear_handoff_state(root, args.task_id)
     includes = normalize_includes(root, args.include)
     if not includes and not args.allow_full_scan:
         raise SummaryError("scoped --include paths are required for Standard Flow; use --allow-full-scan only for explicit diagnostics")
@@ -208,7 +211,7 @@ def main() -> int:
     print_summary(root=root, includes=includes, scan_mode=scan_mode, tracked=tracked, eol_only=eol_only, untracked=untracked, fingerprint=fingerprint, whitespace_errors=whitespace_errors, compact=args.compact)
     if whitespace_errors:
         return 1
-    write_handoff_state(root, includes, effective_paths, fingerprint)
+    write_handoff_state(root, includes, effective_paths, fingerprint, args.task_id)
     return 0
 
 
