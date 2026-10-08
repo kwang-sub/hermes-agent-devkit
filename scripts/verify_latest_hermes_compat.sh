@@ -94,6 +94,24 @@ JSON
         rm -rf "$runtime_smoke" "$runtime_home"
 
         test -f /opt/hermes/hermes_cli/devkit_session_affinity.py
+        test -f /opt/hermes/hermes_cli/devkit_parent_tracking.py
+        test -x /opt/devkit/bin/parent_tracking_body.py
+        grep -q "DEVKIT_PARENT_TRACKING_CREATE_V1" /opt/hermes/hermes_cli/kanban_db.py
+        grep -q "DEVKIT_PARENT_TRACKING_EDIT_V1" /opt/hermes/hermes_cli/kanban_db.py
+        grep -q "DEVKIT_PARENT_TRACKING_DASHBOARD_V1" /opt/hermes/plugins/kanban/dashboard/plugin_api.py
+        /opt/hermes/.venv/bin/python - <<"PY_TRACKING"
+from hermes_cli.devkit_parent_tracking import normalize_parent_body, validate_parent_body
+
+original = "Parent Task ID: t_0e028558 (tracking only; no execution dependency)\\nExisting body"
+fixed = normalize_parent_body(original, title="[자식] Existing Task")
+assert fixed.startswith(
+    "Parent Tracking:\\n- Parent Task ID: t_0e028558\\n"
+    "- Relation: CHILD_WORK_UNIT\\n\\n"
+), repr(fixed)
+assert fixed.endswith(original)
+assert validate_parent_body(fixed, expected_parent="t_0e028558") == "t_0e028558"
+assert normalize_parent_body(fixed, title="[자식] Existing Task") == fixed
+PY_TRACKING
         test -f /opt/hermes/tools/kanban_tools.py
         grep -q "def _devkit_run_flow_model_transition" /opt/hermes/tools/kanban_tools.py
         grep -q "MODEL_POLICY_SNAPSHOT_V1" /opt/hermes/tools/kanban_tools.py
