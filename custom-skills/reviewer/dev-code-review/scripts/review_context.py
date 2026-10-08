@@ -11,6 +11,12 @@ import subprocess
 import sys
 
 
+_TASK_LIB = Path(__file__).resolve().parents[3] / "_lib"
+if str(_TASK_LIB) not in sys.path:
+    sys.path.insert(0, str(_TASK_LIB))
+from task_handoff import handoff_path, load_handoff
+
+
 class ReviewError(RuntimeError):
     pass
 
@@ -148,33 +154,19 @@ def external_sha256(paths: list[str]) -> str:
     return digest.hexdigest()
 
 
-def handoff_state_path(root: Path) -> Path:
-    raw = run(["git", "-C", str(root), "rev-parse", "--git-path", "hermes/review-handoff.json"]).stdout.strip()
-    path = Path(raw)
-    return path if path.is_absolute() else (root / path).resolve()
+def handoff_state_path(root: Path, task_id: str | None = None) -> Path:
+    return handoff_path(root, task_id)
 
 
-def load_handoff_state(root: Path) -> dict[str, object] | None:
-    path = handoff_state_path(root)
-    if not path.is_file():
-        return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    fingerprint = data.get("effective_scope_sha256")
-    effective_paths = data.get("effective_paths")
-    if data.get("status") != "valid":
-        return None
-    if not isinstance(fingerprint, str) or not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
-        return None
-    if not isinstance(effective_paths, list) or not all(isinstance(item, str) for item in effective_paths):
-        return None
-    return data
+def load_handoff_state(root: Path, task_id: str | None = None) -> dict[str, object] | None:
+    return load_handoff(root, task_id)
 
 
-def handoff_gate(root: Path, current_paths: list[str], current_hash: str) -> tuple[bool, str]:
-    state = load_handoff_state(root)
+def handoff_gate(
+    root: Path, current_paths: list[str], current_hash: str,
+    task_id: str | None = None,
+) -> tuple[bool, str]:
+    state = load_handoff_state(root, task_id)
     if not state:
         return False, "missing"
     state_paths = [str(item) for item in state["effective_paths"]]
@@ -191,6 +183,7 @@ def handoff_gate(root: Path, current_paths: list[str], current_hash: str) -> tup
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--version-control", choices=("git", "none"), default="git")
+    ap.add_argument("--task-id", help="Task-scoped Coder handoff; required in worker contract")
     ap.add_argument("--base-branch")
     ap.add_argument("--base-sha")
     ap.add_argument("--expected-branch")
@@ -288,7 +281,7 @@ def main() -> int:
     untracked = untracked_paths(root, includes)
     effective_paths = sorted(set(effective_tracked) | set(untracked))
     current_hash = scope_sha256(root, effective_paths)
-    gate_ok, gate_reason = handoff_gate(root, effective_paths, current_hash)
+    gate_ok, gate_reason = handoff_gate(root, effective_paths, current_hash, args.task_id)
 
     check_whitespace(root, base_sha, effective_tracked, untracked)
 
