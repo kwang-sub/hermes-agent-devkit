@@ -15,6 +15,7 @@ _TASK_LIB = Path(__file__).resolve().parents[3] / "_lib"
 if str(_TASK_LIB) not in sys.path:
     sys.path.insert(0, str(_TASK_LIB))
 from task_handoff import handoff_path, load_handoff
+from task_scope import semantic_tracked_paths, scope_sha256 as shared_scope_sha256, ScopeError
 
 
 class ReviewError(RuntimeError):
@@ -69,23 +70,11 @@ def git_paths(root: Path, args: list[str], includes: list[str]) -> list[str]:
 
 
 def classify_tracked(root: Path, base_sha: str, raw_paths: list[str]) -> tuple[list[str], list[str]]:
-    effective: list[str] = []
-    eol_only: list[str] = []
-    for path in raw_paths:
-        result = run(
-            ["git", "-C", str(root), "diff", "--quiet", "--ignore-cr-at-eol", base_sha, "--", path],
-            check=False,
-        )
-        if result.returncode == 0:
-            eol_only.append(path)
-        elif result.returncode == 1:
-            effective.append(path)
-        else:
-            raise ReviewError(
-                (result.stderr or result.stdout).strip()
-                or f"cannot classify tracked change for {path}: rc={result.returncode}"
-            )
-    return effective, eol_only
+    try:
+        effective = semantic_tracked_paths(root, base_sha, raw_paths)
+    except ScopeError as exc:
+        raise ReviewError(str(exc)) from exc
+    return effective, sorted(set(raw_paths) - set(effective))
 
 
 def untracked_paths(root: Path, includes: list[str]) -> list[str]:
@@ -125,18 +114,7 @@ def check_whitespace(root: Path, base_sha: str, tracked: list[str], untracked: l
 
 
 def scope_sha256(root: Path, paths: list[str]) -> str:
-    digest = sha256()
-    for path in sorted(dict.fromkeys(paths)):
-        file_path = root / path
-        digest.update(path.encode("utf-8"))
-        digest.update(b"\0")
-        if file_path.is_file():
-            digest.update(b"F\0")
-            digest.update(file_path.read_bytes().replace(b"\r\n", b"\n"))
-        else:
-            digest.update(b"MISSING\0")
-        digest.update(b"\0")
-    return digest.hexdigest()
+    return shared_scope_sha256(root, paths)
 
 
 def external_sha256(paths: list[str]) -> str:
