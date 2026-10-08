@@ -41,6 +41,38 @@ kanban_show
 → kanban_request_review | kanban_block
 ```
 
+### Worker Context Provider Gate — WORKER_CONTEXT_PROVIDER_GATE_V2
+
+`kanban_show`의 실제 Task `provider_override`, 승인된 `Coder Provider` snapshot,
+현재 실행 Provider를 확인하고 **Worker Context Gate의 경로를 정확히 한 번 선택**한다.
+명확하지 않거나 서로 충돌하면 `WORKER_CONTEXT_PROVIDER_UNVERIFIED`로 차단한다.
+Task 본문의 자유 서술이나 Shell 환경변수만으로 Provider를 추측하지 않는다.
+
+- **`openai-codex` (신규/재개/CHANGES_REQUESTED/Recovery 공통):**
+  첫 `kanban_show` MCP 응답의 `task.id == 현재 Task`, `status == running`,
+  `current_run_id` 존재, `worker_context` 존재 여부를 검증한다.
+  이 최초 Snapshot을 재사용하며 같은 정보로 두 번째 `kanban_show`를 호출하지 않는다.
+  **Codex native shell에서 `verify_worker_context.py`를 실행하지 않는다** (`--help` 포함).
+  Hermes 보안 정책상 Shell에 없는 `HERMES_KANBAN_TASK`를 복원하거나 주입하지 않는다.
+  검증 실패 시 `WORKER_CONTEXT_UNVERIFIED`로 차단하고 source mutation을 시작하지 않는다.
+  이 read-only 증거는 소유권 부여가 아니며 실제 lifecycle 전이는 upstream run-id/claim 검사를 따른다.
+- **그 외 Hermes Worker:** 일반 Worker의 권한 있는 프로세스에서 아래 env 기반 Gate를
+  정확히 1회 실행하고 `WORKER_CONTEXT_STATUS=valid`를 확인한다.
+
+```bash
+python3 /opt/custom-skills/coder/dev-implement-plan/scripts/verify_worker_context.py \
+  --worker-provider "<confirmed non-Codex provider>" \
+  --expected-workspace "<Workspace from kanban_show>" \
+  --expected-profile coder
+```
+
+`WORKER_CONTEXT_BLOCKER=WRONG_VERIFICATION_PATH`는 Codex/delegated Shell에서
+잘못된 Helper를 호출했다는 **검증 경로 오류**이며, 작업 소유권 소멸이나
+재시도 가능한 환경 장애로 취급하지 않는다. 같은 Shell에서 재시도하거나
+Env를 수동 주입하지 않고 이미 확보한 최초 `kanban_show` 근거로 경로를 확인한다.
+Owner/Run/Context가 검증되지 않으면 `kanban_block`으로 안전하게 종료한다.
+Workspace·Source·Build 검증은 이 Gate 성공 후 진행한다.
+
 Workspace Version Control과 Pattern References는 Task body를 재사용한다. Git Workspace는 Expected Branch/Base SHA를 검증하고, Non-Git Workspace는 `Version Control: none`, `Branch/Base SHA: NONE` 계약으로 `verify_workspace.py --version-control none`을 사용한다. 기존 변경은 preserve-first이며 reset/restore/clean/stash하지 않는다. Existing Changes Preservation Fast Path가 승인된 Git Workspace에서는 repository-wide dirty/EOL/untracked scan을 반복하지 않는다.
 
 ## Bounded Pre-Mutation Impact Scan
