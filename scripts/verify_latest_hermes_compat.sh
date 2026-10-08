@@ -102,11 +102,11 @@ JSON
         /opt/hermes/.venv/bin/python - <<"PY_TRACKING"
 from hermes_cli.devkit_parent_tracking import normalize_parent_body, validate_parent_body
 
-original = "Parent Task ID: t_0e028558 (tracking only; no execution dependency)\\nExisting body"
+original = "Parent Task ID: t_0e028558 (tracking only; no execution dependency)\nExisting body"
 fixed = normalize_parent_body(original, title="[자식] Existing Task")
 assert fixed.startswith(
-    "Parent Tracking:\\n- Parent Task ID: t_0e028558\\n"
-    "- Relation: CHILD_WORK_UNIT\\n\\n"
+    "Parent Tracking:\n- Parent Task ID: t_0e028558\n"
+    "- Relation: CHILD_WORK_UNIT\n\n"
 ), repr(fixed)
 assert fixed.endswith(original)
 assert validate_parent_body(fixed, expected_parent="t_0e028558") == "t_0e028558"
