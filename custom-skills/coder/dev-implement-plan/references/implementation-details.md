@@ -35,7 +35,12 @@ kanban_show
 
 ### Worker Context Gate
 
-Task body의 `Coder Provider` snapshot을 기준으로 검증 경로를 분리한다.
+`WORKER_CONTEXT_PROVIDER_GATE_V2`: 최초 `kanban_show`의
+`task.provider_override`, 승인된 `Coder Provider` snapshot, 실제 실행
+Provider가 일치하는지 확인한 뒤 **현재 Provider에 해당하는 경로만** 사용한다.
+필드가 없거나 서로 충돌해 실행 Provider를 확정할 수 없으면
+`WORKER_CONTEXT_PROVIDER_UNVERIFIED`로 차단한다. Shell Env에
+`HERMES_KANBAN_TASK`가 없다는 이유로 정상 Codex Worker를 실패 처리하지 않는다.
 
 **`openai-codex` Worker**는 Codex native shell에 Kanban ownership 환경변수를 노출하지 않는 upstream Hermes 보안 경계를 그대로 유지한다. 실행 순서의 **초기 `kanban_show` 응답을 Worker Context Gate로 정확히 1회 사용**하며 같은 목적으로 별도 context tool을 추가 호출하지 않는다. 응답이 spillover artifact를 가리키면 그 **정확한 artifact path를 전용 read로 최대 1회 확장**해 Task body/comments/runs를 합친 `Task Snapshot`으로 유지한다. spillover를 읽기 위해 inline Python, shell JSON parser, `hermes_tools` exec 또는 경로 재탐색을 사용하지 않는다.
 
@@ -47,17 +52,27 @@ Task body의 `Coder Provider` snapshot을 기준으로 검증 경로를 분리�
 → worker_context 존재
 ```
 
+최초 `kanban_show`는 read-only 검증 근거이며, 권한 자체를 부여하지 않는다. 실제 소유권과 종료 권한은 Hermes MCP lifecycle 도구가 검증하는 `HERMES_KANBAN_RUN_ID` 및 claim-bound CAS로만 제한한다.
+
 `kanban_show`가 없거나 호출 실패, Task 불일치, `running`이 아니거나 run/context 정보가 없으면 `CAPABILITY` 또는 context blocker로 `kanban_block`하고 종료한다. Codex shell에서 `HERMES_KANBAN_TASK`/`HERMES_KANBAN_RUN_ID`/`HERMES_KANBAN_CLAIM_LOCK` 등을 수동 주입하거나 `verify_worker_context.py`로 우회하지 않는다. 실제 lifecycle mutation의 stale-worker 차단은 upstream의 run-id/`expected_run_id` 계약을 따른다.
 
 **그 외 Hermes Worker**는 아래 helper를 첫 terminal command로 정확히 1회 실행한다.
 
 ```bash
 python3 /opt/custom-skills/coder/dev-implement-plan/scripts/verify_worker_context.py \
+  --worker-provider "<confirmed non-Codex provider>" \
   --expected-workspace "<Workspace>" \
   --expected-profile coder
 ```
 
 `WORKER_CONTEXT_STATUS=valid`이 아니면 구현/검증을 시작하지 않는다.
+`WORKER_CONTEXT_BLOCKER=WRONG_VERIFICATION_PATH`가 발생하면 Codex Native Shell
+또는 권한이 제거된 delegated subprocess에서 일반 Env Helper를 호출한 것이다.
+이는 단순 재시도/컨테이너 재시작으로 해결할 소유권 누락이 아니며,
+해당 Shell에서 재시도하거나 Env를 복원하지 않는다.
+`openai-codex` Worker는 최초 `kanban_show` 근거로 돌아가고,
+그 결과가 검증되지 않으면 안전하게 `kanban_block`한다.
+신규/재개/CHANGES_REQUESTED/Recovery는 모두 이 동일한 Provider Gate를 따른다.
 
 Worker Context Gate가 성공한 뒤 `verify_workspace.py`가 **첫 Git/workspace terminal command**다. 그 전에 workspace를 훑는 terminal probe는 실행하지 않는다.
 
