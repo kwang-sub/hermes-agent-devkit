@@ -11,6 +11,11 @@ class GuardError(RuntimeError):
     pass
 
 
+class WrongVerificationPath(GuardError):
+    """The current shell cannot prove dispatcher ownership by design."""
+    pass
+
+
 def _clean(value: str | None) -> str:
     return str(value or "").strip()
 
@@ -19,6 +24,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--expected-workspace", required=True)
     parser.add_argument("--expected-profile", default="coder")
+    parser.add_argument(
+        "--worker-provider",
+        default=None,
+        help="Approved active worker provider. Codex must use kanban_show instead.",
+    )
     args = parser.parse_args()
 
     task_id = _clean(os.environ.get("HERMES_KANBAN_TASK"))
@@ -31,6 +41,21 @@ def main() -> int:
     session_mode = _clean(os.environ.get("HERMES_KANBAN_SESSION_MODE")) or "NEW"
     affinity_session_id = _clean(os.environ.get("HERMES_KANBAN_AFFINITY_SESSION_ID")) or "-"
     delegated = _clean(os.environ.get("HERMES_DELEGATED_CHILD_CONTEXT"))
+    provider = _clean(args.worker_provider).lower()
+
+    # Codex app-server and delegated shell descendants are deliberately stripped
+    # of Kanban ownership. Do not treat their missing HERMES_KANBAN_TASK as a
+    # transient dispatcher failure, and never try to restore the sensitive env.
+    # Explicit provider rejects this helper even when the caller supplies env.
+    if provider == "openai-codex" or (delegated and not task_id):
+        raise WrongVerificationPath(
+            "WRONG_VERIFICATION_PATH: Codex native shell or an unowned "
+            "delegated subprocess cannot run the env-based Worker Context Gate. "
+            "For an openai-codex worker, verify the INITIAL kanban_show Task ID, "
+            "running status, current_run_id and worker_context via the managed "
+            "Kanban MCP tool. Never re-inject HERMES_KANBAN_TASK or retry this "
+            "helper from the same shell."
+        )
 
     problems: list[str] = []
     if delegated:
@@ -81,6 +106,11 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
+    except WrongVerificationPath as exc:
+        print("WORKER_CONTEXT_STATUS=BLOCKED", file=sys.stderr)
+        print("WORKER_CONTEXT_BLOCKER=WRONG_VERIFICATION_PATH", file=sys.stderr)
+        print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(2)
     except GuardError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         raise SystemExit(1)

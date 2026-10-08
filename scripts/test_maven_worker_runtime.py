@@ -31,11 +31,26 @@ class StartupTest(unittest.TestCase):
                 self.assertEqual(result[:-1], argv[:-1])
                 self.assertEqual(result[-1].count(MARKER), 1)
                 self.assertIn("KANBAN_EXECUTION_BOUNDARY_V1", result[-1])
+                self.assertIn("Provider별 Worker Context", result[-1])
+                self.assertIn("kanban_show", result[-1])
+                self.assertIn("ownership ENV가 scrub되므로", result[-1])
+                self.assertNotIn("verify_worker_context.py", result[-1])
                 expected_skill = "dev-implement-plan" if profile == "coder" else "dev-code-review"
                 self.assertIn(f'skill_view("{expected_skill}")', result[-1])
                 self.assertNotIn("hermes-maven", result[-1])
                 self.assertNotIn("maven_verification.py", result[-1])
                 self.assertEqual(result, with_worker_startup(result, profile))
+
+    def test_coder_context_route_reminder_is_consistent_across_restarts(self) -> None:
+        for prefix in ([], ["--resume", "old-coder-session"]):
+            for flow in ("DIRECT", "STANDARD", "RECOVERY", "CHANGES_REQUESTED"):
+                query = f"work kanban task t_demo ({flow})"
+                argv = ["hermes", "-p", "coder", *prefix, "chat", "-q", query]
+                actual = with_worker_startup(argv, "coder")
+                self.assertIn("kanban_show를 Worker Context 근거로 사용", actual[-1])
+                self.assertIn("Shell 환경변수 검사기를 호출하지 않는다", actual[-1])
+                self.assertEqual(actual, with_worker_startup(actual, "coder"))
+                self.assertEqual(argv[-1], query, "do not mutate Task source input")
 
     def test_legacy_review_pin_skipped_for_coder_without_changing_task(self) -> None:
         for prefix in ([], ["--resume", "existing-session"]):
