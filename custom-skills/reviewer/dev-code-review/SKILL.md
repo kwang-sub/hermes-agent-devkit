@@ -27,6 +27,15 @@ Reviewer는 같은 Workspace의 미커밋 변경을 독립 검토하며 applicat
 
 Direct/Standard Flow에서는 scope 없는 review를 하지 않는다. Standard Flow에서는 `--include`를 반드시 제공한다. Git Workspace의 `--allow-full-scan`은 명시적 진단 전용이며 tracked와 untracked 모두 Git pathspec으로 제한한다. Non-Git Workspace는 자동 change discovery/snapshot을 하지 않고 Coder의 선언 scope만 검토한다.
 
+## Task Snapshot / 임시 산출물
+
+Reviewer는 최초 Kanban snapshot을 재사용한다. 대형 spillover JSON을 확인할 때는
+일회성 parser를 만들지 않고 `/opt/devkit/bin/task_artifacts.py inspect-snapshot
+--profile reviewer --source "<spillover>" --fields id,status,body --comments 4`를 사용한다.
+일회성 감사 스크립트가 불가피하면 관리형 Scratch만 사용한다.
+DONE 이후 Handoff/Scratch 정리는 Worker가 아니라 별도 런타임이 수행하며,
+Reviewer의 `cleanup 금지` 불변식은 그대로 유지한다.
+
 ## Session History Review Gate — SESSION_HISTORY_BEST_EFFORT_V1
 
 Standard / Direct / Recovery / CHANGES_REQUESTED에 동일한 `session-history-rules.md`를 적용한다. Reviewer는 자기 profile/session만 기록한다.
