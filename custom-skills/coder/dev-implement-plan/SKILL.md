@@ -32,7 +32,8 @@ kanban_show
 → Bounded Pre-Mutation Impact Scan (최대 2-hop)
 → Impact Summary / Implementation Scope 확정
 → 현재 Work Unit만 구현
-→ scoped change_summary.py --task-id "<Task ID>" --check-only (cheap static gate)\n→ targeted verification
+→ scoped change_summary.py --task-id "<Task ID>" --check-only (cheap static gate)
+→ targeted verification
 → IMPLEMENTATION_STABLE
 → 필요한 final regression
 → scoped change_summary.py
