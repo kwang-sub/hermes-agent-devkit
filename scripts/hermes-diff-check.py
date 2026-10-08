@@ -73,7 +73,7 @@ def tracked_errors(root: Path, base: str, paths: list[str]) -> list[str]:
             new_line = None
             continue
         if raw.startswith("+++ "):
-            target = raw[4:]
+            target = raw[4:].rstrip("\t")
             if target.startswith('"') and target.endswith('"'):
                 try:
                     target = ast.literal_eval(target)
