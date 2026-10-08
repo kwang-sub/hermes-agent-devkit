@@ -63,6 +63,21 @@ RUN python3 /tmp/patch_hermes_kanban_relation_preview.py --self-test \
     && /opt/hermes/.venv/bin/python -m py_compile /opt/hermes/plugins/kanban/dashboard/plugin_api.py \
     && rm /tmp/patch_hermes_kanban_relation_preview.py
 
+# Normalize explicitly declared tracking relationships to the exact multiline
+# Parent Tracking body contract on real Kanban create/edit/dashboard PATCH writes.
+# Native dependency links and existing task lifecycle are left untouched.
+COPY --chmod=0755 scripts/parent_tracking_body.py /opt/devkit/bin/parent_tracking_body.py
+COPY scripts/parent_tracking_body.py /opt/hermes/hermes_cli/devkit_parent_tracking.py
+COPY scripts/patch_hermes_parent_tracking_body.py /tmp/patch_hermes_parent_tracking_body.py
+RUN python3 /tmp/patch_hermes_parent_tracking_body.py --self-test \
+    && python3 /tmp/patch_hermes_parent_tracking_body.py --hermes-root /opt/hermes \
+    && python3 /tmp/patch_hermes_parent_tracking_body.py --check-only --hermes-root /opt/hermes \
+    && /opt/hermes/.venv/bin/python -m py_compile \
+         /opt/hermes/hermes_cli/devkit_parent_tracking.py \
+         /opt/hermes/hermes_cli/kanban_db.py \
+         /opt/hermes/plugins/kanban/dashboard/plugin_api.py \
+    && rm /tmp/patch_hermes_parent_tracking_body.py
+
 # Fail the upstream compatibility stage immediately if a patched Hermes module no
 # longer compiles or the canonical CLI entry point disappears.
 RUN test -x /opt/hermes/.venv/bin/hermes \
