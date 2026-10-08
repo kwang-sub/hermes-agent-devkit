@@ -106,8 +106,9 @@ def self_test() -> None:
 
     fake_dashboard = (
         "def _patch_title_body(conn, task_id, payload):\n"
-        "    sets, vals = [], []\n"
-        + DASHBOARD_ANCHOR + "    return sets, vals\n"
+        "    with fake_context():\n"
+        "        sets, vals = [], []\n"
+        + DASHBOARD_ANCHOR + "        return sets, vals\n"
     )
     patched_dashboard = patch_dashboard(fake_dashboard)
     assert patch_dashboard(patched_dashboard) == patched_dashboard
