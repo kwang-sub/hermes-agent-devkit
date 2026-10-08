@@ -94,6 +94,51 @@ Parent Tracking:
 
 실제 Task는 기존 Standard Flow의 Work Unit/Workspace/API/Verification/Model 계약을 그대로 사용한다.
 
+## Parent Tracking 실제 개행 강제 — PARENT_TRACKING_NEWLINE_V1
+
+Child body의 관리용 관계는 **물리적으로 서로 다른 줄**에 작성한다.
+대시보드는 `Parent Tracking:` 독립 줄과 바로 이어지는 `- ` bullet 필드를
+파싱한다. 다음은 유효한 최소 계약이다.
+
+```text
+Parent Tracking:
+- Parent Task ID: t_0e028558
+- Relation: CHILD_WORK_UNIT
+
+<기존 Task 본문을 변경 없이 유지>
+```
+
+`- Parent Title: [부모] <title>`은 ID와 Relation 사이의 선택 필드다.
+이 블록을 기존 본문에 추가할 때는 본문과 **빈 줄로 구분**한다.
+한 문장에 `Parent Task ID: t_... (tracking only)`만 삽입하거나,
+문자 `\\n`을 실제 줄바꿈 대신 넣는 방식은 허용하지 않는다.
+
+- 신규 Child의 생성, 기존 Child의 Parent 참조 추가, Parent 승격/연결 모두 같은 계약을 적용한다.
+- 실행 의존성이 없는 **참조만 추가**하는 경우에도 위 최소 블록이 필요하며 native `task_links`/`kanban_create.parents`를 수정하지 않는다.
+- DevKit의 canonical `/opt/devkit/bin/parent_tracking_body.py`는 기존 본문을 보존하면서 올바른 개행 블록을 만들고, `--check-only --parent-id <task-id>`로 검증한다.
+- `--parent-id`를 명시한 기존 카드 갱신 시 다른 Parent Task ID가 발견되면 자동 재연결하지 않고 오류를 반환한다.
+- Hermes의 Kanban create/edit/dashboard PATCH 실행 경로도 명시적인 Parent 관계를 동일 형식으로 정규화하며, 필수 ID/Relation이 손상된 기존 블록은 실패로 처리한다.
+- 수정 후 `kanban_show` read-back으로 저장된 **실제** `body`의 Parent ID와 Relation이 서로 다른 독립 줄인지 확인한다. 주석만 추가하거나 부모 댓글만 작성한 것은 관계 성립으로 간주하지 않는다.
+- 비관련 Task의 본문, 기존 Work Unit/검증 증적, Task 상태, 실행 선행 관계는 유지한다. 기존 전체 Kanban 카드에 대한 무단 일괄 변경은 하지 않는다.
+
+기존 카드 참조만 추가할 때는 원본 전체 body를 작업용 파일에 준비한 뒤:
+
+```bash
+python3 /opt/devkit/bin/parent_tracking_body.py \
+  --input-file "<existing-body.txt>" \
+  --parent-id "t_0e028558" \
+  --output-file "<updated-body.txt>"
+
+# 공식 Kanban edit 경로로 full body 저장 후 다시 읽은 body를 확인한다.
+python3 /opt/devkit/bin/parent_tracking_body.py \
+  --input-file "<readback-body.txt>" \
+  --parent-id "t_0e028558" \
+  --check-only
+```
+
+기존 카드의 제목, 승인/진행 상태, Session History, native 실행 dependency를
+변경하지 않은 채 본문에 관계 메타데이터만 추가해야 한다.
+
 ## Parent 관계와 실행 순서 분리
 
 Parent/Child 관계와 Work Unit 실행 순서는 서로 다른 계약이다.
