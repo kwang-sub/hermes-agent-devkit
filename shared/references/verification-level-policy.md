@@ -111,7 +111,10 @@ Reviewer는 `review_context.py --task-id "<Task ID>" --include <Changed Files>`
 Node/TypeScript 검증은 기존 `node_runtime.py` 격리를 유지하되
 `node_verification_cached.py`를 통과한다. 명시적 `--scope-path`와
 project-canonical pnpm command가 필요하며, source/config/toolchain 및
-helper fingerprint가 동일한 PASS만 재사용한다. `pnpm install` 같은
+helper fingerprint가 동일한 PASS만 재사용한다. 격리 Node dependencies의
+복원 상태도 cache-hit 시 확인하며, `PACKAGE_BUILD`는 산출물 유효성을
+직접 보장하기 위해 매번 fresh 실행한다. 외부 서비스/시변 환경에
+의존하는 테스트에는 `--no-reuse`를 지정한다. `pnpm install` 같은
 dependency mutation은 이 경로에서 실행할 수 없다. Node 환경/빌드 정책
 Gate는 cache hit에서도 생략하지 않는다.
 
