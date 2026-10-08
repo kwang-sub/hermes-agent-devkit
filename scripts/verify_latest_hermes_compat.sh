@@ -93,6 +93,27 @@ JSON
         )
         rm -rf "$runtime_smoke" "$runtime_home"
 
+        test -f /opt/hermes/hermes_cli/devkit_recovery_plan_style.py
+        grep -q "DEVKIT_RECOVERY_PLAN_RENDER_V1" /opt/hermes/hermes_cli/cli_render.py
+        grep -q "DEVKIT_RECOVERY_PLAN_STREAM_V1" /opt/hermes/hermes_cli/cli_stream_mixin.py
+        grep -q "DEVKIT_RECOVERY_PLAN_STREAM_RESET_V1" /opt/hermes/hermes_cli/cli_stream_mixin.py
+        /opt/hermes/.venv/bin/python - <<"PY_RECOVERY"
+from hermes_cli.devkit_recovery_plan_style import (
+    HEADING, split_recovery_response, style_stream_line, style_recovery_response,
+)
+plan = "## 작업 복구 분석\n## 🛠 복구 계획\n> 1. 기존 카드 보존\n---\n### 승인 기준\n- 재검증\n"
+parsed = split_recovery_response(plan)
+assert parsed is not None and "기존 카드 보존" in parsed.plan
+styled = style_recovery_response(plan)
+assert styled is not None
+title, active = style_stream_line(HEADING, False)
+assert active and "🛠 복구 계획" in title
+border, active = style_stream_line("> 1. 기존 카드 보존", active)
+assert active and "┃" in border
+separator, active = style_stream_line("---", active)
+assert not active and separator == "---"
+assert split_recovery_response("Recovery Plan:\n- existing evidence") is None
+PY_RECOVERY
         test -f /opt/hermes/hermes_cli/devkit_session_affinity.py
         test -f /opt/hermes/hermes_cli/devkit_parent_tracking.py
         test -x /opt/devkit/bin/parent_tracking_body.py
