@@ -13,7 +13,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from devkit_worker_startup import MARKER, with_worker_startup
+from devkit_worker_startup import MARKER, LEGACY_REVIEW_PIN, LEGACY_SKIP_MARKER, with_worker_startup
 import patch_hermes_kanban_session_affinity as patch
 
 spec = importlib.util.spec_from_file_location("maven_verification", ROOT / "custom-skills/coder/dev-implement-plan/scripts/maven_verification.py")
@@ -36,6 +36,88 @@ class StartupTest(unittest.TestCase):
                 self.assertNotIn("hermes-maven", result[-1])
                 self.assertNotIn("maven_verification.py", result[-1])
                 self.assertEqual(result, with_worker_startup(result, profile))
+
+    def test_legacy_review_pin_skipped_for_coder_without_changing_task(self) -> None:
+        for prefix in ([], ["--resume", "existing-session"]):
+            argv = [
+                "hermes", "-p", "coder", *prefix, "--cli",
+                "--skills", LEGACY_REVIEW_PIN,
+                "--skills", "dev-java-guidelines",
+                "--skills", LEGACY_REVIEW_PIN,
+                "--skills", "unknown-other-skill",
+                "chat", "-q", "work kanban task t_old",
+            ]
+            original = list(argv)
+            actual = with_worker_startup(argv, "coder")
+            self.assertEqual(argv, original, "startup must not mutate Kanban-derived argv")
+            prefix_args = actual[:actual.index("-q")]
+            self.assertNotIn(LEGACY_REVIEW_PIN, prefix_args)
+            self.assertEqual(prefix_args.count("--skills"), 2)
+            self.assertIn("dev-java-guidelines", prefix_args)
+            self.assertIn("unknown-other-skill", prefix_args, "unknown skills must fail closed upstream")
+            self.assertIn('skill_view("dev-implement-plan")', actual[-1])
+            self.assertEqual(actual[-1].count(LEGACY_SKIP_MARKER), 1)
+            self.assertEqual(with_worker_startup(actual, "coder"), actual)
+
+    def test_reviewer_preloads_legacy_shim_without_role_leakage(self) -> None:
+        argv = [
+            "hermes", "-p", "reviewer", "--skills", LEGACY_REVIEW_PIN,
+            "--skills", "dev-java-guidelines",
+            "chat", "--query", "work kanban task t_old",
+        ]
+        actual = with_worker_startup(argv, "reviewer")
+        self.assertEqual(actual[:-1], argv[:-1])
+        self.assertEqual(actual[:-1].count(LEGACY_REVIEW_PIN), 1)
+        self.assertIn('skill_view("dev-code-review")', actual[-1])
+        self.assertNotIn(LEGACY_SKIP_MARKER, actual[-1])
+        reviewer_shim = ROOT / "custom-skills/reviewer/sdlc-review/SKILL.md"
+        self.assertTrue(reviewer_shim.is_file())
+        self.assertIn("dev-code-review", reviewer_shim.read_text(encoding="utf-8"))
+        self.assertFalse((ROOT / "custom-skills/coder/sdlc-review/SKILL.md").exists())
+
+    def test_only_exact_known_legacy_flag_is_affected(self) -> None:
+        argv = [
+            "hermes", "-p", "coder",
+            "--skills=sdlc-review", "--skills=other-old-review",
+            "--skills", "sdlc-review-other",
+            "chat", "-q", "work kanban task t_demo",
+        ]
+        actual = with_worker_startup(argv, "coder")
+        self.assertNotIn("--skills=sdlc-review", actual[:actual.index("-q")])
+        self.assertIn("--skills=other-old-review", actual[:actual.index("-q")])
+        self.assertIn("sdlc-review-other", actual[:actual.index("-q")])
+        self.assertIn(LEGACY_SKIP_MARKER, actual[-1])
+
+    def test_dispatcher_current_sample_skips_legacy_pin_in_coder(self) -> None:
+        from unittest.mock import patch as mock_patch
+        fake_package = types.ModuleType("hermes_cli")
+        affinity = types.ModuleType("hermes_cli.devkit_session_affinity")
+        affinity.choose_worker_session = lambda **kwargs: types.SimpleNamespace(mode="NEW", session_id=None)
+        startup = types.ModuleType("hermes_cli.devkit_worker_startup")
+        startup.with_worker_startup = with_worker_startup
+        original = 'return ["hermes", "-p", profile_arg, "chat", "-q", f"work kanban task {task.id}"]'
+        replacement = 'return ["hermes", "-p", profile_arg, "--skills", "sdlc-review", "--skills", "dev-java-guidelines", "chat", "-q", f"work kanban task {task.id}"]'
+        source = patch._current_sample()
+        self.assertIn(original, source)
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "kanban_db_dispatch.py"
+            target.write_text(source.replace(original, replacement))
+            self.assertEqual(patch.patch_source(target), "patched")
+            with mock_patch.dict(sys.modules, {
+                "hermes_cli": fake_package,
+                "hermes_cli.devkit_session_affinity": affinity,
+                "hermes_cli.devkit_worker_startup": startup,
+            }):
+                namespace = {}
+                exec(compile(target.read_text(), str(target), "exec"), namespace)
+                for role in ("coder", "reviewer"):
+                    argv = namespace["_default_spawn"](
+                        types.SimpleNamespace(id="t_old", assignee=role), "/workspace/project"
+                    )
+                    pins = argv[:argv.index("-q")]
+                    self.assertEqual(LEGACY_REVIEW_PIN in pins, role == "reviewer")
+                    self.assertIn("dev-java-guidelines", pins)
+                    self.assertIn(MARKER, argv[-1])
 
     def test_unknown_role_is_unchanged(self) -> None:
         argv = ["hermes", "chat", "-q", "hello"]

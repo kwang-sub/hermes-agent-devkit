@@ -110,6 +110,24 @@ for profile in ("coder", "reviewer"):
     assert patched[:-1] == argv[:-1]
     assert with_worker_startup(patched, profile) == patched
 
+legacy_pins = [
+    "hermes", "-p", "coder", "--cli",
+    "--skills", "sdlc-review", "--skills", "dev-java-guidelines",
+    "chat", "-q", "work kanban task t_legacy",
+]
+coder_argv = with_worker_startup(legacy_pins, "coder")
+assert "sdlc-review" not in coder_argv[:coder_argv.index("-q")]
+assert "dev-java-guidelines" in coder_argv
+assert "DEVKIT_LEGACY_REVIEW_PIN_SKIP_V1" in coder_argv[-1]
+assert with_worker_startup(coder_argv, "coder") == coder_argv
+reviewer_pins = list(legacy_pins)
+reviewer_pins[reviewer_pins.index("-p") + 1] = "reviewer"
+reviewer_argv = with_worker_startup(reviewer_pins, "reviewer")
+assert reviewer_argv[:-1] == reviewer_pins[:-1]
+assert "DEVKIT_LEGACY_REVIEW_PIN_SKIP_V1" not in reviewer_argv[-1]
+assert Path("/opt/custom-skills/reviewer/sdlc-review/SKILL.md").is_file()
+assert not Path("/opt/custom-skills/coder/sdlc-review/SKILL.md").exists()
+
 from agent.delegation_context import KANBAN_ENV_KEYS, delegated_child_subprocess_env
 from agent.transports.hermes_tools_mcp_server import EXPOSED_TOOLS
 
