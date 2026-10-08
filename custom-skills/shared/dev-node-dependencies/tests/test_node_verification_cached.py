@@ -39,6 +39,8 @@ class PnpmEvidenceTests(unittest.TestCase):
 
     def test_reuses_identical_scope_but_invalidates_mutation(self):
         with patch.object(cached, "validate_project_environment"), patch.object(
+            cached, "isolated_workspace_ready", return_value=True,
+        ), patch.object(
             cached, "execute_runtime", return_value=0,
         ) as runner:
             self.assertEqual(self.run_cached(), 0)
@@ -55,6 +57,8 @@ class PnpmEvidenceTests(unittest.TestCase):
 
     def test_failure_is_never_reused(self):
         with patch.object(cached, "validate_project_environment"), patch.object(
+            cached, "isolated_workspace_ready", return_value=True,
+        ), patch.object(
             cached, "execute_runtime", side_effect=[1, 0],
         ) as runner:
             self.assertEqual(self.run_cached(), 1)
@@ -67,6 +71,8 @@ class PnpmEvidenceTests(unittest.TestCase):
             (self.workspace / "app.ts").write_text("changed during compile\n")
             return 0
         with patch.object(cached, "validate_project_environment"), patch.object(
+            cached, "isolated_workspace_ready", return_value=True,
+        ), patch.object(
             cached, "execute_runtime", side_effect=modify,
         ):
             self.assertEqual(self.run_cached(), 2)
@@ -74,10 +80,54 @@ class PnpmEvidenceTests(unittest.TestCase):
     def test_cannot_skip_gate_on_cache_reuse(self):
         with patch.object(cached, "validate_project_environment", side_effect=[
             None, cached.EnvironmentGateError("policy invalid"),
-        ]), patch.object(cached, "execute_runtime", return_value=0):
+        ]), patch.object(cached, "isolated_workspace_ready", return_value=True), patch.object(cached, "execute_runtime", return_value=0):
             self.assertEqual(self.run_cached(), 0)
             with self.assertRaises(cached.EnvironmentGateError):
                 self.run_cached()
+
+    def test_cache_hit_requires_ready_isolated_dependencies(self):
+        with patch.object(cached, "validate_project_environment"), patch.object(
+            cached, "isolated_workspace_ready", side_effect=[False, False],
+        ), patch.object(cached, "execute_runtime", return_value=0) as runner:
+            self.assertEqual(self.run_cached(), 0)
+            self.assertEqual(self.run_cached(), 0)
+            self.assertEqual(runner.call_count, 2)
+
+    def test_package_build_produces_fresh_artifact_not_reused(self):
+        with patch.object(cached, "validate_project_environment"), patch.object(
+            cached, "isolated_workspace_ready", return_value=True,
+        ), patch.object(cached, "execute_runtime", return_value=0) as runner:
+            for _ in range(2):
+                self.assertEqual(cached.run(
+                    workspace=self.workspace, cwd=self.workspace,
+                    mode="PACKAGE_BUILD", command=["pnpm", "run", "build"],
+                    scope_paths=["app.ts"], evidence_root=self.evidence,
+                ), 0)
+            self.assertEqual(runner.call_count, 2)
+
+    def test_explicit_no_reuse_for_environment_dependent_test(self):
+        with patch.object(cached, "validate_project_environment"), patch.object(
+            cached, "isolated_workspace_ready", return_value=True,
+        ), patch.object(cached, "execute_runtime", return_value=0) as runner:
+            for _ in range(2):
+                self.assertEqual(cached.run(
+                    workspace=self.workspace, cwd=self.workspace,
+                    mode="TARGETED_TEST", command=["pnpm", "run", "test"],
+                    scope_paths=["app.ts"], evidence_root=self.evidence,
+                    no_reuse=True,
+                ), 0)
+            self.assertEqual(runner.call_count, 2)
+
+    def test_env_and_secondary_config_mutations_invalidate_cache(self):
+        with patch.object(cached, "validate_project_environment"), patch.object(
+            cached, "isolated_workspace_ready", return_value=True,
+        ), patch.object(cached, "execute_runtime", return_value=0) as runner:
+            self.assertEqual(self.run_cached(), 0)
+            (self.workspace / ".env.local").write_text("FEATURE_ENABLED=true\\n")
+            self.assertEqual(self.run_cached(), 0)
+            (self.workspace / "tsconfig.paths.json").write_text('{"compilerOptions": {}}')
+            self.assertEqual(self.run_cached(), 0)
+            self.assertEqual(runner.call_count, 3)
 
     def test_reject_mutation_command_or_invalid_scope(self):
         with self.assertRaises(cached.RuntimeErrorPolicy):
