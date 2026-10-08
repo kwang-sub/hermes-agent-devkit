@@ -78,6 +78,18 @@ RUN python3 /tmp/patch_hermes_parent_tracking_body.py --self-test \
          /opt/hermes/plugins/kanban/dashboard/plugin_api.py \
     && rm /tmp/patch_hermes_parent_tracking_body.py
 
+# Style user-visible Recovery Plan in the normal assistant response renderer.
+# Reasoning and durable Recovery Revision comments are deliberately unchanged.
+COPY scripts/devkit_recovery_plan_style.py /opt/hermes/hermes_cli/devkit_recovery_plan_style.py
+COPY scripts/patch_hermes_recovery_plan_style.py /tmp/patch_hermes_recovery_plan_style.py
+RUN python3 /tmp/patch_hermes_recovery_plan_style.py --self-test \
+    && python3 /tmp/patch_hermes_recovery_plan_style.py --hermes-root /opt/hermes \
+    && python3 /tmp/patch_hermes_recovery_plan_style.py --check-only --hermes-root /opt/hermes \
+    && /opt/hermes/.venv/bin/python -m py_compile \
+         /opt/hermes/hermes_cli/devkit_recovery_plan_style.py \
+         /opt/hermes/hermes_cli/cli_render.py \
+         /opt/hermes/hermes_cli/cli_stream_mixin.py \
+    && rm /tmp/patch_hermes_recovery_plan_style.py
 # Fail the upstream compatibility stage immediately if a patched Hermes module no
 # longer compiles or the canonical CLI entry point disappears.
 RUN test -x /opt/hermes/.venv/bin/hermes \
