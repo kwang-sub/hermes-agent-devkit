@@ -50,7 +50,7 @@ class ReviewContextTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_helper(self, *includes: str, allow_full_scan: bool = False):
+    def run_helper(self, *includes: str, allow_full_scan: bool = False, task_id: str | None = None):
         cmd = [
             sys.executable, str(SCRIPT),
             "--base-branch", "dispatch-base",
@@ -59,6 +59,8 @@ class ReviewContextTests(unittest.TestCase):
             "--workspace", str(self.repo),
             "--expected-workspace", str(self.repo),
         ]
+        if task_id:
+            cmd.extend(["--task-id", task_id])
         if allow_full_scan:
             cmd.append("--allow-full-scan")
         for include in includes:
@@ -88,6 +90,43 @@ class ReviewContextTests(unittest.TestCase):
         self.assertIn("SCAN_MODE=scoped", second.stdout)
         self.assertIn("CODER_HANDOFF_GATE=PASS", second.stdout)
         self.assertIn("REVIEWER_TEST_RERUN_REQUIRED=false", second.stdout)
+
+    def test_scoped_handoff_gate_is_checked_before_build(self):
+        missing = self.run_helper("change.txt", task_id="t_review")
+        self.assertNotEqual(missing.returncode, 0)
+        self.assertIn("CODER_HANDOFF_GATE=FAIL", missing.stdout)
+        self.assertIn("REVIEWER_TEST_RERUN_REQUIRED=true", missing.stdout)
+        self.assertIn("STATUS=invalid", missing.stdout)
+
+        current = field(missing.stdout, "CURRENT_SCOPE_SHA256")
+        raw = git(
+            self.repo, "rev-parse", "--git-path",
+            "hermes/task-handoffs/t_review/current.json",
+        )
+        state = Path(raw)
+        if not state.is_absolute():
+            state = self.repo / state
+        state.parent.mkdir(parents=True, exist_ok=True)
+        state.write_text(json.dumps({
+            "task_id": "t_review",
+            "workspace": str(self.repo.resolve()),
+            "scope": ["change.txt"],
+            "effective_paths": ["change.txt"],
+            "effective_scope_sha256": current,
+            "status": "valid",
+        }) + "\n", encoding="utf-8")
+        ready = self.run_helper("change.txt", task_id="t_review")
+        self.assertEqual(ready.returncode, 0, ready.stderr)
+        self.assertIn("CODER_HANDOFF_GATE=PASS", ready.stdout)
+
+        different = self.run_helper("change.txt", task_id="t_other")
+        self.assertNotEqual(different.returncode, 0)
+        self.assertIn("CODER_HANDOFF_GATE=FAIL", different.stdout)
+
+        (self.repo / "change.txt").write_text("edited after handoff\n")
+        stale = self.run_helper("change.txt", task_id="t_review")
+        self.assertNotEqual(stale.returncode, 0)
+        self.assertIn("CODER_HANDOFF_GATE_REASON=stale", stale.stdout)
 
     def test_standard_flow_requires_scoped_include(self):
         proc = self.run_helper()
