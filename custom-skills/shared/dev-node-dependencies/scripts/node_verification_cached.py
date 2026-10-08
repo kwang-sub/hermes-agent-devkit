@@ -138,6 +138,7 @@ def load_pass(path: Path, request_hash: str, scope_hash: str) -> bool:
         return False
     return (
         isinstance(data, dict) and data.get("status") == "PASS"
+        and data.get("cache_eligible") is True
         and data.get("request_sha256") == request_hash
         and data.get("scope_sha256") == scope_hash
     )
@@ -227,6 +228,7 @@ def run(
                     "status": "PASS", "request_sha256": request_hash,
                     "scope_sha256": scope_hash, "scope_paths": [name for name, _ in selected],
                     "command": command, "mode": mode,
+                    "cache_eligible": (not no_reuse and mode != "PACKAGE_BUILD"),
                 })
                 print("VERIFICATION_EVIDENCE=EXECUTED")
                 print("PRIMARY_REUSED=false")
