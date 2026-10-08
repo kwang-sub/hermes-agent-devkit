@@ -287,6 +287,8 @@ run_check "Managed Maven executable regression" python3 scripts/test_hermes_mave
 run_check "Shared process execution policy" python3 scripts/test_process_execution.py
 run_check "Maven verifier and worker startup delivery" python3 scripts/test_maven_worker_runtime.py
 run_check "Maven cached verification evidence reuse" python3 scripts/test_maven_verification_cached.py
+run_check "Canonical Parent Tracking physical newline contract" python3 scripts/test_parent_tracking_body.py
+run_check "Hermes Kanban parent tracking writer adapter compatibility" python3 scripts/patch_hermes_parent_tracking_body.py --self-test
 run_check "Standard Flow Work Unit boundary contract" python3 scripts/check_standard_work_unit_contract.py
 run_check "Kanban execution responsibility boundary" python3 scripts/check_kanban_execution_boundary_contract.py
 run_check "Markdown API specification contract" python3 scripts/check_api_spec_contract.py
