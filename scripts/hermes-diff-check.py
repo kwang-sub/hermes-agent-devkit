@@ -66,7 +66,7 @@ def tracked_errors(root: Path, base: str, paths: list[str]) -> list[str]:
     requested = set(selected)
     active_path: str | None = None
     new_line: int | None = None
-    hunk_re = re.compile(r"^@@ -\\d+(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@")
+    hunk_re = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
     for raw in result.stdout.splitlines():
         if raw.startswith("diff --git "):
             active_path = None
@@ -98,7 +98,7 @@ def tracked_errors(root: Path, base: str, paths: list[str]) -> list[str]:
             if trailing_whitespace(raw[1:]):
                 errors.append(f"{active_path}:{new_line}: trailing whitespace")
             new_line += 1
-        elif raw.startswith("-") or raw.startswith("\\\\"):
+        elif raw.startswith("-") or raw.startswith("\\"):
             continue
         else:
             new_line += 1
