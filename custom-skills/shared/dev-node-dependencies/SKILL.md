@@ -276,6 +276,25 @@ Hermes 전용 allowlist 파일 생성
 
 `pnpm-workspace.yaml`은 dependency fingerprint에 포함된다. 따라서 build policy 변경 후 기존 isolated `node_modules`를 그대로 정상 상태로 간주하지 않고 frozen restore를 다시 수행한다. pnpm의 side-effects cache는 별도 정책 변경 없이 그대로 활용하므로 동일 package build 결과의 재사용은 pnpm 표준 동작에 맡긴다.
 
+## Node 검증 증적 캐시 (공통 Verification Contract)
+
+Node source 검증은 기존 `node_runtime.py` Linux isolated 경로를 변경하지 않으며,
+그 앞에서 `node_verification_cached.py`를 canonical helper로 사용한다.
+
+```bash
+python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_verification_cached.py \\
+  --workspace "<approved workspace>" \\
+  --mode STATIC_COMPILE \\
+  --scope-path "src/changed.ts" \\
+  -- pnpm run typecheck
+```
+
+`--scope-path`는 실제 검증이 커버하는 실행 파일·테스트 파일을 명시한다.
+이 helper는 package.json/lockfile/known config도 자동 fingerprint 대상에 넣는다.
+같은 요청의 PASS만 재사용하며 FAIL/BLOCKED, 변화된 Scope나 승인되지 않은
+Build Script는 재사용하지 않는다. Cache hit에서도 Node 환경 Gate를 통과한다.
+Test/build 명령은 프로젝트에 실제 존재하는 script를 선택한다.
+
 ## Node Verification Level Boundary
 
 Dependency/toolchain 준비가 끝난 뒤 application 검증 수준은 `/opt/data/shared/references/verification-level-policy.md`의 `VERIFICATION_LEVEL_POLICY_V1`을 따른다.
