@@ -36,6 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--task-id", help="Task-scoped Handoff; mandatory in active worker contract")
     parser.add_argument("--include", action="append", default=[])
     parser.add_argument("--allow-full-scan", action="store_true", help="Explicit diagnostic mode only. Allows repository-wide change discovery.")
+    parser.add_argument("--check-only", action="store_true", help="Run fast scoped checks without changing any handoff state")
     parser.add_argument("--compact", action="store_true", help="Print only handoff-critical summary fields without changing the process exit code.")
     return parser.parse_args()
 
@@ -182,7 +183,8 @@ def main() -> int:
         return 0
 
     root = repo_root(workspace)
-    clear_handoff_state(root, args.task_id)
+    if not args.check_only:
+        clear_handoff_state(root, args.task_id)
     includes = normalize_includes(root, args.include)
     if not includes and not args.allow_full_scan:
         raise SummaryError("scoped --include paths are required for Standard Flow; use --allow-full-scan only for explicit diagnostics")
@@ -198,7 +200,10 @@ def main() -> int:
     print_summary(root=root, includes=includes, scan_mode=scan_mode, tracked=tracked, eol_only=eol_only, untracked=untracked, fingerprint=fingerprint, whitespace_errors=whitespace_errors, compact=args.compact)
     if whitespace_errors:
         return 1
-    write_handoff_state(root, includes, effective_paths, fingerprint, args.task_id)
+    if args.check_only:
+        print("PREFLIGHT_SCOPE_ONLY=true")
+    else:
+        write_handoff_state(root, includes, effective_paths, fingerprint, args.task_id)
     return 0
 
 

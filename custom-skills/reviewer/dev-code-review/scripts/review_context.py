@@ -298,6 +298,10 @@ def main() -> int:
     print("RERUN_POLICY=minimal-once;no-rerun-tasks-for-confidence")
     print("DIFF_CHECK=PASS")
     print("GIT_SAFE_DIRECTORY=true")
+    if args.task_id and not gate_ok:
+        # Before running Maven/Gradle/pnpm, stop on a missing or stale handoff.
+        print("STATUS=invalid")
+        return 1
     print("STATUS=valid")
     return 0
 

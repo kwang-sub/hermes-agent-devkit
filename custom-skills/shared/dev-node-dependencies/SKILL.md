@@ -276,6 +276,37 @@ Hermes 전용 allowlist 파일 생성
 
 `pnpm-workspace.yaml`은 dependency fingerprint에 포함된다. 따라서 build policy 변경 후 기존 isolated `node_modules`를 그대로 정상 상태로 간주하지 않고 frozen restore를 다시 수행한다. pnpm의 side-effects cache는 별도 정책 변경 없이 그대로 활용하므로 동일 package build 결과의 재사용은 pnpm 표준 동작에 맡긴다.
 
+## Node 검증 증적 캐시 (공통 Verification Contract)
+
+Node source 검증은 기존 `node_runtime.py` Linux isolated 경로를 변경하지 않으며,
+그 앞에서 `node_verification_cached.py`를 canonical helper로 사용한다.
+
+```bash
+python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/node_verification_cached.py \\
+  --workspace "<approved workspace>" \\
+  --mode STATIC_COMPILE \\
+  --scope-path "src/changed.ts" \\
+  -- pnpm run typecheck
+```
+
+`--scope-path`는 실제 검증이 커버하는 실행 파일·테스트 파일을 명시한다.
+이 helper는 package.json/lockfile/known config도 자동 fingerprint 대상에 넣는다.
+Node 재사용 전에는 `HERMES_NODE_ROOT`의 격리 패키지와
+`node_modules` 준비 상태를 read-only로 확인한다. 격리 환경이
+사라졌거나 dependency fingerprint가 달라졌으면 기존 PASS를 재사용하지 않고
+기존 `node_runtime.py` 검증 경로로 다시 확인한다.
+
+`PACKAGE_BUILD`는 실행 산출물 자체의 존재가 보장되어야 하므로
+과거 PASS 증적을 빌드 결과물 대신 재사용하지 않는다. 외부 DB/API/인증,
+시간·네트워크 상태에 의존하는 검증은 `--no-reuse`를 사용한다.
+`.env*`, `tsconfig*.json`, build/toolchain 설정 변화도 Scope fingerprint를
+무효화한다. `--scope-path`는 테스트가 실제 커버하는 실행 범위 전체를
+선언해야 하며 변경 파일 일부만 지정해 나머지를 무시하면 안 된다.
+
+같은 요청의 PASS만 재사용하며 FAIL/BLOCKED, 변화된 Scope나 승인되지 않은
+Build Script는 재사용하지 않는다. Cache hit에서도 Node 환경 Gate를 통과한다.
+Test/build 명령은 프로젝트에 실제 존재하는 script를 선택한다.
+
 ## Node Verification Level Boundary
 
 Dependency/toolchain 준비가 끝난 뒤 application 검증 수준은 `/opt/data/shared/references/verification-level-policy.md`의 `VERIFICATION_LEVEL_POLICY_V1`을 따른다.
