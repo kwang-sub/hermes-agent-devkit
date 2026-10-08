@@ -19,17 +19,25 @@ import tempfile
 
 from node_environment_gate import EnvironmentGateError, validate_project_environment
 from node_runtime import validate_pnpm_command, RuntimeErrorPolicy
-from node_workspace import resolve_cwd, resolve_package_root, WorkspaceError
+from node_workspace import (
+    DEFAULT_ROOT as DEFAULT_NODE_ROOT, WorkspaceError, dependency_fingerprint,
+    internal_paths, resolve_cwd, resolve_package_root,
+)
 
 DEFAULT_EVIDENCE_ROOT = Path(
     os.getenv("HERMES_NODE_VERIFICATION_EVIDENCE_ROOT", "/opt/data/node/verification-evidence")
 )
 RUNTIME_SCRIPT = Path(__file__).with_name("node_runtime.py")
 AUTO_CONFIG_FILES = (
-    "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml",
-    "tsconfig.json", "tsconfig.app.json", "tsconfig.node.json",
-    "vitest.config.ts", "vite.config.ts", "jest.config.js",
-    "next.config.js", "next.config.mjs", "next.config.ts",
+    "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc",
+    ".env", ".env.local", ".env.production", ".env.development", ".env.test",
+    "turbo.json", "nx.json",
+)
+AUTO_CONFIG_PATTERNS = (
+    "tsconfig*.json", "vitest.config.*", "vite.config.*",
+    "jest.config.*", "next.config.*", "eslint.config.*",
+    "postcss.config.*", "tailwind.config.*", "babel.config.*",
+    "webpack.config.*", ".env.*.local",
 )
 
 
@@ -44,6 +52,7 @@ def parse_args(argv: list[str] | None = None) -> tuple[argparse.Namespace, list[
     parser.add_argument("--mode", choices=["STATIC_COMPILE", "TARGETED_TEST", "PACKAGE_BUILD"], required=True)
     parser.add_argument("--scope-path", action="append", default=[])
     parser.add_argument("--evidence-root", default=str(DEFAULT_EVIDENCE_ROOT))
+    parser.add_argument("--no-reuse", action="store_true", help="Fresh verification for environment-dependent tests")
     args, command = parser.parse_known_args(argv)
     if command and command[0] == "--":
         command = command[1:]
@@ -54,8 +63,15 @@ def parse_args(argv: list[str] | None = None) -> tuple[argparse.Namespace, list[
 
 def covered_files(workspace: Path, package_root: Path, requested: list[str]) -> list[tuple[str, Path]]:
     paths: dict[str, Path] = {}
-    candidates = [*requested, *[str((package_root / name).relative_to(workspace))
-                                for name in AUTO_CONFIG_FILES]]
+    config_candidates = [
+        package_root / name for name in AUTO_CONFIG_FILES
+    ]
+    for pattern in AUTO_CONFIG_PATTERNS:
+        config_candidates.extend(package_root.glob(pattern))
+    candidates = [
+        *requested,
+        *[str(path.relative_to(workspace)) for path in config_candidates],
+    ]
     for raw in candidates:
         candidate = (workspace / raw).resolve()
         try:
@@ -127,6 +143,37 @@ def load_pass(path: Path, request_hash: str, scope_hash: str) -> bool:
     )
 
 
+def isolated_workspace_ready(workspace: Path, package_root: Path) -> bool:
+    """Do not reuse a PASS if the actual canonical Node runtime cannot run.
+
+    Read-only readiness check: never restore, sync or delete dependencies in a
+    cache-hit path. The runtime itself still owns the full environment gate.
+    """
+    node_root = Path(os.getenv("HERMES_NODE_ROOT", str(DEFAULT_NODE_ROOT))).resolve()
+    paths = internal_paths(node_root, workspace, package_root)
+    isolated = paths["isolated_package_root"]
+    marker = paths["dependency_fingerprint"]
+    if not isolated.is_dir() or isolated.is_symlink() or not marker.is_file():
+        return False
+    try:
+        source_fp = dependency_fingerprint(package_root)
+        isolated_fp = dependency_fingerprint(isolated)
+        restored_fp = marker.read_text(encoding="utf-8").strip()
+        manifest = json.loads((package_root / "package.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if not (source_fp == isolated_fp == restored_fp):
+        return False
+    sections = ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies")
+    needs_modules = isinstance(manifest, dict) and any(
+        isinstance(manifest.get(name), dict) and bool(manifest[name])
+        for name in sections
+    )
+    if needs_modules and not (isolated / "node_modules").is_dir():
+        return False
+    return True
+
+
 def execute_runtime(workspace: Path, cwd: Path, command: list[str]) -> int:
     relative_cwd = str(cwd.relative_to(workspace))
     argv = [
@@ -138,7 +185,7 @@ def execute_runtime(workspace: Path, cwd: Path, command: list[str]) -> int:
 
 def run(
     *, workspace: Path, cwd: Path, mode: str, command: list[str],
-    scope_paths: list[str], evidence_root: Path,
+    scope_paths: list[str], evidence_root: Path, no_reuse: bool = False,
 ) -> int:
     validate_pnpm_command(command)
     package_root = resolve_package_root(workspace, cwd)
@@ -159,7 +206,9 @@ def run(
     with lock_path.open("a+") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         try:
-            if load_pass(evidence, request_hash, scope_hash):
+            if (not no_reuse and mode != "PACKAGE_BUILD"
+                    and load_pass(evidence, request_hash, scope_hash)
+                    and isolated_workspace_ready(workspace, package_root)):
                 print("VERIFICATION_EVIDENCE=REUSED")
                 print("PRIMARY_REUSED=true")
                 print("NODE_VERIFICATION_STATUS=PASS")
@@ -204,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
         return run(
             workspace=workspace, cwd=cwd, mode=args.mode, command=command,
             scope_paths=args.scope_path, evidence_root=evidence_root,
+            no_reuse=args.no_reuse,
         )
     except (VerificationError, EnvironmentGateError, RuntimeErrorPolicy,
             WorkspaceError, OSError, ValueError, subprocess.SubprocessError) as exc:
