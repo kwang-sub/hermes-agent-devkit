@@ -81,6 +81,8 @@ class ParentTrackingBodyTests(unittest.TestCase):
     def test_does_not_convert_ordinary_prose_or_code_examples_to_relationship(self):
         prose = "We once mentioned Parent Task ID: t_0e028558 in a log, not as a relation."
         self.assertEqual(normalize_parent_body(prose, title="Bug report"), prose)
+        unrelated_bullet = "An audit reference:\n- Parent Task ID: t_0e028558\n"
+        self.assertEqual(normalize_parent_body(unrelated_bullet, title="Audit note"), unrelated_bullet)
         fenced = (
             "Document syntax example:\n"
             + chr(96) * 3 + "text\n"
