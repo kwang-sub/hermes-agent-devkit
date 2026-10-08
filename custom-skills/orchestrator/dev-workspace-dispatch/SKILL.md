@@ -222,6 +222,21 @@ Parent Tracking:
 
 이 block이 관리 관계의 machine-readable 계약이며 dashboard relation preview도 같은 key를 읽는다.
 
+**PARENT_TRACKING_NEWLINE_V1 (필수):** Parent Tracking 헤더,
+`- Parent Task ID: ...`, `- Relation: CHILD_WORK_UNIT`을 반드시 **서로 다른
+실제 개행 줄**로 작성한다. Parent Title은 선택 필드이며 본문과 블록 사이에는
+빈 줄을 둔다. `Parent Task ID: t_... (tracking only)`를 첫 문장에 붙이는
+방식이나 literal `\\n`은 관계 메타데이터로 인정하지 않는다.
+기존 Task에 **참조만 추가**하는 경우에도 동일한 블록으로만 저장한다.
+
+- Task Body 생성·갱신 전에는 `/opt/devkit/bin/parent_tracking_body.py`를
+  사용해 승인된 Parent ID를 명시하고 canonical 블록으로 정규화한다.
+- 정상 `kanban_create`/공식 `kanban edit`로 저장한 뒤 `kanban_show`에서
+  실제 body를 read-back하여 부모 ID 및 Relation의 독립 줄 형식을 검증한다.
+- malformed/다른 Parent ID로 실패하면 `PARENT_TRACKING_METADATA_MISMATCH`로
+  중단하며 native `parents`/link를 생성하거나 Task 상태를 임의로 바꾸지 않는다.
+
+
 - Parent는 `Execution: NON_DISPATCH` tracking card다.
 - Parent 생성 시 `kanban_create`는 가능하지만 `kanban_unblock`/worker dispatch는 금지한다.
 - Parent/Child 관계는 Child body의 `Parent Task ID` + `Relation: CHILD_WORK_UNIT` metadata로 기록한다. 제목 접두어는 사용자 식별용일 뿐 관계 key가 아니다.
