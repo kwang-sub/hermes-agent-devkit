@@ -90,8 +90,8 @@ def _intent(body: str, title: str, expected_parent: str | None) -> bool:
             return True
         if title.lstrip().startswith("[자식]") and index <= 5:
             return True
-        if line.lstrip().startswith("- Parent Task ID:") and index <= 12:
-            return True
+        # A bare bullet inside another Task can merely document an existing ID.
+        # Do not infer a new structural relationship from that alone.
     return False
 
 
