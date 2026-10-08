@@ -80,7 +80,7 @@ class ChangeSummaryTests(unittest.TestCase):
         self.assertEqual(state["effective_paths"], ["new.md", "tracked.txt"])
 
     def test_check_only_never_modifies_existing_task_handoff(self) -> None:
-        (self.repo / "tracked.txt").write_text("changed\\n", encoding="utf-8")
+        (self.repo / "tracked.txt").write_text("changed\n", encoding="utf-8")
         original = self.run_helper("tracked.txt", task_id="t_scope")
         self.assertEqual(original.returncode, 0, original.stderr)
         task_handoff = Path(git(
@@ -92,19 +92,19 @@ class ChangeSummaryTests(unittest.TestCase):
         original_bytes = task_handoff.read_bytes()
         # Changing a source after final verification must not erase the old
         # handoff during cheap preflight; final write replaces it later.
-        (self.repo / "tracked.txt").write_text("new changes\\n", encoding="utf-8")
+        (self.repo / "tracked.txt").write_text("new changes\n", encoding="utf-8")
         check = self.run_helper("tracked.txt", check_only=True, task_id="t_scope")
         self.assertEqual(check.returncode, 0, check.stderr)
         self.assertIn("PREFLIGHT_SCOPE_ONLY=true", check.stdout)
         self.assertEqual(task_handoff.read_bytes(), original_bytes)
         bad_path = self.repo / "bad.md"
-        bad_path.write_text("bad trailing space \\n", encoding="utf-8")
+        bad_path.write_text("bad trailing space \n", encoding="utf-8")
         invalid = self.run_helper("bad.md", check_only=True, task_id="t_scope")
         self.assertNotEqual(invalid.returncode, 0)
         self.assertEqual(task_handoff.read_bytes(), original_bytes)
 
     def test_check_only_does_not_create_handoff(self) -> None:
-        (self.repo / "tracked.txt").write_text("changed\\n", encoding="utf-8")
+        (self.repo / "tracked.txt").write_text("changed\n", encoding="utf-8")
         check = self.run_helper("tracked.txt", check_only=True, task_id="t_new")
         self.assertEqual(check.returncode, 0, check.stderr)
         raw = git(
