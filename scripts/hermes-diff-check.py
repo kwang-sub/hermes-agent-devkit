@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 from pathlib import Path
 import re
 import subprocess
@@ -45,42 +46,62 @@ def trailing_whitespace(content: str) -> bool:
 
 
 def tracked_errors(root: Path, base: str, paths: list[str]) -> list[str]:
-    errors: list[str] = []
-    hunk_re = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
-    for path in sorted(dict.fromkeys(paths)):
-        result = run(
-            [
-                "git", "-C", str(root), "diff", "--no-ext-diff", "--no-color",
-                "--unified=0", "--ignore-cr-at-eol", base, "--", path,
-            ],
-            check=False,
+    """Inspect all approved tracked paths in one CRLF-aware Git diff."""
+    selected = sorted(set(paths))
+    if not selected:
+        return []
+    result = run(
+        ["git", "-C", str(root), "-c", "core.quotePath=false",
+         "diff", "--no-ext-diff", "--no-color", "--no-renames",
+         "--unified=0", "--ignore-cr-at-eol", base, "--", *selected],
+        check=False,
+    )
+    if result.returncode not in (0, 1):
+        raise DiffCheckError(
+            (result.stderr or result.stdout).strip()
+            or f"cannot diff scoped tracked paths: rc={result.returncode}"
         )
-        if result.returncode not in (0, 1):
-            raise DiffCheckError(
-                (result.stderr or result.stdout).strip()
-                or f"cannot diff tracked path {path}: rc={result.returncode}"
-            )
 
-        new_line: int | None = None
-        for raw in result.stdout.splitlines():
-            hunk = hunk_re.match(raw)
-            if hunk:
-                new_line = int(hunk.group(1))
+    errors: list[str] = []
+    requested = set(selected)
+    active_path: str | None = None
+    new_line: int | None = None
+    hunk_re = re.compile(r"^@@ -\\d+(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@")
+    for raw in result.stdout.splitlines():
+        if raw.startswith("diff --git "):
+            active_path = None
+            new_line = None
+            continue
+        if raw.startswith("+++ "):
+            target = raw[4:]
+            if target.startswith('"') and target.endswith('"'):
+                try:
+                    target = ast.literal_eval(target)
+                except (SyntaxError, ValueError) as exc:
+                    raise DiffCheckError("cannot decode Git diff filename") from exc
+            if target == "/dev/null":
+                active_path = None
                 continue
-            if new_line is None:
-                continue
-            if raw.startswith("+++") or raw.startswith("---"):
-                continue
-            if raw.startswith("+"):
-                if trailing_whitespace(raw[1:]):
-                    errors.append(f"{path}:{new_line}: trailing whitespace")
-                new_line += 1
-            elif raw.startswith("-"):
-                continue
-            elif raw.startswith("\\"):
-                continue
-            else:
-                new_line += 1
+            if not target.startswith("b/") or target[2:] not in requested:
+                raise DiffCheckError(f"unexpected Git diff scope path: {target}")
+            active_path = target[2:]
+            continue
+        if active_path is None:
+            continue
+        hunk = hunk_re.match(raw)
+        if hunk:
+            new_line = int(hunk.group(1))
+            continue
+        if new_line is None:
+            continue
+        if raw.startswith("+"):
+            if trailing_whitespace(raw[1:]):
+                errors.append(f"{active_path}:{new_line}: trailing whitespace")
+            new_line += 1
+        elif raw.startswith("-") or raw.startswith("\\\\"):
+            continue
+        else:
+            new_line += 1
     return errors
 
 
