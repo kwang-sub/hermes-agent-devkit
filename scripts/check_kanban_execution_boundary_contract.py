@@ -14,6 +14,8 @@ PATCH = ROOT / "scripts/patch_hermes_kanban_session_affinity.py"
 DISPATCH = ROOT / "custom-skills/orchestrator/dev-workspace-dispatch/SKILL.md"
 WORKFLOW = ROOT / "custom-skills/orchestrator/dev-workflow-orchestrate/SKILL.md"
 CODER = ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md"
+CODER_DETAILS = ROOT / "custom-skills/coder/dev-implement-plan/references/implementation-details.md"
+CODER_ENV_GATE = ROOT / "custom-skills/coder/dev-implement-plan/scripts/verify_worker_context.py"
 REVIEWER = ROOT / "custom-skills/reviewer/dev-code-review/SKILL.md"
 CYCLE = ROOT / "custom-skills/coder/dev-review-cycle/SKILL.md"
 AGENTS = ROOT / "AGENTS.md"
@@ -85,6 +87,41 @@ def check_startup_adapter() -> None:
         raise AssertionError("worker startup adapter must remain idempotent")
 
 
+def check_provider_context_gate() -> None:
+    """Prevent a Codex shell ENV probe from silently returning to Coder flows."""
+    require(CODER,
+        "WORKER_CONTEXT_PROVIDER_GATE_V2",
+        "openai-codex",
+        "kanban_show",
+        "current_run_id",
+        "worker_context",
+        "Codex native shell에서",
+        "verify_worker_context.py",
+        "--worker-provider",
+        "WORKER_CONTEXT_BLOCKER=WRONG_VERIFICATION_PATH",
+        "CHANGES_REQUESTED",
+    )
+    require(CODER_DETAILS,
+        "WORKER_CONTEXT_PROVIDER_GATE_V2",
+        "openai-codex",
+        "verify_worker_context.py",
+        "WORKER_CONTEXT_PROVIDER_UNVERIFIED",
+        "WRONG_VERIFICATION_PATH",
+        "kanban_show",
+    )
+    require(CODER_ENV_GATE,
+        "--worker-provider",
+        "HERMES_DELEGATED_CHILD_CONTEXT",
+        "WrongVerificationPath",
+        "WORKER_CONTEXT_BLOCKER=WRONG_VERIFICATION_PATH",
+    )
+    reminder = read(STARTUP)
+    if "Codex native shell" not in reminder or "kanban_show" not in reminder:
+        raise AssertionError("Worker startup must remind Codex of the upstream context route")
+    if "verify_worker_context.py" in reminder or "HERMES_KANBAN_TASK=" in reminder:
+        raise AssertionError("Worker startup must not grant or probe Kanban ownership in shell")
+
+
 def check_contract_consumers() -> None:
     for path in (DISPATCH, WORKFLOW, CODER, REVIEWER, CYCLE, AGENTS):
         require(path, POLICY)
@@ -107,6 +144,7 @@ def check_contract_consumers() -> None:
 def main() -> int:
     check_reference()
     check_startup_adapter()
+    check_provider_context_gate()
     check_contract_consumers()
     print("PASS: Kanban owns WHAT/STATE; role/runtime execution owns HOW")
     return 0
