@@ -15,6 +15,7 @@ _TASK_LIB = Path(__file__).resolve().parents[3] / "_lib"
 if str(_TASK_LIB) not in sys.path:
     sys.path.insert(0, str(_TASK_LIB))
 from task_handoff import handoff_path, clear_handoff, save_handoff
+from task_scope import semantic_tracked_paths, scope_sha256 as shared_scope_sha256, ScopeError
 
 
 class SummaryError(RuntimeError):
@@ -68,16 +69,11 @@ def git_paths(root: Path, base: list[str], includes: list[str]) -> list[str]:
 
 def tracked_changes(root: Path, includes: list[str]) -> tuple[list[str], list[str]]:
     raw = git_paths(root, ["diff", "--name-only", "HEAD"], includes)
-    effective: list[str] = []
-    eol_only: list[str] = []
-    for path in raw:
-        result = run(["git", "-C", str(root), "diff", "--quiet", "--ignore-cr-at-eol", "HEAD", "--", path], check=False)
-        if result.returncode == 0:
-            eol_only.append(path)
-        elif result.returncode == 1:
-            effective.append(path)
-        else:
-            raise SummaryError((result.stderr or result.stdout).strip() or f"cannot classify tracked change for {path}: rc={result.returncode}")
+    try:
+        effective = semantic_tracked_paths(root, "HEAD", raw)
+    except ScopeError as exc:
+        raise SummaryError(str(exc)) from exc
+    eol_only = sorted(set(raw) - set(effective))
     return effective, eol_only
 
 
@@ -111,16 +107,7 @@ def check_whitespace(root: Path, tracked: list[str], untracked: list[str]) -> li
 
 
 def effective_scope_sha256(root: Path, paths: list[str]) -> str:
-    digest = sha256()
-    for path in sorted(dict.fromkeys(paths)):
-        file_path = root / path
-        digest.update(path.encode("utf-8")); digest.update(b"\0")
-        if file_path.is_file():
-            digest.update(b"F\0"); digest.update(file_path.read_bytes().replace(b"\r\n", b"\n"))
-        else:
-            digest.update(b"MISSING\0")
-        digest.update(b"\0")
-    return digest.hexdigest()
+    return shared_scope_sha256(root, paths)
 
 
 def handoff_state_path(root: Path, task_id: str | None = None) -> Path:
