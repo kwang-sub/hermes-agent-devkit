@@ -110,6 +110,19 @@ Kanban과 Workflow가 계속 blocking해야 하는 항목:
 
 단, 공통 Execution helper 자체가 실행 불가능하여 승인된 검증을 수행할 수 없으면 그 **실행 결과**를 verification capability blocker로 보고한다.
 
+## Task Artifact / Scratch 책임
+
+Project `.hermes/tasks/<task-id>`의 Snapshot과 task artifact는 Recovery/감사 증적이다.
+Worker가 범용 JSON parser, Git scope/EOL 검사기, Handoff validator를 매번
+새 `*.py`로 생성하지 않는다. Canonical DevKit helper를 우선한다.
+
+일회성 실행 코드가 불가피하면 `/opt/devkit/bin/task_artifacts.py scratch`가
+발급한 `/opt/data/devkit/task-scratch` 경로를 사용한다. DONE 상태가 Kanban DB로
+확정된 후 notifier/housekeeping 계층만 DevKit 소유 marker를 검사하고 정리한다.
+완료 Task의 원본 source, before Snapshot, 최종 verification receipt, Session History,
+BLOCKED/REVIEW/CHANGES_REQUESTED 작업 자료는 정리 대상이 아니다.
+컨테이너 종료 중 놓친 DONE 정리는 notifier startup reconcile에서 수행한다.
+
 ## 6. 변경 규칙
 
 실행정책 변경은 가능한 한 shared execution/reference에서 수행한다. Maven/Gradle/Node마다 동일한 process policy를 Kanban/worker startup에 중복 기록하지 않는다.

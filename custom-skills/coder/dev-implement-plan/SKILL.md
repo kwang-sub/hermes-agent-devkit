@@ -47,6 +47,22 @@ Workspace Version Control과 Pattern References는 Task body를 재사용한다.
 
 첫 production mutation 전에 승인된 변경 식별자/파일을 기준으로 **최대 2-hop**만 확인한다. 1-hop은 direct caller/reference/mapping/validation, 2-hop은 실제 1-hop 근거가 security/session/history/audit/persistence/external contract 경계를 가리킬 때만 확장한다. 프로젝트 전체 architecture 분석이나 `혹시 더 있을까` 식 반복 탐색은 하지 않는다. 최초 `kanban_show`와 그 spillover를 Task Snapshot으로 재사용하고 같은 정보 확인을 위한 `kanban_show`를 반복하지 않는다. read-only 탐색은 전용 `read/find/grep`을 우선하며 파일/JSON 확인을 위한 inline `python3 -c`·`hermes_tools` exec·Path traversal을 만들지 않는다. 범위가 확정되면 짧은 `Impact Summary`로 압축하고, 승인 범위를 넘는 영향이 확인되면 source mutation 없이 기존 blocker/triage 경로로 넘긴다. 상세 scan/stop/evidence 형식은 필요할 때만 `references/implementation-details.md`의 Source/Scope 절을 읽는다.
 
+## Task 임시 산출물 정책 (Task Artifact Hygiene V1)
+
+프로젝트 `.hermes/tasks/<Task ID>`는 작업 증적과 Recovery Snapshot용이다.
+범용 검증/JSON 파싱 때문에 그 아래 `*.py`를 생성하지 않는다.
+
+- 최초 `kanban_show`가 spillover로 저장되면 추가 Python parser를 만들지 않고
+  `python3 /opt/devkit/bin/task_artifacts.py inspect-snapshot --profile coder --source "<spillover>" --fields id,status,body --comments 4`로 필요한 필드만 읽는다.
+- 변경 파일 목록/EOL/검증 증적은 canonical `change_summary.py` /
+  `review_context.py` / cached verification helper로 생성한다.
+- 프로젝트 고유 계산으로 일회성 코드가 **정말 필요할 때만**
+  `python3 /opt/devkit/bin/task_artifacts.py scratch --task-id "<Task ID>" --workspace "<Workspace>"`로
+  DevKit 소유 Scratch를 발급받아 그 안에서 실행한다.
+- 재시도/CHANGES_REQUESTED 중 Scratch는 유지한다. DONE 이후 notifier의
+  별도 수명주기 관리가 생성 표시가 있는 Scratch만 정리한다.
+- 사용자 승인된 실제 test/source artifact는 Scratch가 아닌 프로젝트 기존 규약을 따른다.
+
 ## Reference Lazy-Load
 
 정상 경로에서는 이 `SKILL.md`를 기본 계약으로 사용하고 reference 전문을 선로딩하지 않는다. `session-history-rules.md`는 capture/receipt가 비정상·모호할 때, `standard-work-unit-rules.md`는 boundary/split/DESIGN·AUDIT edge case일 때, `kanban-execution-boundary.md`는 runtime 책임 경계가 실제로 모호할 때, `implementation-details.md`는 Recovery/impact-scan/blocker/verification 상세 형식이 필요할 때만 관련 절을 읽는다. Maven/Node/stack runtime reference는 해당 toolchain이 실제 affected scope에 있을 때만 load한다.

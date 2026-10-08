@@ -18,6 +18,7 @@ if not _CUSTOM_LIB.is_dir():
 if str(_CUSTOM_LIB) not in sys.path:
     sys.path.insert(0, str(_CUSTOM_LIB))
 from task_handoff import cleanup_completed_handoff
+from task_artifacts import cleanup_completed_scratch
 
 
 TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -409,9 +410,38 @@ def process_board(
                     board_db=db_path, workspace=Path(workspace),
                     task_id=str(event.get("task_id") or ""),
                 )
+                cleanup_completed_scratch(
+                    board_db=db_path, workspace=Path(workspace),
+                    task_id=str(event.get("task_id") or ""),
+                )
         advance_cursor(state, board, db_path, event_id)
         processed += 1
     return processed, True, ""
+
+
+def reconcile_completed_artifacts(db_path: Path) -> int:
+    """Catch DONE events missed while the notifier/container was offline."""
+    uri = f"file:{db_path.resolve().as_posix()}?mode=ro"
+    try:
+        with sqlite3.connect(uri, uri=True, timeout=1.0) as conn:
+            rows = conn.execute(
+                "SELECT id, workspace_path FROM tasks "
+                "WHERE status IN ('done', 'completed') AND workspace_path IS NOT NULL"
+            ).fetchall()
+    except (OSError, sqlite3.Error):
+        return 0
+    cleaned = 0
+    for task_id, workspace in rows:
+        if not workspace:
+            continue
+        target = Path(str(workspace))
+        cleaned += int(cleanup_completed_handoff(
+            board_db=db_path, workspace=target, task_id=str(task_id),
+        ))
+        cleaned += int(cleanup_completed_scratch(
+            board_db=db_path, workspace=target, task_id=str(task_id),
+        ))
+    return cleaned
 
 
 def _stop(_signum: int, _frame: Any) -> None:
@@ -444,6 +474,10 @@ def run_forever() -> int:
     retry = 1.0
     try:
         initialize_state(state, discover_boards(home))
+        for board_name, board_db in discover_boards(home):
+            removed = reconcile_completed_artifacts(board_db)
+            if removed:
+                print(f"[devkit-notifier] board={board_name} cleaned={removed}", flush=True)
         if enabled_flag and (not platform or not target):
             print("[devkit-notifier] enabled but platform/target is missing", file=sys.stderr, flush=True)
             while not _STOP:
