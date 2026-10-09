@@ -14,15 +14,13 @@ import tempfile
 MARKER = "DEVKIT_HERMES_SITE_INLINE_GATEWAY_IDENTITY_V1"
 ANCHOR = '    # hermes_cli._launchers._write_cmd_launcher: the launcher script, base64-encoded\n'
 ADDITION = (
-    '    # ' + MARKER + ': Hermes venv executable uses os,site,sys in-process bootstrap.\n'
+    '    # ' + MARKER + ': recognize the venv in-process bootstrap only.\n'
     '    ("entry", re.compile(\n'
-    '        r"import os, site, sys; sys\\.argv\\[0\\]=[\\\'\\\"]hermes[\\\'\\\"]; " '
-    '        r"site\\.addsitedir\\(os\\.environ\\[[\\\'\\\"]HERMES_SITE[\\\'\\\"]\\]\\); " '
-    '        r"from (?P<target>hermes_cli\\.main) import (?P<func>main); " '
-    '        r"sys\\.exit\\((?P=func)\\(\\)\\)", re.DOTALL)),\n'
+    '        r"""import os, site, sys; sys\.argv\[0\]=[\\x27\\x22]hermes[\\x27\\x22]; '
+    'site\.addsitedir\(os\.environ\[[\\x27\\x22]HERMES_SITE[\\x27\\x22]\]\); '
+    'from (?P<target>hermes_cli\.main) import (?P<func>main); '
+    'sys\.exit\((?P=func)\(\)\)""", re.DOTALL)),\n'
 )
-# Avoid f-string and whitespace variations: compile an anchored readable regexp.
-ADDITION = ADDITION.replace('" ', '"\n        ')
 
 def patch(source: str) -> str:
     if MARKER in source:
