@@ -37,6 +37,10 @@ RUN python3 /tmp/patch_hermes_tirith_profile_guard.py --self-test \
     && /opt/hermes/.venv/bin/python /tmp/check_hermes_security_contract.py --root /opt/hermes \
     && rm /tmp/patch_hermes_tirith_profile_guard.py /tmp/check_hermes_security_contract.py
 
+# Read-only verification of the live multiplex Gateway, separate from s6 service status.
+COPY --chmod=0755 scripts/devkit_gateway_readiness.py /opt/devkit/bin/devkit_gateway_readiness.py
+RUN /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_gateway_readiness.py --self-test
+
 COPY scripts/devkit_worker_startup.py /opt/hermes/hermes_cli/devkit_worker_startup.py
 RUN python3 -m py_compile /opt/hermes/hermes_cli/devkit_worker_startup.py
 

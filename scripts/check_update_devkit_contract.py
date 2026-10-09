@@ -250,9 +250,8 @@ def main() -> int:
             'GATEWAY_MULTIPLEX_PROFILES=true',
             'Default multiplex Gateway service is running',
             '/run/service/gateway-default',
-            'default_gateway_multiplexes',
-            'recorded_served_profiles',
-            '{"default", "coder", "orchestrator", "reviewer"}',
+            'devkit_gateway_readiness.py',
+            'Default multiplex Gateway served-profile contract',
             'Upstream Codex scoped Kanban MCP contract',
             'KANBAN_ENV_KEYS',
             'delegated_child_subprocess_env',
@@ -303,6 +302,33 @@ def main() -> int:
     ):
         if required_yaml_contract not in runtime_verifier:
             raise SystemExit(f"runtime YAML compatibility contract missing: {required_yaml_contract}")
+
+    for gateway_term in (
+        'devkit_gateway_readiness.py',
+        'Default multiplex Gateway served-profile contract',
+    ):
+        if gateway_term not in runtime_verifier:
+            raise SystemExit(f"Gateway live-readiness verifier contract missing: {gateway_term}")
+    gateway_probe = read_required(
+        ROOT / "scripts/devkit_gateway_readiness.py",
+        "Gateway live-readiness probe",
+    )
+    require(
+        gateway_probe,
+        (
+            'NO_VERIFIED_LIVE_GATEWAY',
+            'SERVED_PROFILE_RECORD_UNAVAILABLE',
+            'STANDALONE_OR_INCOMPLETE_MULTIPLEX',
+            'live_default_gateway_pid',
+            'recorded_served_profiles',
+            'notify_multiplexer_profiles_changed',
+            'multiplex_standalone_reason',
+            '--self-test',
+        ),
+        "Live multiplex Gateway diagnostics and bounded rescan",
+    )
+    if 'GATEWAY_MULTIPLEX_NOT_READY' not in text:
+        raise SystemExit("Updater must not blindly recreate for logical multiplex readiness failure")
 
     init_profiles = read_required(INIT_PROFILES, "init-profiles.ps1")
     require(

@@ -282,32 +282,17 @@ Invoke-DockerExactOutputCheck -Label "Default multiplex Gateway service is runni
     "/run/service/gateway-default"
 ) -Expected "true"
 
-$MultiplexRuntimeCheck = @'
-import time
-
-from hermes_cli.gateway_multiplex_mode import default_gateway_multiplexes
-from hermes_cli.gateway_multiplex_served import recorded_served_profiles
-
-required = {"default", "coder", "orchestrator", "reviewer"}
-last = []
-for _ in range(20):
-    served = recorded_served_profiles()
-    last = list(served or [])
-    if default_gateway_multiplexes() and required.issubset(set(last)):
-        print("true")
-        raise SystemExit(0)
-    time.sleep(0.5)
-
-raise SystemExit(
-    "default gateway is not serving the required DevKit profiles: "
-    f"required={sorted(required)!r}, served={last!r}"
+# The s6 'up' state is distinct from the live default Gateway identity and
+# multiplex served-profile publication. The probe inspects both, waits for
+# bounded startup, attempts one control-socket rescan only for a live host,
+# and prints a classified diagnostic on failure.
+Invoke-DockerCheck -Label "Default multiplex Gateway served-profile contract" -DockerArgs @(
+    "exec", "--user", "hermes", $Container,
+    "/opt/hermes/.venv/bin/python",
+    "/opt/devkit/bin/devkit_gateway_readiness.py",
+    "--wait-seconds", "60"
 )
-'@
 
-$MultiplexRuntimeCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
-if ($LASTEXITCODE -ne 0) {
-    throw "[FAIL] Default multiplex Gateway served-profile contract. Re-run .\update-devkit.ps1 or rebuild/recreate the container."
-}
 Write-Host "[OK] Default multiplex Gateway serves default/coder/orchestrator/reviewer"
 $SecurityContractCheck = @'
 import os

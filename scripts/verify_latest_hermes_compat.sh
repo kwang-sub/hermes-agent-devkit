@@ -42,6 +42,7 @@ docker run --rm \
     "$IMAGE_NAME" \
     -ceu '
         test -x /opt/hermes/.venv/bin/hermes
+        /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_gateway_readiness.py --self-test
         /opt/hermes/.venv/bin/hermes --help >/dev/null
         # Same Python interpreter and YAML interface used by init-profiles.ps1.
         /opt/hermes/.venv/bin/python - <<"PY_PROFILE_YAML"
