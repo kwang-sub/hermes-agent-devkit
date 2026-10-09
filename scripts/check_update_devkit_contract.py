@@ -286,6 +286,24 @@ def main() -> int:
         "Windows PowerShell-safe runtime Git and fixed multiplex verification",
     )
 
+    # These embedded Python snippets run under the Hermes venv, whose latest
+    # image exposes hermes_yaml instead of the removed PyYAML import.
+    runtime_verifier_yaml_imports = runtime_verifier.count("import hermes_yaml as yaml")
+    if runtime_verifier_yaml_imports != 2:
+        raise SystemExit(
+            "runtime verifier must use hermes_yaml in both ownership and profile checks: "
+            f"found {runtime_verifier_yaml_imports}"
+        )
+    for required_yaml_contract in (
+        "except ModuleNotFoundError as exc:",
+        'if exc.name != "hermes_yaml":',
+        "import yaml  # Legacy Hermes/PyYAML fallback",
+        "DevKit Kanban notifier ownership contract",
+        "Profile skill/toolset contract:",
+    ):
+        if required_yaml_contract not in runtime_verifier:
+            raise SystemExit(f"runtime YAML compatibility contract missing: {required_yaml_contract}")
+
     init_profiles = read_required(INIT_PROFILES, "init-profiles.ps1")
     require(
         init_profiles,
