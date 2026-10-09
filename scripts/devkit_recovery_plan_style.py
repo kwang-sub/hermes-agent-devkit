@@ -99,3 +99,37 @@ def style_stream_line(line: str, in_recovery_plan: bool, *, body_color: str = ""
         tail = normalized[1:].lstrip()
         return f"{BAR_ANSI}┃{RESET_ANSI}{body_color} {tail}", True
     return line, in_recovery_plan
+
+
+# Fallback visualization for a plan mistakenly streamed in the dim reasoning box.
+# This does NOT satisfy Recovery Gate 3's user-visible assistant-response contract.
+REASONING_MARKER = "DEVKIT_RECOVERY_PLAN_REASONING_VISUAL_V1"
+REASONING_LABELS = frozenset((
+    "작업 복구 분석", "복구 방식", "변경 계약", "유지 계약",
+    "차단 원인", "원인 분류", "승인 기준", "검증 계획",
+    "금지 사항", "⚠ 금지 사항", "구현 요약", "구현 요약:",
+))
+
+
+def style_reasoning_recovery_line(line: str, active: bool) -> tuple[str, bool]:
+    """Highlight the exact recovery section in visible reasoning; leave other reasoning dim.
+
+    The returned text contains display escapes only. Task bodies and stored model
+    messages are not rewritten. State resets at a following section heading.
+    """
+    import re
+
+    normalized = re.sub(r"^(?:#{1,3}\s*)", "", line.strip()).strip("* :")
+    if normalized in ("🛠 복구 계획", "복구 계획"):
+        return f"{ACCENT_ANSI}━━ 🛠 복구 계획 ━━{RESET_ANSI}", True
+
+    if active and normalized in REASONING_LABELS:
+        return line, False
+
+    if active and re.match(r"^(?:>\s*)?[1-9][0-9]*[.)]\s+", line.lstrip()):
+        body = re.sub(r"^\s*>\s*", "", line).strip()
+        return f"{BAR_ANSI}┃{RESET_ANSI} {body}", True
+
+    # A blank line or an upstream separator does not close the plan because
+    # the existing recovery preview uses blank lines within the section.
+    return line, active
