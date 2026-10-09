@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from devkit_recovery_plan_style import (
     ACCENT, ACCENT_ANSI, HEADING, split_recovery_response,
-    style_recovery_response, style_stream_line,
+    style_recovery_response, style_stream_line, style_reasoning_recovery_line,
 )
 import patch_hermes_recovery_plan_style as patcher
 
@@ -68,6 +68,25 @@ class PresentationTests(unittest.TestCase):
         ordinary, active = style_stream_line("> Ordinary unrelated quote", active)
         self.assertFalse(active)
         self.assertEqual(ordinary, "> Ordinary unrelated quote")
+
+    def test_reasoning_recovery_fallback_for_actual_plain_heading(self) -> None:
+        # Screenshot regression: older agent rendered plain "복구 계획"
+        # inside the dim reasoning box, so H2-only normal-response styling missed it.
+        untouched, active = style_reasoning_recovery_line("일반 사고 과정", False)
+        self.assertEqual((untouched, active), ("일반 사고 과정", False))
+        title, active = style_reasoning_recovery_line("복구 계획", active)
+        self.assertTrue(active)
+        self.assertIn(ACCENT_ANSI, title)
+        self.assertIn("🛠 복구 계획", title)
+        item, active = style_reasoning_recovery_line(
+            "  1. 승인 직후 같은 카드 상태를 재확인합니다.", active)
+        self.assertTrue(active)
+        self.assertIn("┃", item)
+        self.assertIn("같은 카드", item)
+        _, active = style_reasoning_recovery_line("승인 기준", active)
+        self.assertFalse(active)
+        regular, active = style_reasoning_recovery_line("1. 별도 대화", active)
+        self.assertEqual((regular, active), ("1. 별도 대화", False))
 
     def test_durable_machine_contract_does_not_get_reformatted(self) -> None:
         machine = (

@@ -15,6 +15,7 @@ import tempfile
 RENDER_MARKER = "DEVKIT_RECOVERY_PLAN_RENDER_V1"
 STREAM_MARKER = "DEVKIT_RECOVERY_PLAN_STREAM_V1"
 RESET_MARKER = "DEVKIT_RECOVERY_PLAN_STREAM_RESET_V1"
+REASONING_MARKER = "DEVKIT_RECOVERY_PLAN_REASONING_VISUAL_V1"
 
 RENDER_ANCHOR = "    return Markdown(plain)\n"
 RENDER_REPLACEMENT = (
@@ -50,6 +51,26 @@ RESET_ANCHOR = (
 RESET_REPLACEMENT = RESET_ANCHOR + (
     '        self._devkit_recovery_plan_active = False  # '
     + RESET_MARKER + '\n'
+    + '        self._devkit_reasoning_recovery_active = False\n'
+)
+
+
+# Exact upstream reasoning-preview line emitter. Only visualization is modified.
+REASONING_ANCHOR = (
+    '            line, self._reasoning_buf = self._reasoning_buf.split("\\n", 1)\n'
+    '            _cprint(f"{_DIM}{line}{_RST}")\n'
+)
+REASONING_REPLACEMENT = (
+    '            line, self._reasoning_buf = self._reasoning_buf.split("\\n", 1)\n'
+    '            # ' + REASONING_MARKER + ': display-only Recovery Plan fallback.\n'
+    '            from hermes_cli.devkit_recovery_plan_style import style_reasoning_recovery_line\n'
+    '            line, active = style_reasoning_recovery_line(\n'
+    '                line, bool(getattr(self, "_devkit_reasoning_recovery_active", False)))\n'
+    '            self._devkit_reasoning_recovery_active = active\n'
+    '            if line.startswith("\\033["):\n'
+    '                _cprint(line)\n'
+    '            else:\n'
+    '                _cprint(f"{_DIM}{line}{_RST}")\n'
 )
 
 
@@ -71,6 +92,8 @@ def patch_stream(text: str) -> str:
         text = replace_once(text, STREAM_ANCHOR, STREAM_REPLACEMENT, "stream response line")
     if RESET_MARKER not in text:
         text = replace_once(text, RESET_ANCHOR, RESET_REPLACEMENT, "stream per-turn reset")
+    if REASONING_MARKER not in text:
+        text = replace_once(text, REASONING_ANCHOR, REASONING_REPLACEMENT, "reasoning preview line")
     return text
 
 
@@ -85,7 +108,7 @@ def _write_source(path: Path, func) -> None:
 def check(render_path: Path, stream_path: Path) -> None:
     for path, markers in (
         (render_path, (RENDER_MARKER,)),
-        (stream_path, (STREAM_MARKER, RESET_MARKER)),
+        (stream_path, (STREAM_MARKER, RESET_MARKER, REASONING_MARKER)),
     ):
         text = path.read_text(encoding="utf-8")
         for marker in markers:
@@ -109,6 +132,9 @@ def self_test() -> None:
           'if _tc else f"{_STREAM_PAD}{printed_line}")\n\n'
         + RESET_ANCHOR
         + '        self._stream_started = False\n'
+        + '    def _stream_reasoning_delta(self, text):\n'
+        + '        while "\\n" in self._reasoning_buf:\n'
+        + REASONING_ANCHOR
     )
     with tempfile.TemporaryDirectory(prefix="devkit-recovery-style-") as temp:
         root = Path(temp)
