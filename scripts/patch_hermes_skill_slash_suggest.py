@@ -106,7 +106,21 @@ def patch_catalog(path: Path) -> str:
         if not info.get("slash_suggest", True):
             continue
         cat.pairs.append([k, str(info.get("description", "Skill"))])'''
-        text = _replace_once(text, current_old, current_new, "tui_gateway.methods_tools.current")
+        if current_old in text:
+            text = _replace_once(text, current_old, current_new, "tui_gateway.methods_tools.current")
+        else:
+            # Newer Hermes uses get_interactive_skill_commands() and maintains
+            # usage/origin metadata alongside every catalog pair.
+            translated_old = '''    for k, info in sorted(sc.get_interactive_skill_commands().items()):
+        cat.pairs.append([k, str(info.get("description", "Skill"))])
+        name = str(info.get("name") or k.lstrip("/"))'''
+            translated_new = '''    for k, info in sorted(sc.get_interactive_skill_commands().items()):
+        # DEVKIT_SLASH_SUGGEST_V1: hide suggestions without affecting dispatch.
+        if not info.get("slash_suggest", True):
+            continue
+        cat.pairs.append([k, str(info.get("description", "Skill"))])
+        name = str(info.get("name") or k.lstrip("/"))'''
+            text = _replace_once(text, translated_old, translated_new, "tui_gateway.methods_tools.interactive")
 
     path.write_text(text, encoding="utf-8")
     return "patched"
@@ -176,6 +190,18 @@ def self_test() -> None:
         current_catalog = current_catalog_path.read_text(encoding="utf-8")
         if 'info.get("slash_suggest", True)' not in current_catalog:
             raise RuntimeError("self-test: current Hermes catalog slash_suggest guard missing")
+
+        interactive_catalog_path = root / "tui_gateway" / "methods_tools_interactive.py"
+        interactive_catalog_path.write_text(
+            '''def _catalog_skills(cat, skills):\n    sc = _tools_mod("agent.skill_commands")\n    for k, info in sorted(sc.get_interactive_skill_commands().items()):\n        cat.pairs.append([k, str(info.get("description", "Skill"))])\n        name = str(info.get("name") or k.lstrip("/"))\n        skills[k] = {"usage": usage(name), "origin": origin_of(name)}\n''',
+            encoding="utf-8",
+        )
+        if patch_catalog(interactive_catalog_path) != "patched":
+            raise RuntimeError("self-test: interactive catalog was not patched")
+        if patch_catalog(interactive_catalog_path) != "already-patched":
+            raise RuntimeError("self-test: interactive catalog patch not idempotent")
+        if 'if not info.get("slash_suggest", True):' not in interactive_catalog_path.read_text(encoding="utf-8"):
+            raise RuntimeError("self-test: interactive catalog visibility filter missing")
 
         skill_text = (root / "agent" / "skill_commands.py").read_text(encoding="utf-8")
         completion_text = (root / "hermes_cli" / "commands_completion.py").read_text(encoding="utf-8")
