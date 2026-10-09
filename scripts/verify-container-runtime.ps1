@@ -240,7 +240,12 @@ Invoke-DockerCheck -Label "DevKit Kanban notifier self-test" -DockerArgs @(
 
 $NotifierOwnershipCheck = @'
 from pathlib import Path
-import yaml
+try:
+    import hermes_yaml as yaml
+except ModuleNotFoundError as exc:
+    if exc.name != "hermes_yaml":
+        raise
+    import yaml  # Legacy Hermes/PyYAML fallback
 
 configs = {
     "default": Path("/opt/data/config.yaml"),
@@ -461,7 +466,12 @@ foreach ($Profile in @("orchestrator", "coder", "reviewer")) {
 $ProfileConfigCheck = @'
 from pathlib import Path
 import sys
-import yaml
+try:
+    import hermes_yaml as yaml
+except ModuleNotFoundError as exc:
+    if exc.name != "hermes_yaml":
+        raise
+    import yaml  # Legacy Hermes/PyYAML fallback
 
 profile = sys.argv[1]
 config = Path(f"/opt/data/profiles/{profile}/config.yaml")
