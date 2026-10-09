@@ -25,14 +25,17 @@ RUN python3 /tmp/patch_hermes_skill_slash_suggest.py --self-test \
     && python3 /tmp/patch_hermes_skill_slash_suggest.py --hermes-root /opt/hermes \
     && rm /tmp/patch_hermes_skill_slash_suggest.py
 
-# Tirith runs both as a terminal preflight child and inside Hermes' actual approval guard.
-# Keep their routed-profile HOME/HERMES_HOME identical and let the authoritative guard
-# perform one bounded daemon recheck only for a pure analysis_incomplete verdict.
+# Legacy Hermes has Tirith; newer Hermes retired it in favor of core approval guards.
+# Enforce one of the known contracts, never silently skip security checks.
 COPY scripts/patch_hermes_tirith_profile_guard.py /tmp/patch_hermes_tirith_profile_guard.py
+COPY scripts/check_hermes_security_contract.py /tmp/check_hermes_security_contract.py
 RUN python3 /tmp/patch_hermes_tirith_profile_guard.py --self-test \
-    && python3 /tmp/patch_hermes_tirith_profile_guard.py /opt/hermes/tools/tirith_security.py \
-    && grep -q 'DEVKIT_TIRITH_PROFILE_GUARD_V1' /opt/hermes/tools/tirith_security.py \
-    && rm /tmp/patch_hermes_tirith_profile_guard.py
+    && python3 /tmp/check_hermes_security_contract.py --self-test \
+    && if test -f /opt/hermes/tools/tirith_security.py; then \
+         python3 /tmp/patch_hermes_tirith_profile_guard.py /opt/hermes/tools/tirith_security.py; \
+       fi \
+    && /opt/hermes/.venv/bin/python /tmp/check_hermes_security_contract.py --root /opt/hermes \
+    && rm /tmp/patch_hermes_tirith_profile_guard.py /tmp/check_hermes_security_contract.py
 
 COPY scripts/devkit_worker_startup.py /opt/hermes/hermes_cli/devkit_worker_startup.py
 RUN python3 -m py_compile /opt/hermes/hermes_cli/devkit_worker_startup.py
@@ -97,9 +100,9 @@ RUN test -x /opt/hermes/.venv/bin/hermes \
     && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/agent/skill_commands.py \
     && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/hermes_cli/commands_completion.py \
     && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/tui_gateway/methods_tools.py \
-    && grep -q 'DEVKIT_TIRITH_PROFILE_GUARD_V1' /opt/hermes/tools/tirith_security.py \
     && /opt/hermes/.venv/bin/python -m py_compile \
-       /opt/hermes/tools/tirith_security.py \
+       /opt/hermes/tools/approval_detection.py \
+       /opt/hermes/tools/approval_floors.py \
        /opt/hermes/tools/kanban_tools.py \
        /opt/hermes/hermes_cli/devkit_session_affinity.py \
        /opt/hermes/agent/skill_commands.py \

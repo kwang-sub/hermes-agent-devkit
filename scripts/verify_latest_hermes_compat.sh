@@ -219,11 +219,14 @@ PY
         grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/agent/skill_commands.py
         grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/hermes_cli/commands_completion.py
         grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/tui_gateway/methods_tools.py
-        grep -q "DEVKIT_TIRITH_PROFILE_GUARD_V1" /opt/hermes/tools/tirith_security.py
+        test -f /opt/hermes/tools/approval_detection.py
+        test -f /opt/hermes/tools/approval_floors.py
+        test -f /opt/hermes/hermes_cli/config_migrations.py
         test -f /opt/data/shared/references/skill-slash-suggest-policy.json
 
         /opt/hermes/.venv/bin/python -m py_compile \
-            /opt/hermes/tools/tirith_security.py \
+            /opt/hermes/tools/approval_detection.py \
+            /opt/hermes/tools/approval_floors.py \
             /opt/hermes/tools/kanban_tools.py \
             /opt/hermes/hermes_cli/devkit_session_affinity.py \
             /opt/hermes/agent/skill_commands.py \
@@ -233,21 +236,35 @@ PY
         /opt/hermes/.venv/bin/python - <<"PY"
 import os
 from hermes_constants import reset_hermes_home_override, set_hermes_home_override
-from tools.tirith_security import _devkit_only_analysis_incomplete, _devkit_tirith_subprocess_env
+from pathlib import Path
+from tools.approval_detection import detect_hardline_command, detect_dangerous_command
+from tools.approval_floors import _hardline_block_result
+assert callable(detect_hardline_command)
+assert callable(detect_dangerous_command)
+assert callable(_hardline_block_result)
 
-before_home = os.environ.get("HOME")
-before_hermes_home = os.environ.get("HERMES_HOME")
-token = set_hermes_home_override("/tmp/devkit-tirith-profile")
-try:
-    env = _devkit_tirith_subprocess_env()
-    assert env.get("HERMES_HOME") == "/tmp/devkit-tirith-profile", env
-    assert env.get("HOME"), env
-    assert os.environ.get("HOME") == before_home
-    assert os.environ.get("HERMES_HOME") == before_hermes_home
-    assert _devkit_only_analysis_incomplete([{"rule_id": "analysis_incomplete"}])
-    assert not _devkit_only_analysis_incomplete([{"rule_id": "malware_package"}])
-finally:
-    reset_hermes_home_override(token)
+tirith_path = Path("/opt/hermes/tools/tirith_security.py")
+if tirith_path.is_file():
+    from tools.tirith_security import _devkit_only_analysis_incomplete, _devkit_tirith_subprocess_env
+
+    before_home = os.environ.get("HOME")
+    before_hermes_home = os.environ.get("HERMES_HOME")
+    token = set_hermes_home_override("/tmp/devkit-tirith-profile")
+    try:
+        env = _devkit_tirith_subprocess_env()
+        assert env.get("HERMES_HOME") == "/tmp/devkit-tirith-profile", env
+        assert env.get("HOME"), env
+        assert os.environ.get("HOME") == before_home
+        assert os.environ.get("HERMES_HOME") == before_hermes_home
+        assert _devkit_only_analysis_incomplete([{"rule_id": "analysis_incomplete"}])
+        assert not _devkit_only_analysis_incomplete([{"rule_id": "malware_package"}])
+    finally:
+        reset_hermes_home_override(token)
+else:
+    from hermes_cli.config_migrations import _RETIRED_TIRITH_KEYS
+    assert "tirith_enabled" in _RETIRED_TIRITH_KEYS
+    assert "tirith_fail_open" in _RETIRED_TIRITH_KEYS
+
 PY
 
         test -f /opt/custom-skills/orchestrator/dev-task-recovery/SKILL.md

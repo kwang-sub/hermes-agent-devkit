@@ -168,43 +168,74 @@ def validate_tui_source(path: Path) -> None:
     compile_source(path)
 
 
+# Latest Hermes routes persisted prompt summaries through t() for i18n.
+# Preserve the upstream translation call, and color only the Clarify result.
+I18N_SUMMARY_ANCHOR = (
+    '_cprint(f"\\n{_DIM}{t(\'cli.session.persist_prompt_summary\', '
+    'icon=icon, label=label, detail=detail, outcome=outcome)}{_RST}")'
+)
+
+
 def patch_session_source(path: Path) -> str:
     original = path.read_text(encoding="utf-8")
     source = original
 
     if SUMMARY_TARGET not in source:
-        old = re.compile(
-            r'(?m)^(?P<indent>\s*)_cprint\(f"\\n\{_DIM\}\{icon\} '
-            r'\{label\}: \{detail\} → \{outcome\}\{_RST\}"\)\s*$'
+        legacy = re.compile(
+            r'(?m)^(?P<indent>[ \t]*)_cprint\(f"\\n\{_DIM\}\{icon\} '
+            r'\{label\}: \{detail\} → \{outcome\}\{_RST\}"\)[ \t]*$'
         )
-        matches = list(old.finditer(source))
-        if len(matches) != 1:
+        old_matches = list(legacy.finditer(source))
+        new_matches = list(re.finditer(
+            r'(?m)^(?P<indent>[ \t]*)' + re.escape(I18N_SUMMARY_ANCHOR) + r'[ \t]*$',
+            source,
+        ))
+        if len(old_matches) + len(new_matches) != 1:
             raise RuntimeError(
-                f"expected exactly one persisted prompt summary renderer, found {len(matches)}"
+                "expected exactly one legacy or translated persisted prompt summary "
+                f"renderer, found legacy={len(old_matches)}, translated={len(new_matches)}"
             )
-        m = matches[0]
-        i = m.group("indent")
-        replacement = (
-            f'{i}# {MARKER}: resolved Clarify summaries remain visually distinct from reasoning.\n'
+        match = (old_matches + new_matches)[0]
+        i = match.group("indent")
+        common = (
+            f'{i}# {MARKER}: color Clarify summaries, preserve all other prompts.\n'
             f'{i}if label == "Clarify":\n'
             f'{i}    cyan = "\\033[96m"\n'
             f'{i}    green = "\\033[92m"\n'
             f'{i}    rendered_outcome = outcome.replace(\n'
             f'{i}        "(Recommended)", f"{{green}}(Recommended){{cyan}}")\n'
-            f'{i}    _cprint(f"\\n{{cyan}}{{icon}} {{label}}: {{detail}} → {{rendered_outcome}}{{_RST}}")\n'
-            f'{i}else:\n'
-            f'{i}    _cprint(f"\\n{{_DIM}}{{icon}} {{label}}: {{detail}} → {{outcome}}{{_RST}}")'
         )
-        source = source[: m.start()] + replacement + source[m.end() :]
+        if new_matches:
+            replacement = (
+                common
+                + f'{i}    rendered_summary = t("cli.session.persist_prompt_summary",\n'
+                + f'{i}        icon=icon, label=label, detail=detail, outcome=rendered_outcome)\n'
+                + f'{i}    _cprint(f"\\n{{cyan}}{{rendered_summary}}{{_RST}}")\n'
+                + f'{i}else:\n'
+                + f'{i}    {I18N_SUMMARY_ANCHOR}'
+            )
+        else:
+            replacement = (
+                common
+                + f'{i}    _cprint(f"\\n{{cyan}}{{icon}} {{label}}: {{detail}} → {{rendered_outcome}}{{_RST}}")\n'
+                + f'{i}else:\n'
+                + f'{i}    _cprint(f"\\n{{_DIM}}{{icon}} {{label}}: {{detail}} → {{outcome}}{{_RST}}")'
+            )
+        source = source[:match.start()] + replacement + source[match.end():]
     elif MARKER not in source:
-        # A future upstream may have equivalent Clarify handling without our marker; fail
-        # closed rather than claiming DevKit ownership of an unknown implementation.
         raise RuntimeError(
             "Clarify summary semantic branch exists without the DevKit marker; inspect upstream change"
         )
 
-    path.write_text(source, encoding="utf-8")
-    validate_session_source(path)
+    # Never leave a partial patch behind if upstream shape is incompatible.
+    if source != original:
+        with tempfile.TemporaryDirectory(prefix="hermes-session-patch-") as tmp:
+            candidate = Path(tmp) / path.name
+            candidate.write_text(source, encoding="utf-8")
+            validate_session_source(candidate)
+        path.write_text(source, encoding="utf-8")
+    else:
+        validate_session_source(path)
     return "already-patched" if source == original else "patched"
 
 
@@ -217,13 +248,21 @@ def validate_session_source(path: Path) -> None:
         'green = "\\033[92m"',
         'outcome.replace(',
         '(Recommended)',
-        '{rendered_outcome}{_RST}',
     )
     missing = [token for token in required if token not in source]
     if missing:
         raise RuntimeError(f"{path}: semantic Clarify summary contract missing: {missing}")
+    translated = 'rendered_summary = t("cli.session.persist_prompt_summary"' in source
+    legacy = '{rendered_outcome}{_RST}' in source
+    if translated == legacy:
+        raise RuntimeError(f"{path}: expected exactly one supported Clarify summary renderer")
+    if translated and (
+        I18N_SUMMARY_ANCHOR not in source
+        or 'outcome=rendered_outcome)' not in source
+        or '{rendered_summary}{_RST}' not in source
+    ):
+        raise RuntimeError(f"{path}: translated Clarify summary contract missing")
     compile_source(path)
-
 
 SEARCH_SKIP_PARTS = {
     ".git",
@@ -301,17 +340,15 @@ def _is_tui_candidate(source: str) -> bool:
 
 
 def _is_session_candidate(source: str) -> bool:
-    required = (
-        "_persist_prompt_summary",
-        "_cprint",
-        "{label}: {detail}",
-        "_DIM",
-        "_RST",
+    required = ("_persist_prompt_summary", "_cprint", "_DIM", "_RST")
+    if not all(token in source for token in required):
+        return False
+    return (
+        ("{label}: {detail}" in source and "{outcome}" in source)
+        or ("cli.session.persist_prompt_summary" in source and
+            "icon=icon, label=label, detail=detail, outcome=outcome" in source)
+        or (SUMMARY_TARGET in source and MARKER in source)
     )
-    return all(token in source for token in required) and (
-        "{outcome}" in source or "{rendered_outcome}" in source
-    )
-
 
 def _discover_from(paths) -> tuple[list[Path], list[Path]]:
     tui: list[Path] = []
@@ -412,6 +449,48 @@ def self_test() -> None:
             raise RuntimeError("self-test: session source was not patched")
         if patch_session_source(session) != "already-patched":
             raise RuntimeError("self-test: session patch is not idempotent")
+
+        # New upstream keeps the presentation localized via t(...).
+        translated = root / "cli_session_translated.py"
+        translated.write_text(
+            dedent_fixture(
+                """
+                class Stub:
+                    def _persist_prompt_summary(self, icon, label, detail, outcome):
+                        from cli import CLI_CONFIG, _DIM, _RST, _cprint
+                        if not CLI_CONFIG.get("display", {}).get("persist_prompts", True):
+                            return
+                        detail, outcome = (_squash(s) for s in (detail, outcome))
+                        _cprint(f"\\n{_DIM}{t('cli.session.persist_prompt_summary', icon=icon, label=label, detail=detail, outcome=outcome)}{_RST}")
+                """
+            ),
+            encoding="utf-8",
+        )
+        if not _is_session_candidate(translated.read_text(encoding="utf-8")):
+            raise RuntimeError("self-test: translated session was not discovered")
+        if patch_session_source(translated) != "patched":
+            raise RuntimeError("self-test: translated session was not patched")
+        if patch_session_source(translated) != "already-patched":
+            raise RuntimeError("self-test: translated session patch is not idempotent")
+        translated_source = translated.read_text(encoding="utf-8")
+        if "outcome=rendered_outcome)" not in translated_source:
+            raise RuntimeError("self-test: translated Clarify lost translated outcome")
+        if I18N_SUMMARY_ANCHOR not in translated_source:
+            raise RuntimeError("self-test: non-Clarify translation not preserved")
+        translated.unlink()  # Keep discovery fixture unambiguous for the legacy test.
+
+        # Avoid silently patching an unknown future source shape.
+        unsupported = root / "unsupported_session.py"
+        unsupported.write_text(
+            "def _persist_prompt_summary(self):\n    _cprint('changed upstream')\n",
+            encoding="utf-8",
+        )
+        try:
+            patch_session_source(unsupported)
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError("self-test: unknown session source did not fail closed")
 
         future = root / "future_layout"
         future.mkdir()
