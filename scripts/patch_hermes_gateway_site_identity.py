@@ -52,6 +52,10 @@ def smoke(module_path: Path) -> None:
     near = list(command)
     near[3] = near[3].replace("hermes_cli.main", "malicious.main")
     assert module.inline_bootstrap_argv(near) is None
+    # Exercise the real upstream identity matcher on the Docker process cmdline.
+    from gateway.status import looks_like_gateway_runtime_command_line
+    assert looks_like_gateway_runtime_command_line(" ".join(command))
+    assert not looks_like_gateway_runtime_command_line(" ".join(unsafe))
     print("PASS: site-based Hermes Gateway identity and negative fixtures")
 
 def main() -> None:
