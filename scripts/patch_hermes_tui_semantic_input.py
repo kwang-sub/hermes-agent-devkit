@@ -477,6 +477,7 @@ def self_test() -> None:
             raise RuntimeError("self-test: translated Clarify lost translated outcome")
         if I18N_SUMMARY_ANCHOR not in translated_source:
             raise RuntimeError("self-test: non-Clarify translation not preserved")
+        translated.unlink()  # Keep discovery fixture unambiguous for the legacy test.
 
         # Avoid silently patching an unknown future source shape.
         unsupported = root / "unsupported_session.py"
