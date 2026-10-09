@@ -50,7 +50,7 @@ import importlib.util
 
 name = "hermes_yaml" if importlib.util.find_spec("hermes_yaml") else "yaml"
 yaml = importlib.import_module(name)
-sample = "skills:\\n  external_dirs:\\n    - /opt/custom-skills/shared\\ntoolsets:\\n  - terminal\\n"
+sample = "skills:\n  external_dirs:\n    - /opt/custom-skills/shared\ntoolsets:\n  - terminal\n"
 parsed = yaml.safe_load(sample)
 assert parsed["skills"]["external_dirs"] == ["/opt/custom-skills/shared"]
 assert parsed["toolsets"] == ["terminal"]
