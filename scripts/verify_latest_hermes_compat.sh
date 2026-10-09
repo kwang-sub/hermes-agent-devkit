@@ -43,6 +43,25 @@ docker run --rm \
     -ceu '
         test -x /opt/hermes/.venv/bin/hermes
         /opt/hermes/.venv/bin/hermes --help >/dev/null
+        # Same Python interpreter and YAML interface used by init-profiles.ps1.
+        /opt/hermes/.venv/bin/python - <<"PY_PROFILE_YAML"
+import importlib
+import importlib.util
+
+name = "hermes_yaml" if importlib.util.find_spec("hermes_yaml") else "yaml"
+yaml = importlib.import_module(name)
+sample = "skills:\n  external_dirs:\n    - /opt/custom-skills/shared\ntoolsets:\n  - terminal\n"
+parsed = yaml.safe_load(sample)
+assert parsed["skills"]["external_dirs"] == ["/opt/custom-skills/shared"]
+assert parsed["toolsets"] == ["terminal"]
+rendered = yaml.safe_dump(
+    {"skills": {"external_dirs": parsed["skills"]["external_dirs"]}},
+    allow_unicode=True, default_flow_style=False, sort_keys=False,
+)
+assert yaml.safe_load(rendered)["skills"]["external_dirs"] == parsed["skills"]["external_dirs"]
+assert hasattr(yaml, "YAMLError")
+print("PASS: init-profiles YAML parser compatibility (" + name + ")")
+PY_PROFILE_YAML
         /opt/hermes/.venv/bin/hermes kanban boards list --json >/tmp/devkit-kanban-boards.json
         test -s /tmp/devkit-kanban-boards.json
 

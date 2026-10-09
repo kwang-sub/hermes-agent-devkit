@@ -298,6 +298,21 @@ def main() -> int:
         "DevKit Notification Bridge profile ownership",
     )
 
+    if init_profiles.count("import hermes_yaml as yaml") != 4:
+        raise SystemExit("init-profiles.ps1 must use Hermes YAML parser in all four config scripts")
+    require(
+        init_profiles,
+        (
+            "import importlib, importlib.util;",
+            "importlib.util.find_spec('hermes_yaml')",
+            "except ModuleNotFoundError as exc:",
+            'if exc.name != "hermes_yaml":',
+            "import yaml  # Compatibility with older Hermes releases.",
+            "Hermes YAML parser:",
+        ),
+        "Hermes profile YAML parser backward compatibility",
+    )
+
     notifier_policy = read_required(NOTIFIER_POLICY, "DevKit notifier boot policy")
     require(
         notifier_policy,
