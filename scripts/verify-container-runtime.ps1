@@ -304,40 +304,44 @@ if ($LASTEXITCODE -ne 0) {
     throw "[FAIL] Default multiplex Gateway served-profile contract. Re-run .\update-devkit.ps1 or rebuild/recreate the container."
 }
 Write-Host "[OK] Default multiplex Gateway serves default/coder/orchestrator/reviewer"
-Invoke-DockerCheck -Label "Tirith routed-profile guard patch" -DockerArgs @(
-    "exec", "--user", "hermes", $Container, "sh", "-lc",
-    "grep -q DEVKIT_TIRITH_PROFILE_GUARD_V1 /opt/hermes/tools/tirith_security.py"
-)
-$TirithProfileGuardCheck = @'
+$SecurityContractCheck = @'
 import os
-from hermes_constants import reset_hermes_home_override, set_hermes_home_override
-from tools.tirith_security import _devkit_only_analysis_incomplete, _devkit_tirith_subprocess_env
+from pathlib import Path
+from tools.approval_detection import detect_hardline_command, detect_dangerous_command
+from tools.approval_floors import _hardline_block_result
+assert callable(detect_hardline_command)
+assert callable(detect_dangerous_command)
+assert callable(_hardline_block_result)
 
-before_home = os.environ.get("HOME")
-before_hermes_home = os.environ.get("HERMES_HOME")
-token = set_hermes_home_override("/opt/data/profiles/coder")
-try:
-    env = _devkit_tirith_subprocess_env()
-    if env.get("HERMES_HOME") != "/opt/data/profiles/coder":
-        raise SystemExit(f"routed HERMES_HOME bridge mismatch: {env.get('HERMES_HOME')!r}")
-    if not env.get("HOME"):
-        raise SystemExit("Tirith subprocess HOME was not resolved")
-    if os.environ.get("HOME") != before_home or os.environ.get("HERMES_HOME") != before_hermes_home:
-        raise SystemExit("Tirith profile env helper mutated process-global environment")
-    if not _devkit_only_analysis_incomplete([{"rule_id": "analysis_incomplete"}]):
-        raise SystemExit("analysis_incomplete classification missing")
-    if _devkit_only_analysis_incomplete([{"rule_id": "malware_package"}]):
-        raise SystemExit("positive security finding was misclassified as analysis_incomplete")
-finally:
-    reset_hermes_home_override(token)
-print("Tirith routed-profile guard contract valid")
+if Path("/opt/hermes/tools/tirith_security.py").is_file():
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+    from tools.tirith_security import _devkit_only_analysis_incomplete, _devkit_tirith_subprocess_env
+    before_home = os.environ.get("HOME")
+    before_hermes_home = os.environ.get("HERMES_HOME")
+    token = set_hermes_home_override("/opt/data/profiles/coder")
+    try:
+        env = _devkit_tirith_subprocess_env()
+        assert env.get("HERMES_HOME") == "/opt/data/profiles/coder"
+        assert env.get("HOME")
+        assert os.environ.get("HOME") == before_home
+        assert os.environ.get("HERMES_HOME") == before_hermes_home
+        assert _devkit_only_analysis_incomplete([{"rule_id": "analysis_incomplete"}])
+        assert not _devkit_only_analysis_incomplete([{"rule_id": "malware_package"}])
+    finally:
+        reset_hermes_home_override(token)
+    print("legacy Tirith routed-profile guard contract valid")
+else:
+    from hermes_cli.config_migrations import _RETIRED_TIRITH_KEYS
+    assert "tirith_enabled" in _RETIRED_TIRITH_KEYS
+    assert "tirith_fail_open" in _RETIRED_TIRITH_KEYS
+    print("upstream retired Tirith; core approval guard contract valid")
 '@
 
-$TirithProfileGuardCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
+$SecurityContractCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
 if ($LASTEXITCODE -ne 0) {
-    throw "[FAIL] Tirith routed-profile guard runtime contract. Re-run .\update-devkit.ps1 or rebuild/recreate the container."
+    throw "[FAIL] Hermes security guard runtime contract. Re-run .\update-devkit.ps1 or rebuild/recreate the container."
 }
-Write-Host "[OK] Tirith routed-profile guard runtime contract"
+Write-Host "[OK] Hermes security guard runtime contract"
 
 Invoke-DockerCheck -Label "Kanban tracking relation preview API v2" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "sh", "-lc",
