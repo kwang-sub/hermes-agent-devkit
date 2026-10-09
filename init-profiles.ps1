@@ -248,7 +248,7 @@ function Assert-Prerequisites {
         $Container,
         $PythonPath,
         "-c",
-        "import yaml"
+        "import hermes_yaml as yaml"
     )
     Write-Host "[OK] Python/PyYAML: $PythonPath"
 
@@ -475,7 +475,12 @@ import shutil
 import stat
 import sys
 import tempfile
-import yaml
+try:
+    import hermes_yaml as yaml
+except ModuleNotFoundError as exc:
+    if exc.name != "hermes_yaml":
+        raise
+    import yaml  # Compatibility with older Hermes releases.
 
 p = Path(sys.argv[1])
 external_dirs = sys.argv[2:]
@@ -632,7 +637,12 @@ function Verify-ExternalDirs {
     $Py = @'
 from pathlib import Path
 import sys
-import yaml
+try:
+    import hermes_yaml as yaml
+except ModuleNotFoundError as exc:
+    if exc.name != "hermes_yaml":
+        raise
+    import yaml  # Compatibility with older Hermes releases.
 
 p = Path(sys.argv[1])
 expected = sys.argv[2:]
@@ -699,7 +709,12 @@ import shutil
 import stat
 import sys
 import tempfile
-import yaml
+try:
+    import hermes_yaml as yaml
+except ModuleNotFoundError as exc:
+    if exc.name != "hermes_yaml":
+        raise
+    import yaml  # Compatibility with older Hermes releases.
 
 p = Path(sys.argv[1])
 required = sys.argv[2:]
@@ -810,7 +825,12 @@ function Verify-RequiredToolsets {
     $Py = @'
 from pathlib import Path
 import sys
-import yaml
+try:
+    import hermes_yaml as yaml
+except ModuleNotFoundError as exc:
+    if exc.name != "hermes_yaml":
+        raise
+    import yaml  # Compatibility with older Hermes releases.
 
 p = Path(sys.argv[1])
 required = sys.argv[2:]
