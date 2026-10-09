@@ -236,6 +236,7 @@ PY
         /opt/hermes/.venv/bin/python - <<"PY"
 import os
 from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+from pathlib import Path
 from tools.approval_detection import detect_hardline_command, detect_dangerous_command
 from tools.approval_floors import _hardline_block_result
 assert callable(detect_hardline_command)
