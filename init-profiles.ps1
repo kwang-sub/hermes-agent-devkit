@@ -248,9 +248,9 @@ function Assert-Prerequisites {
         $Container,
         $PythonPath,
         "-c",
-        "import hermes_yaml as yaml"
+        "import importlib, importlib.util; y = importlib.import_module('hermes_yaml' if importlib.util.find_spec('hermes_yaml') else 'yaml'); assert callable(y.safe_load) and callable(y.safe_dump) and hasattr(y, 'YAMLError')"
     )
-    Write-Host "[OK] Python/PyYAML: $PythonPath"
+    Write-Host "[OK] Hermes YAML parser: $PythonPath"
 
     $RequiredPaths = @(
         $ExternalSkillDirs["orchestrator"] +
