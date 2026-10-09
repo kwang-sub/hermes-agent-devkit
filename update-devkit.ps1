@@ -329,6 +329,7 @@ function Invoke-RuntimeVerification {
         return $true
     }
     catch {
+        $Script:LastRuntimeVerificationError = $_.Exception.Message
         Write-Warning $_.Exception.Message
         return $false
     }
@@ -739,6 +740,12 @@ try {
         Write-Host "[RUN ] Runtime verification"
         $Verified = Invoke-RuntimeVerification -Verifier $Verifier -ContainerName $Container
         if (-not $Verified) {
+            # Recreating the same image cannot cure a successfully supervised
+            # but standalone/unverified multiplex Gateway. Preserve the
+            # container and its state for the classified diagnostic instead.
+            if ($Script:LastRuntimeVerificationError -match "Default multiplex Gateway served-profile contract") {
+                throw "GATEWAY_MULTIPLEX_NOT_READY: default Gateway is supervised but has not verified serving all role profiles. No automatic container recreation: inspect the classified readiness diagnostics, gateway_state.json and Gateway startup logs before migration or restart."
+            }
             if ($NoRepair) {
                 throw "Runtime verification failed and automatic repair is disabled by -NoRepair."
             }
