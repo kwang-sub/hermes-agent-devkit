@@ -330,6 +330,23 @@ def main() -> int:
     if 'GATEWAY_MULTIPLEX_NOT_READY' not in text:
         raise SystemExit("Updater must not blindly recreate for logical multiplex readiness failure")
 
+    gateway_identity_patch = read_required(
+        ROOT / "scripts/patch_hermes_gateway_site_identity.py",
+        "Hermes inline-source PID identity compatibility patch",
+    )
+    require(gateway_identity_patch, (
+        "DEVKIT_HERMES_SITE_INLINE_GATEWAY_IDENTITY_V1",
+        "site",
+        "inline_bootstrap_argv",
+        "gateway",
+        "smoke(path)",
+    ), "Hermes site-based gateway PID verification")
+    dockerfile = read_required(ROOT / "Dockerfile", "Dockerfile")
+    require(dockerfile, (
+        "patch_hermes_gateway_site_identity.py --self-test",
+        "patch_hermes_gateway_site_identity.py --hermes-root /opt/hermes",
+    ), "Hermes gateway site launcher Docker image compatibility")
+
     init_profiles = read_required(INIT_PROFILES, "init-profiles.ps1")
     require(
         init_profiles,
