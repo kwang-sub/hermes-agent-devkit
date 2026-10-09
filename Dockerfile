@@ -38,6 +38,13 @@ RUN python3 /tmp/patch_hermes_tirith_profile_guard.py --self-test \
     && rm /tmp/patch_hermes_tirith_profile_guard.py /tmp/check_hermes_security_contract.py
 
 # Read-only verification of the live multiplex Gateway, separate from s6 service status.
+# Hermes venv Python -c entrypoint must be recognized by upstream PID identity.
+COPY scripts/patch_hermes_gateway_site_identity.py /tmp/patch_hermes_gateway_site_identity.py
+RUN python3 /tmp/patch_hermes_gateway_site_identity.py --self-test \
+    && /opt/hermes/.venv/bin/python /tmp/patch_hermes_gateway_site_identity.py --hermes-root /opt/hermes \
+    && /opt/hermes/.venv/bin/python /tmp/patch_hermes_gateway_site_identity.py --check-only --hermes-root /opt/hermes \
+    && rm /tmp/patch_hermes_gateway_site_identity.py
+
 COPY --chmod=0755 scripts/devkit_gateway_readiness.py /opt/devkit/bin/devkit_gateway_readiness.py
 RUN /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_gateway_readiness.py --self-test
 
