@@ -93,11 +93,17 @@ Recovery Gate는 `clarify` 하나당 질문 하나다.
 
 ### Gate 3
 
-Recovery Plan 전체는 일반 메시지에 먼저 표시하고 질문은 다음 고정 리터럴을 사용한다.
+**RECOVERY_PLAN_PRESENTATION_V1:** Gate 3의 복구 분석·계획은 추론(`Reasoning`/`Thinking`) 영역이 아니라 **사용자에게 실제로 보이는 일반 assistant 응답 영역**에 먼저 표시한다. 헤더는 `작업 복구 분석`, `보드`, `현재 상태`, `작업`, `차단 원인`, `원인 분류`, `복구 방식`, `변경 계약`, `유지 계약`, `🛠 복구 계획`, `승인 기준`, `검증 계획`, `⚠ 금지 사항`, `구현 요약:`으로 한글 통일한다. 상세한 템플릿과 섹션 순서는 `dev-task-recovery/SKILL.md`의 `RECOVERY_PLAN_PRESENTATION_V1`이 기준이다.
+
+특히 `## 🛠 복구 계획`은 주황색 강조 헤더·세로줄이 있는 사용자 표시 블록이다. 이 스타일은 일반 assistant 출력 렌더러에서만 적용하며 사고/추론 출력, Kanban 본문, durable comment에 색상 escape 문자열을 넣지 않는다. 표시 시 `구현 요약:`이 마지막 섹션이어야 하고 1~2줄·최대 2문장 유효성 검증을 통과한 뒤 **같은 turn의 바로 다음 action**으로 기존 Gate 3 `clarify`를 호출한다.
+
+내부 Revision/Retry/Escalation 댓글의 영어 키, `TASK_RECOVERY_REVISION_V<N>`, `Recovery Mode`, `Recovery Plan`, `Acceptance Criteria`, `Original Contract`는 번역하거나 제거하지 않는다. `REPLACEMENT_REQUIRED`의 경우 새 카드 생성/기존 카드 unblock을 약속하는 문구로 표시하지 않는다.
+
+Gate 3 질문은 다음 고정 한글 리터럴을 사용한다.
 
 ```text
 [복구 계획 승인]
-위 Recovery Plan을 승인할까요?
+위 복구 계획을 승인할까요?
 ```
 
 Gate 3 choices:
@@ -227,6 +233,14 @@ Escalation:
 ```text
 TASK_RECOVERY_ESCALATION_V1
 ```
+
+### 사용자 표시와 durable contract 분리
+
+화면에 보이는 한국어 제목(예: `복구 방식`, `변경 계약`, `검증 계획`)은
+`SAME_TASK_RESUME` 승인 후 저장되는 `Recovery Mode:`, `Requirement Delta:`,
+`Recovery Plan:`, `Verification:` 영어 key의 **대체물이 아니다**.
+표시가 끝난 뒤 승인 처리 단계에서는 기존 canonical 영어 body를
+변경 없이 기록하며 read-back에서도 원래 영문 계약을 검증한다.
 
 ## 8. Recovery Revision canonical body
 

@@ -252,55 +252,59 @@ Project / Workspace / Branch / Coder Model을 새로 선택해야 함
 
 ## 6. Gate 3 — 복구 계획 승인
 
-원인 분석 결과와 방향을 **일반 메시지로 먼저** 보여준다.
+원인 분석 결과와 복구 방향은 **Clarify 호출 직전에 사용자에게 보이는 일반 assistant 응답 영역**에 먼저 표시한다. 이 계획을 모델의 `Reasoning`/`Thinking`(흐린 사고 영역)이나 tool 로그에만 기록하는 것은 표시 완료가 아니다. 전체 복구 계획을 일반 메시지로 전달한 후 같은 turn에서 기존 Gate 3 `clarify`를 호출한다. 계획을 표시했다는 이유로 새 turn을 종료하거나 별도 승인 단계를 만들지 않는다.
 
-필수 형식:
+**RECOVERY_PLAN_PRESENTATION_V1 — 사용자 표시 전용 형식:**
 
-```text
-Task Recovery Analysis
+표시 헤더는 전부 한글로 쓰고 Markdown 헤더를 사용한다. `🛠 복구 계획`은 다른 항목보다 큰 H2 헤더, 구분선, 인용문(`>`)의 세로 강조선으로 식별한다. 기존 Hermes의 클래식 CLI/TUI 일반 응답 렌더러는 해당 헤더에 한해 주황색(`#FFB347`) 제목과 테두리를 적용한다. 스트리밍 응답에서는 주황색 제목과 왼쪽 세로줄을 적용한다. ANSI escape sequence를 모델 메시지·Task 본문에 직접 삽입하지 않는다.
 
-Board:
-<slug>
+```markdown
+## 작업 복구 분석
 
-Task:
-<task_id>
-<title>
+**보드:** <approved board>  
+**현재 상태:** <BLOCKED | TRIAGE>
 
-Current Status:
-<실제 BLOCKED | TRIAGE>
+**작업:** <task_id>  
+<task title>
 
-Block Cause:
-- <fact/evidence>
-- ...
+### 차단 원인
+- <관찰된 오류와 근거>
+- <이전 실패/해결 근거>
 
-Cause Class:
-<one or more classifications>
+### 원인 분류
+<ENVIRONMENT | ...; 원문 분류 코드를 값으로 유지>
 
-Recovery Mode:
-RETRY_SAME_CONTRACT | SAME_TASK_RESUME | REPLACEMENT_REQUIRED
+### 복구 방식
+<RETRY_SAME_CONTRACT | SAME_TASK_RESUME | REPLACEMENT_REQUIRED> — <한글 설명>
 
-Contract Delta:
-- <change | NONE>
+### 변경 계약
+- <새로 승인할 bounded 변경 | NONE>
 
-Preserved Contract:
-- <existing requirement/constraint>
+### 유지 계약
+- <기존 요구사항·Workspace·Branch·미커밋 변경·업무 동작 보존>
 
-Recovery Plan:
-- <bounded step>
-- ...
+---
+## 🛠 복구 계획
+> 1. <현재 상태·Run/Claim 확인>
+> 2. <Revision/Retry/Escalation 기록 및 read-back>
+> 3. <작업 재개와 구체적인 source/verification 조치>
+> 4. <최종 검증 및 독립 리뷰>
+---
 
-Acceptance Criteria:
-- <existing/updated criterion>
+### 승인 기준
+- <기존/변경된 Acceptance Criteria>
 
-Verification:
-- <commands/evidence>
+### 검증 계획
+- <approved command/evidence/fresh verification>
 
-Forbidden:
-- <unsafe/unrelated actions>
+### ⚠ 금지 사항
+- <새 카드 생성, 승인되지 않은 변경, 무단 초기화 등 금지>
 
-구현 요약:
-<실제 변경 대상 + 핵심 변경 + 보존 범위/중요 예외를 1~2줄, 최대 2문장으로 요약>
+### 구현 요약:
+<실제 변경 대상 + 핵심 변경 + 보존 범위/예외; 1~2줄·최대 2문장>
 ```
+
+표시용 한글 헤더와 기계가 파싱하는 durable comment 형식은 분리한다. 승인 후 Kanban에 남기는 `TASK_RECOVERY_REVISION_V<N>`, `Recovery Gate: APPROVED`, `Recovery Mode: SAME_TASK_RESUME`, `Recovery Plan:`, `Acceptance Criteria:` 등의 **영문 키·marker는 변경하지 않는다**. 표시 요약에 있는 사실/계획은 승인 후 기록되는 영어 계약 값과 일치해야 한다. `REPLACEMENT_REQUIRED`에서도 재개를 확약하지 말고 TRIAGE/blocked 보존 및 별도 Standard Flow 필요성을 한글로 표시한다.
 
 `구현 요약:`은 Gate 3 입력의 필수 요소다. Recovery Plan 제목/목표를 반복하지 말고 실제 코드/계약 변경과 유지되는 범위 또는 승인할 예외를 압축한다. 누락되거나 2문장을 초과하면 `RECOVERY_PLAN_READY`가 아니며 승인 `clarify`를 호출할 수 없다.
 
@@ -309,7 +313,7 @@ Forbidden:
 ```text
 question:
   [복구 계획 승인]
-  위 Recovery Plan을 승인할까요?
+  위 복구 계획을 승인할까요?
 choices:
   - 복구 계획 승인
   - 보류
