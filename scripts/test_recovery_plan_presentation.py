@@ -83,6 +83,22 @@ class PresentationTests(unittest.TestCase):
         self.assertTrue(active)
         self.assertIn("┃", item)
         self.assertIn("같은 카드", item)
+        # Regression: the whole plan is accented, including numbered steps,
+        # continuation lines and non-numbered nested details.
+        for source in (
+            "  2. 같은 카드에서 재개합니다.",
+            "추가 검증 내용을 확인합니다.",
+            "    - 기존 브랜치를 유지합니다.",
+            "  3. 회귀 테스트를 수행합니다.",
+            "  4. 독립 Reviewer에게 인계합니다.",
+        ):
+            rendered, active = style_reasoning_recovery_line(source, active)
+            self.assertTrue(active)
+            self.assertIn("┃", rendered)
+            self.assertIn(source.strip(), rendered)
+        blank, active = style_reasoning_recovery_line("", active)
+        self.assertEqual(blank, "")
+        self.assertTrue(active)
         _, active = style_reasoning_recovery_line("승인 기준", active)
         self.assertFalse(active)
         regular, active = style_reasoning_recovery_line("1. 별도 대화", active)
