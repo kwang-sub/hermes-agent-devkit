@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+import urllib.error
 
 from browser_dialog_trace import analyze
 
@@ -45,18 +46,21 @@ def _resolve(args: list[str], variables: dict[str, str]) -> list[str]:
                 .replace("{port}", variables["port"])
                 .replace("{result_file}", variables["result_file"]) for item in args]
 
-def _ready(origin: str, proc: subprocess.Popen, seconds: float) -> bool:
+def _ready(origin: str, proc: subprocess.Popen, seconds: float, path: str = '/') -> bool:
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             return False
         try:
             with urllib.request.urlopen(
-                urllib.request.Request(origin + "/", headers={"User-Agent": "Hermes-DevKit-Adapter"}),
+                urllib.request.Request(origin + path, headers={"User-Agent": "Hermes-DevKit-Adapter"}),
                 timeout=1.0,
             ) as response:
                 if 200 <= response.status < 500:
                     return True
+        except urllib.error.HTTPError as exc:
+            if 400 <= exc.code < 500:
+                return True  # Web server is alive; application route may reject the fixture.
         except (OSError, TimeoutError):
             pass
         time.sleep(0.15)
@@ -94,11 +98,14 @@ def _stop(proc: subprocess.Popen | None) -> list[str]:
 
 def run(server_command: list[str], probe_command: list[str], artifact_dir: Path,
         task_id: str, provider: str, startup_timeout: float = 25,
-        probe_timeout: float = 45, cwd: Path | None = None) -> dict:
+        probe_timeout: float = 45, cwd: Path | None = None,
+        ready_path: str = '/') -> dict:
     if not task_id or not provider:
         raise ValueError("task_id and provider required")
     if startup_timeout <= 0 or probe_timeout <= 0:
         raise ValueError("timeouts must be positive")
+    if not ready_path.startswith("/") or ready_path.startswith("//") or "://" in ready_path:
+        raise ValueError("ready_path must be a local absolute route")
     artifact_dir.mkdir(parents=True, exist_ok=True)
     port = _port()
     origin = f"http://127.0.0.1:{port}"
@@ -128,7 +135,7 @@ def run(server_command: list[str], probe_command: list[str], artifact_dir: Path,
                                     cwd=cwd, env=env, stdin=subprocess.DEVNULL,
                                     stdout=server_log, stderr=subprocess.STDOUT,
                                     start_new_session=(os.name == "posix"))
-            if not _ready(origin, proc, startup_timeout):
+            if not _ready(origin, proc, startup_timeout, ready_path):
                 report["classification"] = "SERVER_NOT_READY"
             else:
                 report["server_ready"] = True
@@ -187,11 +194,12 @@ def main() -> int:
     parser.add_argument("--cwd", type=Path)
     parser.add_argument("--startup-timeout", type=float, default=25)
     parser.add_argument("--probe-timeout", type=float, default=45)
+    parser.add_argument("--ready-path", default="/")
     args = parser.parse_args()
     try:
         result = run(_argv(args.server_command, "server-command"), _argv(args.probe_command, "probe-command"),
                      args.artifact_dir, args.task_id, args.provider,
-                     args.startup_timeout, args.probe_timeout, args.cwd)
+                     args.startup_timeout, args.probe_timeout, args.cwd, args.ready_path)
     except (ValueError, OSError) as exc:
         print("BROWSER_RUNTIME_ADAPTER=INVALID: " + type(exc).__name__)
         return 2
