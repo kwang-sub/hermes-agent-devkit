@@ -22,7 +22,8 @@ def analyze(data):
         classification = "NO_BEFOREUNLOAD_EVENT"
         state = "INCONCLUSIVE"
     else:
-        ix, opened_entry, _ = opened[-1]
+        ix, _, opening_params = opened[-1]
+        opened_entry = events[ix]
         sid = opened_entry.get("sessionId", "")
         closed = [(j, p) for j, e0 in enumerate(events[ix + 1:], ix + 1)
                   for e, p in [_event(e0)]
