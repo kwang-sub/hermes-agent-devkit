@@ -305,6 +305,7 @@ run_check "DevKit Kanban boot recovery self-test" python3 scripts/devkit_kanban_
 run_check "DevKit Kanban boot recovery contract" python3 scripts/check_kanban_boot_recovery_contract.py
 run_check "Recovery Korean plan presentation and render" python3 scripts/test_recovery_plan_presentation.py
 run_check "Browser capability evidence contract" python3 scripts/test_browser_verification_evidence.py
+run_check "Browser dialog trace classifier" python3 scripts/test_browser_dialog_trace.py
 run_check "Recovery classic CLI styling upstream anchors" python3 scripts/patch_hermes_recovery_plan_style.py --self-test
 run_check "DevKit Kanban boot recovery syntax" sh -n docker/cont-init.d/018-devkit-kanban-boot-recovery
 run_check "DevKit Kanban notification bridge" python3 scripts/devkit_kanban_notifier.py --self-test
