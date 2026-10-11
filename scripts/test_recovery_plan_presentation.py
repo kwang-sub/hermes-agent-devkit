@@ -98,7 +98,7 @@ class PresentationTests(unittest.TestCase):
             rendered, active = style_reasoning_recovery_line(source, active)
             self.assertTrue(active)
             self.assertIn("┃", rendered)
-            self.assertIn(source.strip(), rendered)
+            self.assertIn(source.strip(), re.sub(r"\x1b\[[0-9;]*m", "", rendered))
         blank, active = style_reasoning_recovery_line("", active)
         self.assertEqual(blank, "")
         self.assertTrue(active)
