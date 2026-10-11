@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from devkit_recovery_plan_style import (
     ACCENT, ACCENT_ANSI, HEADING, split_recovery_response,
     style_recovery_response, style_stream_line, style_reasoning_recovery_line,
+    PRESERVE_ANSI, PRESERVE_BAR_ANSI, BAR_ANSI, CHANGE_SECTION, PRESERVE_SECTION,
 )
 import patch_hermes_recovery_plan_style as patcher
 
@@ -103,6 +104,63 @@ class PresentationTests(unittest.TestCase):
         self.assertFalse(active)
         regular, active = style_reasoning_recovery_line("1. 별도 대화", active)
         self.assertEqual((regular, active), ("1. 별도 대화", False))
+
+    def test_change_and_preserve_contracts_have_distinct_accents(self) -> None:
+        for presenter in (style_reasoning_recovery_line, style_stream_line):
+            with self.subTest(presenter=presenter.__name__):
+                heading, state = presenter("### 변경 계약", False)
+                self.assertEqual(state, CHANGE_SECTION)
+                self.assertIn(ACCENT_ANSI, heading)
+                first, state = presenter("1. 기존 기능 범위만 수정", state)
+                self.assertIn(BAR_ANSI, first)
+                self.assertIn("기존 기능 범위만 수정", first)
+                continued, state = presenter("  상세 설명 줄바꿈", state)
+                self.assertIn(BAR_ANSI, continued)
+                self.assertEqual(state, CHANGE_SECTION)
+
+                heading, state = presenter("### 유지 계약", state)
+                self.assertEqual(state, PRESERVE_SECTION)
+                self.assertIn(PRESERVE_ANSI, heading)
+                body, state = presenter("Workspace 및 Branch 보존", state)
+                self.assertIn(PRESERVE_BAR_ANSI, body)
+                self.assertIn("Workspace 및 Branch 보존", body)
+                empty, state = presenter("", state)
+                self.assertEqual(empty, "")
+                self.assertEqual(state, PRESERVE_SECTION)
+                nested, state = presenter("- 원본 변경 사항 유지", state)
+                self.assertIn(PRESERVE_BAR_ANSI, nested)
+
+                heading, state = presenter("복구 계획", state)
+                self.assertIn(ACCENT_ANSI, heading)
+                self.assertEqual(state, "복구 계획")
+                step, state = presenter("1. 복구 작업", state)
+                self.assertIn(BAR_ANSI, step)
+                unrelated, state = presenter("승인 기준", state)
+                self.assertEqual(unrelated, "승인 기준")
+                self.assertFalse(state)
+                untouched, state = presenter("일반 설명", state)
+                self.assertEqual((untouched, state), ("일반 설명", False))
+
+    def test_rich_contract_panels_are_distinct(self) -> None:
+        if importlib.util.find_spec("rich") is None:
+            self.skipTest("Rich is supplied by Hermes runtime")
+        from rich.console import Console
+        from io import StringIO
+
+        sample = SAMPLE.replace(
+            "### 유지 계약\\n- existing source\\n",
+            "### 변경 계약\\n- only scope changes\\n"
+            "### 유지 계약\\n- existing source\\n",
+        )
+        renderable = style_recovery_response(sample)
+        output = StringIO()
+        Console(file=output, width=100, force_terminal=True, color_system="truecolor").print(renderable)
+        visible = output.getvalue()
+        self.assertIn("변경 계약", visible)
+        self.assertIn("유지 계약", visible)
+        self.assertIn("only scope changes", visible)
+        self.assertIn("existing source", visible)
+        self.assertIn("38;2;34;197;94", visible)
 
     def test_durable_machine_contract_does_not_get_reformatted(self) -> None:
         machine = (
