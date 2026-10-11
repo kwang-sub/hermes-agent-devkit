@@ -173,13 +173,13 @@ class PresentationTests(unittest.TestCase):
             output, state = style_reasoning_recovery_line("복구 계획", False)
             rendered, state = style_reasoning_recovery_line(sentence, state)
             self.assertEqual(state, "복구 계획")
-            plain = re.sub(r"\\x1b\\[[0-9;]*m", "", rendered)
+            plain = re.sub(r"\x1b\[[0-9;]*m", "", rendered)
             lines = plain.splitlines()
             self.assertGreater(len(lines), 1)
             self.assertTrue(lines[0].startswith("┃ 4. "))
             self.assertTrue(all(line.startswith("┃    ") for line in lines[1:]))
             self.assertTrue(all(_display_width(line) <= 46 for line in lines))
-            self.assertEqual(plain.replace("\\n", "").replace("┃", "").replace(" ", ""),
+            self.assertEqual(plain.replace("\n", "").replace("┃", "").replace(" ", ""),
                              sentence.replace(" ", ""))
 
     def test_contract_body_is_neutral_with_colored_gutter(self) -> None:
