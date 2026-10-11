@@ -161,7 +161,7 @@ def _wrap_visible(text: str, first: str, later: str, width: int) -> str:
     prefix = first
     line = ""
     for char in text:
-        if char == "\\n":
+        if char == "\n":
             result.append(prefix + line)
             prefix, line = later, ""
             continue
@@ -172,7 +172,7 @@ def _wrap_visible(text: str, first: str, later: str, width: int) -> str:
                 continue
         line += char
     result.append((prefix + line).rstrip())
-    return "\\n".join(result)
+    return "\n".join(result)
 
 
 def _style_section_line(line: str, state: str | bool, *, body_color: str = "") -> tuple[str, str | bool]:
@@ -188,7 +188,7 @@ def _style_section_line(line: str, state: str | bool, *, body_color: str = "") -
         return f"{accent}━━ {label} ━━{RESET_ANSI}", section
 
     normalized = line.strip()
-    if normalized in REASONING_LABELS or normalized == "---" or re.match(r"^#{2,3}\\s+", normalized):
+    if normalized in REASONING_LABELS or normalized == "---" or re.match(r"^#{2,3}\s+", normalized):
         return line, False
     if not state or not normalized:
         return line, state
@@ -196,8 +196,8 @@ def _style_section_line(line: str, state: str | bool, *, body_color: str = "") -
     # Leave paragraph text in the terminal's regular foreground color.
     # Only the gutter and list marker take the section color.
     accent = PRESERVE_BAR_ANSI if state == PRESERVE_SECTION else BAR_ANSI
-    body = re.sub(r"^\\s*>\\s?", "", line).strip()
-    item = re.match(r"^([0-9]+[.)])\\s+(.*)$", body)
+    body = re.sub(r"^\s*>\s?", "", line).strip()
+    item = re.match(r"^([0-9]+[.)])\s+(.*)$", body)
     content_width = max(24, shutil.get_terminal_size(fallback=(80, 24)).columns - 8)
     if item and state == PLAN_SECTION:
         number, text = item.groups()
