@@ -399,6 +399,13 @@ Reviewer는 기존 `dev-code-review`의 diff-first/verification reuse 계약을 
 - dependency 변경이 있으면 `dev-node-dependencies`의 package root/manager/lockfile/Tirith evidence를 확인한다.
 - Storybook/Playwright가 없는 프로젝트에 review 단계에서 새 dependency 도입을 강제하지 않는다.
 
+## Browser verification integration
+
+UI 작업에서 브라우저 동작 AC가 있으면 `dev-frontend-test/references/browser-verification.md`를
+필요할 때 로드하고, Node Environment Gate 이후 browser capability를 필요한 범위만 확인한다.
+Browser 검증은 Node 검증의 대체 수단이 아니며 신규 프로젝트 dependency를 강제하지 않는다.
+Provider 변경은 기존 승인 경계를 따르고, 실패한 필수 AC는 NOT_RUN + 실행 원인으로 분리한다.
+
 ## Handoff
 
 ```text
