@@ -10,7 +10,7 @@ REQUIRED = {"schema", "task_id", "provider", "session", "verified_at",
             "capabilities", "acceptance_criteria", "cleanup"}
 
 def validate(data):
-    if not isinstance(data, dict) or data.keys() < REQUIRED:
+    if not isinstance(data, dict) or not REQUIRED.issubset(data):
         raise ValueError("missing evidence fields")
     if data["schema"] != "browser_verification_v1":
         raise ValueError("unsupported schema")
