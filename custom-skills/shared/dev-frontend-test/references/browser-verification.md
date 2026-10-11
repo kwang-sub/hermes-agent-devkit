@@ -57,3 +57,36 @@ Browser Execution Status: PASS | FAIL | BLOCKED_ENV | UNSUPPORTED | INCONCLUSIVE
 Browser Cleanup: PASS | WARNING | NOT_RUN
 Required AC Outstanding: <AC IDs | NONE>
 Browser Recovery Fingerprint: <provider/capability/signature | NONE>
+
+## Native dialog diagnostics after Run 91
+
+The independent A-E isolated probes established Chrome/CDP capability, but the
+real Next.js harness in Recovery run 91 still closed beforeunload with result=true
+before a dismiss was sent. Therefore do NOT claim that an A-E PASS unblocks
+the product's AC or that the provider is repaired.
+
+Use `scripts/browser_dialog_trace.py` on a **redacted**, task-owned JSON trace
+containing `events` with Page.javascriptDialogOpening/Closed and a common-clock
+`dismiss.sent_at`, success, page_preserved and input_preserved booleans.
+It is an offline classifier (not an alternate CDP client) and makes no browser
+configuration changes. A closed dialog with no recorded dismiss is BLOCKED_ENV,
+not PASS, even if the browser later loads successfully. The stable
+recovery_fingerprint prevents retries of identical evidence from the same provider.
+Record the fingerprint and ask for separate runtime/provider repair approval
+instead of retrying the application Task.
+
+Official Hermes `browser_dialog(action="dismiss")` requires a pending native dialog.
+A direct `cdp("Page.handleJavaScriptDialog", accept=False)` on a separate observing
+session is NOT proof that the official response path works. When explicit
+response diagnostics are authorized, test these separately with the same
+isolated fixture, without automatically switching the approved provider:
+(A) direct CDP observer, (B) browser_exec's harness CDP,
+(C) Hermes supervisor's browser_dialog; compare same-session opening/close
+events, monotonically timed send/close events, and navigation/input preservation.
+If the dialog closes before the official tool can respond, classify and stop.
+Do not replace native dialogs with mocks or JavaScript window.confirm shims.
+
+The runtime adapter for automatic test-server lifecycle and the actual official
+browser_dialog E2E probe are NOT implemented by this policy or classifier.
+A new runtime/provider authorization is needed for changes beyond the
+approved project's verification environment.
