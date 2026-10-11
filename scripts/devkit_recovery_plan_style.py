@@ -201,18 +201,16 @@ def _style_section_line(line: str, state: str | bool, *, body_color: str = "") -
     content_width = max(24, shutil.get_terminal_size(fallback=(80, 24)).columns - 8)
     if item and state == PLAN_SECTION:
         number, text = item.groups()
-        marker = f"{accent}{number}{RESET_ANSI} "
         indent = " " * (_display_width(number) + 1)
-        wrapped = _wrap_visible(text, "  " + number + " ", "  " + indent, content_width)
-        # Color the marker only on the first line, preserving the hanging indent.
-        lead = "  " + number + " "
-        wrapped = wrapped.replace(lead, "  " + marker, 1)
+        wrapped = _wrap_visible(text, "┃ " + number + " ", "┃ " + indent, content_width)
+        wrapped = wrapped.replace("┃", f"{accent}┃{RESET_ANSI}")
+        wrapped = wrapped.replace(number + " ", f"{accent}{number}{RESET_ANSI} ", 1)
         return wrapped, state
 
     # Wrapped paragraph continuation uses a neutral gutter without repeated
     # markdown list markers or decorative horizontal separators.
-    wrapped = _wrap_visible(body, "  ", "  ", content_width)
-    return wrapped, state
+    wrapped = _wrap_visible(body, "┃ ", "┃ ", content_width)
+    return wrapped.replace("┃", f"{accent}┃{RESET_ANSI}"), state
 
 
 def style_stream_line(line: str, in_recovery_plan: str | bool, *, body_color: str = "") -> tuple[str, str | bool]:
