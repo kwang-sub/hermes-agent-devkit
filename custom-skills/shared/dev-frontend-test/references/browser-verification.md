@@ -113,6 +113,7 @@ Example with existing isolated project harness, if it accepts a dynamic port:
 python3 /opt/devkit/bin/browser_runtime_adapter.py \
   --task-id "<task-id>" --provider browser_exec \
   --artifact-dir "<Task artifact>/browser/runtime-<run>" \
+  --ready-path /accounts/new \
   --cwd "<approved project isolated Node directory>" \
   --server-command '["pnpm","exec","node","scripts/approved-fixture.mjs","--port","{port}"]' \
   --probe-command '["python3","/path/to/approved-browser-probe.py","--origin","{origin}","--output","{result_file}"]'
@@ -134,3 +135,5 @@ If an existing Node project requires `node_runtime.py`, prepare and invoke
 its approved isolated runtime first; do not launch production Next/auth paths
 outside that gate. A probe may use the official browser_dialog tool only with
 an attached task-scoped CDP supervisor and a truly pending dialog.
+
+The optional `--ready-path` selects the fixture's readiness route (default `/`); it never overrides the loopback origin. A 4xx response demonstrates server readiness, not browser AC success.
