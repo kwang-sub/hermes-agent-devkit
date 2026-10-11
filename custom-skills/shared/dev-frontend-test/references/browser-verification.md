@@ -90,3 +90,47 @@ The runtime adapter for automatic test-server lifecycle and the actual official
 browser_dialog E2E probe are NOT implemented by this policy or classifier.
 A new runtime/provider authorization is needed for changes beyond the
 approved project's verification environment.
+
+## Browser Runtime Adapter V1 (implemented)
+
+The read-only runner `scripts/browser_runtime_adapter.py` manages an approved,
+**loopback-only fixture** server and approved browser probe command, without
+introducing Playwright or changing Hermes browser provider/config. It provides:
+
+- Fresh OS-assigned localhost port and HTTP readiness bounded by startup timeout.
+- JSON argv commands; only `{port}`, `{origin}`, `{result_file}` substitutions
+  are supported; no shell execution. The server must bind to the supplied port.
+- Separate server/probe logs and task-owned evidence, and bounded probe runtime.
+- Own server/probe process cleanup (not shared Hermes sessions or other workers).
+- A strict trace-to-classification handoff using `browser_dialog_trace.py`.
+  A PASS needs a recorded dismiss response and confirmed page/input preservation.
+- Unique task-owned artifact directory **per attempt**. Do not use the same
+  output directory concurrently or point it at source code. Avoid sensitive data
+  in logs; run only approved fixture commands.
+
+Example with existing isolated project harness, if it accepts a dynamic port:
+```bash
+python3 /opt/devkit/bin/browser_runtime_adapter.py \
+  --task-id "<task-id>" --provider browser_exec \
+  --artifact-dir "<Task artifact>/browser/runtime-<run>" \
+  --cwd "<approved project isolated Node directory>" \
+  --server-command '["pnpm","exec","node","scripts/approved-fixture.mjs","--port","{port}"]' \
+  --probe-command '["python3","/path/to/approved-browser-probe.py","--origin","{origin}","--output","{result_file}"]'
+```
+
+The probe command MUST write a redacted JSON event trace with provider,
+Page.javascriptDialogOpening/Closed events, `dismiss.sent_at` (monotonic clock
+shared with events), dismiss.success, page_preserved, and input_preserved.
+The fixture server must respond to GET / and shut down on SIGTERM.
+Actual browser navigation / native dialog response remains the approved probe's
+responsibility. The Runtime Adapter does **not** claim to implement the
+Hermes official `browser_dialog` response path: that must be explicitly
+exercised and independently evidenced before unblocking a real UI AC.
+
+A nonzero exit 2 is the expected result of BLOCKED_ENV or INCONCLUSIVE;
+read `browser-runtime-report.json`, not just process exit code. A PASS
+for an isolated fixture does not substitute for a PASS on the product UI.
+If an existing Node project requires `node_runtime.py`, prepare and invoke
+its approved isolated runtime first; do not launch production Next/auth paths
+outside that gate. A probe may use the official browser_dialog tool only with
+an attached task-scoped CDP supervisor and a truly pending dialog.
