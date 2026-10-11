@@ -6,6 +6,8 @@ from pathlib import Path
 import importlib.util
 import sys
 import unittest
+import re
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -161,6 +163,35 @@ class PresentationTests(unittest.TestCase):
         self.assertIn("only scope changes", visible)
         self.assertIn("existing source", visible)
         self.assertIn("38;2;34;197;94", visible)
+
+    def test_narrow_terminal_wrap_preserves_number_alignment(self) -> None:
+        from devkit_recovery_plan_style import _display_width
+        from os import terminal_size
+
+        sentence = "4. 별도 Standard Flow에서 환경 해결 후 원래 UI 카드의 Recovery Flow로 돌아옵니다."
+        with patch("devkit_recovery_plan_style.shutil.get_terminal_size", return_value=terminal_size((54, 20))):
+            output, state = style_reasoning_recovery_line("복구 계획", False)
+            rendered, state = style_reasoning_recovery_line(sentence, state)
+            self.assertEqual(state, "복구 계획")
+            plain = re.sub(r"\\x1b\\[[0-9;]*m", "", rendered)
+            lines = plain.splitlines()
+            self.assertGreater(len(lines), 1)
+            self.assertTrue(lines[0].startswith("┃ 4. "))
+            self.assertTrue(all(line.startswith("┃    ") for line in lines[1:]))
+            self.assertTrue(all(_display_width(line) <= 46 for line in lines))
+            self.assertEqual(plain.replace("\\n", "").replace("┃", "").replace(" ", ""),
+                             sentence.replace(" ", ""))
+
+    def test_contract_body_is_neutral_with_colored_gutter(self) -> None:
+        line, active = style_stream_line("변경 계약", False)
+        body, active = style_stream_line("긴 계약 내용이 여러 줄에 걸쳐 표시됩니다.", active)
+        self.assertIn(BAR_ANSI + "┃", body)
+        self.assertIn("계약 내용", body)
+        self.assertNotIn(ACCENT_ANSI + "긴", body)
+        next_heading, active = style_stream_line("유지 계약", active)
+        self.assertIn(PRESERVE_ANSI, next_heading)
+        next_body, active = style_stream_line("원본 변경 보존", active)
+        self.assertIn(PRESERVE_BAR_ANSI + "┃", next_body)
 
     def test_durable_machine_contract_does_not_get_reformatted(self) -> None:
         machine = (
