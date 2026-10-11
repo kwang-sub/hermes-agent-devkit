@@ -9,6 +9,9 @@ ordinary assistant response before Clarify approval.
 from __future__ import annotations
 
 from typing import NamedTuple
+import re
+import shutil
+import unicodedata
 
 HEADING = "## 🛠 복구 계획"
 ACCENT = "#FFB347"
@@ -145,10 +148,39 @@ def _section_from_heading(line: str) -> str | None:
     return None
 
 
-def _style_section_line(line: str, state: str | bool, *, body_color: str = "") -> tuple[str, str | bool]:
-    """Keep an active section until another heading or explicit separator."""
-    import re
+def _display_width(value: str) -> int:
+    """Terminal columns, accounting for Korean full-width glyphs."""
+    return sum(0 if unicodedata.combining(ch) else
+               2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+               for ch in value)
 
+
+def _wrap_visible(text: str, first: str, later: str, width: int) -> str:
+    """Wrap content without putting ANSI escapes inside width calculations."""
+    result = []
+    prefix = first
+    line = ""
+    for char in text:
+        if char == "\\n":
+            result.append(prefix + line)
+            prefix, line = later, ""
+            continue
+        if _display_width(prefix + line + char) > width and line:
+            result.append((prefix + line).rstrip())
+            prefix, line = later, ""
+            if char.isspace():
+                continue
+        line += char
+    result.append((prefix + line).rstrip())
+    return "\\n".join(result)
+
+
+def _style_section_line(line: str, state: str | bool, *, body_color: str = "") -> tuple[str, str | bool]:
+    """Style section titles and a single accent gutter, not entire body text.
+
+    Each physical output line fits within the terminal, with hanging indentation
+    for numbered steps. Neither source text nor recovery state is modified.
+    """
     section = _section_from_heading(line)
     if section:
         accent = PRESERVE_ANSI if section == PRESERVE_SECTION else ACCENT_ANSI
@@ -156,14 +188,31 @@ def _style_section_line(line: str, state: str | bool, *, body_color: str = "") -
         return f"{accent}━━ {label} ━━{RESET_ANSI}", section
 
     normalized = line.strip()
-    if normalized in REASONING_LABELS or normalized == "---" or re.match(r"^#{2,3}\s+", normalized):
+    if normalized in REASONING_LABELS or normalized == "---" or re.match(r"^#{2,3}\\s+", normalized):
         return line, False
     if not state or not normalized:
         return line, state
 
-    color = PRESERVE_BAR_ANSI if state == PRESERVE_SECTION else BAR_ANSI
-    body = re.sub(r"^\s*>\s?", "", line).rstrip()
-    return f"{color}┃ {body}{RESET_ANSI}{body_color}", state
+    # Leave paragraph text in the terminal's regular foreground color.
+    # Only the gutter and list marker take the section color.
+    accent = PRESERVE_BAR_ANSI if state == PRESERVE_SECTION else BAR_ANSI
+    body = re.sub(r"^\\s*>\\s?", "", line).strip()
+    item = re.match(r"^([0-9]+[.)])\\s+(.*)$", body)
+    content_width = max(24, shutil.get_terminal_size(fallback=(80, 24)).columns - 8)
+    if item and state == PLAN_SECTION:
+        number, text = item.groups()
+        marker = f"{accent}{number}{RESET_ANSI} "
+        indent = " " * (_display_width(number) + 1)
+        wrapped = _wrap_visible(text, "  " + number + " ", "  " + indent, content_width)
+        # Color the marker only on the first line, preserving the hanging indent.
+        lead = "  " + number + " "
+        wrapped = wrapped.replace(lead, "  " + marker, 1)
+        return wrapped, state
+
+    # Wrapped paragraph continuation uses a neutral gutter without repeated
+    # markdown list markers or decorative horizontal separators.
+    wrapped = _wrap_visible(body, "  ", "  ", content_width)
+    return wrapped, state
 
 
 def style_stream_line(line: str, in_recovery_plan: str | bool, *, body_color: str = "") -> tuple[str, str | bool]:
