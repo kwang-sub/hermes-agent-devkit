@@ -129,32 +129,37 @@ def run(server_command: list[str], probe_command: list[str], artifact_dir: Path,
                 report["server_ready"] = True
                 try:
                     with (artifact_dir / "browser-probe.log").open("w", encoding="utf-8") as probe_log:
-                        completed = subprocess.run(
+                        probe_proc = subprocess.Popen(
                             _resolve(probe_command, variables), cwd=cwd,
                             env=env, stdin=subprocess.DEVNULL,
                             stdout=probe_log, stderr=subprocess.STDOUT,
-                            timeout=probe_timeout, check=False)
-                    report["probe_exit_code"] = completed.returncode
-                    if not raw_path.is_file():
-                        report["classification"] = "PROBE_EVIDENCE_MISSING"
-                    else:
+                            start_new_session=(os.name == "posix"))
                         try:
-                            raw = json.loads(raw_path.read_text(encoding="utf-8"))
-                            if not isinstance(raw, dict) or raw.get("provider") != provider:
-                                raise ValueError("provider mismatch / invalid trace")
-                            diagnosed = analyze(raw)
-                            report.update({key: diagnosed[key] for key in (
-                                "execution_status", "classification", "recovery_fingerprint", "next_action")})
-                            # Any nonzero subprocess exit means probe's execution
-                            # did not succeed, even if its JSON claims PASS.
-                            if completed.returncode != 0 and report["execution_status"] == "PASS":
-                                report["execution_status"] = "INCONCLUSIVE"
-                                report["classification"] = "PROBE_EXIT_NONZERO"
-                        except (ValueError, OSError, UnicodeError) as exc:
-                            report["classification"] = "PROBE_EVIDENCE_INVALID"
-                            report["error"] = type(exc).__name__
-                except subprocess.TimeoutExpired:
-                    report["classification"] = "PROBE_TIMEOUT"
+                            report["probe_exit_code"] = probe_proc.wait(timeout=probe_timeout)
+                        except subprocess.TimeoutExpired:
+                            report["classification"] = "PROBE_TIMEOUT"
+                        finally:
+                            _stop(probe_proc)
+                    if report["classification"] != "PROBE_TIMEOUT":
+                        if not raw_path.is_file():
+                            report["classification"] = "PROBE_EVIDENCE_MISSING"
+                        else:
+                            try:
+                                raw = json.loads(raw_path.read_text(encoding="utf-8"))
+                                if not isinstance(raw, dict) or raw.get("provider") != provider:
+                                    raise ValueError("provider mismatch / invalid trace")
+                                diagnosed = analyze(raw)
+                                report.update({key: diagnosed[key] for key in (
+                                    "execution_status", "classification", "recovery_fingerprint", "next_action")})
+                                if report.get("probe_exit_code") != 0 and report["execution_status"] == "PASS":
+                                    report["execution_status"] = "INCONCLUSIVE"
+                                    report["classification"] = "PROBE_EXIT_NONZERO"
+                            except (ValueError, OSError, UnicodeError) as exc:
+                                report["classification"] = "PROBE_EVIDENCE_INVALID"
+                                report["error"] = type(exc).__name__
+                except (OSError, ValueError) as exc:
+                    report["classification"] = "PROBE_LAUNCH_FAILED"
+                    report["error"] = type(exc).__name__
         # Closing owned file handles occurs before process termination, but the
         # process group is still alive and is stopped in finally below.
     except (OSError, ValueError) as exc:
