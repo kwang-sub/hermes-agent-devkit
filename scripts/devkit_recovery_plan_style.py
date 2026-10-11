@@ -126,10 +126,12 @@ def style_reasoning_recovery_line(line: str, active: bool) -> tuple[str, bool]:
     if active and normalized in REASONING_LABELS:
         return line, False
 
-    if active and re.match(r"^(?:>\s*)?[1-9][0-9]*[.)]\s+", line.lstrip()):
-        body = re.sub(r"^\s*>\s*", "", line).strip()
+    if active:
+        # Preserve every line inside the recovery plan, including wrapped
+        # descriptions and unnumbered continuations (display-only styling).
+        if not line.strip():
+            return line, True
+        body = re.sub(r"^\s*>\s?", "", line).rstrip()
         return f"{BAR_ANSI}┃{RESET_ANSI} {body}", True
 
-    # A blank line or an upstream separator does not close the plan because
-    # the existing recovery preview uses blank lines within the section.
-    return line, active
+    return line, False
