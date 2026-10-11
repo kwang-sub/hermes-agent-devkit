@@ -66,11 +66,16 @@ def _stop(proc: subprocess.Popen | None) -> list[str]:
     if proc is None:
         return []
     errors = []
-    if proc.poll() is not None:
+    # A child browser may survive after the short-lived probe launcher exits;
+    # the process group is owned by this invocation, never a shared Hermes PGID.
+    if proc.poll() is not None and os.name != "posix":
         return errors
     try:
         if os.name == "posix":
-            os.killpg(proc.pid, signal.SIGTERM)
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                return errors
         else:
             proc.terminate()
         proc.wait(timeout=5)
