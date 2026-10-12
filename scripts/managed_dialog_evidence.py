@@ -22,9 +22,27 @@ def summarize(data):
         raise ValueError('managed dialog report schema is required')
     if data.get('mode')!='hermes' or data.get('source_policy_model') is not False:
         return blocked('OFFICIAL_RESPONSE_PATH_NOT_TESTED')
+    cases=data.get('cases')
+    if isinstance(cases,list):
+        for case in cases:
+            if not isinstance(case,dict): raise ValueError('invalid case')
+            if case.get('closed_before_response') is True:
+                return result('BLOCKED_ENV','CLOSED_BEFORE_RESPONSE','STOP_RETRY_ESCALATE')
+            if case.get('result')=='BLOCKED' and case.get('failed_phase'):
+                phase=case['failed_phase']
+                known={'prepare','managed_launch','chromium_launch','agent_browser_attach',
+                       'target_match','fixture_ready','activate','trigger','opening','respond','closed'}
+                if not isinstance(phase,str) or phase not in known: phase='unknown'
+                reasons={'target_match':'FIXTURE_TARGET_UNCONFIRMED',
+                         'fixture_ready':'FIXTURE_NOT_READY'}
+                summary=blocked(reasons.get(phase,'MANAGED_PROBE_BLOCKED'))
+                summary['failed_phase']=phase
+                key=(case.get('scenario'),case.get('action'))
+                if all(isinstance(v,str) for v in key) and key in EXPECTED:
+                    summary['failed_case']='/'.join(key)
+                return summary
     if data.get('complete_matrix') is not True:
         return blocked('INCOMPLETE_DIALOG_MATRIX')
-    cases=data.get('cases')
     if not isinstance(cases,list) or len(cases)!=len(EXPECTED):
         return blocked('INCOMPLETE_DIALOG_MATRIX')
     seen=set()

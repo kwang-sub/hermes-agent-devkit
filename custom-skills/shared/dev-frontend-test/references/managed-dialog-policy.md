@@ -37,7 +37,7 @@ upstream 함수나 설치 anchor가 바뀌면 이미지를 추측으로 패치�
 Probe는 설치된 `browser_exec`를 통해 **관리형 Chromium을 기동**한다.
 `BU_CDP_*`로 직접 기동한 Chrome을 끼워 넣지 않는다. `browser_dialog`와
 `SUPERVISOR_REGISTRY`는 같은 Python process와 task ID를 사용한다.
-Supervisor를 fixture origin으로 명시적으로 focus한 뒤 pending dialog ID로만 응답한다.
+Supervisor를 fixture origin과 이번 검사 표식으로 focus한 뒤 pending dialog ID로만 응답한다.
 별도 CDP 연결은 관찰 및 결과 조회용이며 Hermes 모드에서 이탈 거절을 대신하지 않는다.
 외부 CDP/cloud/real-profile 설정이 있으면 임의 provider 전환 없이 중단한다.
 
@@ -72,3 +72,23 @@ Browser metadata/정책/검사 실패 단계가 같으면 같은 제품 작업�
 - vercel-labs/agent-browser PR #1075의 native `start_dialog_handler`: `accept=true`
 - Hermes `browser_tool_session.py`의 관리형 Chromium 실행 환경 구성
 - A~E 독립 진단은 raw Chromium/CDP 경로였으므로 관리형 launcher 정책의 검증과 구분
+
+## Run 93 이후 대상 확인 간소화
+
+페이지 제목은 대상 확인 조건으로 사용하지 않는다. Browser Harness가 제목 앞에 `🐴 `를
+붙이거나 제목이 비어 있어도 검사 결과에 영향을 주지 않는다.
+
+대상 확인은 **검사용 주소와 이번 실행의 표식**만 필수로 유지한다. 주소는 scheme/host/port/path와
+검사용 query 값으로 비교한다. 일반 query의 추가·순서 변경, URL fragment, 루트 경로의 빈 슬래시는
+허용한다. 다른 origin·port·path, 누락/변경/중복된 실행 표식은 허용하지 않는다.
+같은 origin의 다른 탭은 무시하지만, 이번 표식에 해당하는 탭이 여러 개면 임의로 선택하지 않는다.
+
+고정 meta 값, HTML 태그 종류, `readyState=complete`, 사전 `docId` 존재 같은 중복 조건은
+대상 확인에 추가하지 않는다. 클릭/입력에 필요한 요소는 제한시간 안에서 기다린다.
+사용자 활성화·dirty 입력 및 승인/거절 후 문서·입력 보존은 기존 동작 검사에서 확인한다.
+완화한 것은 준비 단계의 부수적인 조건이지 실제 UI 완료 기준이나 공식 응답 경로가 아니다.
+
+준비 단계에서 중단되면 요약에 `failed_phase`와 `failed_case`를 남긴다.
+`FIXTURE_TARGET_UNCONFIRMED`(대상 미확인)와 `FIXTURE_NOT_READY`(필수 요소 준비 실패)를
+`INCOMPLETE_DIALOG_MATRIX`와 구분하며, 이 결과로 제품 결함이나 beforeunload 재발을 단정하지 않는다.
+공식 응답·이벤트 순서·입력 보존·전체 검사 조합의 PASS 기준은 변경하지 않는다.

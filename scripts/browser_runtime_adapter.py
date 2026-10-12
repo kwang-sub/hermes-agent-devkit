@@ -166,6 +166,9 @@ def run(server_command: list[str], probe_command: list[str], artifact_dir: Path,
                                              else analyze(raw))
                                 report.update({key: diagnosed[key] for key in (
                                     "execution_status", "classification", "recovery_fingerprint", "next_action")})
+                                for key in ("failed_phase", "failed_case"):
+                                    if key in diagnosed:
+                                        report[key] = diagnosed[key]
                                 if report.get("probe_exit_code") != 0 and report["execution_status"] == "PASS":
                                     report["execution_status"] = "INCONCLUSIVE"
                                     report["classification"] = "PROBE_EXIT_NONZERO"
