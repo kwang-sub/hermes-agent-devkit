@@ -125,6 +125,14 @@ RUN test -x /opt/hermes/.venv/bin/hermes \
        /opt/hermes/hermes_cli/commands_completion.py \
        /opt/hermes/tui_gateway/methods_tools.py
 
+# Minimal opt-in browser smoke image; no Git/JDK/application build is needed.
+FROM hermes-upstream-patched AS hermes-ui-smoke
+COPY scripts/ui_runtime /opt/devkit/bin/ui_runtime
+COPY scripts/browser_runtime_adapter.py scripts/browser_dialog_trace.py scripts/managed_dialog_evidence.py scripts/verify_ui_browser_runtime.py /opt/devkit/bin/
+COPY custom-skills/_lib/process_execution.py /opt/devkit/bin/devkit_process_execution.py
+USER hermes
+WORKDIR /opt/devkit/bin
+
 # The production DevKit image continues from the exact upstream-patched stage
 # validated by CI, then adds local Git/JDK/build tooling.
 FROM hermes-upstream-patched AS hermes-devkit-runtime
@@ -151,10 +159,13 @@ COPY --chmod=0755 scripts/task_artifacts.py /opt/devkit/bin/task_artifacts.py
 COPY --chmod=0755 scripts/browser_dialog_trace.py /opt/devkit/bin/browser_dialog_trace.py
 COPY --chmod=0755 scripts/browser_verification_evidence.py /opt/devkit/bin/browser_verification_evidence.py
 COPY --chmod=0755 scripts/browser_runtime_adapter.py /opt/devkit/bin/browser_runtime_adapter.py
+COPY scripts/ui_runtime /opt/devkit/bin/ui_runtime
+COPY custom-skills/_lib/process_execution.py /opt/devkit/bin/devkit_process_execution.py
 COPY --chmod=0755 scripts/probe_managed_dialog.py /opt/devkit/bin/probe_managed_dialog.py
 COPY --chmod=0755 scripts/browser_dialog_fixture.py /opt/devkit/bin/browser_dialog_fixture.py
 COPY --chmod=0755 scripts/managed_dialog_evidence.py /opt/devkit/bin/managed_dialog_evidence.py
 COPY --chmod=0755 scripts/verify_browser_dialog_runtime.py /opt/devkit/bin/verify_browser_dialog_runtime.py
+COPY --chmod=0755 scripts/verify_ui_browser_runtime.py /opt/devkit/bin/verify_ui_browser_runtime.py
 COPY custom-skills/_lib/task_handoff.py /opt/devkit/bin/task_handoff.py
 COPY --chmod=0755 scripts/devkit_kanban_notifier.py /opt/devkit/bin/devkit_kanban_notifier.py
 COPY --chmod=0755 docker/cont-init.d/019-devkit-kanban-notifier-policy /etc/cont-init.d/019-devkit-kanban-notifier-policy
