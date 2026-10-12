@@ -22,11 +22,13 @@ import tempfile
 import threading
 import time
 import uuid
+from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import ProxyHandler, build_opener
 
 HTML = b'''<!doctype html><meta charset="utf-8"><title>DevKit native dialog probe</title>
+<meta name="devkit-dialog-probe" content="__DEVKIT_NONCE__">
 <button id="activate" style="width:220px;height:80px">Prepare test input</button>
 <input id="name"><script>
 window.docId=String(Math.random()); window.dirty=false; window.probeAnswer=null;
@@ -38,6 +40,55 @@ window.addEventListener('beforeunload',e=>{
 });
 </script>'''
 STATE = "({path:location.pathname,input:document.querySelector('#name')?.value||'',docId:window.docId||'',activated:navigator.userActivation.hasBeenActive,dirty:window.dirty===true,answer:window.probeAnswer})"
+# A title is presentation, not page identity (Harness may decorate it).
+# Only the owned address and this attempt's marker authorize interaction.
+FIXTURE_STATE = """({url:location.href,
+ nonce:document.querySelector('meta[name="devkit-dialog-probe"]')?.content,
+ controlsReady:!!document.querySelector('#activate') && !!document.querySelector('#name')})"""
+
+
+def fixture_html(nonce=''):
+    return HTML.replace(b'__DEVKIT_NONCE__', escape(nonce, quote=True).encode('utf-8'))
+
+
+def fixture_url(origin, nonce):
+    return origin.rstrip('/') + '/?' + urlencode({'devkit_probe': nonce})
+
+
+def fixture_url_matches(actual, expected):
+    """Ignore harmless query ordering/extra parameters/fragments, not ownership."""
+    if not isinstance(actual, str) or not isinstance(expected, str):
+        return False
+    try:
+        a, e = urlsplit(actual), urlsplit(expected)
+        address = lambda u: (u.scheme, u.hostname, u.port, u.path or '/')
+        aq = parse_qs(a.query, keep_blank_values=True).get('devkit_probe', [])
+        eq = parse_qs(e.query, keep_blank_values=True).get('devkit_probe', [])
+        return (e.scheme == 'http' and e.hostname in ('127.0.0.1', 'localhost', '::1')
+                and not a.username and not a.password and not e.username and not e.password
+                and address(a) == address(e) and len(eq) == 1 and bool(eq[0]) and aq == eq)
+    except ValueError:
+        return False
+
+
+def fixture_target_check(document, expected_url, nonce, *, offline=False):
+    """Two essential checks; do not require a title, tag name, readyState or docId."""
+    value = document if isinstance(document, dict) else {}
+    address_ok = (value.get('url') == 'about:blank' if offline
+                  else fixture_url_matches(value.get('url'), expected_url))
+    marker_ok = isinstance(nonce, str) and bool(nonce) and value.get('nonce') == nonce
+    return {'ok': address_ok and marker_ok,
+            'address_match': address_ok, 'attempt_match': marker_ok}
+
+
+def select_fixture_target(targets, expected_url):
+    pages = [t for t in targets if isinstance(t, dict) and t.get('type') == 'page'
+             and t.get('targetId') and fixture_url_matches(t.get('url'), expected_url)]
+    if len(pages) != 1:
+        raise RuntimeError('probe must own exactly one fixture page')
+    return pages[0]['targetId']
+
+
 CANCELLED=False
 
 class ProbeInterrupted(Exception):
@@ -52,7 +103,12 @@ EVENTS = {'Page.javascriptDialogOpening','Page.javascriptDialogClosed','Page.fra
 
 class FixtureHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        data = HTML if urlsplit(self.path).path == '/' else b'<!doctype html><title>Next</title>NEXT'
+        parsed = urlsplit(self.path)
+        values = parse_qs(parsed.query, keep_blank_values=True).get('devkit_probe', [])
+        if len(values) > 1:
+            self.send_error(400, 'Ambiguous fixture attempt'); return
+        data = (fixture_html(values[0] if values else '') if parsed.path == '/'
+                else b'<!doctype html><title>Next</title>NEXT')
         self.send_response(200); self.send_header('Content-Type','text/html; charset=utf-8')
         self.send_header('Content-Length',str(len(data))); self.end_headers(); self.wfile.write(data)
     def log_message(self,*args): pass
@@ -196,6 +252,8 @@ def hermes_imports():
 async def one_case(args, origin, scenario, action, automatic):
     import websockets
     name='dv-'+uuid.uuid4().hex[:16]
+    nonce=uuid.uuid4().hex
+    expected_url=fixture_url(origin,nonce)
     report={'scenario':scenario,'action':action,'mode':args.mode,'automatic_control':automatic,
             'response_owner':None,'result':'BLOCKED','events':[],'cleanup':{'status':'NOT_RUN'}}
     root=Path(tempfile.mkdtemp(prefix='devkit-dialog-probe-'))
@@ -229,12 +287,13 @@ async def one_case(args, origin, scenario, action, automatic):
                     raise RuntimeError('Hermes browser_exec failed; see task-scoped tool log')
                 return value
             phase='managed_launch'
-            await tool(f'# Open isolated native dialog fixture\nnew_tab({origin!r})\nprint(page_info())')
+            await tool(f'# Open isolated native dialog fixture\nnew_tab({expected_url!r})\nprint(page_info())')
             sup=registry.get(task)
             if sup is None: raise RuntimeError('no task-scoped Supervisor attached to managed browser')
             if not callable(getattr(sup,'focus_page',None)):
                 raise RuntimeError('installed Supervisor cannot explicitly focus the probe target')
-            focused=await asyncio.to_thread(sup.focus_page,origin,timeout=8)
+            accept = "document.querySelector('meta[name=devkit-dialog-probe]')?.content === " + json.dumps(nonce)
+            focused=await asyncio.to_thread(sup.focus_page,origin,accept=accept,timeout=8)
             if not focused.get('ok'): raise RuntimeError('Supervisor target ownership is unconfirmed')
             ws_url=sup.cdp_url
             if urlsplit(ws_url).hostname not in ('localhost','127.0.0.1','::1'):
@@ -254,20 +313,18 @@ async def one_case(args, origin, scenario, action, automatic):
                 (root/'empty-config.json').write_text('{}',encoding='utf-8')
                 report['agent_browser_version']=(await command([ab,'--version'],env)).strip()
                 phase='agent_browser_attach'
-                await command([ab,'--session',name,'--cdp',endpoint,'--json','open',origin],env)
+                await command([ab,'--session',name,'--cdp',endpoint,'--json','open',expected_url],env)
         observer=CDP(await websockets.connect(ws_url,open_timeout=8,max_size=4*1024*1024))
         version=await observer.call('Browser.getVersion')
         report['browser_version']=version.get('product')
         phase='target_match'
         targets=(await observer.call('Target.getTargets'))['targetInfos']
-        pages=[t for t in targets if t['type']=='page' and t.get('url','').startswith(origin+'/')]
         if args.mode=='policy-model':
             blank=[t for t in targets if t['type']=='page']
             if len(blank)!=1: raise RuntimeError('ambiguous initial test target')
             target=blank[0]['targetId']
         else:
-            if len(pages)!=1: raise RuntimeError('probe must own exactly one fixture page')
-            target=pages[0]['targetId']
+            target=select_fixture_target(targets,expected_url)
         sid=(await observer.call('Target.attachToTarget',{'targetId':target,'flatten':True}))['sessionId']
         await observer.call('Page.enable',session=sid)
         await observer.call('Runtime.enable',session=sid)
@@ -282,15 +339,24 @@ async def one_case(args, origin, scenario, action, automatic):
             controller.callback=autopolicy
             if args.offline_fixture:
                 frame=(await observer.call('Page.getFrameTree',session=sid))['frameTree']['frame']['id']
-                await observer.call('Page.setDocumentContent',{'frameId':frame,'html':HTML.decode()},session=sid)
+                await observer.call('Page.setDocumentContent',{'frameId':frame,'html':fixture_html(nonce).decode()},session=sid)
                 report['fixture_transport']='offline-in-memory-document'
             else:
-                await observer.call('Page.navigate',{'url':origin+'/'},session=sid)
+                await observer.call('Page.navigate',{'url':expected_url},session=sid)
+        if args.offline_fixture and args.mode!='policy-model':
+            raise RuntimeError('offline fixture cannot attest a managed browser')
+        async def owned_document():
+            document=await observer.js(FIXTURE_STATE,sid)
+            report['target_check']=fixture_target_check(
+                document,expected_url,nonce,offline=args.offline_fixture)
+            return document if report['target_check']['ok'] else None
+        await wait_for(owned_document)
+        phase='fixture_ready'
         async def loaded():
-            return await observer.js('!!document.querySelector("#activate")',sid)
+            document=await owned_document()
+            return document and document.get('controlsReady') is True
+        # Wait for usable controls, not a particular HTML tag or readyState.
         await wait_for(loaded)
-        if await observer.js('document.title',sid)!='DevKit native dialog probe':
-            raise RuntimeError('refusing to operate on a non-fixture page')
         phase='activate'
         if args.mode=='hermes':
             await tool('# Prepare real user activation\nclick_at_xy(110,40)\nprint(page_info())')
@@ -388,7 +454,10 @@ async def one_case(args, origin, scenario, action, automatic):
     except Exception as exc:
         report.update(result='BLOCKED',failed_phase=phase,error=f'{type(exc).__name__}: {exc}')
         if observer and 'sid' in locals():
-            with contextlib.suppress(Exception): report['failure_document']=await observer.js('({ready:document.readyState,fixturePresent:!!document.querySelector("#activate")})',sid)
+            with contextlib.suppress(Exception):
+                document=await observer.js(FIXTURE_STATE,sid)
+                report['failure_document']=fixture_target_check(
+                    document,expected_url,nonce,offline=args.offline_fixture)
     finally:
         if observer:
             report['events']=[{'method':e['method'],'sessionId':e.get('sessionId'),'time':e['time'],

@@ -29,6 +29,34 @@ def fixture():
 
 
 class ManagedEvidenceTests(unittest.TestCase):
+    def test_target_failure_is_not_hidden_by_incomplete_matrix(self):
+        x=fixture(); x['complete_matrix']=False
+        x['cases']=[{'scenario':'reload','action':'dismiss','result':'BLOCKED',
+                     'failed_phase':'target_match','events':[]}]
+        result=summarize(x)
+        self.assertEqual(result['classification'],'FIXTURE_TARGET_UNCONFIRMED')
+        self.assertEqual(result['failed_phase'],'target_match')
+        self.assertEqual(result['failed_case'],'reload/dismiss')
+        self.assertEqual(result['execution_status'],'INCONCLUSIVE')
+
+    def test_missing_controls_are_readiness_not_identity_failure(self):
+        x=fixture(); x['complete_matrix']=False
+        x['cases']=[{'scenario':'reload','action':'dismiss','result':'BLOCKED',
+                     'failed_phase':'fixture_ready'}]
+        self.assertEqual(summarize(x)['classification'],'FIXTURE_NOT_READY')
+
+    def test_partial_matrix_does_not_hide_early_close(self):
+        x=fixture(); x['complete_matrix']=False; x['cases']=x['cases'][:1]
+        x['cases'][0].update(result='BLOCKED', failed_phase='respond', closed_before_response=True)
+        self.assertEqual(summarize(x)['classification'],'CLOSED_BEFORE_RESPONSE')
+        self.assertEqual(summarize(x)['execution_status'],'BLOCKED_ENV')
+
+    def test_unknown_failure_phase_is_redacted(self):
+        x=fixture(); x['complete_matrix']=False
+        x['cases']=[{'result':'BLOCKED','failed_phase':'https://private.invalid/secret'}]
+        self.assertEqual(summarize(x)['failed_phase'],'unknown')
+        self.assertNotIn('private',str(summarize(x)))
+
     def test_all_six_official_cases(self):
         self.assertEqual(summarize(fixture())['execution_status'],'PASS')
     def test_policy_model_is_not_official_pass(self):
