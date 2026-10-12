@@ -1,5 +1,12 @@
 # Browser Verification Contract V1
 
+## 관리형 네이티브 대화상자 실행 계약
+
+`beforeunload` 검증은 먼저 `managed-dialog-policy.md`를 따른다.
+신규 이미지에서 관리형 launcher의 자동 승인 방지와 공식 `browser_dialog` 응답 경로를 검사한다.
+실행 진입점: `/opt/devkit/bin/verify_browser_dialog_runtime.py`.
+독립 CDP 또는 정책 모델 PASS를 실제 제품 AC PASS로 대체하지 않는다.
+
 This is a verification *policy*, not a new browser provider or a new test framework.
 Applies to Direct, Standard, Recovery and CHANGES_REQUESTED frontend work.
 

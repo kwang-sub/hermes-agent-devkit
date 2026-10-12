@@ -307,6 +307,9 @@ run_check "Recovery Korean plan presentation and render" python3 scripts/test_re
 run_check "Browser capability evidence contract" python3 scripts/test_browser_verification_evidence.py
 run_check "Browser dialog trace classifier" python3 scripts/test_browser_dialog_trace.py
 run_check "Browser runtime adapter lifecycle" python3 scripts/test_browser_runtime_adapter.py
+run_check "Managed browser launcher dialog policy" python3 scripts/test_managed_dialog_policy.py
+run_check "Managed native dialog evidence" python3 scripts/test_managed_dialog_evidence.py
+run_check "Managed browser runtime integration" python3 scripts/test_managed_runtime_integration.py
 run_check "Recovery classic CLI styling upstream anchors" python3 scripts/patch_hermes_recovery_plan_style.py --self-test
 run_check "DevKit Kanban boot recovery syntax" sh -n docker/cont-init.d/018-devkit-kanban-boot-recovery
 run_check "DevKit Kanban notification bridge" python3 scripts/devkit_kanban_notifier.py --self-test
