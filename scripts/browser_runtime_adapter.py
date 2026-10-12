@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import hashlib
 import os
 from pathlib import Path
 import signal
@@ -20,6 +21,11 @@ import sys
 import time
 import urllib.request
 import urllib.error
+
+from ui_runtime.artifacts import atomic_json, attempt_directory
+from ui_runtime.process import stop_owned
+from ui_runtime.result import positive_seconds, replace_outcome
+from ui_runtime.suite import aggregate, validate_report
 
 from browser_dialog_trace import analyze
 from managed_dialog_evidence import summarize as summarize_managed_dialog
@@ -48,19 +54,23 @@ def _resolve(args: list[str], variables: dict[str, str]) -> list[str]:
                 .replace("{result_file}", variables["result_file"]) for item in args]
 
 def _ready(origin: str, proc: subprocess.Popen, seconds: float, path: str = '/') -> bool:
+    class LocalReadiness(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None  # Only inspect the owned server; never follow an auth redirect.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), LocalReadiness())
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             return False
         try:
-            with urllib.request.urlopen(
+            with opener.open(
                 urllib.request.Request(origin + path, headers={"User-Agent": "Hermes-DevKit-Adapter"}),
-                timeout=1.0,
+                timeout=min(1.0, max(.01, deadline-time.monotonic())),
             ) as response:
                 if 200 <= response.status < 500:
                     return True
         except urllib.error.HTTPError as exc:
-            if 400 <= exc.code < 500:
+            if 300 <= exc.code < 500:
                 return True  # Web server is alive; application route may reject the fixture.
         except (OSError, TimeoutError):
             pass
@@ -68,34 +78,18 @@ def _ready(origin: str, proc: subprocess.Popen, seconds: float, path: str = '/')
     return False
 
 def _stop(proc: subprocess.Popen | None) -> list[str]:
-    if proc is None:
-        return []
-    errors = []
-    # A child browser may survive after the short-lived probe launcher exits;
-    # the process group is owned by this invocation, never a shared Hermes PGID.
-    if proc.poll() is not None and os.name != "posix":
-        return errors
-    try:
-        if os.name == "posix":
-            try:
-                os.killpg(proc.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                return errors
-        else:
-            proc.terminate()
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        try:
-            if os.name == "posix":
-                os.killpg(proc.pid, signal.SIGKILL)
-            else:
-                proc.kill()
-            proc.wait(timeout=3)
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            errors.append(type(exc).__name__)
-    except OSError as exc:
-        errors.append(type(exc).__name__)
-    return errors
+    return stop_owned(proc)
+
+
+def _diagnose(raw: dict) -> dict:
+    if raw.get("schema") == "managed_dialog_probe_v1":
+        return summarize_managed_dialog(raw)
+    if raw.get("schema") == "ui_verification_v1":
+        # The UI runner records the approved plan, not inferred checks from PASS rows.
+        validate_report(raw)
+        return aggregate(raw["checks"], raw["required"], raw["cleanup"])
+    return analyze(raw)
+
 
 def run(server_command: list[str], probe_command: list[str], artifact_dir: Path,
         task_id: str, provider: str, startup_timeout: float = 25,
@@ -103,32 +97,39 @@ def run(server_command: list[str], probe_command: list[str], artifact_dir: Path,
         ready_path: str = '/') -> dict:
     if not task_id or not provider:
         raise ValueError("task_id and provider required")
-    if startup_timeout <= 0 or probe_timeout <= 0:
-        raise ValueError("timeouts must be positive")
+    positive_seconds(startup_timeout, "startup_timeout")
+    positive_seconds(probe_timeout, "probe_timeout")
     if not ready_path.startswith("/") or ready_path.startswith("//") or "://" in ready_path:
         raise ValueError("ready_path must be a local absolute route")
-    artifact_dir.mkdir(parents=True, exist_ok=True)
+    artifact_dir = artifact_dir.resolve()
+    attempt_dir = attempt_directory(artifact_dir)
     port = _port()
     origin = f"http://127.0.0.1:{port}"
-    raw_path = artifact_dir / "browser-dialog-raw.json"
-    report_path = artifact_dir / "browser-runtime-report.json"
-    # Never accept stale PASS evidence.
-    if raw_path.exists():
-        raw_path.unlink()
+    raw_path = attempt_dir / "browser-dialog-raw.json"
+    report_path = attempt_dir / "browser-runtime-report.json"
+    # Preserve pre-upgrade evidence, but never feed it into a new attempt.
+    stale = artifact_dir / "browser-dialog-raw.json"
+    if stale.exists():
+        try:
+            stale.replace(attempt_dir / "previous-browser-dialog-raw.json")
+        except FileNotFoundError:
+            pass  # Another new attempt already archived the legacy artifact.
     report = {
         "schema": "browser_runtime_adapter_v1", "task_id": task_id,
         "provider": provider, "started_at": datetime.now(timezone.utc).isoformat(),
         "origin": origin, "execution_status": "BLOCKED_ENV",
         "classification": "NOT_EXECUTED", "cleanup": {"status": "NOT_RUN"},
+        "attempt_dir": str(attempt_dir),
     }
     variables = {"origin": origin, "port": str(port), "result_file": str(raw_path)}
     proc = None
+    cleanup_errors = []
     server_log = None
     probe_log = None
     try:
         # Commands are explicitly supplied for the approved fixture / provider.
         # User-controlled shell strings are never evaluated.
-        with (artifact_dir / "browser-server.log").open("w", encoding="utf-8") as server_log:
+        with (attempt_dir / "browser-server.log").open("w", encoding="utf-8") as server_log:
             env = os.environ.copy()
             env["BROWSER_TEST_ORIGIN"] = origin
             env["BROWSER_TEST_PORT"] = str(port)
@@ -141,7 +142,7 @@ def run(server_command: list[str], probe_command: list[str], artifact_dir: Path,
             else:
                 report["server_ready"] = True
                 try:
-                    with (artifact_dir / "browser-probe.log").open("w", encoding="utf-8") as probe_log:
+                    with (attempt_dir / "browser-probe.log").open("w", encoding="utf-8") as probe_log:
                         probe_proc = subprocess.Popen(
                             _resolve(probe_command, variables), cwd=cwd,
                             env=env, stdin=subprocess.DEVNULL,
@@ -152,27 +153,35 @@ def run(server_command: list[str], probe_command: list[str], artifact_dir: Path,
                         except subprocess.TimeoutExpired:
                             report["classification"] = "PROBE_TIMEOUT"
                         finally:
-                            _stop(probe_proc)
+                            cleanup_errors.extend(_stop(probe_proc))
                     if report["classification"] != "PROBE_TIMEOUT":
                         if not raw_path.is_file():
                             report["classification"] = "PROBE_EVIDENCE_MISSING"
                         else:
                             try:
-                                raw = json.loads(raw_path.read_text(encoding="utf-8"))
+                                raw = json.loads(raw_path.read_text(encoding="utf-8-sig"))
                                 if not isinstance(raw, dict) or raw.get("provider") != provider:
                                     raise ValueError("provider mismatch / invalid trace")
-                                diagnosed = (summarize_managed_dialog(raw)
-                                             if raw.get("schema") == "managed_dialog_probe_v1"
-                                             else analyze(raw))
+                                report['capability_provenance'] = (
+                                    'MANAGED_OFFICIAL' if raw.get('schema') == 'managed_dialog_probe_v1' else
+                                    'DECLARED_UI_CHECKS' if raw.get('schema') == 'ui_verification_v1' else
+                                    'LEGACY_DIALOG_OBSERVATION')
+                                report['capability'] = ('managed-native-dialog-v1' if raw.get('schema') == 'managed_dialog_probe_v1' else
+                                                        'ui-verification' if raw.get('schema') == 'ui_verification_v1' else 'beforeunload-dismiss')
+                                environment = raw.get('environment', {})
+                                report['environment_fingerprint'] = hashlib.sha256(json.dumps(
+                                    {'environment': environment, 'adapter_source': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
+                                    sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+                                if isinstance(raw.get('scope'), str): report['verification_scope'] = raw['scope']
+                                diagnosed = _diagnose(raw)
                                 report.update({key: diagnosed[key] for key in (
                                     "execution_status", "classification", "recovery_fingerprint", "next_action")})
                                 for key in ("failed_phase", "failed_case"):
                                     if key in diagnosed:
                                         report[key] = diagnosed[key]
                                 if report.get("probe_exit_code") != 0 and report["execution_status"] == "PASS":
-                                    report["execution_status"] = "INCONCLUSIVE"
-                                    report["classification"] = "PROBE_EXIT_NONZERO"
-                            except (ValueError, OSError, UnicodeError) as exc:
+                                    replace_outcome(report, "INCONCLUSIVE", "PROBE_EXIT_NONZERO")
+                            except (ValueError, OSError, UnicodeError, KeyError, TypeError) as exc:
                                 report["classification"] = "PROBE_EVIDENCE_INVALID"
                                 report["error"] = type(exc).__name__
                 except (OSError, ValueError) as exc:
@@ -183,11 +192,21 @@ def run(server_command: list[str], probe_command: list[str], artifact_dir: Path,
     except (OSError, ValueError) as exc:
         report["classification"] = "RUNTIME_LAUNCH_FAILED"
         report["error"] = type(exc).__name__
+    except BaseException:
+        replace_outcome(report, "INCONCLUSIVE", "RUNTIME_INTERRUPTED")
+        raise
     finally:
-        errors = _stop(proc)
+        errors = cleanup_errors + _stop(proc)
         report["cleanup"] = {"status": "PASS" if not errors else "WARNING", "errors": errors}
         report["finished_at"] = datetime.now(timezone.utc).isoformat()
-        report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        if errors and report["execution_status"] == "PASS":
+            replace_outcome(report, "INCONCLUSIVE", "CLEANUP_UNCONFIRMED")
+        else:
+            replace_outcome(report, report["execution_status"], report["classification"])
+        if report.get('capability_provenance') == 'LEGACY_DIALOG_OBSERVATION' and report['execution_status'] == 'PASS':
+            report['next_action'] = 'REVIEW_EVIDENCE'
+        atomic_json(report_path, report)
+        atomic_json(artifact_dir / "browser-runtime-report.json", report)
     return report
 
 def main() -> int:
@@ -202,6 +221,10 @@ def main() -> int:
     parser.add_argument("--probe-timeout", type=float, default=45)
     parser.add_argument("--ready-path", default="/")
     args = parser.parse_args()
+    def interrupt(signum, frame):
+        raise KeyboardInterrupt("runtime cancellation")
+    if os.name == "posix":
+        signal.signal(signal.SIGTERM, interrupt)
     try:
         result = run(_argv(args.server_command, "server-command"), _argv(args.probe_command, "probe-command"),
                      args.artifact_dir, args.task_id, args.provider,
