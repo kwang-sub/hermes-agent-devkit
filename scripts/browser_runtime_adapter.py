@@ -22,6 +22,7 @@ import urllib.request
 import urllib.error
 
 from browser_dialog_trace import analyze
+from managed_dialog_evidence import summarize as summarize_managed_dialog
 
 def _argv(value: str, name: str) -> list[str]:
     try:
@@ -160,7 +161,9 @@ def run(server_command: list[str], probe_command: list[str], artifact_dir: Path,
                                 raw = json.loads(raw_path.read_text(encoding="utf-8"))
                                 if not isinstance(raw, dict) or raw.get("provider") != provider:
                                     raise ValueError("provider mismatch / invalid trace")
-                                diagnosed = analyze(raw)
+                                diagnosed = (summarize_managed_dialog(raw)
+                                             if raw.get("schema") == "managed_dialog_probe_v1"
+                                             else analyze(raw))
                                 report.update({key: diagnosed[key] for key in (
                                     "execution_status", "classification", "recovery_fingerprint", "next_action")})
                                 if report.get("probe_exit_code") != 0 and report["execution_status"] == "PASS":

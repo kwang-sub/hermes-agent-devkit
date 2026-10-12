@@ -104,6 +104,11 @@ RUN python3 /tmp/patch_hermes_recovery_plan_style.py --self-test \
          /opt/hermes/hermes_cli/cli_render.py \
          /opt/hermes/hermes_cli/cli_stream_mixin.py \
     && rm /tmp/patch_hermes_recovery_plan_style.py
+# Align the launcher policy with Hermes's explicit native-dialog responses.
+COPY scripts/patch_hermes_browser_dialog_policy.py /tmp/patch_hermes_browser_dialog_policy.py
+RUN /opt/hermes/.venv/bin/python /tmp/patch_hermes_browser_dialog_policy.py --hermes-root /opt/hermes \
+    && /opt/hermes/.venv/bin/python /tmp/patch_hermes_browser_dialog_policy.py --check-only --hermes-root /opt/hermes \
+    && rm /tmp/patch_hermes_browser_dialog_policy.py
 # Fail the upstream compatibility stage immediately if a patched Hermes module no
 # longer compiles or the canonical CLI entry point disappears.
 RUN test -x /opt/hermes/.venv/bin/hermes \
@@ -146,6 +151,10 @@ COPY --chmod=0755 scripts/task_artifacts.py /opt/devkit/bin/task_artifacts.py
 COPY --chmod=0755 scripts/browser_dialog_trace.py /opt/devkit/bin/browser_dialog_trace.py
 COPY --chmod=0755 scripts/browser_verification_evidence.py /opt/devkit/bin/browser_verification_evidence.py
 COPY --chmod=0755 scripts/browser_runtime_adapter.py /opt/devkit/bin/browser_runtime_adapter.py
+COPY --chmod=0755 scripts/probe_managed_dialog.py /opt/devkit/bin/probe_managed_dialog.py
+COPY --chmod=0755 scripts/browser_dialog_fixture.py /opt/devkit/bin/browser_dialog_fixture.py
+COPY --chmod=0755 scripts/managed_dialog_evidence.py /opt/devkit/bin/managed_dialog_evidence.py
+COPY --chmod=0755 scripts/verify_browser_dialog_runtime.py /opt/devkit/bin/verify_browser_dialog_runtime.py
 COPY custom-skills/_lib/task_handoff.py /opt/devkit/bin/task_handoff.py
 COPY --chmod=0755 scripts/devkit_kanban_notifier.py /opt/devkit/bin/devkit_kanban_notifier.py
 COPY --chmod=0755 docker/cont-init.d/019-devkit-kanban-notifier-policy /etc/cont-init.d/019-devkit-kanban-notifier-policy
