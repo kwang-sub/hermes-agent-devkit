@@ -42,6 +42,8 @@ def main() -> None:
             if key.startswith("HERMES_MAVEN_"):
                 os.environ.pop(key)
         os.environ["HERMES_MAVEN_ROOT"] = str(cache)
+        # CI executes source checkout; Docker image installs the same extension under /usr/local/share.
+        os.environ["HERMES_MAVEN_OUTPUT_EXTENSION_SOURCE_ROOT"] = str(ROOT / "scripts/maven-output-extension")
         # Any fallback to system mvn must fail, even on hosted runners with Maven.
         bad_bin = root / "no-system-maven"
         bad_bin.mkdir()
