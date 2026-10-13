@@ -6,6 +6,7 @@ on:
     paths:
       - 'scripts/hermes-*'
       - 'scripts/*maven*'
+      - 'scripts/maven-output-extension/**'
       - 'scripts/*worker*'
       - 'scripts/patch_hermes_kanban_session_affinity.py'
       - 'custom-skills/coder/dev-implement-plan/**'
