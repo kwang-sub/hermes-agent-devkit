@@ -92,14 +92,14 @@ class MavenLauncherTest(unittest.TestCase):
         return subprocess.run([str(self.bin / ("hermes-java" if java else "hermes-maven")), *args],
                               cwd=cwd or self.workspace, env=self.env, text=True, capture_output=True, timeout=8)
 
-    def assert_ok(self, result: subprocess.CompletedProcess[str]) -> None:
+    def assert_ok(self, result: subprocess.CompletedProcess[str], source_root: Path | None = None) -> None:
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         content = self.log.read_text()
         self.assertIn(f"-Dmaven.repo.local={self.cache}/repository", content)
         self.assertIn(str(self.jdk), content)
         self.assertFalse((self.home / ".m2").exists())
         self.assertIn("maven.ext.class.path=" + str(self.extension_jar), content)
-        self.assertIn(str(self.workspace), content)
+        self.assertIn(str(source_root or self.workspace), content)
         self.assertIn(str(self.cache / "builds"), content)
 
     def test_zip_and_crlf_wrapper_without_home_m2(self) -> None:
@@ -235,7 +235,7 @@ class MavenLauncherTest(unittest.TestCase):
         self.git("worktree", "add", "-qb", "feature/test", str(linked))
         (linked / ".hermes").mkdir()
         (linked / ".hermes/toolchain.env").write_text("JAVA_HOME=/stale/path\n")
-        self.assert_ok(self.launch("./mvnw", "test", cwd=linked))
+        self.assert_ok(self.launch("./mvnw", "test", cwd=linked), source_root=linked)
 
     def test_non_git_workspace(self) -> None:
         shutil.rmtree(self.workspace / ".git")
