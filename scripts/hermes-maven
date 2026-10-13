@@ -59,6 +59,12 @@ export JAVA_HOME PATH="$JAVA_HOME/bin:$PATH"
 root="${HERMES_MAVEN_ROOT:-/opt/data/maven}"
 build_root="${HERMES_MAVEN_BUILD_ROOT:-$root/builds}"
 extension_root="${HERMES_MAVEN_EXTENSION_ROOT:-$root/extensions}"
+# Reject an output root that aliases the bind-mounted source before mkdir.
+workspace_real_preflight="$(realpath -m "$workspace_root")"
+output_real_preflight="$(realpath -m "$build_root")"
+case "$output_real_preflight" in
+  "$workspace_real_preflight"|"$workspace_real_preflight"/*) fail MAVEN_OUTPUT_PATH_INVALID 'internal build output root overlaps source workspace';;
+esac
 repo="${HERMES_MAVEN_REPO_ROOT:-$root/repository}"
 dist_root="${HERMES_MAVEN_DIST_ROOT:-$root/distributions}"
 download_root="${HERMES_MAVEN_DOWNLOAD_ROOT:-$root/downloads}"
