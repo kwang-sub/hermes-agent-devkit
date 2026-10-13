@@ -85,13 +85,40 @@ def main() -> None:
                 print(Path(result["log"]).read_text()[-20000:])
                 raise AssertionError(result)
             print(f"PASS: Maven {args.version} {' '.join(command)}; elapsed={result['elapsed_seconds']}")
-        assert (project / "target/classes/example/Answer.class").is_file()
-        report = project / "target/surefire-reports/TEST-example.AnswerTest.xml"
-        assert report.is_file() and 'failures="0"' in report.read_text()
+        # Original source target must never be touched; Maven extensions relocate
+        # both compilation and reports under the persistent Linux-only cache.
+        assert not (project / "target").exists(), "Maven wrote into the source worktree"
+        classes = list((cache / "builds").rglob("classes/example/Answer.class"))
+        reports = list((cache / "builds").rglob("surefire-reports/TEST-example.AnswerTest.xml"))
+        assert len(classes) == 1, classes
+        assert len(reports) == 1 and 'failures="0"' in reports[0].read_text(), reports
         assert (cache / "repository/junit/junit/4.13.2/junit-4.13.2.jar").is_file()
         assert not (home / ".m2").exists(), "Maven wrote an unmanaged HOME cache"
         assert wrapper.read_bytes() == before_wrapper, "project Wrapper was modified"
-        print("PASS: CRLF wrapper preserved; managed dependency cache; offline rerun; Java 17 compile and JUnit")
+
+        # Reactor modules must not share output directories or mutate module targets.
+        (project / "pom.xml").write_text((project / "pom.xml").read_text().replace(
+            "<properties>", "<packaging>pom</packaging><modules><module>module</module></modules><properties>", 1
+        ))
+        module = project / "module"
+        module.mkdir()
+        (module / "pom.xml").write_text('''<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>example</groupId><artifactId>devkit-smoke</artifactId><version>1</version></parent>
+  <artifactId>module</artifactId>
+  <build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.11.0</version></plugin></plugins></build>
+</project>''')
+        sample = module / "src/main/java/example/Module.java"
+        sample.parent.mkdir(parents=True)
+        sample.write_text("package example; public class Module { public int value() { return 42; } }")
+        reactor = verifier.verify(project, "./mvnw", ["-B", "-pl", "module", "-am", "test-compile"], launcher, cache / "verification", 300)
+        if reactor["status"] != "PASS":
+            print(Path(reactor["log"]).read_text()[-20000:])
+            raise AssertionError(reactor)
+        assert not (module / "target").exists(), "Maven wrote module output into source"
+        built = list((cache / "builds").rglob("module/target/classes/example/Module.class"))
+        assert len(built) == 1, built
+        print("PASS: CRLF wrapper preserved; managed dependency cache; offline rerun; Java 17 compile, JUnit and multi-module outputs")
 
 
 if __name__ == "__main__":
