@@ -123,8 +123,8 @@ exit 0
     }
 
     $env:PATH = $FixtureDir + [System.IO.Path]::PathSeparator + $OriginalPath
-    $Resolved = (Get-Command docker -CommandType Application).Source
-    Assert-True ($Resolved -eq $Docker) "mock Docker is not the selected executable"
+    $Resolved = (Get-Command docker -CommandType Application | Select-Object -First 1).Source
+    Assert-True ([string]::Equals([string]$Resolved, [string]$Docker, [StringComparison]::OrdinalIgnoreCase)) "mock Docker is not the selected executable"
 
     function Reset-Scenario {
         param([string]$Scenario)
