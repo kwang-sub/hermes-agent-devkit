@@ -34,6 +34,9 @@ def main() -> int:
     ):
         if term not in dockerfile.splitlines():
             failures.append(f"Dockerfile missing: {term}")
+    compose = (ROOT / "compose.yml").read_text(encoding="utf-8")
+    if "HERMES_MAVEN_BUILD_ROOT: ${HERMES_MAVEN_BUILD_ROOT:-/opt/data/maven/builds}" not in compose:
+        failures.append("compose.yml must forward the Maven Linux build output root")
     java = (ROOT / "scripts/hermes-java").read_text(encoding="utf-8")
     if 'exec "$maven_launcher" "$@"' not in java:
         failures.append("hermes-java must delegate Maven before raw execution")
