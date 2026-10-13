@@ -200,6 +200,57 @@ echo "hermes-maven: internal build output: $build_dir" >&2
 # Separate lock acquisition from Maven's exit status: a Maven exit 73 is not a lock timeout.
 exec 8>"$workspace_lock" || fail MAVEN_CACHE_NOT_WRITABLE 'cannot open workspace lock'
 flock -w "${HERMES_MAVEN_WORKSPACE_LOCK_TIMEOUT_SECONDS:-600}" 8 || fail MAVEN_WORKSPACE_LOCK_TIMEOUT 'workspace lock timeout'
+
+# Original /workspace sources and existing target directories are never touched.
+mkdir -p "$build_dir" || fail MAVEN_OUTPUT_NOT_WRITABLE 'cannot create Linux build output'
+[ -w "$build_dir" ] && [ -O "$build_dir" ] || fail MAVEN_OUTPUT_NOT_WRITABLE 'Linux build output must be writable and owned by the current worker'
+
+extension_jar="${HERMES_MAVEN_OUTPUT_EXTENSION_JAR:-}"
+if [ -n "$extension_jar" ]; then
+  [ -s "$extension_jar" ] || fail MAVEN_OUTPUT_EXTENSION_MISSING 'explicit Maven core extension jar is missing'
+else
+  source_root="${HERMES_MAVEN_OUTPUT_EXTENSION_SOURCE_ROOT:-/usr/local/share/hermes-maven-output}"
+  java_source="$source_root/HermesOutputLifecycleParticipant.java"
+  descriptor="$source_root/components.xml"
+  [ -r "$java_source" ] && [ -r "$descriptor" ] || fail MAVEN_OUTPUT_EXTENSION_MISSING 'managed Maven output extension sources are missing'
+  source_hash="$(cat "$java_source" "$descriptor" | sha256sum | cut -c1-16)"
+  managed_home="$(cd "$(dirname "$(readlink -f "$managed")")/.." && pwd -P)" || fail MAVEN_OUTPUT_EXTENSION_BUILD_FAILED 'cannot locate Maven distribution home'
+  compgen -G "$managed_home/lib/maven-core-*.jar" >/dev/null || fail MAVEN_OUTPUT_EXTENSION_BUILD_FAILED 'selected Maven distribution lacks Maven core API jars'
+  extension_dir="$extension_root/$source_hash/$(basename "$managed_home")"
+  extension_jar="$extension_dir/hermes-maven-output.jar"
+  if [ ! -s "$extension_jar" ]; then
+    mkdir -p "$extension_dir" || fail MAVEN_OUTPUT_EXTENSION_BUILD_FAILED 'cannot prepare extension directory'
+    extension_lock="$lock_root/extension-$source_hash-$(basename "$managed_home").lock"
+    exec 7>"$extension_lock" || fail MAVEN_OUTPUT_EXTENSION_BUILD_FAILED 'cannot lock extension build'
+    flock -w "${HERMES_MAVEN_LOCK_TIMEOUT_SECONDS:-300}" 7 || fail MAVEN_OUTPUT_EXTENSION_BUILD_FAILED 'extension compilation lock timed out'
+    if [ ! -s "$extension_jar" ]; then
+      extension_tmp="$(mktemp -d "$extension_dir/.compile.XXXXXXXX")" || fail MAVEN_OUTPUT_EXTENSION_BUILD_FAILED 'cannot create extension staging directory'
+      mkdir -p "$extension_tmp/classes/META-INF/plexus"
+      if ! "$JAVA_HOME/bin/javac" -source 8 -target 8 -cp "$managed_home/lib/*" -d "$extension_tmp/classes" "$java_source" >"$extension_tmp/compile.log" 2>&1; then
+        sed -n '1,20p' "$extension_tmp/compile.log" >&2
+        rm -rf -- "$extension_tmp"
+        fail MAVEN_OUTPUT_EXTENSION_BUILD_FAILED 'Maven core extension compilation failed'
+      fi
+      cp -- "$descriptor" "$extension_tmp/classes/META-INF/plexus/components.xml"
+      if ! "$JAVA_HOME/bin/jar" cf "$extension_tmp/hermes-maven-output.jar" -C "$extension_tmp/classes" .; then
+        rm -rf -- "$extension_tmp"
+        fail MAVEN_OUTPUT_EXTENSION_BUILD_FAILED 'Maven core extension packaging failed'
+      fi
+      mv -- "$extension_tmp/hermes-maven-output.jar" "$extension_jar" || fail MAVEN_OUTPUT_EXTENSION_BUILD_FAILED 'cannot publish compiled extension'
+      rm -rf -- "$extension_tmp"
+    fi
+    flock -u 7
+    exec 7>&-
+  fi
+fi
+case "$extension_jar" in
+  *' '*) fail MAVEN_OUTPUT_EXTENSION_PATH_INVALID 'core extension path cannot contain spaces in MAVEN_OPTS';;
+esac
+export HERMES_MAVEN_SOURCE_ROOT="$workspace_root"
+export HERMES_MAVEN_BUILD_DIR="$build_dir"
+# The JVM must see this before Maven initializes ClassWorlds; CLI -D is too late.
+export MAVEN_OPTS="${MAVEN_OPTS:-} -Dmaven.ext.class.path=$extension_jar"
+printf 'MAVEN_OUTPUT_POLICY=linux-internal-builds\nMAVEN_OUTPUT_DIRECTORY=%s\n' "$build_dir" >&2
 set +e
 "$managed" "-Dmaven.repo.local=$repo" "$@"
 status=$?
