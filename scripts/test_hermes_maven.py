@@ -39,6 +39,9 @@ class MavenLauncherTest(unittest.TestCase):
         self.cache = self.base / "maven-cache"
         self.log = self.base / "maven-args"
         self.bin = self.base / "bin"
+        self.extension_jar = self.base / "hermes-output.jar"
+        with zipfile.ZipFile(self.extension_jar, "w") as jar:
+            jar.writestr("META-INF/plexus/components.xml", "<component-set/>")
         self.bin.mkdir()
         for name in ("hermes-java", "hermes-maven"):
             shutil.copy2(ROOT / name, self.bin / name)
@@ -48,7 +51,8 @@ class MavenLauncherTest(unittest.TestCase):
         self.env.update(HOME=str(self.home), HERMES_MAVEN_ROOT=str(self.cache),
                         HERMES_GRADLE_ROOT=str(self.base / "unused-gradle"),
                         PATH=str(self.bin) + os.pathsep + self.env["PATH"],
-                        MAVEN_TEST_LOG=str(self.log), MAVEN_TEST_EXIT="0")
+                        MAVEN_TEST_LOG=str(self.log), MAVEN_TEST_EXIT="0",
+                        HERMES_MAVEN_OUTPUT_EXTENSION_JAR=str(self.extension_jar))
         self.git("init", "-q")
         self.git("config", "user.name", "Regression Test")
         self.git("config", "user.email", "regression@example.invalid")
@@ -70,7 +74,7 @@ class MavenLauncherTest(unittest.TestCase):
 
     def make_archive(self, suffix: str = "zip", broken: bool = False) -> Path:
         directory = self.base / "archive-source" / "apache-maven-3.6.3"
-        executable(directory / "bin/mvn", '#!/bin/sh\nprintf "%s\\n" "$JAVA_HOME" "$@" > "$MAVEN_TEST_LOG"\nexit "$MAVEN_TEST_EXIT"\n')
+        executable(directory / "bin/mvn", '#!/bin/sh\nprintf "%s\\n" "$JAVA_HOME" "$HERMES_MAVEN_SOURCE_ROOT" "$HERMES_MAVEN_BUILD_DIR" "$MAVEN_OPTS" "$@" > "$MAVEN_TEST_LOG"\nexit "$MAVEN_TEST_EXIT"\n')
         path = self.base / f"apache-maven-3.6.3-bin.{suffix}"
         if suffix == "zip":
             with zipfile.ZipFile(path, "w") as archive:
@@ -94,12 +98,38 @@ class MavenLauncherTest(unittest.TestCase):
         self.assertIn(f"-Dmaven.repo.local={self.cache}/repository", content)
         self.assertIn(str(self.jdk), content)
         self.assertFalse((self.home / ".m2").exists())
+        self.assertIn("maven.ext.class.path=" + str(self.extension_jar), content)
+        self.assertIn(str(self.workspace), content)
+        self.assertIn(str(self.cache / "builds"), content)
 
     def test_zip_and_crlf_wrapper_without_home_m2(self) -> None:
         original = self.wrapper.read_bytes()
         self.assert_ok(self.launch("./mvnw", "-B", "compile"))
         self.assertEqual(original, self.wrapper.read_bytes())
         self.assertIn("apache-maven-3.6.3/bin/mvn", str(next((self.cache / "distributions").rglob("mvn"))))
+
+    def test_preserves_existing_windows_target_and_uses_original_cwd(self) -> None:
+        target = self.workspace / "target/classes"
+        target.mkdir(parents=True)
+        original = target / "application.properties"
+        original.write_bytes(b"original user output")
+        self.assert_ok(self.launch("./mvnw", "test-compile"))
+        self.assertEqual(original.read_bytes(), b"original user output")
+        self.assertIn("MAVEN_OUTPUT_POLICY=linux-internal-builds", self.launch("./mvnw", "compile").stderr)
+
+    def test_internal_output_root_must_not_overlap_source(self) -> None:
+        self.env["HERMES_MAVEN_BUILD_ROOT"] = str(self.workspace / "unsafe-builds")
+        result = self.launch("./mvnw", "compile")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("MAVEN_OUTPUT_PATH_INVALID", result.stderr)
+        self.assertFalse((self.workspace / "unsafe-builds").exists())
+
+    def test_core_extension_override_is_rejected(self) -> None:
+        result = self.launch("./mvnw", "-Dmaven.ext.class.path=/tmp/unsafe", "compile")
+        self.assertIn("MAVEN_OUTPUT_EXTENSION_OVERRIDE", result.stderr)
+        self.env["MAVEN_OPTS"] = "-Dmaven.ext.class.path=/tmp/unsafe"
+        self.assertIn("MAVEN_OUTPUT_EXTENSION_OVERRIDE", self.launch("./mvnw", "compile").stderr)
+        self.env.pop("MAVEN_OPTS")
 
     def test_tar_archive(self) -> None:
         self.archive = self.make_archive("tar.gz")
