@@ -197,3 +197,6 @@ finally {
     $env:HERMES_PROFILE_PROBE_TRANSIENT_MARKER = $OldMarker
     Remove-Item -LiteralPath $FixtureDir -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+# The last intentional negative native probe leaves LASTEXITCODE=1; the test passed.
+exit 0
