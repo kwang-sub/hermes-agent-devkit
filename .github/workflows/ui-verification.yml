@@ -1,0 +1,57 @@
+name: UI verification runtime
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+    inputs:
+      managed_smoke:
+        description: Run real Hermes on the isolated fixture (no model/API calls)
+        type: boolean
+        default: true
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: UI runtime regressions
+        run: python -m unittest discover -s scripts -p 'test_ui_*.py' -v
+      - name: Existing dialog contracts
+        run: |
+          python scripts/test_managed_dialog_policy.py
+          python scripts/test_managed_dialog_evidence.py
+          python scripts/test_managed_runtime_integration.py
+          python scripts/test_browser_dialog_trace.py
+          python scripts/test_browser_verification_evidence.py
+          python scripts/test_browser_runtime_adapter.py
+
+  managed-smoke:
+    if: github.event_name == 'workflow_dispatch' && inputs.managed_smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build minimal supported Hermes image
+        run: docker build --target hermes-ui-smoke -t devkit-ui-smoke .
+      - name: Prepare task-owned artifacts
+        run: mkdir -p artifacts && chmod a+rwx artifacts
+      - name: Real managed browser smoke
+        run: |
+          docker run --rm --network none --user hermes \
+            -e HERMES_HOME=/tmp/ui-smoke-home \
+            -v "$PWD/artifacts:/artifacts" \
+            --entrypoint /opt/hermes/.venv/bin/python devkit-ui-smoke \
+            /opt/devkit/bin/verify_ui_browser_runtime.py \
+            --artifact-dir /artifacts --features upload,download,popup,frame
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: managed-ui-smoke-evidence
+          path: artifacts/
+          if-no-files-found: warn

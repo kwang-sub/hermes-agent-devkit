@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 
 def _event(record):
@@ -37,11 +38,15 @@ def analyze(data):
         if closed and sent_at is None:
             classification = "CLOSED_WITHOUT_RECORDED_RESPONSE"
             state = "BLOCKED_ENV"
-        elif closed and all(isinstance(t, (float, int)) for t in (opening_at, sent_at, closing_at)) and closing_at < sent_at:
+        elif closed and all(type(t) in (float, int) and math.isfinite(t) for t in (opening_at, sent_at, closing_at)) and closing_at < sent_at:
             classification = "CLOSED_BEFORE_RESPONSE"
             state = "BLOCKED_ENV"
         elif (closed and isinstance(dismiss, dict) and dismiss.get("success") is True
               and closed[0][1].get("result") is False
+              and all(type(t) in (float,int) and math.isfinite(t) for t in (opening_at,sent_at,closing_at))
+              and opening_at <= sent_at <= closing_at
+              and sid and (not opening_params.get("frameId") or
+                           opening_params["frameId"] == closed[0][1].get("frameId"))
               and data.get("page_preserved") is True and data.get("input_preserved") is True):
             classification = "DISMISS_AND_PRESERVATION_CONFIRMED"
             state = "PASS"
@@ -65,7 +70,7 @@ def main():
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
-        result = analyze(json.loads(args.input.read_text(encoding="utf-8")))
+        result = analyze(json.loads(args.input.read_text(encoding="utf-8-sig")))
         payload = json.dumps(result, ensure_ascii=False, indent=2)
         if args.output:
             args.output.write_text(payload + "\n", encoding="utf-8")

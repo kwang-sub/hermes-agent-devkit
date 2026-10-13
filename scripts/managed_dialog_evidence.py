@@ -3,6 +3,7 @@
 from __future__ import annotations
 import math
 import hashlib
+from ui_runtime.result import outcome
 
 EXPECTED={(s,a) for s in ('reload','navigate','confirm') for a in ('dismiss','accept')}
 
@@ -13,9 +14,7 @@ def _time(value):
 
 def summarize(data):
     def result(status, reason, next_action):
-        key='browser_exec|managed-native-dialog-v1|'+reason
-        return {'execution_status':status,'classification':reason,'next_action':next_action,
-                'recovery_fingerprint':hashlib.sha256(key.encode()).hexdigest()[:16]}
+        return outcome(status, reason, capability='managed-native-dialog-v1')
     def blocked(reason):
         return result('INCONCLUSIVE',reason,'REVIEW_EVIDENCE')
     if not isinstance(data,dict) or data.get('schema')!='managed_dialog_probe_v1':
@@ -33,16 +32,23 @@ def summarize(data):
                 known={'prepare','managed_launch','chromium_launch','agent_browser_attach',
                        'target_match','fixture_ready','activate','trigger','opening','respond','closed'}
                 if not isinstance(phase,str) or phase not in known: phase='unknown'
-                reasons={'target_match':'FIXTURE_TARGET_UNCONFIRMED',
-                         'fixture_ready':'FIXTURE_NOT_READY'}
+                reasons={'target_match':'FIXTURE_TARGET_UNCONFIRMED', 'fixture_ready':'FIXTURE_NOT_READY'}
                 summary=blocked(reasons.get(phase,'MANAGED_PROBE_BLOCKED'))
                 summary['failed_phase']=phase
                 key=(case.get('scenario'),case.get('action'))
                 if all(isinstance(v,str) for v in key) and key in EXPECTED:
                     summary['failed_case']='/'.join(key)
                 return summary
+            # Only an actually executed, explicitly answered assertion can be FAIL.
+            response=case.get('response')
+            if (case.get('result')=='FAIL' and isinstance(response,dict)
+                    and response.get('success') is True
+                    and case.get('response_owner')=='hermes.browser_dialog'
+                    and isinstance(case.get('final'),dict) and case.get('final')):
+                return result('FAIL','MANAGED_DIALOG_ASSERTION_FAILED','FIX_VERIFIED_BEHAVIOR')
     if data.get('complete_matrix') is not True:
         return blocked('INCOMPLETE_DIALOG_MATRIX')
+    cases=data.get('cases')
     if not isinstance(cases,list) or len(cases)!=len(EXPECTED):
         return blocked('INCOMPLETE_DIALOG_MATRIX')
     seen=set()
@@ -70,13 +76,22 @@ def summarize(data):
             return blocked('DIALOG_RESPONSE_EVIDENCE_MISSING')
         accepted=key[1]=='accept'
         if case.get('dialog_result') is not accepted: return blocked('DIALOG_RESULT_MISMATCH')
+        if key[0]=='confirm' and final.get('answer') is not accepted:
+            return blocked('CONFIRM_VALUE_UNCONFIRMED')
+        if not isinstance(final.get('path'),str):
+            return blocked('FINAL_DOCUMENT_EVIDENCE_MISSING')
         keep=key[0]=='confirm' or not accepted
         if keep:
             if (case.get('page_preserved') is not True or case.get('input_preserved') is not True
                     or final.get('docId')!=initial['docId'] or final.get('input')!='SAMPLE'
                     or final.get('path')!=initial.get('path')):
                 return blocked('INPUT_OR_DOCUMENT_NOT_PRESERVED')
-        elif final.get('docId')==initial['docId'] or case.get('page_preserved') is not False:
+        elif ('docId' not in final or final['docId'] is None
+              or final.get('docId')==initial['docId'] or case.get('page_preserved') is not False):
+            return blocked('NAVIGATION_NOT_CONFIRMED')
+        if not keep and key[0]=='navigate' and final['path']!='/next':
+            return blocked('NAVIGATION_NOT_CONFIRMED')
+        if not keep and key[0]=='reload' and (not final.get('docId') or final['path']!=initial.get('path')):
             return blocked('NAVIGATION_NOT_CONFIRMED')
         events=case.get('events',[])
         if not isinstance(events,list): raise ValueError('events must be an array')
