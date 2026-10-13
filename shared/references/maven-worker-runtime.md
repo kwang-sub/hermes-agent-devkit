@@ -24,7 +24,18 @@ Git Workspace는 primary worktree의 `.hermes/toolchain.env`, Non-Git은 현재 
 
 실제 검증은 승인된 다운로드/네트워크 정책 안에서 프로젝트 `distributionUrl`의 배포본을 DevKit cache에 준비한다. 이것은 이미 선택된 toolchain 준비이며 전역 Maven 설치/버전 업그레이드가 아니다. 네트워크 사용 승인이 없거나 오프라인 계약이면 관리 단계에서 배포본·의존성을 먼저 준비한다. wrapper script는 실행·개행 수정하지 않고 properties만 읽으므로 CRLF `mvnw` 자체는 blocker가 아니다.
 
-기본 cache는 `/opt/data/maven/{repository,distributions,downloads,locks}`이며 HOME의 `.m2` 유무와 독립이다. 저장소 경로는 `MAVEN_REPOSITORY` 출력이 기준이다. 빈 저장소만으로 차단하지 않는다. 실제 artifact 해석/원격 접근 실패를 구분한다. `.m2/settings.xml`이나 승인 `-s` 설정은 기존 Maven 동작대로 유지하지만 secret을 로그/카드에 복사하지 않는다. `maven.repo.local`을 CLI/환경/.mvn 설정에서 덮어쓰는 것은 금지한다. 프로젝트 `target` 출력 위치는 이번 변경에서 옮기지 않는다.
+기본 cache는 `/opt/data/maven/{repository,distributions,downloads,locks}`이며 HOME의 `.m2` 유무와 독립이다. 저장소 경로는 `MAVEN_REPOSITORY` 출력이 기준이다. 빈 저장소만으로 차단하지 않는다. 실제 artifact 해석/원격 접근 실패를 구분한다. `.m2/settings.xml`이나 승인 `-s` 설정은 기존 Maven 동작대로 유지하지만 secret을 로그/카드에 복사하지 않는다. `maven.repo.local`을 CLI/환경/.mvn 설정에서 덮어쓰는 것은 금지한다. Maven의 표준 `target` 산출물은 `/opt/data/maven/builds/<workspace-key>/<module-path>/target`으로 격리한다. 원본 `/workspace`의 소스는 직접 읽고 복제하지 않는다.
+
+## Linux 내부 Maven 출력 경로
+
+- `/usr/local/bin/hermes-maven`이 선택된 Maven distribution을 유지하고 `MAVEN_OPTS`로 core extension을 JVM 시작 전에 로드한다. `-Dproject.build.directory`는 POM 모델 속성 변경을 보장하지 않으므로 사용하지 않는다.
+- Maven `afterProjectsRead`에서 reactor 모듈별 `project.build.directory`, `outputDirectory`, `testOutputDirectory` 및 기존 target 하위로 확정된 plugin/report 출력 경로를 Linux 내부 경로로 매핑한다.
+- 프로젝트 원본 `/workspace`의 POM 및 소스는 복제하지 않고 직접 읽으며, 기존 Windows `target`과 사용자 변경을 삭제·이동·수정하지 않는다.
+- Git worktree/프로젝트마다 canonical workspace path 해시로 분리하고, 멀티 모듈은 원본 상대 경로마다 분리한다. 외부 workspace 모듈·비표준 클래스 출력 경로는 명시적으로 차단한다.
+- extension Java 소스는 선택된 Maven distribution의 core API를 사용해 최초 실행 시 컴파일·캐시한다. JDK/Maven 버전, 프로젝트 Wrapper/POM을 변경하지 않는다.
+- 사용자 정의 플러그인의 비표준 출력 경로는 별도 검증이 필요하며 자동 격리를 가정하지 않는다.
+- 내부 경로가 Windows workspace 안으로 정규화되거나 현재 worker의 소유가 아니라면 Maven 실행 전에 차단한다.
+- `--diagnose`는 read-only이며 실제 빌드 성공 증거가 아니다.
 
 ## Risk-based Verification Level
 
@@ -77,6 +88,8 @@ WAR/JAR/resource filtering/manifest/packaging 구조 변경
 - `MAVEN_REPOSITORY_OVERRIDE`: 프로젝트/환경과 공용 cache 정책 충돌을 관리 단계에 전달.
 - `MAVEN_DEPENDENCY_RESOLUTION_FAILED` / `MAVEN_OFFLINE_DEPENDENCY_MISSING`: 실제 실패 artifact/원격 접근을 secret 없이 기록.
 - `MAVEN_COMMAND_TIMEOUT` / `MAVEN_WORKSPACE_LOCK_TIMEOUT`: 실제 제한 초과 기록, 동일 세션의 무작정 반복 금지.
+- `MAVEN_OUTPUT_NOT_WRITABLE` / `MAVEN_OUTPUT_PATH_INVALID` / `MAVEN_OUTPUT_EXTENSION_*`: Linux 출력 경로·확장 모듈 문제로 분류하여 관리 단계에서 복구.
+- `MAVEN_OUTPUT_LAYOUT_UNSUPPORTED`: 특수 POM 출력 위치는 별도 승인 범위에서 검토.
 - `MAVEN_BUILD_OR_TEST_FAILED`: 실제 빌드/테스트 오류. 설치 문제로 재분류하지 않는다.
 
 보안 도구가 호출을 거부해 실행되지 않은 경우 `NOT_EXECUTED / APPROVAL_REQUIRED`로 기록한다. 파일/의존성이 없다는 증거로 간주하거나 guard를 완화하지 않는다. worker process `rc=0`과 Kanban 완료는 다르다. 이 변경은 카드 상태, 자동 재시도 정책, run ownership, Reviewer handoff를 변경하지 않는다.
