@@ -140,7 +140,7 @@ if "$diagnose"; then
   # Preparation/cached binary presence is NOT dependency resolution or compile PASS.
   exit 0
 fi
-mkdir -p "$repo" "$dist_root" "$download_root" "$lock_root" || fail MAVEN_CACHE_NOT_WRITABLE 'cannot create managed cache directories'
+mkdir -p "$repo" "$dist_root" "$download_root" "$lock_root" "$build_root" "$extension_root" || fail MAVEN_CACHE_NOT_WRITABLE 'cannot create managed cache directories'
 for path in "$repo" "$dist_root" "$download_root" "$lock_root" "$build_root" "$extension_root"; do
   [ -w "$path" ] || fail MAVEN_CACHE_NOT_WRITABLE 'managed cache directory is not writable'
 done
