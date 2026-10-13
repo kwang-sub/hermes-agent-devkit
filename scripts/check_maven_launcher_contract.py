@@ -19,11 +19,17 @@ def main() -> int:
             'workspace-$workspace_key.lock',
             'overriding maven.repo.local is not allowed',
             '.hermes/toolchain.env',
+            'HERMES_MAVEN_BUILD_ROOT:-$root/builds',
+            'MAVEN_OUTPUT_POLICY=linux-internal-builds',
+            'HERMES_MAVEN_SOURCE_ROOT',
+            'maven.ext.class.path',
         )
         failures.extend(f"hermes-maven missing: {term}" for term in required if term not in text)
     for term in (
         "ENV HERMES_MAVEN_ROOT=/opt/data/maven",
         "ENV HERMES_MAVEN_REPO_ROOT=/opt/data/maven/repository",
+        "ENV HERMES_MAVEN_BUILD_ROOT=/opt/data/maven/builds",
+        "COPY scripts/maven-output-extension/HermesOutputLifecycleParticipant.java scripts/maven-output-extension/components.xml /usr/local/share/hermes-maven-output/",
         "COPY --chmod=0755 scripts/hermes-maven /usr/local/bin/hermes-maven",
     ):
         if term not in dockerfile.splitlines():

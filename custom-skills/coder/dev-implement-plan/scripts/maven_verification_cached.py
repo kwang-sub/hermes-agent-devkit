@@ -108,6 +108,30 @@ def args_sha256(arguments: list[str]) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def runtime_output_sha256() -> str:
+    """Fingerprint deployed launcher and core extension, not only source paths."""
+    repo = Path(__file__).resolve().parents[4]
+    candidates = (
+        (Path("/usr/local/bin/hermes-maven"), repo / "scripts/hermes-maven"),
+        (
+            Path("/usr/local/share/hermes-maven-output/HermesOutputLifecycleParticipant.java"),
+            repo / "scripts/maven-output-extension/HermesOutputLifecycleParticipant.java",
+        ),
+        (
+            Path("/usr/local/share/hermes-maven-output/components.xml"),
+            repo / "scripts/maven-output-extension/components.xml",
+        ),
+    )
+    digest = hashlib.sha256()
+    for deployed, fallback in candidates:
+        selected = deployed if deployed.is_file() else fallback
+        digest.update(selected.name.encode("utf-8"))
+        digest.update(b"\\0")
+        digest.update(sha256_file(selected).encode("ascii") if selected.is_file() else b"missing")
+        digest.update(b"\\0")
+    return digest.hexdigest()
+
+
 def request_sha256(
     *,
     workspace: Path,
@@ -127,6 +151,11 @@ def request_sha256(
         "scope_paths": scope_paths,
         "engine_sha256": engine_sha,
         "cached_helper_sha256": helper_sha,
+        # Old PASS evidence from source-mounted target builds must not be reused
+        # after switching to Linux-only outputs; cache keys track active runtime.
+        "output_policy": "MAVEN_INTERNAL_BUILDS_V1",
+        "output_root": os.getenv("HERMES_MAVEN_BUILD_ROOT", "/opt/data/maven/builds"),
+        "output_runtime_sha256": runtime_output_sha256(),
     }
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()

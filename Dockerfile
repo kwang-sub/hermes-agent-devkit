@@ -236,6 +236,8 @@ ENV HERMES_GRADLE_PROJECT_CACHE_ROOT=/opt/data/gradle/project-cache
 ENV GRADLE_USER_HOME=/opt/data/gradle/user-home
 
 ENV HERMES_MAVEN_ROOT=/opt/data/maven
+ENV HERMES_MAVEN_BUILD_ROOT=/opt/data/maven/builds
+ENV HERMES_MAVEN_EXTENSION_ROOT=/opt/data/maven/extensions
 ENV HERMES_MAVEN_REPO_ROOT=/opt/data/maven/repository
 ENV HERMES_MAVEN_DIST_ROOT=/opt/data/maven/distributions
 ENV HERMES_MAVEN_DOWNLOAD_ROOT=/opt/data/maven/downloads
@@ -271,6 +273,7 @@ RUN ln -sf /opt/jdks/temurin-17/bin/java /usr/local/bin/java \
 
 COPY --chmod=0755 scripts/hermes-java /usr/local/bin/hermes-java
 COPY --chmod=0755 scripts/hermes-maven /usr/local/bin/hermes-maven
+COPY scripts/maven-output-extension/HermesOutputLifecycleParticipant.java scripts/maven-output-extension/components.xml /usr/local/share/hermes-maven-output/
 RUN tr -d '\r' < /usr/local/bin/hermes-maven > /tmp/hermes-maven \
     && cat /tmp/hermes-maven > /usr/local/bin/hermes-maven \
     && rm /tmp/hermes-maven \

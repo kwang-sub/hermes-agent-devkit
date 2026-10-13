@@ -1,0 +1,10 @@
+<component-set>
+  <components>
+    <component>
+      <role>org.apache.maven.AbstractMavenLifecycleParticipant</role>
+      <role-hint>hermes-maven-output</role-hint>
+      <implementation>dev.hermes.maven.HermesOutputLifecycleParticipant</implementation>
+      <instantiation-strategy>singleton</instantiation-strategy>
+    </component>
+  </components>
+</component-set>
