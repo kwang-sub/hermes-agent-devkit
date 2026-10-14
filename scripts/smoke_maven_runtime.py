@@ -20,8 +20,17 @@ ROOT = Path(__file__).resolve().parents[1]
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--launcher-dir", type=Path, default=ROOT / "scripts")
+    parser.add_argument(
+        "--extension-source-root", type=Path, default=ROOT / "scripts/maven-output-extension",
+        help="Directory containing the Maven output lifecycle extension sources",
+    )
     parser.add_argument("--version", choices=("3.6.3", "3.9.9"), default="3.6.3")
     args = parser.parse_args()
+    extension_root = args.extension_source_root.resolve()
+    for filename in ("HermesOutputLifecycleParticipant.java", "components.xml"):
+        source = extension_root / filename
+        if not source.is_file() or not os.access(source, os.R_OK):
+            parser.error(f"Maven output extension source is missing or unreadable: {source}")
     java = Path(os.environ["JAVA_HOME"])
     assert (java / "bin/javac").is_file(), java
     launcher = args.launcher_dir / "hermes-maven"
@@ -42,8 +51,8 @@ def main() -> None:
             if key.startswith("HERMES_MAVEN_"):
                 os.environ.pop(key)
         os.environ["HERMES_MAVEN_ROOT"] = str(cache)
-        # CI executes source checkout; Docker image installs the same extension under /usr/local/share.
-        os.environ["HERMES_MAVEN_OUTPUT_EXTENSION_SOURCE_ROOT"] = str(ROOT / "scripts/maven-output-extension")
+        # The checkout test uses source files; the Docker compatibility test uses installed image files.
+        os.environ["HERMES_MAVEN_OUTPUT_EXTENSION_SOURCE_ROOT"] = str(extension_root)
         # Any fallback to system mvn must fail, even on hosted runners with Maven.
         bad_bin = root / "no-system-maven"
         bad_bin.mkdir()
