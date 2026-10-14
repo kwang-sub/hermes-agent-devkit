@@ -185,17 +185,39 @@ jobs:
         shell: bash
         run: python3 scripts/check_update_devkit_contract.py
 
-      - name: Validate DevKit updater PowerShell syntax
+      - name: Validate DevKit initialization and updater PowerShell syntax
         shell: pwsh
         run: |
-          $tokens = $null
-          $errors = $null
-          [void][System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path "update-devkit.ps1"),
-            [ref]$tokens,
-            [ref]$errors
-          )
-          if ($errors.Count -ne 0) {
-            $errors | ForEach-Object { [Console]::Error.WriteLine($_.Message) }
-            exit 1
+          foreach ($file in @(
+            "update-devkit.ps1",
+            "init-profiles.ps1",
+            "scripts/profile-init-probe.ps1",
+            "scripts/test_init_profile_probe.ps1"
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file),
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count -ne 0) {
+              $errors | ForEach-Object { [Console]::Error.WriteLine("File=$file Error=$($_.Message)") }
+              exit 1
+            }
           }
+
+      - name: Test Hermes profile probe and lock retry (PowerShell 7)
+        shell: pwsh
+        run: ./scripts/test_init_profile_probe.ps1
+
+  profile-init-windows-powershell-51:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test native stderr handling and bounded profile retry (Windows PowerShell 5.1)
+        shell: powershell
+        run: .\scripts\test_init_profile_probe.ps1

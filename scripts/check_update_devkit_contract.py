@@ -14,6 +14,9 @@ TUI_SEMANTIC_PATCH = ROOT / "scripts/patch_hermes_tui_semantic_input.py"
 LATEST_COMPAT_SCRIPT = ROOT / "scripts/verify_latest_hermes_compat.sh"
 LATEST_COMPAT_WORKFLOW = ROOT / ".github/workflows/latest-hermes-compat.yml"
 INIT_PROFILES = ROOT / "init-profiles.ps1"
+PROFILE_PROBE = ROOT / "scripts/profile-init-probe.ps1"
+PROFILE_PROBE_TEST = ROOT / "scripts/test_init_profile_probe.ps1"
+VERIFY_WORKFLOW = ROOT / ".github/workflows/verify.yml"
 NOTIFIER_POLICY = ROOT / "docker/cont-init.d/019-devkit-kanban-notifier-policy"
 GITATTRIBUTES = ROOT / ".gitattributes"
 
@@ -357,6 +360,57 @@ def main() -> int:
             "Ensure-KanbanNotificationOwnership",
         ),
         "DevKit Notification Bridge profile ownership",
+    )
+
+    require(
+        init_profiles,
+        (
+            '. (Join-Path $PSScriptRoot "scripts/profile-init-probe.ps1")',
+            'if (Profile-Exists -Name $Name)',
+        ),
+        "Profile initialization lookup helper wiring",
+    )
+    if "function Profile-Exists {" in init_profiles:
+        raise SystemExit("init-profiles.ps1 must delegate profile inspection to the tested helper")
+
+    profile_probe = read_required(PROFILE_PROBE, "Hermes profile inspection helper")
+    require(
+        profile_probe,
+        (
+            "function Profile-Exists",
+            '"Continue"',
+            "2>&1",
+            "$LASTEXITCODE",
+            "PROFILE_DEPENDENCY_LOCK_BUSY",
+            "PROFILE_INSPECTION_FAILED",
+            "$MaxAttempts",
+            "does not exist.",
+        ),
+        "Fail-closed profile lookup, stderr handling and bounded install lock retry",
+    )
+    profile_test = read_required(PROFILE_PROBE_TEST, "profile inspection regression tests")
+    require(
+        profile_test,
+        (
+            "success_warning",
+            "transient_lock",
+            "permanent_lock",
+            "missing_with_lock",
+            "missing_wrong_exit",
+            "docker_failure",
+            "venv_failure",
+        ),
+        "Hermes profile initialization native stderr regression coverage",
+    )
+    verify_workflow = read_required(VERIFY_WORKFLOW, "DevKit verification workflow")
+    require(
+        verify_workflow,
+        (
+            "Test Hermes profile probe and lock retry (PowerShell 7)",
+            "profile-init-windows-powershell-51:",
+            "test_init_profile_probe.ps1",
+        ),
+        "PowerShell 5.1 and PowerShell 7 regression jobs",
     )
 
     if init_profiles.count("import hermes_yaml as yaml") != 4:

@@ -5,6 +5,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Profile lookup must distinguish a benign Hermes stderr warning from failure.
+. (Join-Path $PSScriptRoot "scripts/profile-init-probe.ps1")
 $Script:DotEnvValues = @{}
 
 function Import-DotEnv {
@@ -268,16 +271,6 @@ function Assert-Prerequisites {
         )
         Write-Host "[OK] Required path: $Path"
     }
-}
-
-function Profile-Exists {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Name
-    )
-
-    & docker exec --user hermes $Container $HermesCliPath profile show $Name 1>$null 2>$null
-    return ($LASTEXITCODE -eq 0)
 }
 
 function Ensure-Profile {
