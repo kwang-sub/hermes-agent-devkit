@@ -87,6 +87,18 @@ def main()->int:
 
     require_terms(breakdown,"dev-breakdown",('skill_view("dev-project-pattern")',"dev-java-guidelines"))
     require_terms(dispatch,"dev-workspace-dispatch preflight",('skill_view("dev-skill-preflight")',"VALIDATED_SKILLS","REJECTED_SKILLS","kanban_create.skills"))
+    # Validate the upstream pinned-skill integration in CI only; do not add a
+    # new runtime/pre-dispatch gate or change the existing approved flow.
+    pin_test=REPO_ROOT/"scripts/check_hermes_kanban_skill_pins.py"
+    if not pin_test.is_file(): fail("missing CI Kanban pinned-skill test")
+    require_terms(pin_test.read_text(encoding="utf-8"),"CI pinned-skill runtime test",(
+        "registry.get_definitions", "registry.dispatch", "check_persisted_skills",
+        "kanban_db_path", "initial_status", "kb.list_runs",
+    ))
+    require_terms((REPO_ROOT/"scripts/verify_latest_hermes_compat.sh").read_text(encoding="utf-8"),
+        "latest Hermes CI runtime integration",("check_hermes_kanban_skill_pins.py",))
+    require_terms((REPO_ROOT/".github/workflows/verify.yml").read_text(encoding="utf-8"),
+        "CI pinned-skill fixture wiring",("check_hermes_kanban_skill_pins.py --self-test",))
     require_terms(workflow,"dev-workflow-orchestrate approval gates",(
         "/opt/data/shared/references/approval-gate-rules.md","WORKSPACE_APPROVED","BRANCH_APPROVED","MODEL_APPROVED","PLAN_APPROVED",
         "REQUIREMENT_DELTA_APPROVED","Requirement Delta Approval","[추가 요구사항 확인]",
