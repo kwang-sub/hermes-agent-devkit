@@ -75,6 +75,17 @@ def main() -> None:
   <build><plugins>
     <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.11.0</version></plugin>
     <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.2.5</version></plugin>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-resources-plugin</artifactId><version>3.3.1</version>
+      <executions>
+        <execution><id>relocate-relative-generated-sources</id><phase>generate-sources</phase>
+          <goals><goal>copy-resources</goal></goals>
+          <configuration>
+            <outputDirectory>target/generated-sources/java</outputDirectory>
+            <resources><resource><directory>src/generated-fixture</directory></resource></resources>
+          </configuration>
+        </execution>
+      </executions>
+    </plugin>
   </plugins></build>
 </project>\n''')
         production = project / "src/main/java/example/Answer.java"
@@ -83,6 +94,14 @@ def main() -> None:
         test.parent.mkdir(parents=True)
         production.write_text("package example; public record Answer(int value) {}\n")
         test.write_text("package example; import org.junit.Test; import static org.junit.Assert.*; public class AnswerTest { @Test public void returnsAnswer() { assertEquals(42, new Answer(42).value()); } }\n")
+        generated_fixture = project / "src/generated-fixture/Generated.java"
+        generated_fixture.parent.mkdir(parents=True)
+        generated_fixture.write_text("package example; public class Generated {}\n")
+        # An existing source-mounted target must not be overwritten, augmented or deleted.
+        source_target = project / "target"
+        source_target.mkdir()
+        existing_output = source_target / "existing-user-file.txt"
+        existing_output.write_bytes(b"keep original target untouched")
         # No Git repo is needed for an acknowledged Non-Git workspace.
         probe = subprocess.run([str(launcher), "--diagnose", "./mvnw"], cwd=project, text=True, capture_output=True, timeout=10)
         assert probe.returncode == 0 and "PREPARATION_REQUIRED" in probe.stdout, probe
@@ -98,7 +117,10 @@ def main() -> None:
             print(f"PASS: Maven {args.version} {' '.join(command)}; elapsed={result['elapsed_seconds']}")
         # Original source target must never be touched; Maven extensions relocate
         # both compilation and reports under the persistent Linux-only cache.
-        assert not (project / "target").exists(), "Maven wrote into the source worktree"
+        assert existing_output.read_bytes() == b"keep original target untouched"
+        assert sorted(source_target.rglob("*")) == [existing_output], "Maven wrote into the source worktree target"
+        generated = list((cache / "builds").rglob("generated-sources/java/Generated.java"))
+        assert len(generated) == 1 and generated[0].read_text() == generated_fixture.read_text(), generated
         classes = list((cache / "builds").rglob("classes/example/Answer.class"))
         reports = list((cache / "builds").rglob("surefire-reports/TEST-example.AnswerTest.xml"))
         assert len(classes) == 1, classes
@@ -129,7 +151,23 @@ def main() -> None:
         assert not (module / "target").exists(), "Maven wrote module output into source"
         built = list((cache / "builds").rglob("module/target/classes/example/Module.class"))
         assert len(built) == 1, built
-        print("PASS: CRLF wrapper preserved; managed dependency cache; offline rerun; Java 17 compile, JUnit and multi-module outputs")
+        assert existing_output.read_bytes() == b"keep original target untouched"
+        assert sorted(source_target.rglob("*")) == [existing_output], "Reactor modified source target"
+        # An output path escaping target must fail before Maven writes there.
+        unsafe = (project / "pom.xml").read_text().replace(
+            "<outputDirectory>target/generated-sources/java</outputDirectory>",
+            "<outputDirectory>target/../../unsafe-generated-output</outputDirectory>", 1,
+        )
+        (project / "pom.xml").write_text(unsafe)
+        blocked = subprocess.run([str(launcher), "./mvnw", "-B", "compile"], cwd=project,
+                                 text=True, capture_output=True, timeout=240)
+        assert blocked.returncode != 0 and "MAVEN_OUTPUT_LAYOUT_UNSUPPORTED" in (
+            blocked.stdout + blocked.stderr
+        ), blocked.stderr
+        assert not (root / "unsafe-generated-output").exists()
+        assert existing_output.read_bytes() == b"keep original target untouched"
+        print("PASS: Maven relative generated-sources redirected outside source; pre-existing target preserved; unsafe output blocked; Maven "
+              + args.version + " JUnit/offline/reactor")
 
 
 if __name__ == "__main__":
