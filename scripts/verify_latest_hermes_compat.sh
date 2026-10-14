@@ -333,7 +333,9 @@ docker run --rm --user hermes \
     --entrypoint /opt/hermes/.venv/bin/python \
     --mount "type=bind,source=$REPO_ROOT/custom-skills,target=/opt/custom-skills,readonly" \
     --mount "type=bind,source=$REPO_ROOT/scripts,target=/opt/devkit-tests,readonly" \
-    "$IMAGE_NAME" /opt/devkit-tests/smoke_maven_runtime.py --launcher-dir /usr/local/bin
+    "$IMAGE_NAME" /opt/devkit-tests/smoke_maven_runtime.py \
+        --launcher-dir /usr/local/bin \
+        --extension-source-root /usr/local/share/hermes-maven-output
 
 printf '[RUN ] Latest Hermes live s6 notifier smoke\n'
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
