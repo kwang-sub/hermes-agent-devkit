@@ -30,10 +30,12 @@ Git Workspace는 primary worktree의 `.hermes/toolchain.env`, Non-Git은 현재 
 
 - `/usr/local/bin/hermes-maven`이 선택된 Maven distribution을 유지하고 `MAVEN_OPTS`로 core extension을 JVM 시작 전에 로드한다. `-Dproject.build.directory`는 POM 모델 속성 변경을 보장하지 않으므로 사용하지 않는다.
 - Maven `afterProjectsRead`에서 reactor 모듈별 `project.build.directory`, `outputDirectory`, `testOutputDirectory` 및 기존 target 하위로 확정된 plugin/report 출력 경로를 Linux 내부 경로로 매핑한다.
+- plugin 및 plugin execution XML 설정에서 `target/generated-sources/java`, `./target/generated-sources/java` 등 상대 경로는 **각 모듈의 basedir** 기준으로 정규화한 뒤, 기존 build directory 아래에 있는 경우에만 내부 출력 경로로 변환한다. `${project.build.directory}/...` 식도 내부 경로로 바꾼다. `src/` 등 기존 소스/입력 경로는 변환하지 않는다.
+- `outputDirectory` 등 명시적인 플러그인 출력 경로가 기존 target 밖으로 향하거나 동적 표현식으로 안전하게 확인되지 않으면 `MAVEN_OUTPUT_LAYOUT_UNSUPPORTED`로 컴파일 전에 차단한다. `--diagnose=READY`는 이를 확인하지 않으며 실제 Maven session 검사/테스트가 필요하다.
 - 프로젝트 원본 `/workspace`의 POM 및 소스는 복제하지 않고 직접 읽으며, 기존 Windows `target`과 사용자 변경을 삭제·이동·수정하지 않는다.
 - Git worktree/프로젝트마다 canonical workspace path 해시로 분리하고, 멀티 모듈은 원본 상대 경로마다 분리한다. 외부 workspace 모듈·비표준 클래스 출력 경로는 명시적으로 차단한다.
 - extension Java 소스는 선택된 Maven distribution의 core API를 사용해 최초 실행 시 컴파일·캐시한다. JDK/Maven 버전, 프로젝트 Wrapper/POM을 변경하지 않는다.
-- 사용자 정의 플러그인의 비표준 출력 경로는 별도 검증이 필요하며 자동 격리를 가정하지 않는다.
+- 일반적인 `outputDirectory` 기반 QueryDSL/생성 소스 경로는 상대 경로까지 지원하지만, XML 값이 아닌 CLI 문자열·플러그인 내부 하드코딩·외부 커스텀 출력은 자동 격리를 보장하지 않는다. 별도 호환 검증 대상이며 임의로 raw Maven으로 우회하지 않는다.
 - 내부 경로가 Windows workspace 안으로 정규화되거나 현재 worker의 소유가 아니라면 Maven 실행 전에 차단한다.
 - `--diagnose`는 read-only이며 실제 빌드 성공 증거가 아니다.
 
