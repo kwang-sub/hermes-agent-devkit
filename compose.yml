@@ -77,6 +77,9 @@ services:
       # bind-mounted workspace. hermes-java injects this as --project-cache-dir.
       HERMES_GRADLE_PROJECT_CACHE_ROOT: ${HERMES_GRADLE_PROJECT_CACHE_ROOT:-/opt/data/gradle/project-cache}
 
+      # Maven reads original /workspace sources while generated build outputs stay on Linux volume.
+      HERMES_MAVEN_BUILD_ROOT: ${HERMES_MAVEN_BUILD_ROOT:-/opt/data/maven/builds}
+
       # Large legacy projects may require a full compile before targeted tests.
       # Five minutes keeps that preflight bounded while allowing the cache to seed.
       HERMES_GRADLE_COMPILE_PREFLIGHT_TIMEOUT_SECONDS: ${HERMES_GRADLE_COMPILE_PREFLIGHT_TIMEOUT_SECONDS:-300}
