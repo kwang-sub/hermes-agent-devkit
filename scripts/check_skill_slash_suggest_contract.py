@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "shared/references/skill-slash-suggest-policy.json"
 PATCH = ROOT / "scripts/patch_hermes_skill_slash_suggest.py"
 DOCKERFILE = ROOT / "Dockerfile"
+COMPAT_SMOKE = ROOT / "scripts/verify_latest_hermes_compat.sh"
 
 PUBLIC_ENTRY_SKILLS = {
     "dev-direct-flow",
@@ -90,6 +91,8 @@ def main() -> int:
         "HERMES_SLASH_SUGGEST_POLICY",
         "hidden_skills",
         'info.get("slash_suggest", True)',
+        "tui_gateway.command_discovery",
+        "raw_skill_commands = get_interactive_skill_commands()",
     ):
         if term not in patch:
             raise SystemExit(f"slash suggestion patch missing contract term: {term}")
@@ -102,6 +105,18 @@ def main() -> int:
     ):
         if term not in dockerfile:
             raise SystemExit(f"Dockerfile missing slash suggestion integration: {term}")
+
+    # Image-build checks and live compatibility smoke must validate the
+    # actual owner of slash suggestions, never assume methods_tools contains it.
+    compat_smoke = COMPAT_SMOKE.read_text(encoding="utf-8")
+    for term in (
+        "from tui_gateway.command_discovery import command_catalog",
+        "DEVKIT_SLASH_SUGGEST_V1",
+        "/opt/hermes/tui_gateway/command_discovery.py",
+        "/opt/hermes/tui_gateway/methods_tools.py",
+    ):
+        if term not in compat_smoke:
+            raise SystemExit(f"latest Hermes smoke missing catalog compatibility guard: {term}")
 
     print(
         f"[PASS] Slash suggestion policy: public={len(PUBLIC_ENTRY_SKILLS)} "

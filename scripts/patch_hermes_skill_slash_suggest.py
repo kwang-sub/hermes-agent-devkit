@@ -85,6 +85,10 @@ def patch_completion(path: Path) -> str:
 def patch_catalog(path: Path) -> str:
     text = path.read_text(encoding="utf-8")
     if MARKER in text:
+        # In split upstream layouts, BOTH catalog and inline completion must
+        # be filtered. A partial patch is not safe to treat as idempotent.
+        if path.name == "command_discovery.py" and "raw_skill_commands = get_interactive_skill_commands()" not in text:
+            raise RuntimeError("tui_gateway.command_discovery: partial slash suggestion patch")
         return "already-patched"
 
     # Hermes <= 2026.9.14 kept the skills loop directly in commands.catalog.
@@ -120,7 +124,23 @@ def patch_catalog(path: Path) -> str:
             continue
         cat.pairs.append([k, str(info.get("description", "Skill"))])
         name = str(info.get("name") or k.lstrip("/"))'''
-            text = _replace_once(text, translated_old, translated_new, "tui_gateway.methods_tools.interactive")
+            text = _replace_once(text, translated_old, translated_new,
+                                 "tui_gateway.command_discovery.catalog" if path.name == "command_discovery.py"
+                                 else "tui_gateway.methods_tools.interactive")
+
+    if path.name == "command_discovery.py":
+        # Since October 2026, both commands.catalog and complete.slash live
+        # in this shared module. Only alter the suggestion-facing projection;
+        # get_interactive_skill_commands() itself must remain unfiltered so
+        # explicit /skill dispatch still finds internal skills.
+        completion_old = '''        skill_commands, skill_bundles = dict(get_interactive_skill_commands()), dict(get_skill_bundles())'''
+        completion_new = '''        # DEVKIT_SLASH_SUGGEST_V1: hide internal suggestions, not executable slash skills.
+        raw_skill_commands = get_interactive_skill_commands()
+        skill_commands = {key: info for key, info in raw_skill_commands.items()
+                          if info.get("slash_suggest", True)}
+        skill_bundles = dict(get_skill_bundles())'''
+        text = _replace_once(text, completion_old, completion_new,
+                             "tui_gateway.command_discovery.inline_completion")
 
     path.write_text(text, encoding="utf-8")
     return "patched"
@@ -142,6 +162,15 @@ def patch_root(root: Path) -> dict[str, str]:
     missing = [str(path) for path in targets.values() if not path.is_file()]
     if missing:
         raise RuntimeError("Hermes slash suggestion patch target missing: " + ", ".join(missing))
+
+    # Keep the legacy/current in-file catalog patch. Newer Hermes delegates
+    # commands.catalog to command_discovery; patch that module instead.
+    methods_source = targets["catalog"].read_text(encoding="utf-8")
+    if "from tui_gateway.command_discovery import command_catalog" in methods_source:
+        discovery = root / "tui_gateway" / "command_discovery.py"
+        if not discovery.is_file():
+            raise RuntimeError("Hermes command catalog delegate missing: tui_gateway/command_discovery.py")
+        targets["catalog"] = discovery
 
     states = {
         "skill_commands": patch_skill_commands(targets["skill_commands"]),
@@ -203,9 +232,90 @@ def self_test() -> None:
         if 'if not info.get("slash_suggest", True):' not in interactive_catalog_path.read_text(encoding="utf-8"):
             raise RuntimeError("self-test: interactive catalog visibility filter missing")
 
+        # Hermes >= 2026-10-14 extracted catalog and completion into
+        # tui_gateway.command_discovery; preserve direct dispatch via the
+        # untouched get_interactive_skill_commands() registry.
+        methods_path = root / "tui_gateway" / "methods_tools.py"
+        methods_path.write_text(
+            '''def catalog():
+    from tui_gateway.command_discovery import command_catalog
+    return command_catalog()
+''', encoding="utf-8")
+        discovery_path = root / "tui_gateway" / "command_discovery.py"
+        discovery_path.write_text(
+            '''import contextlib
+
+def _catalog_skills(cat, skills, module_loader):
+    sc = module_loader("agent.skill_commands")
+    for k, info in sorted(sc.get_interactive_skill_commands().items()):
+        cat.pairs.append([k, str(info.get("description", "Skill"))])
+        name = str(info.get("name") or k.lstrip("/"))
+        skills[k] = {"usage": 0, "origin": "local"}
+    return ""
+
+def slash_completions(get_interactive_skill_commands, get_skill_bundles):
+    with contextlib.nullcontext():
+        skill_commands, skill_bundles = dict(get_interactive_skill_commands()), dict(get_skill_bundles())
+    return skill_commands
+''', encoding="utf-8")
+        states = patch_root(root)
+        if states != {"skill_commands": "already-patched",
+                      "completion": "already-patched", "catalog": "patched"}:
+            raise RuntimeError(f"self-test: split catalog not selected: {states}")
+        if patch_root(root) != {key: "already-patched" for key in states}:
+            raise RuntimeError("self-test: split command discovery patch not idempotent")
+        if MARKER in methods_path.read_text(encoding="utf-8"):
+            raise RuntimeError("self-test: delegated methods_tools must remain unchanged")
+
+        # Exercise BOTH actual suggestion projections using visible/hidden/
+        # unspecified skills. The source registry must remain executable.
+        entries = {
+            "/visible": {"name": "visible", "description": "Public", "slash_suggest": True},
+            "/internal": {"name": "internal", "description": "Internal", "slash_suggest": False},
+            "/plugin:other": {"name": "other", "description": "Plugin"},
+        }
+        class SkillSource:
+            @staticmethod
+            def get_interactive_skill_commands():
+                return entries
+
+        namespace: dict = {}
+        exec(compile(discovery_path.read_text(encoding="utf-8"),
+                     str(discovery_path), "exec"), namespace)
+        class Catalog:
+            def __init__(self):
+                self.pairs = []
+
+        catalog = Catalog()
+        catalog_skills = {}
+        namespace["_catalog_skills"](catalog, catalog_skills, lambda _: SkillSource)
+        if {key for key, _ in catalog.pairs} != {"/visible", "/plugin:other"}:
+            raise RuntimeError("self-test: split catalog leaked hidden slash skill")
+        if set(catalog_skills) != {"/visible", "/plugin:other"}:
+            raise RuntimeError("self-test: split catalog metadata leaked hidden skill")
+        inline = namespace["slash_completions"](SkillSource.get_interactive_skill_commands,
+                                                 lambda: {})
+        if set(inline) != {"/visible", "/plugin:other"} or "/internal" not in entries:
+            raise RuntimeError("self-test: inline completion or explicit skill registry changed")
+
+        # Unknown future layouts must fail explicitly rather than silently
+        # exposing internal skills in suggestion surfaces.
+        bad_discovery = discovery_path.read_text(encoding="utf-8")
+        discovery_path.write_text("def command_catalog():\n    return {}\n", encoding="utf-8")
+        try:
+            patch_root(root)
+        except RuntimeError as exc:
+            if "expected exactly one patch anchor" not in str(exc):
+                raise
+        else:
+            raise RuntimeError("self-test: unknown discovery layout was silently accepted")
+        discovery_path.write_text(bad_discovery, encoding="utf-8")
+
         skill_text = (root / "agent" / "skill_commands.py").read_text(encoding="utf-8")
         completion_text = (root / "hermes_cli" / "commands_completion.py").read_text(encoding="utf-8")
-        catalog_text = (root / "tui_gateway" / "methods_tools.py").read_text(encoding="utf-8")
+        # The split catalog owns the suggestion filter; methods_tools is now
+        # only a dispatcher and deliberately remains unchanged by this patch.
+        catalog_text = discovery_path.read_text(encoding="utf-8")
         for needle, haystack in (
             ('hermes_metadata.get("slash_suggest")', skill_text),
             ('HERMES_SLASH_SUGGEST_POLICY', skill_text),

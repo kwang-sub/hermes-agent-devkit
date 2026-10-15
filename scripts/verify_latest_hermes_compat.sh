@@ -238,7 +238,15 @@ PY
 
         grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/agent/skill_commands.py
         grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/hermes_cli/commands_completion.py
-        grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/tui_gateway/methods_tools.py
+        # Hermes 2026-10 extracted the catalog into command_discovery.
+        # Validate whichever module actually owns suggestions; never skip it.
+        if grep -q "from tui_gateway.command_discovery import command_catalog" /opt/hermes/tui_gateway/methods_tools.py; then
+            test -f /opt/hermes/tui_gateway/command_discovery.py
+            grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/tui_gateway/command_discovery.py
+            /opt/hermes/.venv/bin/python -m py_compile /opt/hermes/tui_gateway/command_discovery.py
+        else
+            grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/tui_gateway/methods_tools.py
+        fi
         test -f /opt/hermes/tools/approval_detection.py
         test -f /opt/hermes/tools/approval_floors.py
         test -f /opt/hermes/hermes_cli/config_migrations.py

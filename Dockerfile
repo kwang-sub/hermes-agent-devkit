@@ -115,7 +115,12 @@ RUN test -x /opt/hermes/.venv/bin/hermes \
     && /opt/hermes/.venv/bin/hermes --help >/dev/null \
     && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/agent/skill_commands.py \
     && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/hermes_cli/commands_completion.py \
-    && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/tui_gateway/methods_tools.py \
+    && if grep -q 'from tui_gateway.command_discovery import command_catalog' /opt/hermes/tui_gateway/methods_tools.py; then \
+         grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/tui_gateway/command_discovery.py \
+         && /opt/hermes/.venv/bin/python -m py_compile /opt/hermes/tui_gateway/command_discovery.py; \
+       else \
+         grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/tui_gateway/methods_tools.py; \
+       fi \
     && /opt/hermes/.venv/bin/python -m py_compile \
        /opt/hermes/tools/approval_detection.py \
        /opt/hermes/tools/approval_floors.py \
