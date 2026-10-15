@@ -248,6 +248,12 @@ Verification Approval: APPROVED
 
 환경 의존 검증의 provider는 구현 후 Coder가 새로 선정하지 않는다. 승인 provider가 unavailable이면 로컬 DB, Docker, Testcontainers, 외부 서비스 등 다른 provider로 자동 fallback하지 않고 `VERIFICATION_PROVIDER_UNAVAILABLE` evidence와 함께 차단/재승인 경로로 넘긴다. 프로젝트가 제공하는 canonical verification이 승인되어 있으면 그 경로를 우선 사용하며 Hermes 공용 검증 인프라를 임의 생성하지 않는다. Direct Flow에는 이 Standard 전용 계약을 강제하지 않는다.
 
+## UI Review Handoff — UI_REVIEW_HANDOFF_V1
+
+UI Work Unit은 승인된 `UI_VERIFICATION_SELECTION_V1`의 `AC Evidence Map`, `Required Checks`, `Optional Checks`, `Not Applicable`, `Required AC Outstanding`을 실제 evidence와 대조한다. `Review Readiness: READY`는 승인 필수 AC의 유효한 증거와 Workspace/Scope 정합성이 갖춰진 경우에만 가능하며, `Completion Eligibility: REVIEW_PENDING`은 Reviewer 심사 전이지 DONE 허가가 아니다. 승인 필수 AC 미확인·검증 환경 차단이면 `Review Readiness: BLOCKED_REQUIRED`와 `Completion Eligibility: BLOCKED_REQUIRED`로 기록하고 기존 `kanban_block`을 사용한다. OPTIONAL 시각 검사 NOT_RUN/BLOCKED_ENV만으로 REQUIRED로 재분류하거나 Reviewer 인계를 막지 않는다. OPTIONAL 검사에서 관측된 실제 P0/P1 결함은 `Optional Findings`와 위험 근거로 인계한다.
+
+현재 Kanban에 사전 Review 전이가 따로 없으므로 필수 검증 미완료 상태의 `kanban_request_review`는 여전히 금지한다. 새로운 상태/API나 Provider를 만들지 않고 기존 claim-bound Review Cycle을 재사용한다. 승인된 기존 Task/Recovery 필수 Method 변경은 반드시 재승인한다.
+
 ## Browser execution boundary
 
 Frontend UI에 브라우저 의존 AC가 있으면 `dev-frontend-test`의 Browser Verification Contract V1을

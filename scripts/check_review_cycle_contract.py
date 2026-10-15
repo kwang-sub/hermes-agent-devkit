@@ -254,6 +254,16 @@ def main() -> int:
         failures,
     )
 
+    # The Review/Completion distinction does not add a new Kanban lifecycle status.
+    for path in (CODER_CYCLE, REVIEWER_CYCLE, CODER_PROTOCOL, REVIEWER_PROTOCOL):
+        require(path, ("UI_REVIEW_HANDOFF_V1", "Required Checks", "Optional Checks",
+                       "kanban_request_review", "kanban_complete", "kanban_block"), failures)
+    require(IMPLEMENT, ("UI_REVIEW_HANDOFF_V1", "Review Readiness: READY",
+                        "Completion Eligibility: REVIEW_PENDING", "BLOCKED_REQUIRED"), failures)
+    require(REVIEW, ("UI_REVIEW_HANDOFF_V1", "Required AC Outstanding",
+                     "kanban_complete", "OPTIONAL"), failures)
+    require(DISPATCH, ("UI_REVIEW_HANDOFF_V1", "AC Evidence Map", "Required Checks"), failures)
+
     for removed in (
         ROOT / "custom-skills/coder/dev-fast-flow",
         ROOT / "custom-skills/coder/dev-direct-flow",

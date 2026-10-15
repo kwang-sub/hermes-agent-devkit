@@ -67,6 +67,14 @@ Coder approved model/provider
 
 Direct Task가 승인 scope를 벗어나면 Coder가 `DIRECT_SCOPE_EXCEEDED`로 block하고 Orchestrator가 Standard Flow/Requirement Delta로 재분류한다.
 
+## UI_REVIEW_HANDOFF_V1 — UI 검증 인계
+
+- Coder: 승인 `Required Checks`와 `Required AC Outstanding: NONE`의 실제 evidence 확보 후에만 `Review Readiness: READY` 및 `Completion Eligibility: REVIEW_PENDING`으로 인계한다.
+- `Optional Checks` / NOT_APPLICABLE: 단순 NOT_RUN/BLOCKED_ENV는 최종 인계 차단이 아니다. 그러나 실측 P0/P1 제품 결함은 별도 finding으로 남긴다.
+- REQUIRED 미확인/환경 blocker: `Review Readiness: BLOCKED_REQUIRED`, `Completion Eligibility: BLOCKED_REQUIRED`; 기존 `kanban_block`과 승인 Recovery를 유지한다.
+- Reviewer: 승인 AC·scope·cleanup·증적을 독립 검토하고 P0/P1 및 승인 필수 검증을 확인해야 `kanban_complete`한다.
+- 실제 Kanban pre-review API를 확인하기 전에는 검증 미완료 사전 Review 또는 `done` 상태를 새로 만들지 않는다. 모델 전이와 작업 소유권은 기존 Trusted Lifecycle을 통과한다.
+
 ## 7. 완료 의미
 
 ```text

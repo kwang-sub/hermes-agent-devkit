@@ -197,6 +197,10 @@ TRANSIENT
 UNKNOWN
 ```
 
+## UI 검증 계약과 Recovery — UI_REVIEW_HANDOFF_V1
+
+UI Task의 `UI_VERIFICATION_SELECTION_V1` 분류는 Original 승인 계약과 Latest Approved Recovery Revision을 합성해 읽는다. 새로운 정책 적용만으로 과거 `Required Checks`나 `Required AC Outstanding`을 지우거나 OPTIONAL로 낮추지 않는다. REQUIRED 범위/Method 변경은 명시적 승인 Revision이 필요하다. 선택 검증의 환경 오류는 이미 통과한 독립 REQUIRED 증거를 무효화하지 않는다. Provider/Workspace/승인 소유권 변경 없이 같은 Card의 복구 원칙을 유지한다.
+
 ## 5. Recovery Mode 판정
 
 ### RETRY_SAME_CONTRACT

@@ -25,6 +25,8 @@ def aggregate(checks: list[dict], required: list[str], cleanup: dict) -> dict:
         raise ValueError('duplicate verification ID')
     outstanding = [key for key in required if by_id.get(key, {}).get('status') != 'PASS']
     failed = [key for key in required if by_id.get(key, {}).get('status') == 'FAIL']
+    optional_outstanding = [c['id'] for c in checks
+                            if c['id'] not in required and c['status'] != 'PASS']
     if not required:
         status, reason = 'NOT_RUN', 'NO_REQUIRED_CHECKS'
     elif failed:
@@ -36,7 +38,8 @@ def aggregate(checks: list[dict], required: list[str], cleanup: dict) -> dict:
     else:
         status, reason = 'PASS', 'REQUIRED_CHECKS_CONFIRMED'
     return {**outcome(status, reason), 'verification_final': status == 'PASS',
-            'required_outstanding': outstanding, 'failed_checks': failed}
+            'required_outstanding': outstanding, 'failed_checks': failed,
+            'optional_outstanding': optional_outstanding}
 
 
 def validate_report(data: dict) -> None:
@@ -89,7 +92,8 @@ class Suite:
         if kind not in KINDS or not key or any(c['id'] == key for c in self.report['checks']):
             raise ValueError('unknown check kind or duplicate ID')
         known = {c['id']: c for c in self.report['checks']}
-        entry = {'id': key, 'kind': kind, 'status': 'NOT_RUN', 'context': context or {},
+        entry = {'id': key, 'kind': kind, 'criticality': 'REQUIRED' if key in self.required else 'OPTIONAL',
+                 'status': 'NOT_RUN', 'context': context or {},
                  'depends': list(depends), 'evidence': '', 'started_at': time.monotonic()}
         self.report['checks'].append(entry)
         self.save()  # A crash must not erase the attempted check or earlier results.

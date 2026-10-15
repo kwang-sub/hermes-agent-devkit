@@ -113,6 +113,12 @@ Reviewer는 diff가 Current Deliverable과 Excluded Follow-up Scope를 넘었는
 
 Follow-up Work Unit을 현재 Task에 구현하도록 요구하지 않는다.
 
+## UI Review Handoff — UI_REVIEW_HANDOFF_V1
+
+UI 변경이면 승인된 `UI_VERIFICATION_SELECTION_V1` Scope Decision과 Coder의 `AC Evidence Map` / `Required Checks` / `Optional Checks` / `Not Applicable` / `Required AC Outstanding`을 실제 Task·diff·증적과 대조한다. `Review Readiness: READY`는 코드 리뷰 착수 조건일 뿐 `Completion Eligibility: REVIEW_PENDING`은 DONE 판정이 아니다. `Required AC Outstanding`이 있거나 REQUIRED의 PASS 근거·유효한 cleanup이 없으면 `kanban_complete` 금지; 현재 Lifecycle에 없는 사전 리뷰 전이를 발명하지 않는다.
+
+OPTIONAL의 NOT_RUN·BLOCKED_ENV는 승인 REQUIRED가 아니라면 자동 P0/P1 또는 Blocker로 승격하지 않는다. 그러나 OPTIONAL에서 관측된 실제 P0/P1 제품 결함은 무시하지 않고 수정 요청한다. 추가 E2E/viewport/visual을 필수로 요청하려면 승인 AC 또는 미해결 P0/P1 위험 근거를 남긴다. Reviewer 독립성·Provider/Workspace 승인 계약과 기존 완료 Gate를 유지한다.
+
 ## Verification Evidence Reuse
 
 Git Workspace에서는 Coder의 `Verification Final: true`, `Verification Level`, command/result, verification/effective scope fingerprint, `Work Unit Boundary Respected: true`가 실제 diff와 일치하면 PASS evidence를 재사용한다. Reviewer는 독립성 확보만을 이유로 `STATIC_COMPILE`을 `PACKAGE_BUILD`로 승격하지 않으며, 더 높은 수준이 필요하면 build/dependency/packaging/deployment/framework build-time 영향 또는 uncovered P0/P1 behavior 근거를 명시한다. 동일 scope PASS를 독립성 확보만을 이유로 반복 실행하지 않는다. Coder의 `IMPACT_SUMMARY`는 review 탐색의 navigation evidence로 재사용하며, 실제 diff/requirement와 충돌하지 않는 한 같은 caller/history/security 범위를 repository-wide로 다시 탐색하지 않는다. 단, Impact Summary 자체가 diff보다 우선하는 source of truth는 아니다. Non-Git Workspace에는 fingerprint 재사용 Gate가 없으므로 선언된 변경 파일을 직접 읽고 필요한 최소 verification을 fresh 실행한다.

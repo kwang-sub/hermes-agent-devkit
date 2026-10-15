@@ -20,7 +20,7 @@ from test_managed_dialog_evidence import fixture
 from ui_runtime.capture import TimeBudget, capture, png_dimensions
 from ui_runtime.process import live_group, stop_owned
 from ui_runtime.result import outcome
-from ui_runtime.suite import Suite, Unsupported, aggregate
+from ui_runtime.suite import Suite, Unsupported, EnvironmentBlocked, aggregate
 
 
 def png(width=2, height=2):
@@ -82,6 +82,30 @@ class SuiteTests(unittest.TestCase):
             r=s.finish({'status':'PASS'})
             self.assertFalse(r['verification_final']); self.assertEqual(r['required_outstanding'],['image'])
             self.assertEqual(r['checks'][1]['status'],'PASS')
+    def test_optional_visual_environment_block_does_not_override_required_result(self):
+        with tempfile.TemporaryDirectory() as temp:
+            s = Suite(Path(temp), task_id='t', required=['behavior'], scope='UI approval')
+            visual = s.check('optional-korean-capture', 'visual',
+                             lambda: (_ for _ in ()).throw(EnvironmentBlocked('font missing')))
+            behavior = s.check('behavior', 'functional', lambda: True)
+            report = s.finish({'status': 'PASS'})
+            self.assertEqual(visual['criticality'], 'OPTIONAL')
+            self.assertEqual(behavior['criticality'], 'REQUIRED')
+            self.assertTrue(report['verification_final'])
+            self.assertEqual(report['optional_outstanding'], ['optional-korean-capture'])
+            self.assertEqual(report['required_outstanding'], [])
+            self.assertEqual(report['execution_status'], 'PASS')
+
+    def test_required_browser_environment_block_still_prevents_completion(self):
+        with tempfile.TemporaryDirectory() as temp:
+            s = Suite(Path(temp), task_id='t', required=['native-beforeunload'], scope='UI approval')
+            s.check('native-beforeunload', 'functional',
+                    lambda: (_ for _ in ()).throw(EnvironmentBlocked('browser unavailable')))
+            report = s.finish({'status': 'PASS'})
+            self.assertFalse(report['verification_final'])
+            self.assertEqual(report['required_outstanding'], ['native-beforeunload'])
+            self.assertEqual(report['execution_status'], 'INCONCLUSIVE')
+
     def test_only_explicit_dependencies_block(self):
         with tempfile.TemporaryDirectory() as temp:
             s=Suite(Path(temp),task_id='t',required=['static'],scope='local')

@@ -53,6 +53,10 @@ Standard / Direct / Recovery / CHANGES_REQUESTED는 `/opt/data/shared/references
 
 `unavailable`만으로 BLOCK하지 않는다. Task/Workspace/승인·검증·lifecycle 오류는 기존 blocker를 유지한다. Reviewer ID를 Coder 누락에 대신 넣거나 새 Recovery 세션으로 과거 미확인이 복구됐다고 기록하지 않는다.
 
+## UI_REVIEW_HANDOFF_V1: Review 준비와 최종 완료 구분
+
+UI 작업은 `Review Readiness: READY | BLOCKED_REQUIRED`와 `Completion Eligibility: REVIEW_PENDING | BLOCKED_REQUIRED`를 별도로 표시한다. `Required Checks` / `Optional Checks`는 승인된 `UI_VERIFICATION_SELECTION_V1`에서 결정한다. REQUIRED 모두 충족하고 OPTIONAL만 NOT_RUN/BLOCKED_ENV이면 정상 `kanban_request_review`가 가능하다. 필수 검증 미확인인 경우 `kanban_block`을 유지하며 사전 코드 리뷰를 새 Kanban 상태로 가장하지 않는다. Reviewer는 승인 필수 검증·P0/P1 확인 후에만 `kanban_complete` 할 수 있다. 기존 claim-bound review-enter / changes-return을 변경하지 않는다.
+
 ## 허용 전이
 - `Flow: DIRECT | STANDARD` Coder 구현 완료 → verification/handoff evidence → `kanban_request_review`.
 - Reviewer APPROVED → `kanban_complete`.

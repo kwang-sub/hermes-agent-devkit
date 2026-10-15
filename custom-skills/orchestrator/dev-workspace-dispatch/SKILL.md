@@ -29,6 +29,10 @@ Standard 승인 계획에 관련 기능 문서가 있으면 문서 경로·해�
 
 Coder/Reviewer는 기존 구현·검증 근거를 제공하며 문서 검색·연결 변경·기능 범위 확장을 반복하지 않는다. Orchestrator가 기존 진행 조회/마무리에서 문서 상태를 관찰 기반으로 보완한다. 카드 생성/대기만으로 진행 중으로 기록하지 않는다. 문서 상태를 위해 새 Task, callback, notifier 변경을 만들지 않는다.
 
+## UI 검증 인계 범위 — UI_REVIEW_HANDOFF_V1
+
+UI 작업의 승인 계획에 `UI_VERIFICATION_SELECTION_V1` 범위 결정이 있으면 기존 Task Body의 승인 내용으로 `AC Evidence Map`, `Required Checks`, `Optional Checks`, `Not Applicable`, `Required AC Outstanding`을 보존한다. 새로운 kanban_create 필드, 추가 승인 Gate 또는 별도 Provider를 만들지 않는다. OPTIONAL을 임의로 REQUIRED로 승격하지 않고, 승인된 필수 AC/Method를 Coder가 축소할 수도 없도록 한다. Reviewer 전이는 기존 `kanban_request_review`만 사용한다.
+
 ## 1. 진입 조건
 - 실행 계획 + 검증 계획 승인 완료
 - Verification Contract에 Target/Method/Provider/Environment Dependency/Required Environment/Lifecycle/Fallback Policy 존재
