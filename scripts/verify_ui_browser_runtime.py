@@ -16,7 +16,7 @@ def main():
     parser.add_argument('--hermes-root',default='/opt/hermes')
     parser.add_argument('--mode',choices=['hermes','cdp-test'],default='hermes')
     parser.add_argument('--chrome',help='Existing executable; development cdp-test mode only')
-    parser.add_argument('--features',default='',help='Approved optional capabilities: upload,download,popup,frame,clipboard')
+    parser.add_argument('--features',default='',help='Approved optional capabilities: korean-font,upload,download,popup,frame,clipboard')
     args=parser.parse_args()
     if args.profile_home:
         if not args.profile_home.is_dir():parser.error('profile-home is missing')

@@ -9,11 +9,12 @@ import sys
 from .artifacts import atomic_json
 from .browser import Locator
 from .extensions import OptionalOperations
+from .fonts import probe_korean_font
 from .suite import Suite
 
-HTML = b'''<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
+HTML = '''<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DevKit UI smoke</title><style>body{font:18px sans-serif;margin:24px}input,button,select{padding:8px;max-width:90%}iframe{width:260px;height:120px}</style>
-<h1>UI fixture</h1><label for="name">Name</label><input id="name"><button id="save">Save</button>
+<h1>UI fixture</h1><p id="ko-font" style="font-family:'Noto Sans CJK KR', sans-serif">가나다 한글 화면 검증</p><label for="name">Name</label><input id="name"><button id="save">Save</button>
 <p role="status" id="result"></p><label><input type="checkbox" id="active">Active</label>
 <label for="choice">Choice</label><select id="choice"><option value="a">A</option><option value="b">B</option></select>
 <button id="route">Route</button><button id="confirm">Confirm</button><button id="popup">Popup</button>
@@ -26,7 +27,7 @@ document.querySelector('#route').onclick=()=>history.pushState({},'', '/route');
 document.querySelector('#confirm').onclick=()=>window.answer=confirm('Fixture dialog');
 document.querySelector('#popup').onclick=()=>window.open('/popup');
 window.addEventListener('beforeunload',e=>{if(window.dirty){e.preventDefault();e.returnValue=''}});
-</script>'''
+</script>'''.encode('utf-8')
 PAYLOAD = b'DevKit approved sample export\n'
 FRAME = b'<!doctype html><label for="child">Child</label><input id="child"><button id="child-button">Child button</button>'
 
@@ -45,7 +46,7 @@ class Fixture(BaseHTTPRequestHandler):
 def probe(args):
     core = ['browser','navigate','input','keyboard','select','dialog','viewport','screenshot','spa']
     enabled = set(args.features.split(',')) if args.features else set()
-    if not enabled.issubset({'upload','download','popup','frame','clipboard'}):
+    if not enabled.issubset({'upload','download','popup','frame','clipboard','korean-font'}):
         raise ValueError('unknown optional feature')
     suite = Suite(args.output.parent/'checks',task_id='ui-smoke',required=core+sorted(enabled),
                   provider='browser_exec' if args.mode=='hermes' else 'cdp-test',
@@ -93,6 +94,8 @@ def probe(args):
         p=state['page'];before=p.evaluate('performance.timeOrigin')
         p.click(Locator(selector='#route'));p.wait_route('/route',ready='!!document.querySelector("#save")')
         return p.evaluate('performance.timeOrigin')==before
+    def korean_font():
+        return probe_korean_font(state['page'], '#ko-font', '가나다')
     def upload():
         path=suite.directory/'sample.txt';path.write_bytes(PAYLOAD)
         return state['optional'].upload(Locator(selector='#upload'),[path],approved_root=suite.directory)
@@ -110,8 +113,9 @@ def probe(args):
     def clipboard():return state['optional'].clipboard_roundtrip('DevKit owned clipboard sample')
     operations = {'browser':start,'navigate':navigate,'input':input_check,'keyboard':keyboard,'select':select,
                   'dialog':dialog,'viewport':viewport,'screenshot':screenshot,'spa':spa,
-                  'upload':upload,'download':download,'popup':popup,'frame':frame,'clipboard':clipboard}
-    kinds={'screenshot':'visual','viewport':'responsive','keyboard':'accessibility','browser':'capability','navigate':'capability'}
+                  'upload':upload,'download':download,'popup':popup,'frame':frame,'clipboard':clipboard,
+                  'korean-font':korean_font}
+    kinds={'screenshot':'visual','viewport':'responsive','keyboard':'accessibility','browser':'capability','navigate':'capability','korean-font':'capability'}
     try:
         for key in core+sorted(enabled):
             depends=[] if key=='browser' else ['browser'] if key=='navigate' else ['navigate']

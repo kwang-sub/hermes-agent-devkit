@@ -307,6 +307,8 @@ run_check "Recovery Korean plan presentation and render" python3 scripts/test_re
 run_check "Browser capability evidence contract" python3 scripts/test_browser_verification_evidence.py
 run_check "Browser dialog trace classifier" python3 scripts/test_browser_dialog_trace.py
 run_check "Browser runtime adapter lifecycle" python3 scripts/test_browser_runtime_adapter.py
+run_check "Risk-based UI selection contract" python3 scripts/check_ui_verification_selection_contract.py
+run_check "UI Suite and Korean font unit regressions" python3 -m unittest discover -s scripts -p "test_ui_*.py" -v
 run_check "Managed browser launcher dialog policy" python3 scripts/test_managed_dialog_policy.py
 run_check "Managed native dialog evidence" python3 scripts/test_managed_dialog_evidence.py
 run_check "Managed browser runtime integration" python3 scripts/test_managed_runtime_integration.py

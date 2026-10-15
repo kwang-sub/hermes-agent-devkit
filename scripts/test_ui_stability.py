@@ -172,6 +172,22 @@ class AdapterTests(unittest.TestCase):
             a=self.execute(temp,fixture()); b=self.execute(temp,fixture())
             self.assertNotEqual(a['attempt_dir'],b['attempt_dir'])
             self.assertTrue((Path(a['attempt_dir'])/'browser-runtime-report.json').exists())
+    def test_owned_fixture_server_loss_short_circuits_probe_timeout(self):
+        server_script = ("import http.server,threading,time,sys\n"
+                         "srv=http.server.ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),http.server.SimpleHTTPRequestHandler)\n"
+                         "threading.Thread(target=srv.serve_forever,daemon=True).start()\n"
+                         "time.sleep(1.5)\n")
+        with tempfile.TemporaryDirectory() as temp:
+            started = time.monotonic()
+            report = run([sys.executable, '-c', server_script, '{port}'],
+                         [sys.executable, '-c', 'import time; time.sleep(20)'],
+                         Path(temp), 'fixture', 'browser_exec',
+                         startup_timeout=5, probe_timeout=10)
+            self.assertLess(time.monotonic() - started, 6)
+            self.assertEqual(report['classification'], 'SERVER_LOST')
+            self.assertEqual(report['execution_status'], 'BLOCKED_ENV')
+            self.assertEqual(report['cleanup']['status'], 'PASS')
+
     def test_timeout_and_interruption_record_cleanup(self):
         with tempfile.TemporaryDirectory() as temp:
             r=run([sys.executable,'-m','http.server','{port}','--bind','127.0.0.1'],

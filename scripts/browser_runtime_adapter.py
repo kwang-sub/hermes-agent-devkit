@@ -91,6 +91,22 @@ def _diagnose(raw: dict) -> dict:
     return analyze(raw)
 
 
+def _await_probe(probe: subprocess.Popen, server: subprocess.Popen,
+                 seconds: float) -> dict:
+    """Stop waiting when the owned fixture server disappears, not at the long probe timeout."""
+    deadline = time.monotonic() + seconds
+    while True:
+        exit_code = probe.poll()
+        if exit_code is not None:
+            return {'probe_exit_code': exit_code}
+        if server.poll() is not None:
+            return {'classification': 'SERVER_LOST'}
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return {'classification': 'PROBE_TIMEOUT'}
+        time.sleep(min(0.1, remaining))
+
+
 def run(server_command: list[str], probe_command: list[str], artifact_dir: Path,
         task_id: str, provider: str, startup_timeout: float = 25,
         probe_timeout: float = 45, cwd: Path | None = None,
@@ -149,12 +165,10 @@ def run(server_command: list[str], probe_command: list[str], artifact_dir: Path,
                             stdout=probe_log, stderr=subprocess.STDOUT,
                             start_new_session=(os.name == "posix"))
                         try:
-                            report["probe_exit_code"] = probe_proc.wait(timeout=probe_timeout)
-                        except subprocess.TimeoutExpired:
-                            report["classification"] = "PROBE_TIMEOUT"
+                            report.update(_await_probe(probe_proc, proc, probe_timeout))
                         finally:
                             cleanup_errors.extend(_stop(probe_proc))
-                    if report["classification"] != "PROBE_TIMEOUT":
+                    if report["classification"] not in ("PROBE_TIMEOUT", "SERVER_LOST"):
                         if not raw_path.is_file():
                             report["classification"] = "PROBE_EVIDENCE_MISSING"
                         else:

@@ -4,6 +4,12 @@
 그 도구가 있으면 그대로 사용하고, Hermes 경로에서만 반복되는 실행 코드를 재사용한다.
 제품 소스·인증·dependency·Provider를 검증 편의로 변경하지 않는다.
 
+## 한글 Browser 렌더링 Capability
+
+DevKit의 production 이미지와 `hermes-ui-smoke` 이미지에 `fontconfig` 및 `fonts-noto-cjk`를 설치한다. 승인된 한글 시각 검증이 필요한 경우에만 `verify_ui_browser_runtime.py --features korean-font`로 독립된 fixture를 검사한다. Fixture의 `가나다`에 대해 Browser `CSS.getPlatformFontsForNode`가 실제 Noto Sans CJK 글리프 사용을 보고해야 한다. 단순 `fc-list` 성공, PNG 파일 존재 또는 폰트 설치만으로 실제 제품 디자인 PASS를 선언하지 않는다. Capability BLOCKED_ENV는 제품 FAIL이 아니며 독립 기능 검증은 계속할 수 있다.
+
+검증 중 소유 HTTP fixture 서버가 종료되면 Adapter는 Probe 종료 시간까지 기다리지 않고 `SERVER_LOST`로 기록하고 해당 소유 프로세스만 정리한다. 이는 공통 Adapter의 fixture에 적용하며 외부 제품 harness 서버의 lifecycle까지 검증했다고 주장하지 않는다.
+
 ## 실행 안정성
 
 `ui_runtime.suite.Suite`는 승인된 필수 AC ID 목록을 받아 검사별 결과를 즉시 저장한다.

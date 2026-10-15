@@ -127,6 +127,13 @@ RUN test -x /opt/hermes/.venv/bin/hermes \
 
 # Minimal opt-in browser smoke image; no Git/JDK/application build is needed.
 FROM hermes-upstream-patched AS hermes-ui-smoke
+USER root
+# The managed Chromium used by UI verification must be able to render Korean.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fontconfig fonts-noto-cjk \
+    && fc-cache -f \
+    && fc-list :lang=ko family | grep -q 'Noto Sans CJK' \
+    && rm -rf /var/lib/apt/lists/*
 COPY scripts/ui_runtime /opt/devkit/bin/ui_runtime
 COPY scripts/browser_runtime_adapter.py scripts/browser_dialog_trace.py scripts/managed_dialog_evidence.py scripts/verify_ui_browser_runtime.py /opt/devkit/bin/
 COPY custom-skills/_lib/process_execution.py /opt/devkit/bin/devkit_process_execution.py
@@ -198,6 +205,10 @@ RUN apt-get update && \
         less \
         util-linux \
         gh \
+        fontconfig \
+        fonts-noto-cjk \
+    && fc-cache -f \
+    && fc-list :lang=ko family | grep -q 'Noto Sans CJK' \
     && curl -fsSL \
         "https://www.kernel.org/pub/software/scm/git/git-${GIT_VERSION}.tar.xz" \
         -o /tmp/git.tar.xz \
