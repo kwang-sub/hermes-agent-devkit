@@ -4,6 +4,8 @@ Applies to Direct, Standard, Recovery and CHANGES_REQUESTED frontend work.
 이 문서는 실행 정책이며 새 브라우저 Provider나 프로젝트 테스트 프레임워크가 아니다.
 실행 코드와 사용법은 `ui-runtime.md`, 네이티브 대화상자는 `managed-dialog-policy.md`를 참조한다.
 
+이 계약은 `UI_VERIFICATION_SELECTION_V1`이 선정한 Browser-dependent `REQUIRED/OPTIONAL` 검사에만 적용한다. 실제 브라우저가 필요한 native `beforeunload` 같은 기능을 좁게 검증하고, 다른 프로젝트 canonical test로 충족한 AC를 browser/viewport 매트릭스로 자동 확대하지 않는다. 선택적 시각 검사 실패는 독립 기능 검증의 선행 차단이 아니다.
+
 ## 검증 선택과 범위
 
 승인된 Verification Provider/Method/Environment와 프로젝트의 기존

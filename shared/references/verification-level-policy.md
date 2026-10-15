@@ -2,6 +2,10 @@
 
 이 문서는 Maven, Gradle, Node/TypeScript를 포함한 구현 검증의 공통 `VERIFICATION_LEVEL_POLICY_V1` 계약이다. 목적은 **변경 위험을 충분히 검증하는 최소 단계부터 시작하고, 실제 영향이 있을 때만 test 또는 package/build로 승격**하는 것이다.
 
+## UI 범위 선택 확장 — UI_VERIFICATION_SELECTION_V1
+
+Frontend UI가 변경 범위라면 `/opt/data/shared/references/ui-verification-selection-policy.md`를 함께 적용한다. AC는 검증 목적이고 Test Case는 증명 방법이다. 위험 및 승인된 AC를 근거로 REQUIRED / OPTIONAL / NOT_APPLICABLE을 결정한다. 기존 승인 REQUIRED 임의 하향 금지, 중복 viewport/browser 조합 최소화, OPTIONAL 환경 실패와 제품 FAIL 분리를 적용한다. 기존 `STATIC_COMPILE → TARGETED_TEST → PACKAGE_BUILD` 계층은 유지한다.
+
 ## 1. 우선순위
 
 검증 명령과 수준은 다음 순서를 따른다.

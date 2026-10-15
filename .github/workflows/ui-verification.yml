@@ -20,6 +20,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: UI verification selection contract
+        run: python scripts/check_ui_verification_selection_contract.py
       - name: UI runtime regressions
         run: python -m unittest discover -s scripts -p 'test_ui_*.py' -v
       - name: Existing dialog contracts

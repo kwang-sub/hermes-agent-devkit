@@ -191,6 +191,10 @@ API Impact: NONE | SHARED_CONTRACT | CONTRACT_CHANGE
 
 Frontend canonical Applicable Skill은 `dev-frontend-feature`. 필요 시 `dev-api-contract`, `dev-frontend-test`, `dev-ui-ux`를 hint로 추가한다. Node 기반 Frontend는 구현/검증 전에 Environment Gate가 필수이며 npm/yarn/bun 또는 pnpm 계약 미완성은 현재 기능 Task에서 자동 migration하지 않고 `PROJECT_TOOLCHAIN_MIGRATION_REQUIRED`로 분리한다. pnpm migration/dependency Work Unit에서 `ERR_PNPM_IGNORED_BUILDS`가 발생하는 경우 build-script 허용 결정 자체는 별도 Work Unit으로 쪼개지 않고 사용자 1회 승인 Gate로 처리한다. 첫 restore output과 isolated `pnpm ignored-builds`를 이용해 **현재 dependency graph의 미검토 matcher 전체를 먼저 수집**하고, package별 연속 BLOCK이 아니라 `SINGLE_REVIEW_BATCH` 하나로 승인/거부를 받는다. 승인 결과는 `pnpm-workspace.yaml > allowBuilds`에 exact package/version으로 기록하며 동일 matcher는 재승인하지 않는다. 동일 graph에서 batch 반영 후 새 matcher가 연속 발견되면 자동 반복하지 않고 discovery incomplete로 차단한다. 화면 차이만으로 Backend API를 superset DTO/중복 endpoint로 확대하지 않는다.
 
+## UI Verification Scope Decision
+
+Frontend UI Work Unit이면 `UI_VERIFICATION_SELECTION_V1`(`/opt/data/shared/references/ui-verification-selection-policy.md`)에 따라 승인 전에 `AC Evidence Map`, `Required Checks`, `Optional Checks`, `Not Applicable`, `Escalation Reason`을 기록한다. Browser / 시각 / Desktop·Mobile 전체 조합은 자동 필수가 아니다. 프로젝트 기존 테스트와 승인된 AC의 최소 충분 증적을 연결하고, 생성된 test matrix를 승인 AC로 승격하지 않는다. 명시 승인된 Provider/Method/viewport는 축소하지 않는다.
+
 ## Verification Plan 계약
 
 Standard Flow는 구현 전에 `/opt/data/shared/references/verification-level-policy.md`의 `VERIFICATION_LEVEL_POLICY_V1`로 검증 수준과 방식을 선정한다. 기본 후보는 `STATIC_COMPILE`이며 실제 behavior/AC가 필요하면 `TARGETED_TEST`, artifact/build 자체가 영향 범위일 때만 `PACKAGE_BUILD`로 승격한다. Coder가 구현 후 임의로 검증 provider를 발명하는 구조를 사용하지 않는다.

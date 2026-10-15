@@ -399,6 +399,10 @@ Reviewer는 기존 `dev-code-review`의 diff-first/verification reuse 계약을 
 - dependency 변경이 있으면 `dev-node-dependencies`의 package root/manager/lockfile/Tirith evidence를 확인한다.
 - Storybook/Playwright가 없는 프로젝트에 review 단계에서 새 dependency 도입을 강제하지 않는다.
 
+## UI 검증 선택
+
+`UI_VERIFICATION_SELECTION_V1`을 따르며 View Strategy=BOTH만으로 route × viewport × state 전체를 REQUIRED로 등록하지 않는다. SHARED/RESPONSIVE는 대표 레이아웃과 기능 증적을 재사용하며 SPLIT_VIEW 또는 다른 interaction에서만 범위를 확대한다. `CODE_DRIVEN` / DRAFT 이미지에는 승인된 시각 AC가 없는 한 `Design Conformance: NOT_REQUIRED`를 적용하고 레이아웃·가독성과 디자인 일치를 분리한다.
+
 ## Browser verification integration
 
 UI 작업에서 브라우저 동작 AC가 있으면 `dev-frontend-test/references/browser-verification.md`를

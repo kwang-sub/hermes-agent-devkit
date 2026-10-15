@@ -28,6 +28,10 @@ Cypress
 기타 프로젝트 고유 runner
 ```
 
+## UI 최소 충분 검증 정책
+
+`UI_VERIFICATION_SELECTION_V1`(`/opt/data/shared/references/ui-verification-selection-policy.md`)을 사용한다. Screen Spec F/UI/AC는 제품 요구 결과이며 모든 Test Case의 Browser 변환 지시가 아니다. `AC Evidence Map`으로 `REQUIRED | OPTIONAL | NOT_APPLICABLE`을 선정한다. 기존 unit/component/integration evidence가 충족하는 동일 AC를 무관한 browser/viewport 조합에서 자동 반복하지 않는다. Coder는 명시 승인된 필수 AC/Provider를 완화할 수 없다. OPTIONAL 검사에서 실제 P0/P1 결함이 발견되면 Reviewer가 이를 무시할 수 없다.
+
 ## Verification Mode
 
 ```text

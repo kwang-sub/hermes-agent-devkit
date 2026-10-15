@@ -131,6 +131,10 @@ choices:
 
 실제 model/provider는 승인 Tier를 기준으로 `flow_model_policy.py resolve --tier <DEFAULT|PREMIUM>`으로 한 번 해석한다. Reviewer는 항상 DEFAULT다. 자동 PREMIUM escalation은 금지한다.
 
+### UI 검증 범위 (Direct)
+
+UI 변경이 Direct 승인 범위에 있으면 `UI_VERIFICATION_SELECTION_V1`을 짧게 적용한다. AC와 project canonical test의 직접 매핑을 우선하고 `Required Checks` / `Optional Checks`를 구분한다. Browser 의존 AC나 승인 디자인이 없다면 모든 viewport/visual probe를 의무화하지 않는다. 새로운 Provider, Work Unit 또는 광범위한 환경 결정이 필요하면 기존 Direct → Standard 규칙을 적용하고 승인 AC/Method는 임의 하향하지 않는다.
+
 ## 6. Compact Plan
 
 Direct Plan은 source 분석 보고서가 아니라 **작고 명확한 실행 snapshot**이다. 일반 메시지에 최소 다음을 보여준다.

@@ -105,6 +105,8 @@ AC-01 형식의 ID를 사용한다. 모든 기능에는 최소 한 개의 관찰
 `AC-ID → F-ID → UI-ID → 실제 테스트/수동 증거 → PASS | FAIL | NOT_RUN`을 남긴다.
 기능 테스트와 이미지 일치/시각 회귀 검증을 별도로 보고한다.
 
+Screen Spec `AC-XX`는 관찰 가능한 제품 요구이며 Test Case의 수가 아니다. `UI_VERIFICATION_SELECTION_V1`에 따라 해당 AC를 증명하는 최소 실제 증적을 선택한다. F/UI/AC 구조 검사 성공이 모든 state × viewport × browser 검사를 REQUIRED로 만든다는 뜻은 아니다. 이미 승인한 AC/Verification Method의 변경에는 기존 승인 경로가 필요하다.
+
 ## 작성과 구현 순서
 
 화면 목적/범위 → 기능 목록 → UI 연결 → 동작/미확정 항목 → 검증 조건 → 승인 근거 → 구현 순서로 확인한다.
