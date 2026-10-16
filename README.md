@@ -5,9 +5,13 @@
 > ```powershell
 > git switch dev
 > git pull --ff-only origin dev
-> .\updatekit_lite.ps1
+> .\updatekit_lite.ps1 -SelfTest        # Git 인수 전달 회귀 검사 (Docker 불필요)
+> .\updatekit_lite.ps1 -MountSelfTest   # Docker inspect 마운트 형식 회귀 검사 (Docker 불필요)
+> .\updatekit_lite.ps1                  # 실제 기존 컨테이너의 마운트 검사 후 Lite 적용
 > docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit/lite hermes-dev /opt/hermes/.venv/bin/hermes -p default
 > ```
+>
+> 기존 컨테이너의 `/opt/data`가 Docker named volume이든 영속 host bind든 **실제 Docker inspect 결과를 검증한 후** 그대로 보존합니다. 컨테이너를 재생성하거나 데이터를 이동하지 않습니다.
 >
 > 상태 확인: `.\updatekit_lite.ps1 -Mode status` · 같은 브랜치에서 Standard 설정 복원: `.\updatekit_lite.ps1 -Mode standard` · 다시 Lite: `.\updatekit_lite.ps1`. Git Bash/WSL에서는 `./updatekit_lite.sh`를 사용합니다. 실제 PC의 Docker/인증 연결과 모델 응답은 별도로 확인합니다.
 

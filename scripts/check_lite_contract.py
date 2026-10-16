@@ -29,10 +29,13 @@ def check():
 
     required = {
         "PowerShell": (ps, (
-            '[string]$Mode = "lite"', 'Adapter "apply"', 'Adapter "restore"',
-            "CheckGit", "CheckContainer", "[switch]$SelfTest",
-            "Test-NativeArgumentForwarding", "& $Program @Arguments",
-            "--workdir /workspace/hermes-agent-devkit/lite",
+            '[string]$Mode = "lite"', 'Adapter -Action "apply"', 'Adapter -Action "restore"',
+            "Assert-DevkitCheckout", "Check-ExistingContainer", "[switch]$SelfTest",
+            "[switch]$MountSelfTest", "Test-GitForwarding", "Test-MountContract",
+            "Parse-MountJson", "Check-MountContract", 'AllowedTypes @("volume","bind")',
+            "Destination", "Workspace", "Source", "RW", "DataType",
+            "Copy-LiteAdapter", "Get-OverlayStatus", "Adapter -Action \"guard\"",
+            "& $Program @Arguments", "LiteWorkdir",
             "/opt/hermes/.venv/bin/hermes -p default", '"status"', '"standard"', '"lite"',
         )),
         "Bash": (sh, ("set -euo pipefail", "powershell.exe", "updatekit_lite.ps1")),
@@ -64,8 +67,10 @@ def check():
     import re
     assert not re.search(r"\[string\[\]\]\s*\$Args\b", ps, re.IGNORECASE)
     assert not re.search(r"@Args\b", ps, re.IGNORECASE)
-    assert "SwitchBranch $LiteBranch" not in ps, "Deleted Lite branch must not be required"
-    assert 'if ($Current -eq $LiteBranch) { SwitchBranch $StandardBranch }' in ps
+    assert "SwitchBranch" not in ps and "git switch" not in ps, "Mode switching must not modify Git branches"
+    assert 'if ($Contract.DataType -eq "bind")' in ps, "Host-bind backed data must be accepted safely"
+    assert 'Test-MountContract' in ps, "Mount regression test must exist"
+    assert 'Invoke-Checked -Program "docker"' in ps, "Docker calls must use checked argv wrapper"
 
     for term in ('docker compose down', '"down", "-v"', 'git reset',
                  'git clean', 'git stash', 'docker volume rm',

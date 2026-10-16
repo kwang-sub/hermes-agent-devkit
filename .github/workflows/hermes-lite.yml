@@ -70,3 +70,6 @@ jobs:
       - name: Exercise real Git argv forwarding in Windows PowerShell 5.1
         shell: powershell
         run: .\updatekit_lite.ps1 -SelfTest
+      - name: Verify Docker volume-bind mount parsing and guards on Windows PowerShell 5.1
+        shell: powershell
+        run: .\updatekit_lite.ps1 -MountSelfTest
