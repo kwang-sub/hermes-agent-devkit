@@ -133,7 +133,12 @@ try {
         Adapter "status"
     }
     elseif ($Mode -eq "lite") {
-        if ($Current -notin @($LiteBranch, $StandardBranch)) { throw "Unknown Devkit branch: $Current" }
+        # After PR #188 was merged, Lite/Standard live in the same checkout.
+        # A clean fix/feature branch may also run Lite if it includes this policy.
+        # No user/project Git branch is modified.
+        if (-not (Test-Path -LiteralPath (Join-Path $Root "lite\AGENTS.md") -PathType Leaf)) {
+            throw "Lite policy file is missing in the current Devkit checkout."
+        }
         if ($Current -eq $LiteBranch) { Adapter "guard" }
         # PR #188 was merged into dev; the deleted experiment branch is no
         # longer required. Apply the Lite overlay in the current checkout.
@@ -144,14 +149,13 @@ try {
         Write-Host "docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit/lite $Container /opt/hermes/.venv/bin/hermes -p default"
     }
     else {
-        if ($Current -notin @($LiteBranch, $StandardBranch)) {
-            throw "Unsupported Devkit branch: $Current"
-        }
+        # Restore only Lite profile overlays, regardless of the Devkit branch.
+        # The current checkout must still contain the Lite helper.
         Adapter "restore"
         # A pre-merge local Lite checkout can still return to dev, but no
         # branch switch is required for the merged/default dev configuration.
         if ($Current -eq $LiteBranch) { SwitchBranch $StandardBranch }
-        Write-Host "[PASS] Standard instructions restored on dev; shared data preserved."
+        Write-Host "[PASS] Standard profile policy restored; shared data preserved."
         Write-Host "Run .\update-devkit.ps1 for full Standard image and profile reconciliation when needed."
     }
 }
