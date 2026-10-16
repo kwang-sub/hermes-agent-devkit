@@ -17,6 +17,7 @@ def check():
     required = {
         "PowerShell": (ps, ("[string]$Mode = \"lite\"", 'Adapter "apply"',
                             'Adapter "restore"', "CheckGit", "CheckContainer",
+                            "--workdir",
                             '"status"', '"standard"', '"lite"')),
         "Bash": (sh, ("set -euo pipefail", "powershell.exe", "updatekit_lite.ps1")),
         "Adapter": (adapter, ("?mode=ro", "guard(root)", "profile-state.json",

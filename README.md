@@ -6,7 +6,7 @@
 > git fetch origin
 > git switch -c experiment/hermes-lite --track origin/experiment/hermes-lite
 > .\updatekit_lite.ps1
-> docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes
+> docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes
 > ```
 >
 > Lite 설정 상태: `.\updatekit_lite.ps1 -Mode status` · Standard 복귀(반드시 Lite 브랜치에서 실행): `.\updatekit_lite.ps1 -Mode standard` · 다시 Lite: `git switch experiment/hermes-lite; .\updatekit_lite.ps1`. 현재 PC의 Docker/인증 연결과 실제 모델 응답 검증은 별도로 필요합니다.
@@ -273,9 +273,9 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ## 4.2 Model / OAuth 설정
 
 ```powershell
-docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator model
-docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p coder model
-docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p reviewer model
+docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator model
+docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes -p coder model
+docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes -p reviewer model
 ```
 
 설정 확인:
@@ -299,8 +299,8 @@ DEFAULT | PREMIUM
 Fallback Provider가 필요한 경우:
 
 ```powershell
-docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator fallback add
-docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p coder fallback add
+docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator fallback add
+docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes -p coder fallback add
 ```
 
 ---
@@ -489,7 +489,7 @@ git-pr-publish
 **개발 작업 요청은 Orchestrator에 입력합니다.**
 
 ```powershell
-docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator chat
+docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator chat
 ```
 
 Orchestrator가 요청을 `DIRECT | STANDARD`로 분류합니다.

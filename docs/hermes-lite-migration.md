@@ -38,7 +38,7 @@
 3. Windows PowerShell에서 \`.\updatekit_lite.ps1\`를 실행한다. Git Bash/WSL에서는 \`./updatekit_lite.sh\`를 실행한다.
 4. 기존 \`hermes-dev\` 실행 중이면 이미지 빌드/컨테이너 재생성 없이 같은 volume과 mount를 검증하고 Lite 설정을 적용한다.
 5. 초기 컨테이너가 없다면 **명시적으로** 기존 \`update-devkit.ps1 -Branch experiment/hermes-lite\`로 부트스트랩한 후 Lite를 적용한다. 부트스트랩은 기존 이미지/역할 구성도 설치하므로 느릴 수 있다.
-6. \`docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes\`로 default 프로필에서 직접 작업한다. 모델은 현재 default 프로필 설정을 따르며 필요하면 \`/model\`로 선택한다.
+6. \`docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes\`로 default 프로필에서 직접 작업한다. 모델은 현재 default 프로필 설정을 따르며 필요하면 \`/model\`로 선택한다.
 7. Standard로 복귀할 때는 **Lite 브랜치에서 먼저** \`.\updatekit_lite.ps1 -Mode standard\`를 실행한다. 이 명령은 Lite가 추가한 프로필 설정만 복원한 다음 \`dev\`로 전환한다. 마지막으로 기존 \`.\update-devkit.ps1\`로 Standard 구성 재정합(이미지 재빌드 포함)을 할 수 있다.
 
 > 초기 적용은 Windows PowerShell 권장. Bash 래퍼는 Windows PowerShell을 호출한다. 기존 \`update-devkit.ps1\`의 전체 자동 재빌드·재생성 정책을 Lite의 매 전환에 사용하지 않는다.
