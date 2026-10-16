@@ -37,6 +37,7 @@ class LiteProfileTests(unittest.TestCase):
         self.assertEqual(after["user_config"], {"preferences": "keep"})
         self.assertEqual(after["skills"]["external_dirs"][0], "/home/user/custom-skills")
         self.assertIn("kanban", after["toolsets"])
+        self.assertIn("dev-lite-session", after["skills"]["auto_load"])
         self.assertTrue(lite.marker(self.root).exists())
         self.assertEqual(len(list((self.root / "devkit-lite" / "backups").glob("config-*.yaml"))), 1)
 
@@ -109,6 +110,58 @@ class LiteProfileTests(unittest.TestCase):
         self.config.chmod(0o600)
         lite.apply(self.root)
         self.assertEqual(self.config.stat().st_mode & 0o777, 0o600)
+
+
+    def test_standard_worker_roots_hidden_but_user_skills_preserved(self):
+        doc, _ = lite.load(self.config)
+        doc["skills"]["external_dirs"].extend([
+            "/opt/custom-skills/coder",
+            "/opt/custom-skills/orchestrator",
+            "/opt/custom-skills/reviewer",
+        ])
+        doc["skills"]["auto_load"] = ["existing-skill"]
+        lite.write_yaml(self.config, doc)
+        lite.apply(self.root)
+        current = lite.load(self.config)[0]
+        directories = current["skills"]["external_dirs"]
+        self.assertIn("/home/user/custom-skills", directories)
+        self.assertIn("/opt/custom-skills/shared", directories)
+        self.assertIn("/opt/custom-skills/lite", directories)
+        for role in ("coder", "orchestrator", "reviewer"):
+            self.assertNotIn("/opt/custom-skills/" + role, directories)
+        self.assertEqual(current["skills"]["auto_load"], ["existing-skill", "dev-lite-session"])
+        lite.restore(self.root)
+        self.assertEqual(lite.load(self.config)[0], doc)
+
+    def test_user_autoload_change_is_not_overwritten(self):
+        lite.apply(self.root)
+        doc = lite.load(self.config)[0]
+        doc["skills"]["auto_load"].append("new-user-skill")
+        lite.write_yaml(self.config, doc)
+        with self.assertRaisesRegex(RuntimeError, "refusing overwrite"):
+            lite.restore(self.root)
+        self.assertTrue(lite.marker(self.root).exists())
+
+    def test_upgrade_legacy_v1_overlay_preserves_original_configuration(self):
+        original = lite.load(self.config)[0]
+        first = lite.selected(original)
+        old_before = {key: first[key] for key in ("dirs", "tools")}
+        old_applied = {
+            "dirs": ["/home/user/custom-skills", "/opt/custom-skills/shared", "/opt/custom-skills/lite"],
+            "tools": ["hermes-cli", "kanban"],
+        }
+        lite.write_yaml(self.config, lite.replace(original, dict(old_applied, autoload=first["autoload"])))
+        lite.write_marker(self.root, {
+            "schema": 1, "phase": "applied",
+            "existed": True, "before": old_before,
+            "applied": old_applied, "backup": None
+        })
+        lite.apply(self.root)
+        state = lite.read_marker(self.root)
+        self.assertEqual(state["schema"], 2)
+        self.assertIn("dev-lite-session", lite.load(self.config)[0]["skills"]["auto_load"])
+        lite.restore(self.root)
+        self.assertEqual(lite.load(self.config)[0], original)
 
 
 if __name__ == "__main__":

@@ -2,10 +2,23 @@ name: Hermes Lite contract
 
 on:
   push:
-    branches: ["experiment/hermes-lite"]
+    branches: ["experiment/hermes-lite", "dev"]
     paths:
       - "AGENTS.md"
       - "shared/AGENTS.common.md"
+      - "lite/**"
+      - "updatekit_lite.*"
+      - "scripts/lite_mode.py"
+      - "scripts/test_lite_mode.py"
+      - "scripts/check_lite_contract.py"
+      - "custom-skills/lite/**"
+      - "docs/*lite*"
+      - ".github/workflows/hermes-lite.yml"
+  pull_request:
+    paths:
+      - "AGENTS.md"
+      - "shared/AGENTS.common.md"
+      - "lite/**"
       - "updatekit_lite.*"
       - "scripts/lite_mode.py"
       - "scripts/test_lite_mode.py"

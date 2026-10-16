@@ -103,7 +103,7 @@ try {
         Adapter "apply"
         Run "docker" @("exec", "--user", "hermes", $Container, "/opt/hermes/.venv/bin/hermes", "--help")
         Write-Host "[PASS] Lite active. Start a NEW default-profile Hermes CLI session."
-        Write-Host "docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit $Container /opt/hermes/.venv/bin/hermes"
+        Write-Host "docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit/lite $Container /opt/hermes/.venv/bin/hermes -p default"
     }
     else {
         if ($Current -ne $LiteBranch) { throw "Standard restore must start on the Lite branch." }
