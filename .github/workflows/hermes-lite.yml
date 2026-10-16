@@ -67,3 +67,6 @@ jobs:
             exit 1
           }
           Write-Host '[PASS] Lite PowerShell parser'
+      - name: Exercise real Git argv forwarding in Windows PowerShell 5.1
+        shell: powershell
+        run: .\updatekit_lite.ps1 -SelfTest
