@@ -21,6 +21,12 @@ except ModuleNotFoundError as exc:
 
 DIRS = ["/opt/custom-skills/shared", "/opt/custom-skills/lite"]
 TOOLSETS = ["hermes-cli", "kanban"]
+AUTOLOAD = ["dev-lite-session"]
+STANDARD_DIRS = {
+    "/opt/custom-skills/orchestrator",
+    "/opt/custom-skills/coder",
+    "/opt/custom-skills/reviewer",
+}
 ABSENT = object()
 
 def load(path):
@@ -36,7 +42,8 @@ def selected(data):
     if not isinstance(skills, dict): raise ValueError("skills must be mapping")
     result = {}
     for key, value in (("dirs", skills.get("external_dirs", ABSENT)),
-                       ("tools", data.get("toolsets", ABSENT))):
+                       ("tools", data.get("toolsets", ABSENT)),
+                       ("autoload", skills.get("auto_load", ABSENT))):
         if value is ABSENT: result[key] = None
         elif isinstance(value, list) and all(isinstance(x, str) for x in value):
             result[key] = list(value)
@@ -44,14 +51,22 @@ def selected(data):
     return result
 
 def merge(before):
-    return {k: list(dict.fromkeys((before[k] or []) + values))
-            for k, values in (("dirs", DIRS), ("tools", TOOLSETS))}
+    # Only the fixed Standard worker directories are excluded from Lite.
+    # Preserve arbitrary user-installed skill directories and their order.
+    personal_dirs = [item for item in (before["dirs"] or []) if item not in STANDARD_DIRS]
+    return {
+        "dirs": list(dict.fromkeys(personal_dirs + DIRS)),
+        "tools": list(dict.fromkeys((before["tools"] or []) + TOOLSETS)),
+        "autoload": list(dict.fromkeys((before["autoload"] or []) + AUTOLOAD)),
+    }
 
 def replace(data, fields):
     doc = copy.deepcopy(data)
     skills = doc.get("skills") or {}
     if fields["dirs"] is None: skills.pop("external_dirs", None)
     else: skills["external_dirs"] = fields["dirs"]
+    if fields["autoload"] is None: skills.pop("auto_load", None)
+    else: skills["auto_load"] = fields["autoload"]
     if skills: doc["skills"] = skills
     else: doc.pop("skills", None)
     if fields["tools"] is None: doc.pop("toolsets", None)
@@ -102,8 +117,31 @@ def guard(root):
     if active: raise RuntimeError("Active Kanban task(s); finish/pause before switching: " + ", ".join(active))
     print("[OK] Kanban board guard passed")
 
+def migrate_legacy_overlay(root):
+    """Safely restore v1's two modified fields before applying v2.
+
+    v1 never changed auto_load; retaining the current auto_load preserves
+    any user customizations introduced after that older update.
+    """
+    state = read_marker(root)
+    if not state or state.get("schema") != 1:
+        return
+    path = root / "config.yaml"
+    data, _ = load(path)
+    current = selected(data)
+    legacy_keys = ("dirs", "tools")
+    if all(current[key] == state["applied"][key] for key in legacy_keys):
+        desired = dict(state["before"], autoload=current["autoload"])
+        write_yaml(path, replace(data, desired))
+    elif not all(current[key] == state["before"][key] for key in legacy_keys):
+        raise RuntimeError("Legacy Lite profile fields changed; manual reconciliation required")
+    marker(root).unlink()
+    print("[OK] Previous Lite overlay safely restored before v2 migration")
+
+
 def apply(root):
     guard(root)
+    migrate_legacy_overlay(root)
     path = root / "config.yaml"
     doc, existed = load(path)
     before = selected(doc)
@@ -125,7 +163,7 @@ def apply(root):
             backup_path = folder / ("config-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + ".yaml")
             shutil.copy2(path, backup_path)
             backup = str(backup_path)
-        state = {"schema": 1, "phase": "prepared", "before": before,
+        state = {"schema": 2, "phase": "prepared", "before": before,
                  "applied": merge(before), "existed": existed, "backup": backup}
         write_marker(root, state)
     write_yaml(path, replace(doc, state["applied"]))
@@ -136,6 +174,7 @@ def apply(root):
 
 def restore(root):
     guard(root)
+    migrate_legacy_overlay(root)
     state = read_marker(root)
     if not state:
         print("[OK] No Lite overlay to restore")
@@ -160,7 +199,9 @@ def status(root):
     print(json.dumps({"lite": bool(state), "profile_fields_match": val == state["applied"] if state else None,
                       "shared_skills": DIRS[0] in (val["dirs"] or []),
                       "lite_skills": DIRS[1] in (val["dirs"] or []),
-                      "kanban": "kanban" in (val["tools"] or [])}, indent=2))
+                      "kanban": "kanban" in (val["tools"] or []),
+                      "lite_autoload": AUTOLOAD[0] in (val["autoload"] or []),
+                      "standard_worker_skill_dirs": sorted(STANDARD_DIRS.intersection(val["dirs"] or []))}, indent=2))
 
 def main():
     parser = argparse.ArgumentParser()
