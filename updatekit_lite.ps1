@@ -82,7 +82,7 @@ function CheckContainer {
     }
     finally { $ErrorActionPreference = $Previous }
     if ($Code -ne 0 -or (@($Running) -join "").Trim() -ne "true") {
-        throw "Container not running. Bootstrap once using .\update-devkit.ps1 -Branch $LiteBranch"
+        throw "Container not running. Bootstrap once using .\update-devkit.ps1 -Branch $StandardBranch"
     }
     $Mounts = @(ConvertFrom-Json -InputObject (Capture -Program "docker" -Arguments @("inspect", "--format", "{{json .Mounts}}", $Container)))
     foreach ($Target in @("/opt/data", "/workspace", "/opt/custom-skills", "/opt/data/shared")) {

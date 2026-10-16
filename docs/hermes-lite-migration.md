@@ -1,4 +1,4 @@
-# Hermes Lite 마이그레이션 (실험 브랜치)
+# Hermes Lite 마이그레이션 (dev에서 병행 운영)
 
 > 범위: Hermes CLI에서 직접 개발하면서 기존 데이터, Windows Workspace/외부 bind, 개발 툴체인과 개발 스킬을 재사용한다. Standard Flow는 **삭제하지 않고 미사용**한다.
 
@@ -15,7 +15,7 @@
 
 | 대상 | Lite 정책 | 확인 |
 |---|---|---|
-| 코드 | 현재 개발 프로젝트 Git/Workspace는 건드리지 않음 | branch switch는 **Devkit 저장소에만** |
+| 코드 | 현재 개발 프로젝트 Git/Workspace는 건드리지 않음 | Lite/Standard는 같은 Devkit `dev` 브랜치에서 전환 |
 | Hermes 기본 프로필 | 모델·OAuth·메모리·세션은 그대로 유지 | `/opt/data` |
 | Kanban | DB/보드/카드는 보존, 필요한 내용만 수동 기록 | `/opt/data/kanban*` |
 | Standard 역할 프로필 | 유지하되 Lite에서 호출하지 않음 | `/opt/data/profiles/*` |
@@ -27,19 +27,19 @@
 
 ### 두 가지 별도 개념
 
-**Git branch**는 Devkit 스크립트/지침 소스를 선택한다. **Hermes default 프로필**은 영속 메모리/인증/세션의 소유자다. Git branch 교체는 named volume 내용을 복제·초기화하지 않는다.
+**Git branch**는 Devkit 소스 버전을 관리한다. PR #188이 `dev`에 병합되었으므로 **Lite/Standard 모드 전환에 Git branch 교체는 필요 없다.** **Hermes default 프로필**은 영속 메모리/인증/세션의 소유자이며, 모드 전환 시 필요한 프로필 설정만 바꾼다.
 
 **실행 정책**에서 Lite는 Kanban 카드 없는 작업을 허용한다. Kanban은 사용자가 기록을 요청하거나 기존 카드를 참조할 때만 사용한다. 기존 Standard에서 실행 중인 worker는 자동으로 Lite 작업으로 이전하지 않는다.
 
 ## 최소 실행 절차
 
-1. Devkit checkout이 깨끗한지 확인한다. 실제 작업 중인 Standard worker가 있으면 완료/일시 정지시킨다.
-2. 최초 1회 `git fetch origin && git switch --track -c experiment/hermes-lite origin/experiment/hermes-lite`로 Lite 브랜치를 checkout한다.
-3. Windows PowerShell에서 `.\updatekit_lite.ps1`를 실행한다. Git Bash/WSL에서는 `./updatekit_lite.sh`를 실행한다.
-4. 기존 `hermes-dev` 실행 중이면 이미지 빌드/컨테이너 재생성 없이 같은 volume과 mount를 검증하고 Lite 설정을 적용한다.
-5. 초기 컨테이너가 없다면 **명시적으로** 기존 `update-devkit.ps1 -Branch experiment/hermes-lite`로 부트스트랩한 후 Lite를 적용한다. 부트스트랩은 기존 이미지/역할 구성도 설치하므로 느릴 수 있다.
-6. `docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit/lite hermes-dev /opt/hermes/.venv/bin/hermes -p default`로 default 프로필에서 직접 작업한다. 모델은 현재 default 프로필 설정을 따르며 필요하면 `/model`로 선택한다.
-7. Standard로 복귀할 때는 **Lite 브랜치에서 먼저** `.\updatekit_lite.ps1 -Mode standard`를 실행한다. 이 명령은 Lite가 추가한 프로필 설정만 복원한 다음 `dev`로 전환한다. 마지막으로 기존 `.\update-devkit.ps1`로 Standard 구성 재정합(이미지 재빌드 포함)을 할 수 있다.
+1. Devkit checkout이 깨끗한지 확인한다. 실제 작업 중인 Standard worker가 있으면 완료·안전 중단시킨다.
+2. `git switch dev && git pull --ff-only origin dev`로 **병합된** Lite 스크립트를 가져온다. 삭제된 `experiment/hermes-lite` 원격 브랜치를 checkout하지 않는다.
+3. Windows PowerShell에서 `.\updatekit_lite.ps1`를 실행한다. Git Bash/WSL에서는 `./updatekit_lite.sh`를 실행한다. `.\updatekit_lite.ps1 -SelfTest`로 Git 실행 인수 전달을 Docker 없이 사전 확인할 수 있다.
+4. 기존 `hermes-dev`가 실행 중이면 이미지 빌드/컨테이너 재생성 없이 기존 volume과 mount를 검증하고 Lite 프로필 설정을 적용한다.
+5. 컨테이너가 없다면 기존 `.\update-devkit.ps1 -Branch dev`로 최초 부트스트랩한 후 Lite 스크립트를 실행한다.
+6. `docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit/lite hermes-dev /opt/hermes/.venv/bin/hermes -p default`로 default 프로필에서 직접 작업한다. 필요 시 `/model`로 모델을 선택한다.
+7. Standard 복귀는 **같은 `dev` 브랜치에서** `.\updatekit_lite.ps1 -Mode standard`로 수행한다. 기존 세션·Kanban은 유지하며, 전체 이미지/Standard 프로필 재정합이 필요한 경우에만 `.\update-devkit.ps1`를 별도 실행한다. 과거 로컬 Lite 브랜치가 남아 있다면 복원 후 `dev`로 이동할 수 있다.
 
 > 초기 적용은 Windows PowerShell 권장. Bash 래퍼는 Windows PowerShell을 호출한다. 기존 `update-devkit.ps1`의 전체 자동 재빌드·재생성 정책을 Lite의 매 전환에 사용하지 않는다.
 
@@ -48,7 +48,7 @@
 
 ## 주의해야 할 실패 경로
 
-- 시작 전에 dirty Devkit worktree, 잘못된 Docker named volume, 대상 branch 부재, running Kanban task가 발견되면 **fail-closed**한다.
+- 시작 전에 dirty Devkit worktree, 잘못된 Docker named volume, 지원하지 않는 branch, running Kanban task가 발견되면 **fail-closed**한다.
 - `/opt/data` 전체 삭제, volume 교체, `docker compose down -v`, `git reset/clean/stash`, 기존 Kanban 카드 상태 갱신은 금지한다.
 - 기존 데이터 폴더와 프로젝트 소스 디렉터리는 수정을 대상으로 삼지 않는다. profile 편집은 **default config.yaml 내 skills.external_dirs, skills.auto_load, toolsets 항목으로 한정**한다.
 - Lite 실행 중 사용자가 profile 스킬·toolset·autoload 목록을 직접 바꿨다면 복귀 시 덮어쓰지 않고 충돌을 표시한다. 백업은 `/opt/data/devkit-lite/`에 남긴다.
@@ -57,7 +57,7 @@
 
 ## 커밋/승격 경계
 
-1. 이관 조사 및 경계 명세
+1. 이관 조사 및 경계 명세 (원래 실험 브랜치에서 수행, PR #188로 dev 병합 완료)
 2. Lite 개발 지침 전환 (Standard 실행 규칙 격리)
 3. Lite 프로필 구성 및 updatekit 스크립트
 4. Coder/Reviewer capability 재사용

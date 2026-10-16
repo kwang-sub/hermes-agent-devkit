@@ -30,7 +30,9 @@ def check():
     required = {
         "PowerShell": (ps, (
             '[string]$Mode = "lite"', 'Adapter "apply"', 'Adapter "restore"',
-            "CheckGit", "CheckContainer", "--workdir /workspace/hermes-agent-devkit/lite",
+            "CheckGit", "CheckContainer", "[switch]$SelfTest",
+            "Test-NativeArgumentForwarding", "& $Program @Arguments",
+            "--workdir /workspace/hermes-agent-devkit/lite",
             "/opt/hermes/.venv/bin/hermes -p default", '"status"', '"standard"', '"lite"',
         )),
         "Bash": (sh, ("set -euo pipefail", "powershell.exe", "updatekit_lite.ps1")),
@@ -56,6 +58,14 @@ def check():
     for label, (value, terms) in required.items():
         for term in terms:
             assert term in value, f"{label} missing {term!r}"
+
+    # Regression: PowerShell has an automatic variable named $Args.
+    # It must never be used as the native argv collection in a function.
+    import re
+    assert not re.search(r"\[string\[\]\]\s*\$Args\b", ps, re.IGNORECASE)
+    assert not re.search(r"@Args\b", ps, re.IGNORECASE)
+    assert "SwitchBranch $LiteBranch" not in ps, "Deleted Lite branch must not be required"
+    assert 'if ($Current -eq $LiteBranch) { SwitchBranch $StandardBranch }' in ps
 
     for term in ('docker compose down', '"down", "-v"', 'git reset',
                  'git clean', 'git stash', 'docker volume rm',

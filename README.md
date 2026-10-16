@@ -1,15 +1,15 @@
 > **Hermes Lite / Standard 병행** — 기존 Standard Flow 지침과 프로필은 유지합니다. Lite는 `lite/AGENTS.md`와 자동 로딩되는 `dev-lite-session` 스킬을 통해 별도로 직접 개발하며, Kanban은 선택적으로 기록합니다. 전체 이관 근거는 [Lite 이관 문서](docs/hermes-lite-migration.md)를 참고하세요.
 >
-> Windows PowerShell 첫 실행: 
+> Windows PowerShell에서 Lite 적용 (PR #188이 `dev`에 병합되어 **Lite 전용 브랜치 전환은 필요하지 않습니다**):
 >
 > ```powershell
-> git fetch origin
-> git switch -c experiment/hermes-lite --track origin/experiment/hermes-lite
+> git switch dev
+> git pull --ff-only origin dev
 > .\updatekit_lite.ps1
 > docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit/lite hermes-dev /opt/hermes/.venv/bin/hermes -p default
 > ```
 >
-> Lite 설정 상태: `.\updatekit_lite.ps1 -Mode status` · Standard 복귀(반드시 Lite 브랜치에서 실행): `.\updatekit_lite.ps1 -Mode standard` · 다시 Lite: `git switch experiment/hermes-lite; .\updatekit_lite.ps1`. 현재 PC의 Docker/인증 연결과 실제 모델 응답 검증은 별도로 필요합니다.
+> 상태 확인: `.\updatekit_lite.ps1 -Mode status` · 같은 브랜치에서 Standard 설정 복원: `.\updatekit_lite.ps1 -Mode standard` · 다시 Lite: `.\updatekit_lite.ps1`. Git Bash/WSL에서는 `./updatekit_lite.sh`를 사용합니다. 실제 PC의 Docker/인증 연결과 모델 응답은 별도로 확인합니다.
 
 ---
 
