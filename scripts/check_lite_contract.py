@@ -45,7 +45,7 @@ def check():
         assert forbidden not in adapter, f"Unsafe adapter operation: {forbidden}"
 
     assert "Orchestrator → Kanban → Coder → Reviewer" in agents
-    assert "Standard Flow는 **자동 실행하지 않는다**" in common
+    assert "Standard Flow는 **자동 실행하지 않는다." in common
     print("[PASS] Hermes Lite static contract")
 
 
