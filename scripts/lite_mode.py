@@ -110,6 +110,9 @@ def apply(root):
     state = read_marker(root)
     if state:
         if before == state["applied"]:
+            if state["phase"] != "applied":
+                state["phase"] = "applied"
+                write_marker(root, state)
             print("[OK] Lite already active")
             return
         if state["phase"] != "prepared" or before != state["before"]:
