@@ -5,7 +5,7 @@
 ## 현재 Devkit 구조에서 확인된 사실
 
 - 호스트 공식 업데이트 스크립트는 `update-devkit.ps1`이며, 기본 운영 브랜치는 `dev`다. `updatekit.sh`라는 기존 진입점은 없다.
-- `compose.yml`은 기본 `hermes-dev` 컨테이너와 **`hermes-dev-data` named volume**을 `/opt/data`에 붙인다. `D:/workspace` → `/workspace`, `custom-skills` → `/opt/custom-skills`, `shared` → `/opt/data/shared` bind도 제공한다.
+- `compose.yml`은 기본 `hermes-dev` 컨테이너와 **`hermes-dev-data` named volume**을 `/opt/data`에 붙인다. 다만 실제 실행 중인 컨테이너는 별도 생성 경로에 의해 `/opt/data`가 `bind`일 수도 있으므로, Lite는 현재 마운트의 유형과 데이터 접근 권한을 검사한 뒤 그대로 보존한다. `D:/workspace` → `/workspace`, `custom-skills` → `/opt/custom-skills`, `shared` → `/opt/data/shared` bind도 제공한다.
 - `shared/AGENTS.common.md`과 루트 `AGENTS.md`는 Coder의 Kanban task 선행·Orchestrator/Reviewer 강제 규칙을 포함한다. 두 파일은 Standard 계약을 유지하고, Lite는 별도 `lite/AGENTS.md` 및 `dev-lite-session` 자동 로딩 스킬로 실행 정책을 분리한다.
 - Standard Coder·Reviewer 스킬 중 `dev-implement-plan`, `dev-code-review`와 관련 handoff/worker gate는 독립 실행에 적합하지 않다. `custom-skills/shared`의 언어·프레임워크·검증 capability는 재사용 가능하다.
 - `init-profiles.ps1`는 Standard 전용 세 프로필을 초기화한다. **Lite에서 재실행하지 않는다.** default 프로필의 기존 인증·메모리·세션을 재사용한다.
@@ -22,7 +22,7 @@
 | Lite 전용 프로필 조정 | default `config.yaml`의 skill/toolset/auto_load 목록만 비파괴적으로 조정 (기존 사용자 스킬·설정은 복원) | 선행 백업 및 복원 |
 | 스킬 | `custom-skills/shared` 재사용, Lite용 검토 스킬 추가 | read-only bind |
 | 빌드 도구 | JDK 8/17/21, Maven·Gradle·Node/pnpm, 캐시 경로 유지 | 기존 image/volume |
-| 외부 마운트 | compose가 정의한 경로 그대로 유지 | docker inspect |
+| 외부 마운트 | 실행 중인 컨테이너가 가진 mount를 변경하지 않음 | Docker inspect JSON: volume/bind, Source, Target, RW, 사용자 접근 권한 |
 | 알림 | 기존 Kanban 알림 구성값 유지, 자동 생성/위임은 하지 않음 | 기존 옵션 유지 |
 
 ### 두 가지 별도 개념
@@ -35,7 +35,7 @@
 
 1. Devkit checkout이 깨끗한지 확인한다. 실제 작업 중인 Standard worker가 있으면 완료·안전 중단시킨다.
 2. `git switch dev && git pull --ff-only origin dev`로 **병합된** Lite 스크립트를 가져온다. 삭제된 `experiment/hermes-lite` 원격 브랜치를 checkout하지 않는다.
-3. Windows PowerShell에서 `.\updatekit_lite.ps1`를 실행한다. Git Bash/WSL에서는 `./updatekit_lite.sh`를 실행한다. `.\updatekit_lite.ps1 -SelfTest`로 Git 실행 인수 전달을 Docker 없이 사전 확인할 수 있다.
+3. Windows PowerShell에서 먼저 `.\updatekit_lite.ps1 -SelfTest` 및 `.\updatekit_lite.ps1 -MountSelfTest`로 Git 인수 전달·Docker 마운트 JSON 파싱을 **Docker 접근 없이** 사전 검사한다. 이후 `.\updatekit_lite.ps1`로 실제 컨테이너를 검사하여 Lite를 적용한다. Git Bash/WSL에서는 `./updatekit_lite.sh`를 실행한다.
 4. 기존 `hermes-dev`가 실행 중이면 이미지 빌드/컨테이너 재생성 없이 기존 volume과 mount를 검증하고 Lite 프로필 설정을 적용한다.
 5. 컨테이너가 없다면 기존 `.\update-devkit.ps1 -Branch dev`로 최초 부트스트랩한 후 Lite 스크립트를 실행한다.
 6. `docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit/lite hermes-dev /opt/hermes/.venv/bin/hermes -p default`로 default 프로필에서 직접 작업한다. 필요 시 `/model`로 모델을 선택한다.
@@ -48,11 +48,13 @@
 
 ## 주의해야 할 실패 경로
 
-- 시작 전에 dirty Devkit worktree, 잘못된 Docker named volume, 지원하지 않는 branch, running Kanban task가 발견되면 **fail-closed**한다.
+- 시작 전에 마운트 누락·중복, 데이터 경로의 tmpfs/읽기 전용, 실행 중인 Kanban task, 잘못된 Devkit checkout/프로필 경로가 발견되면 **fail-closed**한다. Lite 스크립트는 Git checkout을 수행하지 않아 미커밋 변경이 있어도 파일을 덮어쓰지 않는다.
 - `/opt/data` 전체 삭제, volume 교체, `docker compose down -v`, `git reset/clean/stash`, 기존 Kanban 카드 상태 갱신은 금지한다.
 - 기존 데이터 폴더와 프로젝트 소스 디렉터리는 수정을 대상으로 삼지 않는다. profile 편집은 **default config.yaml 내 skills.external_dirs, skills.auto_load, toolsets 항목으로 한정**한다.
 - Lite 실행 중 사용자가 profile 스킬·toolset·autoload 목록을 직접 바꿨다면 복귀 시 덮어쓰지 않고 충돌을 표시한다. 백업은 `/opt/data/devkit-lite/`에 남긴다.
 - 기존 컨테이너가 자동으로 새로운 AGENTS를 재로딩한다고 가정하지 않는다. **새 CLI 대화 세션**을 시작해 Lite 정책 적용을 확인한다.
+- `/opt/data`는 `volume` 또는 영속 `bind` 모두 허용하지만 `tmpfs`, 읽기 전용, Source 누락은 거부한다. `/workspace`는 컨테이너의 실제 `WorkingDir`에 대응하는 writable bind여야 하고 `/opt/custom-skills`, `/opt/data/shared`는 bind를 유지한다. 사용자 정의 다른 mount는 변경하거나 제거하지 않는다.
+- Windows PowerShell 5.1 `ConvertFrom-Json`이 단일/다중 mount 배열을 다르게 다룰 수 있으므로 `-MountSelfTest`에 named volume, host bind, 단일 JSON array, 외부 Temp, 사용자 정의 workspace, 음성 검증 사례를 포함한다.
 - 로컬 PC의 Docker/container 세션은 이 브랜치 변경만으로 실행되지 않는다. 실제 마운트·OAuth 상태·모델 동작은 사용자의 Docker 환경에서 별도 smoke 테스트한다.
 
 ## 커밋/승격 경계
