@@ -51,6 +51,10 @@ jobs:
           python3 scripts/check_direct_flow_contract.py
           python3 scripts/check_task_recovery_contract.py
 
+      - name: Test CI-only Kanban pinned-skill contract fixtures
+        shell: bash
+        run: python3 scripts/check_hermes_kanban_skill_pins.py --self-test
+
       - name: Verify English code logging policy contract
         shell: bash
         run: python3 scripts/check_logging_language_contract.py

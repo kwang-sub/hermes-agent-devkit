@@ -328,6 +328,12 @@ PY
         test -f /opt/data/shared/scripts/flow_model_policy.py
     '
 
+printf '[RUN ] Hermes Kanban pinned-skill compatibility (isolated CI board)\n'
+docker run --rm --user hermes \
+    --entrypoint /opt/hermes/.venv/bin/python \
+    --mount "type=bind,source=$REPO_ROOT/scripts,target=/opt/devkit-tests,readonly" \
+    "$IMAGE_NAME" /opt/devkit-tests/check_hermes_kanban_skill_pins.py
+
 printf '[RUN ] Maven managed runtime as the non-root worker user\n'
 docker run --rm --user hermes \
     --entrypoint /opt/hermes/.venv/bin/python \
