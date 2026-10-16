@@ -12,25 +12,25 @@ $Updater = Join-Path $RepoRoot "updatekit_lite.ps1"
 $PriorLocation = Get-Location
 
 function Reset-MockState {
-    $script:DataType = "volume"
-    $script:DataRW = $true
-    $script:SkillsPresent = $true
-    $script:PolicyPresent = $true
-    $script:ActiveWorker = $false
-    $script:LiteActive = $false
-    $script:HelpWorks = $true
-    $script:ApplyCount = 0
-    $script:RestoreCount = 0
-    $script:GuardCount = 0
-    $script:StatusCount = 0
-    $script:LastDockerCommand = ""
+    $global:LiteMockDataType = "volume"
+    $global:LiteMockDataRW = $true
+    $global:LiteMockSkillsPresent = $true
+    $global:LiteMockPolicyPresent = $true
+    $global:LiteMockActiveWorker = $false
+    $global:LiteMockLiteActive = $false
+    $global:LiteMockHelpWorks = $true
+    $global:LiteMockApplyCount = 0
+    $global:LiteMockRestoreCount = 0
+    $global:LiteMockGuardCount = 0
+    $global:LiteMockStatusCount = 0
+    $global:LiteMockLastDockerCommand = ""
 }
 
 # Shadow Docker in this test session; the updater resolves the function, not
 # docker.exe. Every mock action sets LASTEXITCODE just as a native process does.
 function docker {
     param([Parameter(ValueFromRemainingArguments=$true)][string[]]$CommandArguments)
-    $script:LastDockerCommand = ($CommandArguments -join " ")
+    $global:LiteMockLastDockerCommand = ($CommandArguments -join " ")
     $global:LASTEXITCODE = 0
     if ($CommandArguments.Count -eq 0) {
         throw "Unexpected empty mock Docker argv"
@@ -42,15 +42,15 @@ function docker {
                 "{{.State.Running}}" { "true"; return }
                 "{{.Config.WorkingDir}}" { "/workspace"; return }
                 "{{json .Mounts}}" {
-                    $Source = if ($script:DataType -eq "volume") {
+                    $Source = if ($global:LiteMockDataType -eq "volume") {
                         "/var/lib/docker/volumes/hermes-dev-data/_data"
                     } else {
                         "D:/HermesPersistent"
                     }
                     $Mounts = @(
                         [pscustomobject]@{
-                            Type=$script:DataType;Name="hermes-dev-data"
-                            Source=$Source;Destination="/opt/data";RW=$script:DataRW
+                            Type=$global:LiteMockDataType;Name="hermes-dev-data"
+                            Source=$Source;Destination="/opt/data";RW=$global:LiteMockDataRW
                         },
                         [pscustomobject]@{
                             Type="bind";Source="D:/workspace"
@@ -83,17 +83,17 @@ function docker {
             if ($Executable -eq "test") {
                 $Path = $CommandArguments[6]
                 if ($Path -eq "/opt/custom-skills/lite/dev-lite-session/SKILL.md" -and
-                    -not $script:SkillsPresent) {
+                    -not $global:LiteMockSkillsPresent) {
                     $global:LASTEXITCODE = 1
                 }
                 if ($Path -match "/hermes-agent-devkit/lite/AGENTS.md$" -and
-                    -not $script:PolicyPresent) {
+                    -not $global:LiteMockPolicyPresent) {
                     $global:LASTEXITCODE = 1
                 }
                 return
             }
             if ($Executable -eq "/opt/hermes/.venv/bin/hermes") {
-                if (-not $script:HelpWorks) {
+                if (-not $global:LiteMockHelpWorks) {
                     $global:LASTEXITCODE = 1
                     return
                 }
@@ -104,12 +104,12 @@ function docker {
                 $Action = $CommandArguments[6]
                 switch ($Action) {
                     "guard" {
-                        $script:GuardCount++
-                        if ($script:ActiveWorker) { $global:LASTEXITCODE = 1 }
+                        $global:LiteMockGuardCount++
+                        if ($global:LiteMockActiveWorker) { $global:LASTEXITCODE = 1 }
                     }
                     "status" {
-                        $script:StatusCount++
-                        if ($script:LiteActive) {
+                        $global:LiteMockStatusCount++
+                        if ($global:LiteMockLiteActive) {
                             '{"lite":true,"profile_fields_match":true}'
                         }
                         else {
@@ -117,22 +117,22 @@ function docker {
                         }
                     }
                     "apply" {
-                        $script:ApplyCount++
-                        if ($script:ActiveWorker) { $global:LASTEXITCODE = 1 }
-                        else { $script:LiteActive = $true }
+                        $global:LiteMockApplyCount++
+                        if ($global:LiteMockActiveWorker) { $global:LASTEXITCODE = 1 }
+                        else { $global:LiteMockLiteActive = $true }
                     }
                     "restore" {
-                        $script:RestoreCount++
-                        $script:LiteActive = $false
+                        $global:LiteMockRestoreCount++
+                        $global:LiteMockLiteActive = $false
                     }
                     default { throw "Unexpected Lite Python action: $Action" }
                 }
                 return
             }
-            throw "Unknown mock Docker exec: $script:LastDockerCommand"
+            throw "Unknown mock Docker exec: $global:LiteMockLastDockerCommand"
         }
         default {
-            throw "Unknown mock Docker command: $script:LastDockerCommand"
+            throw "Unknown mock Docker command: $global:LiteMockLastDockerCommand"
         }
     }
 }
@@ -155,59 +155,59 @@ try {
 
     Reset-MockState
     & $Updater -Mode lite | Out-Null
-    Assert-True ($script:LiteActive -and $script:ApplyCount -eq 1) "named volume Lite apply"
+    Assert-True ($global:LiteMockLiteActive -and $global:LiteMockApplyCount -eq 1) "named volume Lite apply"
     & $Updater -Mode status | Out-Null
-    Assert-True ($script:StatusCount -gt 0) "status query"
+    Assert-True ($global:LiteMockStatusCount -gt 0) "status query"
     & $Updater -Mode standard | Out-Null
-    Assert-True (-not $script:LiteActive -and $script:RestoreCount -eq 1) "Standard return"
+    Assert-True (-not $global:LiteMockLiteActive -and $global:LiteMockRestoreCount -eq 1) "Standard return"
 
     Reset-MockState
-    $script:DataType = "bind"
+    $global:LiteMockDataType = "bind"
     & $Updater -Mode lite -WarningAction SilentlyContinue | Out-Null
-    Assert-True ($script:LiteActive -and $script:ApplyCount -eq 1) "host-bind /opt/data Lite apply"
+    Assert-True ($global:LiteMockLiteActive -and $global:LiteMockApplyCount -eq 1) "host-bind /opt/data Lite apply"
 
     Reset-MockState
-    $script:DataType = "tmpfs"
+    $global:LiteMockDataType = "tmpfs"
     Expect-Error -MustContain "Unsupported mount" -Operation { & $Updater -Mode lite }
-    Assert-True ($script:ApplyCount -eq 0) "tmpfs must not apply Lite"
+    Assert-True ($global:LiteMockApplyCount -eq 0) "tmpfs must not apply Lite"
 
     Reset-MockState
-    $script:DataRW = $false
+    $global:LiteMockDataRW = $false
     Expect-Error -MustContain "read-only" -Operation { & $Updater -Mode lite }
-    Assert-True ($script:ApplyCount -eq 0) "read-only data must not be changed"
+    Assert-True ($global:LiteMockApplyCount -eq 0) "read-only data must not be changed"
 
     Reset-MockState
-    $script:SkillsPresent = $false
+    $global:LiteMockSkillsPresent = $false
     Expect-Error -MustContain "Command failed" -Operation { & $Updater -Mode lite }
-    Assert-True ($script:ApplyCount -eq 0) "missing Lite skill must not change profile"
+    Assert-True ($global:LiteMockApplyCount -eq 0) "missing Lite skill must not change profile"
 
     Reset-MockState
-    $script:PolicyPresent = $false
+    $global:LiteMockPolicyPresent = $false
     Expect-Error -MustContain "Command failed" -Operation { & $Updater -Mode lite }
-    Assert-True ($script:ApplyCount -eq 0) "missing Lite AGENTS must not change profile"
+    Assert-True ($global:LiteMockApplyCount -eq 0) "missing Lite AGENTS must not change profile"
 
     Reset-MockState
-    $script:HelpWorks = $false
+    $global:LiteMockHelpWorks = $false
     Expect-Error -MustContain "Command failed" -Operation { & $Updater -Mode lite -WarningAction SilentlyContinue }
-    Assert-True ($script:ApplyCount -eq 1 -and $script:RestoreCount -eq 1 -and -not $script:LiteActive) "failed first apply must roll back"
+    Assert-True ($global:LiteMockApplyCount -eq 1 -and $global:LiteMockRestoreCount -eq 1 -and -not $global:LiteMockLiteActive) "failed first apply must roll back"
 
     Reset-MockState
-    $script:LiteActive = $true
-    $script:HelpWorks = $false
+    $global:LiteMockLiteActive = $true
+    $global:LiteMockHelpWorks = $false
     Expect-Error -MustContain "Command failed" -Operation { & $Updater -Mode lite -WarningAction SilentlyContinue }
-    Assert-True ($script:RestoreCount -eq 0 -and $script:LiteActive) "existing Lite config must survive re-run failure"
+    Assert-True ($global:LiteMockRestoreCount -eq 0 -and $global:LiteMockLiteActive) "existing Lite config must survive re-run failure"
 
     Reset-MockState
-    $script:ActiveWorker = $true
+    $global:LiteMockActiveWorker = $true
     Expect-Error -MustContain "Command failed" -Operation { & $Updater -Mode lite }
-    Assert-True ($script:ApplyCount -eq 0 -and $script:GuardCount -eq 1) "active Worker guard"
+    Assert-True ($global:LiteMockApplyCount -eq 0 -and $global:LiteMockGuardCount -eq 1) "active Worker guard"
 
     Reset-MockState
-    $script:SkillsPresent = $false
-    $script:PolicyPresent = $false
-    $script:LiteActive = $true
+    $global:LiteMockSkillsPresent = $false
+    $global:LiteMockPolicyPresent = $false
+    $global:LiteMockLiteActive = $true
     & $Updater -Mode standard | Out-Null
-    Assert-True (-not $script:LiteActive) "Standard return must not require Lite skill files"
+    Assert-True (-not $global:LiteMockLiteActive) "Standard return must not require Lite skill files"
 
     Write-Host "[PASS] Full Lite updater flow: volume/bind, status, apply, restore, rollback, active worker and missing mounts"
 }
