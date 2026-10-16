@@ -80,12 +80,12 @@ function Require-Mount {
         [Parameter(Mandatory=$true)][string[]]$AllowedTypes,
         [switch]$Writable
     )
-    $Matches = @($Mounts | Where-Object { [string]$_.Destination -ceq $Target })
-    if ($Matches.Count -ne 1) {
+    $Found = @($Mounts | Where-Object { [string]$_.Destination -ceq $Target })
+    if ($Found.Count -ne 1) {
         $Observed = (@($Mounts | ForEach-Object { "$($_.Destination)[$($_.Type)]" }) -join ", ")
-        throw "Expected one mount at '$Target'; found $($Matches.Count). Observed=$Observed"
+        throw "Expected one mount at '$Target'; found $($Found.Count). Observed=$Observed"
     }
-    $Mount = $Matches[0]
+    $Mount = $Found[0]
     $Type = ([string]$Mount.Type).Trim().ToLowerInvariant()
     if ($AllowedTypes -notcontains $Type) {
         throw "Unsupported mount Type='$Type' at '$Target'; expected=$($AllowedTypes -join '|'); Source='$($Mount.Source)'"
@@ -121,7 +121,7 @@ function Check-MountContract {
     }
 }
 function Check-ExistingContainer {
-    param([string]$Name)
+    param([string]$Name, [switch]$RequireLiteFiles)
     $Preference = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
@@ -142,8 +142,10 @@ function Check-ExistingContainer {
     # require a read-only probe as the actual Hermes user.
     Invoke-Checked -Program "docker" -Arguments @("exec","--user","hermes",$Name,"test","-w","/opt/data")
     $LiteDir = $Workspace.TrimEnd("/") + "/hermes-agent-devkit/lite"
-    Invoke-Checked -Program "docker" -Arguments @("exec","--user","hermes",$Name,"test","-r","/opt/custom-skills/lite/dev-lite-session/SKILL.md")
-    Invoke-Checked -Program "docker" -Arguments @("exec","--user","hermes",$Name,"test","-r",($LiteDir + "/AGENTS.md"))
+    if ($RequireLiteFiles) {
+        Invoke-Checked -Program "docker" -Arguments @("exec","--user","hermes",$Name,"test","-r","/opt/custom-skills/lite/dev-lite-session/SKILL.md")
+        Invoke-Checked -Program "docker" -Arguments @("exec","--user","hermes",$Name,"test","-r",($LiteDir + "/AGENTS.md"))
+    }
     if ($Contract.DataType -eq "bind") {
         Write-Warning "[DATA] /opt/data is an EXISTING persistent host bind, not a Docker volume; preserving $($Contract.DataSource)"
     }
@@ -153,15 +155,20 @@ function Check-ExistingContainer {
     Write-Host "[OK] Existing mounts and data write access verified"
     return [pscustomobject]@{ DataType = $Contract.DataType; LiteWorkdir = $LiteDir }
 }
-function Adapter {
-    param([string]$Action, [string]$Name)
+function Copy-LiteAdapter {
+    param([string]$Name)
     $Source = Join-Path $Root "scripts\lite_mode.py"
     if (-not (Test-Path -LiteralPath $Source -PathType Leaf)) { throw "Missing Lite adapter: $Source" }
     Invoke-Checked -Program "docker" -Arguments @("cp",$Source,($Name + ":/tmp/devkit-lite-mode.py"))
+}
+function Adapter {
+    param([string]$Action, [string]$Name)
+    Copy-LiteAdapter -Name $Name
     Invoke-Checked -Program "docker" -Arguments @("exec","--user","hermes",$Name,"/opt/hermes/.venv/bin/python","/tmp/devkit-lite-mode.py",$Action)
 }
 function Get-OverlayStatus {
     param([string]$Name)
+    Copy-LiteAdapter -Name $Name
     $Json = Capture-Checked -Program "docker" -Arguments @("exec","--user","hermes",$Name,"/opt/hermes/.venv/bin/python","/tmp/devkit-lite-mode.py","status")
     try { return ConvertFrom-Json -InputObject $Json }
     catch { throw "Unable to decode Lite overlay status: $($_.Exception.Message)" }
@@ -245,7 +252,7 @@ try {
         if (-not (Get-Command $Cmd -ErrorAction SilentlyContinue)) { throw "Required executable missing: $Cmd" }
     }
     Assert-DevkitCheckout
-    $Runtime = Check-ExistingContainer -Name $Container
+    $Runtime = Check-ExistingContainer -Name $Container -RequireLiteFiles:($Mode -eq "lite")
     if ($Mode -eq "status") {
         Write-Host "[MODE] Devkit branch: $(Capture-Checked -Program 'git' -Arguments @('branch','--show-current'))"
         Adapter -Action "status" -Name $Container
@@ -259,6 +266,8 @@ try {
     # No branch switch since Lite was merged into dev (PR #188).
     $AppliedNow = $false
     try {
+        # Preflight the active-worker guard before changing any profile fields.
+        Adapter -Action "guard" -Name $Container
         # A pre-existing Lite overlay is not restored on a failed repeated call.
         $StateBefore = Get-OverlayStatus -Name $Container
         if ($null -eq $StateBefore.lite) { throw "Lite adapter status missing 'lite'" }
