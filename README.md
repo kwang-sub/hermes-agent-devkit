@@ -1,3 +1,18 @@
+> **Hermes Lite 실험 브랜치** — 이 문서의 기존 Standard Flow 설명은 기존 기능의 참고자료입니다. 현재 브랜치에서는 새 개발 작업을 Hermes 기본 CLI에서 직접 진행하며, Kanban은 선택적으로 기록합니다. 전체 이관 근거는 [Lite 이관 문서](docs/hermes-lite-migration.md)를 참고하세요.
+>
+> Windows PowerShell 첫 실행: 
+>
+> ```powershell
+> git fetch origin
+> git switch -c experiment/hermes-lite --track origin/experiment/hermes-lite
+> .\updatekit_lite.ps1
+> docker exec -it --user hermes hermes-dev /opt/hermes/.venv/bin/hermes
+> ```
+>
+> Lite 설정 상태: `.\updatekit_lite.ps1 -Mode status` · Standard 복귀(반드시 Lite 브랜치에서 실행): `.\updatekit_lite.ps1 -Mode standard` · 다시 Lite: `git switch experiment/hermes-lite; .\updatekit_lite.ps1`. 현재 PC의 Docker/인증 연결과 실제 모델 응답 검증은 별도로 필요합니다.
+
+---
+
 # Hermes Agent DevKit
 
 Windows 11 + Docker Desktop 환경에서 Hermes Agent를 `orchestrator`, `coder`, `reviewer` 멀티 프로필로 운영하기 위한 개발 DevKit입니다.
