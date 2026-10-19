@@ -11,6 +11,7 @@ on:
       - "scripts/lite_mode.py"
       - "scripts/test_lite_mode.py"
       - "scripts/check_lite_contract.py"
+      - "scripts/test_lite_wrapper.ps1"
       - "custom-skills/lite/**"
       - "docs/*lite*"
       - ".github/workflows/hermes-lite.yml"
@@ -70,3 +71,9 @@ jobs:
       - name: Exercise real Git argv forwarding in Windows PowerShell 5.1
         shell: powershell
         run: .\updatekit_lite.ps1 -SelfTest
+      - name: Verify Docker volume-bind mount parsing and guards on Windows PowerShell 5.1
+        shell: powershell
+        run: .\updatekit_lite.ps1 -MountSelfTest
+      - name: Exercise Lite full control flow with simulated Docker (Windows PowerShell 5.1)
+        shell: powershell
+        run: .\scripts\test_lite_wrapper.ps1
