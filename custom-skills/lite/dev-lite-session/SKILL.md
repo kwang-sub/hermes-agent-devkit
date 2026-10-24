@@ -34,3 +34,8 @@ Hermes Lite에서 새 대화 세션을 시작할 때 자동으로 읽는 기본 
 - 변경 내용은 최소화하고 기존 코드·파일 및 미커밋 변경을 보존한다. Git commit/push/PR/merge는 사용자가 요청할 때만 수행한다.
 
 사용자의 최종 판단을 존중하며, 프로젝트의 기존 보안·품질 기준은 완화하지 않는다.
+
+## Git worktree 작업
+- 사용자가 작업 공간 분리를 요청하면 `dev-worktree-create`, 제거를 요청하면 `dev-worktree-remove` 스킬을 필요 시 로드한다.
+- 두 스킬은 Lite 전용이며 Kanban·Orchestrator·Reviewer 인계 없이 동작한다.
+- 삭제 전 미커밋·미추적·ignored 파일을 점검하고 메인 worktree/사용 중인 경로를 보호한다. 브랜치 삭제는 별도 작업이다.
