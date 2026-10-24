@@ -98,18 +98,27 @@ JSON
           cd "$runtime_smoke"
           export PNPM_HOME="$runtime_home"
           export PATH="$PNPM_HOME:/usr/local/bin:$PATH"
+          echo "[PNPM_SMOKE] install lockfile"
           /usr/local/bin/pnpm install --lockfile-only
-          test -f pnpm-lock.yaml
+          echo "[PNPM_SMOKE] verify lockfile"
+          test -f pnpm-lock.yaml || { echo "[FAIL] pnpm install did not create lockfile" >&2; exit 1; }
+          echo "[PNPM_SMOKE] set strict dependency build policy"
           /usr/local/bin/pnpm config set --location=project --json strictDepBuilds true
+          echo "[PNPM_SMOKE] set allow-all-builds=false"
           /usr/local/bin/pnpm config set --location=project --json dangerouslyAllowAllBuilds false
-          test -f pnpm-workspace.yaml
+          echo "[PNPM_SMOKE] verify pnpm-workspace.yaml"
+          test -f pnpm-workspace.yaml || { echo "[FAIL] pnpm config set did not create workspace policy" >&2; exit 1; }
+          echo "[PNPM_SMOKE] inspect effective build policy"
           /opt/hermes/.venv/bin/python \
             /opt/custom-skills/shared/dev-node-dependencies/scripts/pnpm_build_policy.py \
             --workspace "$runtime_smoke" > /tmp/devkit-pnpm-build-policy.out
-          grep -q "^PNPM_BUILD_POLICY=PASS$" /tmp/devkit-pnpm-build-policy.out
-          grep -q "^PNPM_BUILD_POLICY_SOURCE=pnpm-workspace.yaml$" /tmp/devkit-pnpm-build-policy.out
+          echo "[PNPM_SMOKE] assert build policy output"
+          grep -q "^PNPM_BUILD_POLICY=PASS$" /tmp/devkit-pnpm-build-policy.out || { cat /tmp/devkit-pnpm-build-policy.out >&2; exit 1; }
+          grep -q "^PNPM_BUILD_POLICY_SOURCE=pnpm-workspace.yaml$" /tmp/devkit-pnpm-build-policy.out || { cat /tmp/devkit-pnpm-build-policy.out >&2; exit 1; }
+          echo "[PNPM_SMOKE] check pinned Node runtime"
           runtime_version="$(/usr/local/bin/pnpm --silent run runtime-smoke | tail -n 1)"
-          test "$runtime_version" = "v22.23.2"
+          test "$runtime_version" = "v22.23.2" || { echo "[FAIL] expected Node v22.23.2, got: $runtime_version" >&2; exit 1; }
+          echo "[PNPM_SMOKE] pass"
         )
         rm -rf "$runtime_smoke" "$runtime_home"
 
@@ -238,7 +247,8 @@ PY
 
         grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/agent/skill_commands.py
         grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/hermes_cli/commands_completion.py
-        grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/tui_gateway/methods_tools.py
+        { grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/tui_gateway/command_discovery.py 2>/dev/null ||
+          grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/tui_gateway/methods_tools.py; }
         test -f /opt/hermes/tools/approval_detection.py
         test -f /opt/hermes/tools/approval_floors.py
         test -f /opt/hermes/hermes_cli/config_migrations.py
@@ -252,6 +262,9 @@ PY
             /opt/hermes/agent/skill_commands.py \
             /opt/hermes/hermes_cli/commands_completion.py \
             /opt/hermes/tui_gateway/methods_tools.py
+        if test -f /opt/hermes/tui_gateway/command_discovery.py; then
+            /opt/hermes/.venv/bin/python -m py_compile /opt/hermes/tui_gateway/command_discovery.py
+        fi
 
         /opt/hermes/.venv/bin/python - <<"PY"
 import os

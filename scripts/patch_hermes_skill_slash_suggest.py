@@ -134,10 +134,20 @@ def strict_compile(paths: list[Path]) -> None:
 
 
 def patch_root(root: Path) -> dict[str, str]:
+    # Hermes moved _catalog_skills() out of methods_tools.py into
+    # command_discovery.py. Patch the actual suggestion producer rather than
+    # weakening the anchor check or modifying the dispatch path.
+    discovery = root / "tui_gateway" / "command_discovery.py"
+    legacy = root / "tui_gateway" / "methods_tools.py"
+    catalog = (
+        discovery
+        if discovery.is_file() and "def _catalog_skills(" in discovery.read_text(encoding="utf-8")
+        else legacy
+    )
     targets = {
         "skill_commands": root / "agent" / "skill_commands.py",
         "completion": root / "hermes_cli" / "commands_completion.py",
-        "catalog": root / "tui_gateway" / "methods_tools.py",
+        "catalog": catalog,
     }
     missing = [str(path) for path in targets.values() if not path.is_file()]
     if missing:
@@ -202,6 +212,72 @@ def self_test() -> None:
             raise RuntimeError("self-test: interactive catalog patch not idempotent")
         if 'if not info.get("slash_suggest", True):' not in interactive_catalog_path.read_text(encoding="utf-8"):
             raise RuntimeError("self-test: interactive catalog visibility filter missing")
+
+        # Latest Hermes stores /skill palette entries in command_discovery.py
+        # instead of methods_tools.py. Keep legacy support and fail closed
+        # if the relocated function ever changes beyond known anchors.
+        discovery_path = root / "tui_gateway" / "command_discovery.py"
+        discovery_path.write_text(
+            '''def _catalog_skills(cat, skills, module_loader):
+    usage, origin_of = _skill_usage_lookup()
+    sc = module_loader("agent.skill_commands")
+    for k, info in sorted(sc.get_interactive_skill_commands().items()):
+        cat.pairs.append([k, str(info.get("description", "Skill"))])
+        name = str(info.get("name") or k.lstrip("/"))
+        skills[k] = {"usage": usage(name), "origin": origin_of(name)}
+    return ""
+''',
+            encoding="utf-8",
+        )
+        states = patch_root(root)
+        if states != {
+            "skill_commands": "already-patched",
+            "completion": "already-patched",
+            "catalog": "patched",
+        }:
+            raise RuntimeError(f"self-test: relocated Hermes catalog not patched: {states}")
+        if set(patch_root(root).values()) != {"already-patched"}:
+            raise RuntimeError("self-test: relocated catalog patch not idempotent")
+        if 'if not info.get("slash_suggest", True):' not in discovery_path.read_text(encoding="utf-8"):
+            raise RuntimeError("self-test: relocated catalog missing visibility filter")
+
+        # Regression: catalog hides internal skills but leaves direct dispatch
+        # registration untouched. Both entries remain in the command provider.
+        class Provider:
+            @staticmethod
+            def get_interactive_skill_commands():
+                return {
+                    "/internal": {"name": "internal", "description": "Internal", "slash_suggest": False},
+                    "/public": {"name": "public", "description": "Public", "slash_suggest": True},
+                }
+
+        class Catalog:
+            pairs = None
+
+        module = {"_skill_usage_lookup": lambda: (lambda _name: "", lambda _name: ""),
+                  "_tools_mod": lambda _name: Provider}
+        exec(compile(discovery_path.read_text(encoding="utf-8"), str(discovery_path), "exec"), module)
+        cat = Catalog()
+        cat.pairs = []
+        skill_metadata = {}
+        module["_catalog_skills"](cat, skill_metadata, lambda _name: Provider)
+        if cat.pairs != [["/public", "Public"]] or set(skill_metadata) != {"/public"}:
+            raise RuntimeError(f"self-test: relocated suggestion policy broke: {cat.pairs}")
+        if set(Provider.get_interactive_skill_commands()) != {"/internal", "/public"}:
+            raise RuntimeError("self-test: slash dispatch unexpectedly altered")
+
+        malformed_catalog = root / "tui_gateway" / "command_discovery_broken.py"
+        malformed_catalog.write_text(
+            'def _catalog_skills(cat, skills, module_loader):\n    return "unsupported"\n',
+            encoding="utf-8",
+        )
+        try:
+            patch_catalog(malformed_catalog)
+        except RuntimeError as exc:
+            if "expected exactly one patch anchor" not in str(exc):
+                raise
+        else:
+            raise RuntimeError("self-test: unsupported upstream catalog must fail closed")
 
         skill_text = (root / "agent" / "skill_commands.py").read_text(encoding="utf-8")
         completion_text = (root / "hermes_cli" / "commands_completion.py").read_text(encoding="utf-8")
