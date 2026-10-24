@@ -51,3 +51,7 @@
 - Devkit 소스 경로: `/workspace/hermes-agent-devkit`. 이 Lite 지침 폴더 자체는 개발 결과물을 저장하기 위한 별도 Workspace가 아니다.
 - 다른 프로젝트 작업에는 먼저 대상 프로젝트의 기존 `AGENTS.md`와 관례를 확인한다. Lite 공통 정책은 `dev-lite-session` 스킬을 통해 시작할 수 있다.
 - Lite 적용/복귀: `updatekit_lite.ps1` / `updatekit_lite.sh`; 기존 컨테이너 및 데이터 볼륨을 재사용한다.
+
+## Lite Git Worktree
+- 새 작업 공간 생성 요청 시 `dev-worktree-create`, 제거 요청 시 `dev-worktree-remove`를 사용한다.
+- Standard Flow의 dispatch/cleanup 선행 계약은 요구하지 않는다. 제거 시 미커밋·미추적·ignored 데이터와 현재 사용 중인 worktree를 보존한다.
