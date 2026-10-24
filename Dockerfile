@@ -115,7 +115,8 @@ RUN test -x /opt/hermes/.venv/bin/hermes \
     && /opt/hermes/.venv/bin/hermes --help >/dev/null \
     && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/agent/skill_commands.py \
     && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/hermes_cli/commands_completion.py \
-    && grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/tui_gateway/methods_tools.py \
+    && { grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/tui_gateway/command_discovery.py 2>/dev/null \
+         || grep -q 'DEVKIT_SLASH_SUGGEST_V1' /opt/hermes/tui_gateway/methods_tools.py; } \
     && /opt/hermes/.venv/bin/python -m py_compile \
        /opt/hermes/tools/approval_detection.py \
        /opt/hermes/tools/approval_floors.py \
@@ -123,7 +124,10 @@ RUN test -x /opt/hermes/.venv/bin/hermes \
        /opt/hermes/hermes_cli/devkit_session_affinity.py \
        /opt/hermes/agent/skill_commands.py \
        /opt/hermes/hermes_cli/commands_completion.py \
-       /opt/hermes/tui_gateway/methods_tools.py
+       /opt/hermes/tui_gateway/methods_tools.py \
+    && if test -f /opt/hermes/tui_gateway/command_discovery.py; then \
+         /opt/hermes/.venv/bin/python -m py_compile /opt/hermes/tui_gateway/command_discovery.py; \
+       fi
 
 # Minimal opt-in browser smoke image; no Git/JDK/application build is needed.
 FROM hermes-upstream-patched AS hermes-ui-smoke
