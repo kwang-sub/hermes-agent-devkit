@@ -238,7 +238,8 @@ PY
 
         grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/agent/skill_commands.py
         grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/hermes_cli/commands_completion.py
-        grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/tui_gateway/methods_tools.py
+        { grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/tui_gateway/command_discovery.py 2>/dev/null ||
+          grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/tui_gateway/methods_tools.py; }
         test -f /opt/hermes/tools/approval_detection.py
         test -f /opt/hermes/tools/approval_floors.py
         test -f /opt/hermes/hermes_cli/config_migrations.py
@@ -252,6 +253,9 @@ PY
             /opt/hermes/agent/skill_commands.py \
             /opt/hermes/hermes_cli/commands_completion.py \
             /opt/hermes/tui_gateway/methods_tools.py
+        if test -f /opt/hermes/tui_gateway/command_discovery.py; then
+            /opt/hermes/.venv/bin/python -m py_compile /opt/hermes/tui_gateway/command_discovery.py
+        fi
 
         /opt/hermes/.venv/bin/python - <<"PY"
 import os
