@@ -12,7 +12,8 @@ import sys
 import time
 from pathlib import Path
 
-REQUIRED = frozenset(("default", "coder", "orchestrator", "reviewer"))
+REQUIRED = frozenset(("default",))
+LEGACY_ROLE_PROFILES = frozenset(("coder", "orchestrator", "reviewer"))
 
 
 def classify(live_pid, record, served, expected=REQUIRED):
