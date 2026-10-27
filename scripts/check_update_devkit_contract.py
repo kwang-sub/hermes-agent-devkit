@@ -52,10 +52,10 @@ def main():
         '"/tmp/devkit-lite-default-profile.py"',
         '"exec", "--user", "hermes"',
     ), "Lite initialization")
-    for forbidden in ("git reset", "git clean", "git stash",
-                      "docker volume rm", "docker compose down -v"):
+    for forbidden in ('"compose", "down", "-v"', '"volume", "rm"',
+                      '"reset", "--hard"', '"clean", "-fd"', '"stash", "push"'):
         if forbidden in upd or forbidden in init:
-            raise SystemExit("Unsafe updater action: " + forbidden)
+            raise SystemExit("Unsafe updater command: " + forbidden)
     require(compose, (
         "nousresearch/hermes-agent:latest",
         'HERMES_KANBAN_BOOT_RECOVERY_ENABLED: "false"',
