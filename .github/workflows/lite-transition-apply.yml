@@ -1,0 +1,81 @@
+name: Validate and apply Lite transition
+on:
+  push:
+    branches: ["refactor/lite-only-runtime"]
+    paths:
+      - ".github/workflows/lite-transition-apply.yml"
+      - ".lite-transfer/**"
+permissions:
+  contents: read
+concurrency:
+  group: lite-transition-apply
+  cancel-in-progress: false
+jobs:
+  linux-validation:
+    if: github.repository == 'kwang-sub/hermes-agent-devkit' && github.ref == 'refs/heads/refactor/lite-only-runtime'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify checksum and reconstruct approved source
+        run: python .lite-transfer/apply.py
+      - run: python -m pip install PyYAML
+      - name: All retained contracts and regression suites
+        env:
+          DEVKIT_TEST_REPORT: ${{ runner.temp }}/devkit-regression-results.json
+        run: bash scripts/verify.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lite-transition-linux-results
+          path: ${{ runner.temp }}/devkit-regression-results.json
+          if-no-files-found: warn
+  windows-validation:
+    if: github.repository == 'kwang-sub/hermes-agent-devkit' && github.ref == 'refs/heads/refactor/lite-only-runtime'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify checksum and reconstruct approved source
+        run: python .lite-transfer/apply.py
+      - name: Parse all PowerShell scripts on Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          Get-ChildItem -Recurse -Filter *.ps1 | ForEach-Object {
+            $tokens = $null; $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
+            if ($errors.Count) { $errors | Write-Error; exit 1 }
+          }
+      - name: Mount preservation and actual updater orchestration fixtures
+        shell: powershell
+        run: |
+          .\scripts\test_devkit_mounts.ps1
+          .\scripts\test_update_devkit.ps1
+  publish-validated-source:
+    needs: [linux-validation, windows-validation]
+    if: github.repository == 'kwang-sub/hermes-agent-devkit' && github.ref == 'refs/heads/refactor/lite-only-runtime'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Publish only verified non-workflow files without force
+        run: python .lite-transfer/apply.py --publish
