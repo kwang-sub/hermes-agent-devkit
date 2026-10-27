@@ -13,8 +13,15 @@ PYTHON='/opt/hermes/.venv/bin/python'
 def run(args,*,code=None,check=True,timeout=180):
     p=subprocess.run(['docker',*args],input=code,text=True,capture_output=True,timeout=timeout)
     if check and p.returncode:
-        raise RuntimeError('Docker fixture command failed: '+str(args[:3])+'\n'+p.stdout[-3000:]+p.stderr[-5000:])
+        raise RuntimeError('Docker fixture command failed (exit '+str(p.returncode)+'): '+str(args[:3])+'\n'+p.stdout[-3000:]+p.stderr[-5000:])
     return p
+
+def diagnostics(name):
+    # These are synthetic fixtures only. Never inspect a user's credentials/config.
+    for args in (['inspect','--format','{{json .State}}',name], ['logs','--tail','120',name]):
+        result=run(args,check=False,timeout=20)
+        print('[BOOT_DIAGNOSTIC] '+name+' '+args[0],flush=True)
+        print(result.stdout[-12000:]+result.stderr[-12000:],flush=True)
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--image',required=True);a=parser.parse_args()
@@ -28,6 +35,7 @@ def main():
         try:
             for index,kind in enumerate(('fresh','legacy','active','collision')):
                 name=f'{tag}-{kind}';volume=f'{name}-data'
+                print('[BOOT_SCENARIO] '+kind,flush=True)
                 # Test both named volume and persistent bind; no existing paths touched.
                 if kind=='legacy':
                     data=temp/'legacy-data';data.mkdir()
@@ -58,10 +66,13 @@ def main():
                 # The actual installed boot guard and Gateway, not a pure fixture.
                 deadline=time.monotonic()+120
                 while True:
+                    state=json.loads(run(['inspect','--format','{{json .State}}',name]).stdout)
+                    if not state['Running']:
+                        raise RuntimeError('Boot stopped early: '+kind+' '+json.dumps(state))
                     probe=run(['exec','--user','hermes',name,PYTHON,'/opt/devkit/bin/lite_default_profile.py','status'],check=False)
                     if probe.returncode==0:break
                     if time.monotonic()>deadline:
-                        raise RuntimeError('Boot status timeout: '+kind+'\n'+run(['logs','--tail','100',name],check=False).stdout)
+                        raise RuntimeError('Boot status timeout: '+kind)
                     time.sleep(1)
                 run(['exec','--user','hermes',name,PYTHON,'/opt/devkit/bin/devkit_gateway_readiness.py','--wait-seconds','90'])
                 exec_python(name,"import os\nfrom gateway.kanban_watchers import GatewayKanbanWatchersMixin\nassert os.environ['HERMES_KANBAN_DISPATCH_IN_GATEWAY']=='false'\nassert GatewayKanbanWatchersMixin()._kanban_dispatcher_boot() is None\n")
@@ -76,7 +87,8 @@ def main():
             print('[PASS] Lite image fresh/legacy/active/collision scenarios')
         except Exception:
             for name in created_containers:
-                print(run(['logs','--tail','80',name],check=False).stdout[-6000:])
+                try: diagnostics(name)
+                except (subprocess.TimeoutExpired,RuntimeError): pass
             raise
         finally:
             # Only resources this process successfully created; never remove supplied user resources.
