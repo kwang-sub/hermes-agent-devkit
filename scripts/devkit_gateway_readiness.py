@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Read-only readiness probe for the live default Hermes multiplex Gateway.
+"""Read-only readiness probe for the live default Hermes Gateway.
 
 Never treats s6 'up', configuration, or a stale PID as proof of serving profiles.
-A bounded control-socket profile rescan is attempted only for an authenticated
-live multiplexer, not for a standalone/missing Gateway.
+A standalone default Gateway is valid when its running record belongs to the
+verified process. Empty served_profiles means no multiplexed profiles, not a
+missing default Gateway. Never accept configuration or an unverified PID alone.
 """
 from __future__ import annotations
 
@@ -22,10 +23,19 @@ def classify(live_pid, record, served, expected=REQUIRED):
         return "NO_VERIFIED_LIVE_GATEWAY"
     if served is None:
         return "SERVED_PROFILE_RECORD_UNAVAILABLE"
-    if not expected.issubset(set(served)):
-        return "STANDALONE_OR_INCOMPLETE_MULTIPLEX"
     if LEGACY_ROLE_PROFILES.intersection(served):
         return "LEGACY_ROLE_PROFILES_STILL_SERVED"
+    if not served and expected == REQUIRED:
+        # Upstream intentionally records [] for the sole default profile.
+        # Require the actual running process and its own status, not just s6 up.
+        if (record.get("pid") == live_pid
+                and record.get("gateway_state") == "running"
+                and record.get("multiplex_standalone_reason")
+                == "only one profile exists (nothing to multiplex)"):
+            return "READY"
+        return "STANDALONE_OR_INCOMPLETE_MULTIPLEX"
+    if not expected.issubset(set(served)):
+        return "STANDALONE_OR_INCOMPLETE_MULTIPLEX"
     return "READY"
 
 
@@ -58,7 +68,7 @@ def explain(root, pid, record, served, reason):
     for key, value in flags.items():
         print(f"GATEWAY_{key.upper()}={value}", file=sys.stderr)
     if reason == "STANDALONE_OR_INCOMPLETE_MULTIPLEX":
-        print("Gateway may be standalone or incompletely migrated. Inspect 'hermes gateway migrate --multiplex' plan and gateway logs.", file=sys.stderr)
+        print("Default Gateway is not yet proven running; inspect its verified PID and current status. Do not create role profiles to satisfy readiness.", file=sys.stderr)
     elif reason == "NO_VERIFIED_LIVE_GATEWAY":
         print("s6 up is not proof of a live gateway. Check 'docker logs hermes-dev' and gateway PID/state identity.", file=sys.stderr)
     else:
@@ -75,8 +85,6 @@ def wait_ready(timeout: float, poll: float = 1.0) -> int:
             print("PASS: verified live Gateway serves default (legacy roles absent)")
             return 0
         if pid is not None and not rescanned and served is not None and "default" in served:
-            # Ask the actual live multiplexer to refresh its profile inventory.
-            # This is an in-memory profile rescan, not a service restart/migration.
             from hermes_cli.gateway_multiplex_served import notify_multiplexer_profiles_changed
             notify_multiplexer_profiles_changed("devkit-runtime-check", timeout=3.0)
             rescanned = True
@@ -93,7 +101,16 @@ def self_test():
     assert classify(12, {}, ["default"]) == "READY"
     assert classify(12, {}, ["default", "reviewer", "coder", "orchestrator"]) == "LEGACY_ROLE_PROFILES_STILL_SERVED"
     assert classify(None, {"served_profiles": list(REQUIRED)}, list(REQUIRED)) == "NO_VERIFIED_LIVE_GATEWAY"
-    print("PASS: gateway readiness identity and served-profile contract fixtures")
+    single = {"pid": 12, "gateway_state": "running",
+              "multiplex_standalone_reason": "only one profile exists (nothing to multiplex)"}
+    assert classify(12, single, []) == "READY"
+    assert classify(None, single, []) == "NO_VERIFIED_LIVE_GATEWAY"
+    assert classify(13, single, []) == "STANDALONE_OR_INCOMPLETE_MULTIPLEX"
+    assert classify(12, dict(single, gateway_state="starting"), []) != "READY"
+    assert classify(12, dict(single, gateway_state="stopped"), []) != "READY"
+    assert classify(12, dict(single, multiplex_standalone_reason="unknown"), []) != "READY"
+    assert classify(12, single, ["coder"]) == "LEGACY_ROLE_PROFILES_STILL_SERVED"
+    print("PASS: live default standalone/multiplex readiness and stale PID rejection")
 
 
 if __name__ == "__main__":
