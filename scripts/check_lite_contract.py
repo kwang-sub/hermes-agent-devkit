@@ -15,17 +15,13 @@ def check():
     lite_review = read("custom-skills/lite/dev-lite-review/SKILL.md")
     compose = read("compose.yml")
 
-    # Never replace the Standard authoritative root policy with Lite rules.
+    # Lite is now authoritative in the root and shared common policy.
     start = standard_root.index("<!-- HERMES-COMMON:START -->")
     end = standard_root.index("<!-- HERMES-COMMON:END -->") + len("<!-- HERMES-COMMON:END -->")
     assert standard_root[start:end].rstrip() == standard_common
-    for item in (
-        "Orchestrator: 모든 새 mutation request의 실행 진입점",
-        "Coder: **Kanban에 할당된 Task만** 구현",
-        "Direct Flow",
-        "Standard Flow",
-    ):
-        assert item in standard_root and item in standard_common, item
+    for term in ("Hermes Lite", "default", "dev-lite-session", "git-pr-publish"):
+        assert term in standard_root and term in standard_common, term
+    assert "모든 새 mutation request의 실행 진입점" not in standard_root
 
     required = {
         "PowerShell": (ps, (
@@ -82,7 +78,7 @@ def check():
                  "UPDATE tasks SET", "shutil.rmtree"):
         assert term not in adapter, f"Unsafe adapter action: {term}"
 
-    print("[PASS] Standard Flow is intact, Lite policy isolated and guarded")
+    print("[PASS] Lite root policy is authoritative and overlay guards remain")
 
 
 if __name__ == "__main__":
