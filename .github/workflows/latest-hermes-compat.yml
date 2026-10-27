@@ -8,6 +8,7 @@ on:
       - "feat/**"
       - "feature/**"
       - "perf/**"
+      - "refactor/**"
   pull_request:
 
 permissions:
@@ -17,7 +18,7 @@ jobs:
   latest-hermes-compat:
     name: latest Hermes update-devkit compatibility
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
