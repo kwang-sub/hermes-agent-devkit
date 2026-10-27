@@ -36,7 +36,6 @@ def main():
             for index,kind in enumerate(('fresh','legacy','active','collision')):
                 name=f'{tag}-{kind}';volume=f'{name}-data'
                 print('[BOOT_SCENARIO] '+kind,flush=True)
-                # Test both named volume and persistent bind; no existing paths touched.
                 if kind=='legacy':
                     data=temp/'legacy-data';data.mkdir()
                     data_mount=f'type=bind,source={data},target=/opt/data'
@@ -47,8 +46,7 @@ def main():
                         '--mount',f'type=bind,source={ROOT}/shared,target=/opt/data/shared,readonly',
                         '--mount',f'type=bind,source={temp}/workspace,target=/workspace',
                         '--mount',f'type=bind,source={temp}/external,target=/external,readonly']
-                # A fresh volume must first be opened by the actual s6 bootstrap,
-                # not a root Python probe that creates install locks and logs.
+                # Leave fresh data untouched until the actual s6 bootstrap.
                 if kind!='fresh':
                     run(['run','--rm','-i','--entrypoint',PYTHON,'--mount',data_mount,a.image,'-','seed',kind],code=fixture)
                 run(['run','-d','--name',name,'--label','io.devkit.test='+tag,*mounts,
@@ -63,9 +61,12 @@ def main():
                         time.sleep(.5)
                     assert not state['Running'] and state['ExitCode']!=0, 'Unsafe boot did not fail closed: '+kind
                     run(['run','--rm','-i','--entrypoint',PYTHON,'--mount',data_mount,a.image,'-','verify-blocked'],code=fixture)
+                    logs=run(['logs',name],check=False)
+                    bootlog=logs.stdout+logs.stderr
+                    assert 'Reconciliation refused before successful migration' in bootlog
+                    assert 'Reconciliation enabled after successful migration' not in bootlog
                     print('[PASS] Boot refused unsafe migration before gateways:',kind,flush=True)
                     continue
-                # The actual installed boot guard and Gateway, not a pure fixture.
                 deadline=time.monotonic()+120
                 while True:
                     state=json.loads(run(['inspect','--format','{{json .State}}',name]).stdout)
@@ -93,7 +94,6 @@ def main():
                 except (subprocess.TimeoutExpired,RuntimeError): pass
             raise
         finally:
-            # Only resources this process successfully created; never remove supplied user resources.
             for name in reversed(created_containers):run(['rm','-f',name],check=False)
             for name in reversed(created_volumes):run(['volume','rm',name],check=False)
 if __name__=='__main__':main()

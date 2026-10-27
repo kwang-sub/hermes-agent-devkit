@@ -116,6 +116,11 @@ ENV S6_BEHAVIOUR_IF_STAGE2_FAILS=2
 ENV HERMES_KANBAN_DISPATCH_IN_GATEWAY=false
 COPY --chmod=0755 scripts/lite_default_profile.py /opt/devkit/bin/lite_default_profile.py
 COPY --chmod=0755 docker/cont-init.d/018-devkit-lite-init /etc/cont-init.d/018-devkit-lite-init
+COPY --chmod=0755 docker/cont-init.d/02-devkit-reconcile-guard /opt/devkit/bin/reconcile-guard
+RUN mkdir -p /opt/devkit/upstream \
+    && mv /etc/cont-init.d/02-reconcile-profiles /opt/devkit/upstream/02-reconcile-profiles \
+    && cp /opt/devkit/bin/reconcile-guard /etc/cont-init.d/02-reconcile-profiles \
+    && sh -n /etc/cont-init.d/02-reconcile-profiles
 COPY scripts/verification /opt/devkit/scripts/verification
 COPY custom-skills/_lib/process_execution.py /opt/devkit/custom-skills/_lib/process_execution.py
 RUN test -f /etc/cont-init.d/02-reconcile-profiles \
