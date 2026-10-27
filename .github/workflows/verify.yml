@@ -191,6 +191,7 @@ jobs:
           foreach ($file in @(
             "update-devkit.ps1",
             "init-profiles.ps1",
+            "init-lite.ps1",
             "scripts/profile-init-probe.ps1",
             "scripts/test_init_profile_probe.ps1"
           )) {

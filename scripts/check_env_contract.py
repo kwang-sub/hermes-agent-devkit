@@ -42,7 +42,6 @@ DEFAULTS = {
     "HERMES_FLOW_MODEL_DEFAULT": "gpt-5.6-terra",
     "HERMES_FLOW_MODEL_PREMIUM_PROVIDER": "openai-codex",
     "HERMES_FLOW_MODEL_PREMIUM": "gpt-6-astra",
-    "HERMES_KANBAN_BOOT_RECOVERY_ENABLED": "true",
     "HERMES_KANBAN_NOTIFY_ENABLED": "false",
     "HERMES_KANBAN_NOTIFY_PLATFORM": "discord",
     "HERMES_KANBAN_NOTIFY_TARGET": "",
@@ -122,6 +121,9 @@ def main() -> int:
         reference = "${" + key + ":-" + default + "}"
         if reference not in compose:
             raise SystemExit(f"compose.yml missing defaulted reference: {reference}")
+
+    if 'HERMES_KANBAN_BOOT_RECOVERY_ENABLED: "false"' not in compose:
+        raise SystemExit("Lite-only runtime must disable Standard worker auto-resume")
 
     if 'HERMES_DASHBOARD: "1"' not in compose:
         raise SystemExit("compose.yml must keep the baseline dashboard enabled for the healthcheck contract")

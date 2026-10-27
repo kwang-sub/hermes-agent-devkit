@@ -129,7 +129,6 @@ $MavenRuntimeCheck = @'
 from pathlib import Path
 import os
 import tempfile
-from hermes_cli.devkit_worker_startup import with_worker_startup
 
 for key in ("HERMES_MAVEN_ROOT", "HERMES_MAVEN_REPO_ROOT", "HERMES_MAVEN_DIST_ROOT", "HERMES_MAVEN_DOWNLOAD_ROOT", "HERMES_MAVEN_LOCK_ROOT"):
     value = os.environ.get(key, "")
@@ -140,13 +139,7 @@ for key in ("HERMES_MAVEN_ROOT", "HERMES_MAVEN_REPO_ROOT", "HERMES_MAVEN_DIST_RO
     with tempfile.TemporaryFile(dir=root):
         pass
 assert os.environ.get("GRADLE_USER_HOME") == "/opt/data/gradle/user-home"
-query = with_worker_startup(["hermes", "chat", "-q", "work kanban task t_runtime_probe"], "coder")[-1]
-assert "DEVKIT_WORKER_STARTUP_V1" in query
-assert 'skill_view("dev-implement-plan")' in query
-assert "KANBAN_EXECUTION_BOUNDARY_V1" in query
-assert "hermes-maven" not in query
-assert "maven_verification.py" not in query
-print("Managed Maven cache and worker startup boundary contract valid")
+print("Managed Maven cache contract valid for Lite default")
 '@
 
 $MavenRuntimeCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
@@ -249,9 +242,6 @@ except ModuleNotFoundError as exc:
 
 configs = {
     "default": Path("/opt/data/config.yaml"),
-    "orchestrator": Path("/opt/data/profiles/orchestrator/config.yaml"),
-    "coder": Path("/opt/data/profiles/coder/config.yaml"),
-    "reviewer": Path("/opt/data/profiles/reviewer/config.yaml"),
 }
 for profile, path in configs.items():
     if not path.is_file():
@@ -286,14 +276,14 @@ Invoke-DockerExactOutputCheck -Label "Default multiplex Gateway service is runni
 # multiplex served-profile publication. The probe inspects both, waits for
 # bounded startup, attempts one control-socket rescan only for a live host,
 # and prints a classified diagnostic on failure.
-Invoke-DockerCheck -Label "Default multiplex Gateway served-profile contract" -DockerArgs @(
+Invoke-DockerCheck -Label "Default Lite Gateway served-profile contract" -DockerArgs @(
     "exec", "--user", "hermes", $Container,
     "/opt/hermes/.venv/bin/python",
     "/opt/devkit/bin/devkit_gateway_readiness.py",
     "--wait-seconds", "60"
 )
 
-Write-Host "[OK] Default multiplex Gateway serves default/coder/orchestrator/reviewer"
+Write-Host "[OK] Default Lite Gateway serves default"
 $SecurityContractCheck = @'
 import os
 from pathlib import Path
@@ -414,16 +404,6 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[OK] Upstream Codex scoped Kanban MCP contract"
 
-Invoke-DockerCheck -Label "Task Recovery orchestrator capability" -DockerArgs @(
-    "exec", "--user", "hermes", $Container, "test", "-f",
-    "/opt/custom-skills/orchestrator/dev-task-recovery/SKILL.md"
-)
-Invoke-DockerCheck -Label "Task Recovery board inventory helper" -DockerArgs @(
-    "exec", "--user", "hermes", $Container,
-    "/opt/hermes/.venv/bin/python",
-    "/opt/custom-skills/orchestrator/dev-task-recovery/scripts/recovery_board_inventory.py",
-    "--help"
-)
 Invoke-DockerCheck -Label "Shared custom skill root" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "test", "-d", "/opt/custom-skills/shared"
 )
@@ -436,56 +416,35 @@ Invoke-DockerCheck -Label "Shared Spring test capability" -DockerArgs @(
 Invoke-DockerCheck -Label "Shared Node dependency capability" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "test", "-f", "/opt/custom-skills/shared/dev-node-dependencies/SKILL.md"
 )
-Invoke-DockerCheck -Label "Deprecated worktree skills removed" -DockerArgs @(
-    "exec", "--user", "hermes", $Container, "sh", "-lc",
-    "test ! -e /opt/custom-skills/orchestrator/dev-worktree-dispatch && test ! -e /opt/custom-skills/orchestrator/dev-worktree-cleanup"
+Invoke-DockerCheck -Label "Lite default runtime adapter" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "test", "-f", "/tmp/devkit-lite-default-profile.py"
 )
-
-foreach ($Profile in @("orchestrator", "coder", "reviewer")) {
-    Invoke-DockerCheck -Label "Bundled skill opt-out: $Profile" -DockerArgs @(
-        "exec", "--user", "hermes", $Container,
-        "test", "-f", "/opt/data/profiles/$Profile/.no-bundled-skills"
-    )
-}
-
-$ProfileConfigCheck = @'
+$DefaultLiteCheck = @'
 from pathlib import Path
-import sys
 try:
     import hermes_yaml as yaml
 except ModuleNotFoundError as exc:
-    if exc.name != "hermes_yaml":
-        raise
-    import yaml  # Legacy Hermes/PyYAML fallback
+    if exc.name != "hermes_yaml": raise
+    import yaml
 
-profile = sys.argv[1]
-config = Path(f"/opt/data/profiles/{profile}/config.yaml")
-expected = {
-    "orchestrator": ["/opt/custom-skills/orchestrator", "/opt/custom-skills/shared"],
-    "coder": ["/opt/custom-skills/coder", "/opt/custom-skills/shared"],
-    "reviewer": ["/opt/custom-skills/reviewer", "/opt/custom-skills/shared"],
-}[profile]
-required_toolsets = ["hermes-cli", "kanban"]
-
-data = yaml.safe_load(config.read_text(encoding="utf-8")) or {}
-actual = data.get("skills", {}).get("external_dirs")
-if actual != expected:
-    raise SystemExit(f"{profile}: expected external_dirs={expected!r}, got {actual!r}")
-
-toolsets = data.get("toolsets")
-if not isinstance(toolsets, list):
-    raise SystemExit(f"{profile}: toolsets must be a YAML list, got {toolsets!r}")
-missing = [item for item in required_toolsets if item not in toolsets]
-if missing:
-    raise SystemExit(f"{profile}: missing required toolsets={missing!r}, got {toolsets!r}")
+config=Path("/opt/data/config.yaml")
+data=yaml.safe_load(config.read_text(encoding="utf-8")) or {}
+skills=data.get("skills") or {}
+assert {"/opt/custom-skills/shared", "/opt/custom-skills/lite"}.issubset(set(skills.get("external_dirs") or []))
+assert "dev-lite-session" in (skills.get("auto_load") or [])
+assert {"hermes-cli", "kanban"}.issubset(set(data.get("toolsets") or []))
+for profile in ("orchestrator", "coder", "reviewer"):
+    assert not (Path("/opt/data/profiles") / profile).exists(), profile
+for name in ("dev-lite-session", "dev-lite-review", "dev-worktree-create",
+             "dev-worktree-remove", "dev-feature-docs", "dev-project-pattern",
+             "git-pr-publish", "git-workspace-cleanup"):
+    assert (Path("/opt/custom-skills/lite") / name / "SKILL.md").is_file(), name
+print("Default-only Lite config and skills validated")
 '@
-
-foreach ($Profile in @("orchestrator", "coder", "reviewer")) {
-    $ProfileConfigCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python - $Profile
-    if ($LASTEXITCODE -ne 0) {
-        throw "[FAIL] Profile skill/toolset contract: $Profile"
-    }
-    Write-Host "[OK] Profile skill/toolset contract: $Profile"
+$DefaultLiteCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
+if ($LASTEXITCODE -ne 0) {
+    throw "[FAIL] Default Lite skill/profile contract. Re-run .\update-devkit.ps1."
 }
+Write-Host "[OK] Default Lite skill/profile contract"
 
 Write-Host "[PASS] Hermes container runtime matches the current DevKit contract."

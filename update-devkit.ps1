@@ -19,7 +19,7 @@ Default behavior:
 6. Build with `docker compose build --pull` so the current latest Hermes base image is refreshed.
 7. Force-recreate the container only after the build succeeds.
 8. Keep the existing hermes-data volume and profile/OAuth/session state intact.
-9. Run init-profiles.ps1 to reconcile the role profile and skill contract.
+9. Run init-lite.ps1 to configure only the default profile and archive legacy profiles safely.
 10. Ensure the default multiplex Gateway is running.
 11. Verify the running container contract.
 12. If verification fails, perform one force-recreate repair from the image that
@@ -335,7 +335,7 @@ function Invoke-RuntimeVerification {
     }
 }
 
-function Invoke-ProfileInitialization {
+function Invoke-LiteInitialization {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Initializer,
@@ -347,9 +347,9 @@ function Invoke-ProfileInitialization {
     $PreviousContainer = if ($PreviousContainerExists) { $env:HERMES_CONTAINER_NAME } else { $null }
     try {
         $env:HERMES_CONTAINER_NAME = $ContainerName
-        & $Initializer
+        & $Initializer -Container $ContainerName -ArchiveLegacyProfiles
         if ($LASTEXITCODE -ne 0) {
-            throw "Profile initialization failed. ExitCode=$LASTEXITCODE"
+            throw "Lite default initialization failed. ExitCode=$LASTEXITCODE"
         }
     }
     finally {
@@ -713,17 +713,17 @@ try {
     Invoke-Native -FilePath "docker" -Arguments @("compose", "up", "-d", "--force-recreate")
     $ContainerRecreated = $true
 
-    $ProfileInitializer = Join-Path $RepoRoot "init-profiles.ps1"
+    $ProfileInitializer = Join-Path $RepoRoot "init-lite.ps1"
     if (-not $SkipProfileInit) {
         if (-not (Test-Path -LiteralPath $ProfileInitializer -PathType Leaf)) {
-            throw "Profile initializer is missing: $ProfileInitializer"
+            throw "Lite initializer is missing: $ProfileInitializer"
         }
-        Write-Host "[RUN ] Profile/skill reconciliation"
-        Invoke-ProfileInitialization -Initializer $ProfileInitializer -ContainerName $Container
+        Write-Host "[RUN ] Lite default reconciliation"
+        Invoke-LiteInitialization -Initializer $ProfileInitializer -ContainerName $Container
         $ProfilesReconciled = $true
     }
     else {
-        Write-Host "[SKIP] Profile initialization disabled by -SkipProfileInit."
+        Write-Host "[SKIP] Lite initialization disabled by -SkipProfileInit."
     }
 
     Ensure-DefaultMultiplexGateway -ContainerName $Container
@@ -743,8 +743,8 @@ try {
             # Recreating the same image cannot cure a successfully supervised
             # but standalone/unverified multiplex Gateway. Preserve the
             # container and its state for the classified diagnostic instead.
-            if ($Script:LastRuntimeVerificationError -match "Default multiplex Gateway served-profile contract") {
-                throw "GATEWAY_MULTIPLEX_NOT_READY: default Gateway is supervised but has not verified serving all role profiles. No automatic container recreation: inspect the classified readiness diagnostics, gateway_state.json and Gateway startup logs before migration or restart."
+            if ($Script:LastRuntimeVerificationError -match "Default Lite Gateway served-profile contract") {
+                throw "GATEWAY_DEFAULT_NOT_READY: default Gateway is supervised but not verified serving the default profile. No automatic container recreation: inspect the classified readiness diagnostics, gateway_state.json and Gateway startup logs before migration or restart."
             }
             if ($NoRepair) {
                 throw "Runtime verification failed and automatic repair is disabled by -NoRepair."
@@ -756,8 +756,8 @@ try {
             $ContainerRecreated = $true
 
             if (-not $SkipProfileInit) {
-                Write-Host "[RUN ] Profile/skill reconciliation after repair"
-                Invoke-ProfileInitialization -Initializer $ProfileInitializer -ContainerName $Container
+                Write-Host "[RUN ] Lite default reconciliation after repair"
+                Invoke-LiteInitialization -Initializer $ProfileInitializer -ContainerName $Container
                 $ProfilesReconciled = $true
             }
 
@@ -783,7 +783,7 @@ try {
     Write-Host "HERMES_WINDOWS_TEMP_CONTAINER_PATH=$WindowsTempContainerPath"
     Write-Host "IMAGE_REBUILT=$($ImageRebuilt.ToString().ToLowerInvariant())"
     Write-Host "CONTAINER_RECREATED=$($ContainerRecreated.ToString().ToLowerInvariant())"
-    Write-Host "PROFILES_RECONCILED=$($ProfilesReconciled.ToString().ToLowerInvariant())"
+    Write-Host "LITE_DEFAULT_RECONCILED=$($ProfilesReconciled.ToString().ToLowerInvariant())"
     Write-Host "AUTOMATIC_REPAIR_USED=$($AutomaticRepairUsed.ToString().ToLowerInvariant())"
     Write-Host "GIT_IDENTITY_CONFIGURED=$($GitIdentityConfigured.ToString().ToLowerInvariant())"
     Write-Host "GITHUB_AUTH_READY=$($GitHubAuthReady.ToString().ToLowerInvariant())"
