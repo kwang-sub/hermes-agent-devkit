@@ -28,6 +28,10 @@ jobs:
           python3 -m compileall -q custom-skills/lite scripts/verification
       - name: Lite Git PR publish tests
         run: python3 custom-skills/lite/git-pr-publish/tests/test_pr_publish.py
+      - name: Lite Git post-merge cleanup tests
+        run: |
+          python3 custom-skills/lite/git-workspace-cleanup/tests/test_workspace_cleanup.py
+          python3 custom-skills/lite/git-workspace-cleanup/tests/test_tracked_branch_cleanup.py
       - name: Lite feature docs tests
         run: python3 custom-skills/lite/dev-feature-docs/tests/test_find_feature_docs.py
       - name: Verify Lite-only toolchain helper import paths

@@ -47,3 +47,6 @@ Hermes Lite에서 새 대화 세션을 시작할 때 자동으로 읽는 기본 
 
 ## 공통 검증 헬퍼
 - Java/Spring의 Maven·Gradle을 검증할 때 프로젝트 버전/기존 명령과 `/opt/data` 실행·캐시 격리 정책을 유지하고 `/workspace/hermes-agent-devkit/scripts/verification/`의 역할 독립 helper를 필요 시 사용한다. Coder Worker나 Kanban Task ID를 필수로 요구하지 않는다.
+
+## PR 병합 후 Worktree·브랜치 정리
+- merged PR과 브랜치 ref를 증명한 뒤 Worktree·local/remote branch를 선택 정리하는 요청에는 `git-workspace-cleanup`을 필요 시 호출한다. 일반 Worktree 삭제는 `dev-worktree-remove`를 우선 사용한다. 원격 ref 삭제는 별도 확인한다.
