@@ -51,6 +51,7 @@ def main():
                     run(['run','--rm','-i','--entrypoint',PYTHON,'--mount',data_mount,a.image,'-','seed',kind],code=fixture)
                 run(['run','-d','--name',name,'--label','io.devkit.test='+tag,*mounts,
                      '-e','HERMES_KANBAN_DISPATCH_IN_GATEWAY=false','-e','HERMES_KANBAN_NOTIFY_ENABLED=false',
+                     '-e','GATEWAY_MULTIPLEX_PROFILES=true',
                      '-e','HERMES_DASHBOARD=0','-e','HERMES_GATEWAY_BOOTSTRAP_STATE=running',
                      a.image,'gateway','run']);created_containers.append(name)
                 if kind in ('active','collision'):
