@@ -7,7 +7,7 @@ platforms: [linux]
 metadata:
   hermes:
     tags: [dev, lite, direct, interactive, kanban-optional]
-    related_skills: [dev-lite-review, dev-java-guidelines, dev-spring-guidelines, dev-spring-test, dev-official-docs-context]
+    related_skills: [dev-lite-review, dev-project-pattern, dev-feature-docs, git-pr-publish, dev-java-guidelines, dev-spring-guidelines, dev-spring-test, dev-official-docs-context]
     requires_tools: [terminal]
 ---
 
@@ -39,3 +39,8 @@ Hermes Lite에서 새 대화 세션을 시작할 때 자동으로 읽는 기본 
 - 사용자가 작업 공간 분리를 요청하면 `dev-worktree-create`, 제거를 요청하면 `dev-worktree-remove` 스킬을 필요 시 로드한다.
 - 두 스킬은 Lite 전용이며 Kanban·Orchestrator·Reviewer 인계 없이 동작한다.
 - 삭제 전 미커밋·미추적·ignored 파일을 점검하고 메인 worktree/사용 중인 경로를 보호한다. 브랜치 삭제는 별도 작업이다.
+
+## 필요할 때만 로딩하는 Lite 전용 스킬
+- 변경 전에 프로젝트 구조/관례 근거가 필요하면 `dev-project-pattern`을 선택한다. 작은 수정에 전체 프로젝트 탐색을 강제하지 않는다.
+- 기능 요구사항 문서 생성/수정/상태 확인 요청은 `dev-feature-docs`를 사용한다. 문서 작업은 구현·Kanban 승인과 독립이다.
+- Git 커밋·푸시·PR 게시 요청은 `git-pr-publish`로 Preview와 사용자 승인을 나누어 처리한다. 구현/검토 완료만으로 Git 게시를 자동 수행하지 않는다.
