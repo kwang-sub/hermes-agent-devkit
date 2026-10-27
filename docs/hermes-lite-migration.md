@@ -1,69 +1,27 @@
-# Hermes Lite 마이그레이션 (dev에서 병행 운영)
+# Lite 단일 표준 전환
 
-> 범위: Hermes CLI에서 직접 개발하면서 기존 데이터, Windows Workspace/외부 bind, 개발 툴체인과 개발 스킬을 재사용한다. Standard Flow는 **삭제하지 않고 미사용**한다.
+기존 Lite/Standard 병행 실험을 종료하고, default 직접 개발을 표준으로 한다. DevKit 역할 스킬·승인 상태 머신·Worker startup/session affinity/model transition/자동 복구 및 복구 전용 표시 패치를 삭제한다. Hermes upstream의 일반 프로필 관리 기능은 수정하지 않는다.
 
-## 현재 Devkit 구조에서 확인된 사실
+## 사전 이관
 
-- 호스트 공식 업데이트 스크립트는 `update-devkit.ps1`이며, 기본 운영 브랜치는 `dev`다. `updatekit.sh`라는 기존 진입점은 없다.
-- `compose.yml`은 기본 `hermes-dev` 컨테이너와 **`hermes-dev-data` named volume**을 `/opt/data`에 붙인다. 다만 실제 실행 중인 컨테이너는 별도 생성 경로에 의해 `/opt/data`가 `bind`일 수도 있으므로, Lite는 현재 마운트의 유형과 데이터 접근 권한을 검사한 뒤 그대로 보존한다. `D:/workspace` → `/workspace`, `custom-skills` → `/opt/custom-skills`, `shared` → `/opt/data/shared` bind도 제공한다.
-- `shared/AGENTS.common.md`과 루트 `AGENTS.md`는 Coder의 Kanban task 선행·Orchestrator/Reviewer 강제 규칙을 포함한다. 두 파일은 Standard 계약을 유지하고, Lite는 별도 `lite/AGENTS.md` 및 `dev-lite-session` 자동 로딩 스킬로 실행 정책을 분리한다.
-- Standard Coder·Reviewer 스킬 중 `dev-implement-plan`, `dev-code-review`와 관련 handoff/worker gate는 독립 실행에 적합하지 않다. `custom-skills/shared`의 언어·프레임워크·검증 capability는 재사용 가능하다.
-- `init-profiles.ps1`는 Standard 전용 세 프로필을 초기화한다. **Lite에서 재실행하지 않는다.** default 프로필의 기존 인증·메모리·세션을 재사용한다.
-- Devkit Dockerfile에는 Kanban 보조 패치/알림 서비스가 이미 포함되어 있다. 첫 실험에서는 원격 이미지나 Dockerfile을 변경하지 않는다. 런타임 가벼움은 다단계 위임·정책 로딩을 줄여 먼저 평가한다.
+`git-pr-publish`, `git-workspace-cleanup`, `dev-feature-docs`, `dev-project-pattern`, `dev-lite-review`와 Worktree 생성/제거를 Lite에 보존했다. 선택적 Jira와 프로젝트 툴체인·설정 보안 준비도 직접 실행 가능하다. Maven/Gradle 엔진·검증 캐시와 process_execution은 역할 독립 경로를 사용하며 같은 코드를 역할별로 복제하지 않는다.
 
-## 전환 범위와 보존 경계
+Shared 데이터·API·Infrastructure의 설계와 실행 권한은 유지하되 별도 Task/프로필·pin·Dispatch는 요구하지 않는다. 논리 모델 승인, migration 파일 작성, 실제 운영 DB 적용은 다른 범위이며 승인된 순서로 같은 세션에서 진행할 수 있다.
 
-| 대상 | Lite 정책 | 확인 |
-|---|---|---|
-| 코드 | 현재 개발 프로젝트 Git/Workspace는 건드리지 않음 | Lite/Standard는 같은 Devkit `dev` 브랜치에서 전환 |
-| Hermes 기본 프로필 | 모델·OAuth·메모리·세션은 그대로 유지 | `/opt/data` |
-| Kanban | DB/보드/카드는 보존, 필요한 내용만 수동 기록 | `/opt/data/kanban*` |
-| Standard 역할 프로필 | 유지하되 Lite에서 호출하지 않음 | `/opt/data/profiles/*` |
-| Lite 전용 프로필 조정 | default `config.yaml`의 skill/toolset/auto_load 목록만 비파괴적으로 조정 (기존 사용자 스킬·설정은 복원) | 선행 백업 및 복원 |
-| 스킬 | `custom-skills/shared` 재사용, Lite용 검토 스킬 추가 | read-only bind |
-| 빌드 도구 | JDK 8/17/21, Maven·Gradle·Node/pnpm, 캐시 경로 유지 | 기존 image/volume |
-| 외부 마운트 | 실행 중인 컨테이너가 가진 mount를 변경하지 않음 | Docker inspect JSON: volume/bind, Source, Target, RW, 사용자 접근 권한 |
-| 알림 | 기존 Kanban 알림 구성값 유지, 자동 생성/위임은 하지 않음 | 기존 옵션 유지 |
+## 안전한 부팅 순서
 
-### 두 가지 별도 개념
+`01-hermes-setup`의 upstream 데이터 준비 이후 `018-devkit-lite-init`가 실행된다. 이 스크립트는 `02-reconcile-profiles`보다 먼저 default 설정·역할 보관을 끝낸다. `S6_BEHAVIOUR_IF_STAGE2_FAILS=2`로 검사가 실패한 컨테이너는 서비스 시작을 계속하지 않는다. 별도 native dispatcher 비활성화가 자동 Worker 생성도 차단한다.
 
-**Git branch**는 Devkit 소스 버전을 관리한다. PR #188이 `dev`에 병합되었으므로 **Lite/Standard 모드 전환에 Git branch 교체는 필요 없다.** **Hermes default 프로필**은 영속 메모리/인증/세션의 소유자이며, 모드 전환 시 필요한 프로필 설정만 바꾼다.
+`lite_default_profile.py`는 관리된 skill roots/auto-load/toolsets/dispatch만 갱신하고 다른 설정은 보존한다. 이전 overlay schema 1/2는 현재 값이 기록과 일치하는지 먼저 확인하여 오래된 백업으로 사용자 편집을 덮어쓰지 않는다. 설정은 원자적으로 기록하고 read-back한다. exclusive lock, 비밀값 없는 journal, private 원본 백업, 실패 시 이번 변경의 원복을 사용한다.
 
-**실행 정책**에서 Lite는 Kanban 카드 없는 작업을 허용한다. Kanban은 사용자가 기록을 요청하거나 기존 카드를 참조할 때만 사용한다. 기존 Standard에서 실행 중인 worker는 자동으로 Lite 작업으로 이전하지 않는다.
+기존 역할 홈은 `/opt/data/devkit-lite/legacy-profiles/{orchestrator,coder,reviewer}`에 그대로 보관된다. OAuth·메모리·세션을 default에 임의 병합하지 않는다. 알 수 없는 schema, active/archive 충돌, symlink를 통한 경계 이탈, 실행 중 카드, 불완전 journal은 실패로 처리한다. 사용자 카드 상태를 자동 변경하지 않는다.
 
-## 최소 실행 절차
+## 실행과 복구
 
-1. Devkit checkout이 깨끗한지 확인한다. 실제 작업 중인 Standard worker가 있으면 완료·안전 중단시킨다.
-2. `git switch dev && git pull --ff-only origin dev`로 **병합된** Lite 스크립트를 가져온다. 삭제된 `experiment/hermes-lite` 원격 브랜치를 checkout하지 않는다.
-3. Windows PowerShell에서 먼저 `.\updatekit_lite.ps1 -SelfTest` 및 `.\updatekit_lite.ps1 -MountSelfTest`로 Git 인수 전달·Docker 마운트 JSON 파싱을 **Docker 접근 없이** 사전 검사한다. 이후 `.\updatekit_lite.ps1`로 실제 컨테이너를 검사하여 Lite를 적용한다. Git Bash/WSL에서는 `./updatekit_lite.sh`를 실행한다.
-4. 기존 `hermes-dev`가 실행 중이면 이미지 빌드/컨테이너 재생성 없이 기존 volume과 mount를 검증하고 Lite 프로필 설정을 적용한다.
-5. 컨테이너가 없다면 기존 `.\update-devkit.ps1 -Branch dev`로 최초 부트스트랩한 후 Lite 스크립트를 실행한다.
-6. `docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit/lite hermes-dev /opt/hermes/.venv/bin/hermes -p default`로 default 프로필에서 직접 작업한다. 필요 시 `/model`로 모델을 선택한다.
-7. Standard 복귀는 **같은 `dev` 브랜치에서** `.\updatekit_lite.ps1 -Mode standard`로 수행한다. 기존 세션·Kanban은 유지하며, 전체 이미지/Standard 프로필 재정합이 필요한 경우에만 `.\update-devkit.ps1`를 별도 실행한다. 과거 로컬 Lite 브랜치가 남아 있다면 복원 후 `dev`로 이동할 수 있다.
+`update-devkit.ps1` 하나가 설치/업데이트를 담당한다. 기존 컨테이너의 실제 mount를 보존하며 read-only 계획을 통과한 뒤 새 이미지를 사용한다. 이미지 빌드는 실행 컨테이너 정지 전에 완료된다. 전환 실패 후 재생성·재시도를 자동 반복하지 않는다.
 
-> 초기 적용은 Windows PowerShell 권장. Bash 래퍼는 Windows PowerShell을 호출한다. 기존 `update-devkit.ps1`의 전체 자동 재빌드·재생성 정책을 Lite의 매 전환에 사용하지 않는다.
+표준 전환 이후 `updatekit_lite.ps1 -Mode standard`로 복원하지 않는다. 보관된 이전 코드 버전과 `devkit-lite/backups/`는 명시적 운영 복구의 자료다. 프로필 archive를 복원하려면 먼저 서비스를 정지하고 동일 경로 충돌·이후 사용자 변경 여부를 검토해야 한다. archive/data volume을 제거해서 해결하지 않는다.
 
+## 운영 확인
 
-> Lite 세션은 개발 대상 프로젝트에서 `AGENTS.md`를 찾더라도 auto-load된 `dev-lite-session`으로 직접 협업 기준을 유지합니다. Devkit 자체를 수정할 때는 별도 `lite/AGENTS.md`가 있는 경로에서 시작하여 Standard의 루트 `AGENTS.md`와 충돌하지 않도록 합니다. Standard 모드로 복귀하면 Lite의 auto-load 목록 변경을 복원합니다.
-
-## 주의해야 할 실패 경로
-
-- 시작 전에 마운트 누락·중복, 데이터 경로의 tmpfs/읽기 전용, 실행 중인 Kanban task, 잘못된 Devkit checkout/프로필 경로가 발견되면 **fail-closed**한다. Lite 스크립트는 Git checkout을 수행하지 않아 미커밋 변경이 있어도 파일을 덮어쓰지 않는다.
-- `/opt/data` 전체 삭제, volume 교체, `docker compose down -v`, `git reset/clean/stash`, 기존 Kanban 카드 상태 갱신은 금지한다.
-- 기존 데이터 폴더와 프로젝트 소스 디렉터리는 수정을 대상으로 삼지 않는다. profile 편집은 **default config.yaml 내 skills.external_dirs, skills.auto_load, toolsets 항목으로 한정**한다.
-- Lite 실행 중 사용자가 profile 스킬·toolset·autoload 목록을 직접 바꿨다면 복귀 시 덮어쓰지 않고 충돌을 표시한다. 백업은 `/opt/data/devkit-lite/`에 남긴다.
-- 기존 컨테이너가 자동으로 새로운 AGENTS를 재로딩한다고 가정하지 않는다. **새 CLI 대화 세션**을 시작해 Lite 정책 적용을 확인한다.
-- `/opt/data`는 `volume` 또는 영속 `bind` 모두 허용하지만 `tmpfs`, 읽기 전용, Source 누락은 거부한다. `/workspace`는 컨테이너의 실제 `WorkingDir`에 대응하는 writable bind여야 하고 `/opt/custom-skills`, `/opt/data/shared`는 bind를 유지한다. 사용자 정의 다른 mount는 변경하거나 제거하지 않는다.
-- Windows PowerShell 5.1 `ConvertFrom-Json`이 단일/다중 mount 배열을 다르게 다룰 수 있으므로 `-MountSelfTest`에 named volume, host bind, 단일 JSON array, 외부 Temp, 사용자 정의 workspace, 음성 검증 사례를 포함한다.
-- 로컬 PC의 Docker/container 세션은 이 브랜치 변경만으로 실행되지 않는다. 실제 마운트·OAuth 상태·모델 동작은 사용자의 Docker 환경에서 별도 smoke 테스트한다.
-
-## 커밋/승격 경계
-
-1. 이관 조사 및 경계 명세 (원래 실험 브랜치에서 수행, PR #188로 dev 병합 완료)
-2. Lite 개발 지침 전환 (Standard 실행 규칙 격리)
-3. Lite 프로필 구성 및 updatekit 스크립트
-4. Coder/Reviewer capability 재사용
-5. 선택적 Kanban 및 복귀 정책
-6. 자동 정적 계약 테스트/문서/CI
-
-실사용 후 동일 난이도의 작업을 Codex CLI, Hermes Lite, 기존 Standard와 비교한다. 완료 시간, 개입 용이성, 품질, 재개 가능성, Kanban/데이터 보존을 확인한 뒤에만 Lite 표준 승격/Standard 제거를 결정한다.
+CI는 임시 이름·label을 가진 자체 컨테이너/볼륨에서만 동작한다. 실제 사용자 Windows PC의 Docker 연결, 외부 mount 권한, OAuth와 모델 응답은 별도 확인이 필요하다. 설치 안내는 루트 README를 따른다.

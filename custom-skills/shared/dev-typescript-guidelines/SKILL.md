@@ -7,7 +7,7 @@ platforms: [linux]
 metadata:
   hermes:
     tags: [dev, typescript, frontend, guidelines, convention, strict, narrowing, discriminated-union, performance, ts7, project-references]
-    related_skills: [dev-implement-plan, dev-project-pattern, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract]
+    related_skills: [dev-project-pattern, dev-frontend-guidelines, dev-nextjs-feature, dev-frontend-test, dev-api-contract]
     requires_tools: [terminal]
 ---
 

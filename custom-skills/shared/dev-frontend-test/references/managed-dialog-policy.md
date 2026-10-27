@@ -61,7 +61,7 @@ Hermes가 confirm을 bridge로 처리한 경우 `Hermes.dialogPending`으로 구
 `probe_managed_dialog.py --mode agent-browser`는 실제 설치된 CLI의 하위 정책 비교용이다.
 `--mode policy-model --offline-fixture`는 개발 머신의 실제 Chromium에서 공개 소스와 같은
 자동 응답 정책을 재현하는 보조 실험이다. 이것을 실제 agent-browser/Hermes E2E로 보고하지 않는다.
-정책 모델의 성공이나 출력 JSON 형식 검사만으로 제품 Coder를 재개하지 않는다.
+정책 모델의 성공이나 출력 JSON 형식 검사만으로 제품 구현 단계를 재개하지 않는다.
 
 Browser metadata/정책/검사 실패 단계가 같으면 같은 제품 작업을 다시 시도하지 않는다.
 새 이미지와 **신규 관리형 세션**에서 공식 응답 Probe의 결과를 확보한 후 기존 승인·Recovery 계약을 따른다.

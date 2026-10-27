@@ -39,7 +39,7 @@ framework/library의 version-sensitive API 또는 config 변경
 library/framework major/minor upgrade
 Deprecated API 교체
 외부 dependency의 .d.ts / compiler compatibility 오류
-Coder가 외부 API signature 또는 현재 version 동작에 확신이 없음
+구현 단계가 외부 API signature 또는 현재 version 동작에 확신이 없음
 ```
 
 다음만 있는 Task에서는 기계적으로 호출하지 않는다.

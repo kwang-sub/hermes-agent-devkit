@@ -15,7 +15,7 @@ metadata:
 
 Frontend 구현 전에 디자인 자료를 **provider 독립적인 Design Evidence**로 정규화하는 capability다.
 
-이 Skill은 화면 source를 직접 구현하지 않는다. 이미지/Figma에서 확인 가능한 사실과 추론/미확정 정보를 분리해 `dev-frontend-feature`와 Reviewer에 전달한다.
+이 Skill은 화면 source를 직접 구현하지 않는다. 이미지/Figma에서 확인 가능한 사실과 추론/미확정 정보를 분리해 `dev-frontend-feature`와 자체 검토 단계에 전달한다.
 
 ## Design Source
 
@@ -49,7 +49,7 @@ APPROVED
 → 구현 기준으로 사용 가능
 ```
 
-`DRAFT` 또는 `REFERENCE`를 Coder가 임의로 `APPROVED`로 승격하지 않는다.
+`DRAFT` 또는 `REFERENCE`를 구현 단계가 임의로 `APPROVED`로 승격하지 않는다.
 
 ## Fidelity
 
@@ -244,9 +244,9 @@ python3 /opt/custom-skills/shared/dev-design-reference/scripts/screen_spec_guard
 v2의 `STRUCTURE_PASS`는 필수 설명/ID/양방향 연결/상세/AC의 구조 검증만 의미한다.
 이미지 내용/기능 정확성/디자인 품질/실제 승인 여부나 full Markdown parser를 가장하지 않는다.
 
-## Reviewer 계약
+## 자체 검토 단계 계약
 
-Reviewer는 Coder가 남긴 Normalized Design Evidence를 먼저 재사용한다.
+자체 검토 단계는 구현 단계가 남긴 Normalized Design Evidence를 먼저 재사용한다.
 Screen Spec의 기능 목록과 실제 UI를 양방향으로 대조하고, 노출/활성화 조건·실행 결과·필요한 예외
 처리·플랫폼 차이·AC별 검증 근거를 확인한다. 구조 검사만 통과했다고 기능 검증을 PASS로 하지 않는다.
 이미지에 없는 제품 동작과 승인/기존 구현의 근거가 충돌하면 관련 기능의 미확정 사항으로 남긴다.
@@ -255,7 +255,7 @@ Screen Spec의 기능 목록과 실제 UI를 양방향으로 대조하고, 노�
 
 ```text
 - fidelity finding 판단에 원본이 필요함
-- Coder evidence와 실제 diff가 모순됨
+- 구현 단계 evidence와 실제 diff가 모순됨
 - Approved reference 변경 여부 확인이 필요함
 ```
 

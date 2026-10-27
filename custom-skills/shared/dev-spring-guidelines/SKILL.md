@@ -7,7 +7,7 @@ platforms: [linux]
 metadata:
   hermes:
     tags: [dev, coder, spring, spring-boot, guidelines, convention, official-docs, dependency-injection, configuration, transaction, validation, webmvc, webflux, rest-client]
-    related_skills: [dev-implement-plan, dev-java-guidelines, dev-kotlin-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-api-docs]
+    related_skills: [dev-java-guidelines, dev-kotlin-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test, dev-api-docs]
     requires_tools: [terminal]
 ---
 
@@ -105,7 +105,7 @@ BaseResponse<T>
 - 동일 module/API에서 실제 사용 중인 response/error wrapper를 찾아 재사용한다.
 - 프로젝트에 공통 규격이 없으면 임의 wrapper를 새로 강제하지 않는다.
 - Spring Framework 6+의 `ProblemDetail` / `ErrorResponse`는 공식 지원 기능이지만 기존 error contract를 자동 대체하지 않는다.
-- ProblemDetail 도입은 public API/error body/content-type 변경 가능성이 있으므로 명시적 요구가 있을 때만 Standard Flow에서 결정한다.
+- ProblemDetail 도입은 public API/error body/content-type 변경 가능성이 있으므로 명시적 요구가 있을 때만 합의된 직접 개발에서 결정한다.
 
 ## 계층 책임
 
@@ -222,7 +222,7 @@ unrelated Boot/Framework/dependency migration
 
 ## Verification / Evidence
 
-Coder handoff에 필요할 경우 다음을 남긴다.
+구현 단계 handoff에 필요할 경우 다음을 남긴다.
 
 ```text
 Skill: dev-spring-guidelines

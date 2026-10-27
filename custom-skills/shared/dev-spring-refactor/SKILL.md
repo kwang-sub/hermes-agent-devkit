@@ -7,7 +7,7 @@ platforms: [linux]
 metadata:
   hermes:
     tags: [dev, coder, spring, refactor, structural-quality, orchestration, javadoc, comments]
-    related_skills: [dev-implement-plan, dev-code-review, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test]
+    related_skills: [dev-lite-review, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test]
     requires_tools: [terminal]
 ---
 
@@ -29,11 +29,11 @@ Use-case / Service
 
 ## 적용 시점
 
-Coder가 Task의 기능 구현을 끝낸 뒤 최종 verification 전에 수행한다.
+구현 단계가 Task의 기능 구현을 끝낸 뒤 최종 verification 전에 수행한다.
 
-- Standard Flow의 Spring source 변경: Structural Quality Check를 항상 수행한다.
-- Direct Flow: 변경이 작고 국소적이면 check만 수행하고, trigger가 확인될 때만 승인된 REFACTOR 범위에서 refactor한다.
-- `CHANGES_REQUESTED` 재작업: Reviewer가 구조 finding을 준 경우 해당 finding 범위에서 수행한다.
+- 합의된 직접 개발의 Spring source 변경: Structural Quality Check를 항상 수행한다.
+- 작은 범위의 직접 개발: 변경이 작고 국소적이면 check만 수행하고, trigger가 확인될 때만 승인된 REFACTOR 범위에서 refactor한다.
+- `CHANGES_REQUESTED` 재작업: 자체 검토 단계가 구조 finding을 준 경우 해당 finding 범위에서 수행한다.
 
 ## Refactor Trigger
 
@@ -165,7 +165,7 @@ private void migrateImages(...) { ... }
 
 ## 자동 적용 범위
 
-다음 조건을 모두 만족하면 Coder가 같은 Task 안에서 자동 refactor한다.
+다음 조건을 모두 만족하면 구현 단계가 같은 Task 안에서 자동 refactor한다.
 
 - 현재 Task 변경과 직접 연관된다.
 - behavior/API/schema를 바꾸지 않는다.
@@ -188,11 +188,11 @@ private void migrateImages(...) { ... }
 - 대규모 공통 abstraction 신설
 - 사용자의 기존 코드 스타일과 다른 새로운 표준 강제
 
-Standard Flow에서는 Reviewer에게 구조 대안을 evidence로 넘긴다. Direct Flow에서 범위가 커지면 `DIRECT_SCOPE_EXCEEDED`로 차단하고 Standard Flow 재계획을 요구한다.
+합의된 직접 개발에서는 자체 검토 단계에게 구조 대안을 evidence로 넘긴다. 작은 범위의 직접 개발에서 범위가 커지면 `DIRECT_SCOPE_EXCEEDED`로 차단하고 합의된 직접 개발 재계획을 요구한다.
 
 ## Structural Quality Check 결과
 
-Coder는 최종 evidence에 다음을 남긴다.
+구현 단계는 최종 evidence에 다음을 남긴다.
 
 ```text
 Structural Quality Check: PASS | REFACTORED | ESCALATED

@@ -6,9 +6,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_ROOT = REPO_ROOT / "custom-skills"
-REQUIRED_SKILLS = {"dev-project-pattern","dev-skill-preflight","dev-java-guidelines","dev-spring-guidelines","dev-spring-feature","dev-spring-data","dev-spring-test","dev-api-docs"}
-REQUIRED_REFERENCES = {("shared","dev-api-docs"):{"references/spring-openapi-reference.md","references/postman-reference.md"},("orchestrator","dev-workflow-orchestrate"):{"references/dispatch-efficiency.md"}}
-SHARED_REQUIRED_REFERENCES={"approval-gate-rules.md","standard-work-unit-rules.md"}
+REQUIRED_SKILLS = {"dev-project-pattern","dev-java-guidelines","dev-spring-guidelines","dev-spring-feature","dev-spring-data","dev-spring-test","dev-api-docs"}
+REQUIRED_REFERENCES = {}
+SHARED_REQUIRED_REFERENCES={"lite-development-contract.md","maven-runtime.md","verification-level-policy.md"}
 
 def fail(message:str)->None: raise SystemExit(f"[FAIL] {message}")
 def parse_inline_list(value:str)->list[str]:
@@ -49,95 +49,25 @@ def extract_section(text:str,start_heading:str,end_heading:str)->str:
     if end<0: fail(f"missing section end heading after {start_heading}: {end_heading}")
     return text[start:end]
 
-def main()->int:
-    discovered={}; paths_by_name=defaultdict(list); related_by_skill={}
-    for skill_file in sorted(SKILLS_ROOT.glob("*/*/SKILL.md")):
-        text=skill_file.read_text(encoding="utf-8"); scalar,lists,_=parse_frontmatter(text,skill_file)
-        scope=skill_file.parent.parent.name; name=scalar.get("name","").strip(); desc=scalar.get("description","").strip(); version=scalar.get("version","").strip()
-        if not name or name!=skill_file.parent.name: fail(f"skill name/path mismatch: {skill_file}")
-        if not re.fullmatch(r"\d+\.\d+\.\d+",version): fail(f"skill version must be semantic x.y.z: {skill_file}: {version!r}")
-        if (scope,name) in discovered: fail(f"duplicate skill name within scope {scope!r}: {name!r}")
-        if not desc or len(desc)>1024: fail(f"invalid description: {skill_file}")
-        if not re.fullmatch(r"[a-z0-9][a-z0-9-]*",name): fail(f"skill name must be lowercase kebab-case: {name}")
-        discovered[(scope,name)]=skill_file; paths_by_name[name].append(skill_file); related_by_skill[(scope,name)]=lists.get("related_skills",[])
-    missing=sorted(REQUIRED_SKILLS-paths_by_name.keys())
-    if missing: fail("required capability skills are missing: "+", ".join(missing))
-    for key,refs in REQUIRED_REFERENCES.items():
-        sf=discovered.get(key)
-        if sf is None: fail(f"required skill missing for reference validation: {key}")
-        for rel in refs:
-            target=sf.parent/rel
-            if not target.is_file() or not target.read_text(encoding="utf-8").strip(): fail(f"required reference missing/empty for {key}: {rel}")
-    shared_reference_root=REPO_ROOT/"shared"/"references"
-    for rel in SHARED_REQUIRED_REFERENCES:
-        target=shared_reference_root/rel
-        if not target.is_file() or not target.read_text(encoding="utf-8").strip(): fail(f"required shared reference missing/empty: {rel}")
-    for (scope,name),related in sorted(related_by_skill.items()):
-        for r in related:
-            if r.startswith("dev-") and r not in paths_by_name: print(f"[WARN] related skill is not installed in custom-skills: {scope}/{name} -> {r}")
-    for name,paths in sorted((n,p) for n,p in paths_by_name.items() if len(p)>1): print(f"[INFO] scope-scoped duplicate skill name allowed: {name} ({', '.join(sorted(p.parent.parent.name for p in paths))})")
-
-    implement=discovered[("coder","dev-implement-plan")].read_text(encoding="utf-8")
-    breakdown=discovered[("orchestrator","dev-breakdown")].read_text(encoding="utf-8")
-    dispatch=discovered[("orchestrator","dev-workspace-dispatch")].read_text(encoding="utf-8")
-    workflow_file=discovered[("orchestrator","dev-workflow-orchestrate")]; workflow=workflow_file.read_text(encoding="utf-8")
-    reviewer=discovered[("reviewer","dev-code-review")].read_text(encoding="utf-8")
-    approval=(shared_reference_root/"approval-gate-rules.md").read_text(encoding="utf-8")
-    work_unit=(shared_reference_root/"standard-work-unit-rules.md").read_text(encoding="utf-8")
-
-    require_terms(breakdown,"dev-breakdown",('skill_view("dev-project-pattern")',"dev-java-guidelines"))
-    require_terms(dispatch,"dev-workspace-dispatch preflight",('skill_view("dev-skill-preflight")',"VALIDATED_SKILLS","REJECTED_SKILLS","kanban_create.skills"))
-    require_terms(workflow,"dev-workflow-orchestrate approval gates",(
-        "/opt/data/shared/references/approval-gate-rules.md","WORKSPACE_APPROVED","BRANCH_APPROVED","MODEL_APPROVED","PLAN_APPROVED",
-        "REQUIREMENT_DELTA_APPROVED","Requirement Delta Approval","[추가 요구사항 확인]",
-        "한 번의 사용자 확인에서는 하나의 의사결정만 요청한다","clarify","choices","선택지는 질문 본문에 번호로 쓰지 않고",
-        "[Project 선택]","[Workspace 선택]","[Branch 선택]","[Coder 모델 선택]","[실행·검증 계획 승인]",
-        "DEFAULT | PREMIUM","같은 Gate를 다시 출력","NO_EXTRA_KANBAN_CONFIRMATION","AUTO_DISPATCH_CURRENT_UNIT_ONLY"))
-    require_terms(approval,"shared approval gate rules",(
-        "clarify","choices","↑/↓ 이동 + Enter 선택","Other (type your answer)","Workspace와 Branch는 서로 다른 Gate다",
-        "[추가 요구사항 확인]","requirement_delta_approved","Requirement Delta",
-        "AUTO_DISPATCH","NO_EXTRA_KANBAN_CONFIRMATION","Kanban 작업 카드를 등록할까요?"))
-    forbid_terms(workflow,"number-list approval UX",("1. PREMIUM","2. DEFAULT","번호 또는 요구사항을 입력해주세요."))
-
-    plan_gate_literal=(
-        "question:\n"
-        "  [실행·검증 계획 승인]\n"
-        "  위 실행 계획과 검증 계획을 승인할까요?\n"
-        "choices:\n"
-        "  - 승인\n"
-        "  - 차단"
-    )
-    approval_plan=extract_section(approval,"## Gate 5 — Plan","## 승인 상태 및 자동 Dispatch")
-    workflow_plan=extract_section(workflow,"### Plan Gate TUI 길이 계약","## Requirement Delta Approval")
-    require_terms(approval_plan,"Plan Gate compact clarify contract",(
-        plan_gate_literal,
-        "질문은 두 논리 줄만 가지며 동적 metadata를 보간하지 않는다",
-        "Plan 본문을 `clarify.question` 안으로 옮기지 않는다",
-        "`clarify` 선택 영역은 스크롤 가능한 상세 뷰가 아니라 **결정 UI**"))
-    require_terms(workflow_plan,"workflow Plan Gate TUI contract",(
-        "`clarify.questions[0].question`은 아래 문자열을 그대로 사용한다",
-        "[실행·검증 계획 승인]\n위 실행 계획과 검증 계획을 승인할까요?",
-        "Task", "Project / Workspace / Branch", "Coder Model", "Design Evidence", "Implementation Tasks",
-        "정보는 일반 메시지에 유지하고 결정 UI만 짧게 유지"))
-    forbid_terms(approval,"legacy verbose Plan Gate question",("위 Implementation Plan을 어떻게 처리할까요?",))
-    forbid_terms(workflow,"legacy verbose Plan Gate question",("위 Implementation Plan을 어떻게 처리할까요?",))
-
-    require_terms(workflow,"dispatch efficiency",("prepare_dispatch.py","정확히 한 번","working-tree 전체 scan을 하지 않는다","kanban_create tool 1회","kanban_show tool 1회","dispatch-efficiency.md","skipped-approved-preservation","change_summary.py --include","review_context.py --include"))
-    require_terms(dispatch,"dev-workspace-dispatch fast path",(
-        "--confirmed-dirty","repository-wide dirty/EOL/untracked 분류를 **생략**","WORKSPACE_CHANGE_SCAN_MODE=skipped-approved-preservation","*_COUNT=-1","git diff --name-only -z HEAD",'initial_status="blocked"',
-        "kanban_show 정확히 1회","등록 read-back 계약 검증",
-        "DevKit Notification Bridge","task_events","hermes send",
-        "kanban_unblock tool 정확히 1회","board == BOARD","HERMES_KANBAN_BOARD"))
-    forbid_terms(dispatch,"legacy notification coupling",(
-        "NOTIFY_REGISTRATION_EVENT","registered task_event","전달 ACK timeout","최초 등록 알림",
-        "subscribe_notification.py","→ Hermes native notify-subscribe","NOTIFY_STATUS=subscribed | disabled | warning"))
-    efficiency=(workflow_file.parent/"references"/"dispatch-efficiency.md").read_text(encoding="utf-8")
-    require_terms(efficiency,"dispatch-efficiency reference",("skipped-approved-preservation","change_summary.py --include","review_context.py --include","큰 파일을 임의의 MB threshold로 제외하지 않는다","hermes project list","Kanban body 임시 파일","hermes project --help","CLI body-file capability probing","CLI fallback"))
-    for cap in ("dev-java-guidelines","dev-spring-guidelines","dev-spring-feature","dev-spring-data","dev-spring-test","dev-api-docs"):
-        if f'skill_view("{cap}")' not in implement: fail(f"dev-implement-plan must explicitly load {cap} via skill_view")
-    require_terms(implement,"dev-implement-plan scoped summary",("/opt/data/shared/references/standard-work-unit-rules.md","scoped change_summary.py","Standard Flow에서 `--include` 없이","Changed Files"))
-    require_terms(work_unit,"standard work unit scoped summary",("change_summary.py --include","Standard Flow에서 `--include` 없이","--allow-full-scan","tracked와 untracked 모두 Git pathspec","Follow-up Work Unit의 파일"))
-    require_terms(reviewer,"dev-code-review scoped review",("review_context.py --include","Standard Flow에서는 `--include`를 반드시 제공","--allow-full-scan","tracked와 untracked 모두 Git pathspec","Java Convention Review Gate"))
-    print(f"[PASS] Custom skill contract: {len(discovered)} scoped skills ({len(paths_by_name)} unique names) validated")
-    return 0
-if __name__=="__main__": sys.exit(main())
+def main():
+    names={}; related={}
+    for path in sorted(SKILLS_ROOT.glob('*/*/SKILL.md')):
+        scalar,lists,body=parse_frontmatter(path.read_text(encoding='utf-8'),path)
+        scope=path.parent.parent.name; name=scalar.get('name','')
+        if scope not in ('lite','shared'): fail(f'Legacy skill scope: {scope}')
+        if name!=path.parent.name or not re.fullmatch(r'[a-z0-9][a-z0-9-]*',name): fail(f'Invalid name: {path}')
+        if name in names: fail(f'Duplicate effective skill name: {name}')
+        if not re.fullmatch(r'\d+\.\d+\.\d+',scalar.get('version','')): fail(f'Invalid version: {name}')
+        if not scalar.get('description') or len(scalar['description'])>1024: fail(f'Invalid description: {name}')
+        names[name]=path; related[name]=lists.get('related_skills',[])
+    missing=(REQUIRED_SKILLS | {'dev-lite-session','dev-lite-review','git-pr-publish','dev-feature-docs','dev-project-setup'})-names.keys()
+    if missing: fail(f'Missing active skills: {sorted(missing)}')
+    for name, refs in related.items():
+        for ref in refs:
+            if ref not in names: fail(f'Broken related_skills: {name} -> {ref}')
+    for reference in SHARED_REQUIRED_REFERENCES:
+        if not (REPO_ROOT/'shared/references'/reference).is_file(): fail('Missing shared reference '+reference)
+    for scope in ('orchestrator','coder','reviewer'):
+        if (SKILLS_ROOT/scope).exists(): fail('Legacy role catalog remains: '+scope)
+    print(f'[PASS] {len(names)} unique Lite/shared skills; references resolvable')
+if __name__=='__main__': main()

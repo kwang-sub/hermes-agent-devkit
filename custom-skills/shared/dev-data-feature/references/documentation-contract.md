@@ -30,7 +30,7 @@ IntelliJ/JetBrains에서 `schema.dbml`을 ERD로 보는 Human Review 도구로 �
 Agent/Hermes → schema.dbml 수정
 → Git diff
 → IntelliJ DBML Canvas ERD 확인
-→ 사용자/Reviewer 검토
+→ 사용자/자체 검토 단계 검토
 ```
 
 DevKit은 Plugin 설치를 강제하거나 Plugin API에 의존하지 않는다. Plugin이 없어도 DBML 파일과 Git review는 정상 동작해야 한다.

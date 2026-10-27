@@ -1,6 +1,6 @@
 # Common Coding Rules
 
-이 문서는 **언어와 프레임워크에 관계없이 모든 프로그래밍 작업에 적용하는 Coder/Reviewer 공통 코드 품질 기준**이다.
+이 문서는 **언어와 프레임워크에 관계없이 모든 프로그래밍 작업에 적용하는 구현 단계/자체 검토 단계 공통 코드 품질 기준**이다.
 
 이 규칙은 프로젝트의 기존 architecture와 convention을 대체하지 않는다. 먼저 현재 프로젝트가 이미 사용하는 구조, naming, error model, data-access pattern, test style과 domain modeling 방식을 확인한 뒤 그 안에서 적용한다.
 
@@ -29,7 +29,7 @@ Repository / DAO / Data Access abstraction
 
 기존 구현이 현재 요구사항에 적합하면 새 구현을 만들지 않고 재사용한다.
 
-Coder 개인의 선호 때문에 기존 layer, package/module 구조, naming, error model, transaction boundary, persistence model 또는 domain modeling 방식을 바꾸지 않는다.
+구현 단계 개인의 선호 때문에 기존 layer, package/module 구조, naming, error model, transaction boundary, persistence model 또는 domain modeling 방식을 바꾸지 않는다.
 
 기존 코드가 명백히 문제가 있더라도 현재 요구사항과 관계없는 architecture 개선이나 전면 refactor를 같은 작업에 섞지 않는다.
 
@@ -102,7 +102,7 @@ DDD를 따르는 프로젝트에서도 모든 도메인 로직을 Domain Service
 DDD를 사용하지 않는 프로젝트에서는 기존 Model/Entity가 어떤 역할을 맡고 있는지 먼저 확인한다.
 
 - 기존 Model/Entity가 Rich Domain Model이면 자기 상태에 대한 행위를 추가할 수 있다.
-- 기존 Model/Entity가 persistence/data-transfer 중심의 단순 모델이면 Coder가 임의로 Rich Domain Model로 전환하지 않는다.
+- 기존 Model/Entity가 persistence/data-transfer 중심의 단순 모델이면 구현 단계가 임의로 Rich Domain Model로 전환하지 않는다.
 - 이 경우 프로젝트가 이미 사용하는 Service/Component/Helper 구조를 우선한다.
 
 DB, 외부 API, 파일 시스템, 메시지 브로커 등 infrastructure 의존성이 필요한 로직을 Domain Object에 억지로 넣지 않는다.
@@ -270,8 +270,8 @@ PowerShell        → Write-Host/Output/Warning/Error/Verbose/Debug
 - 사용자에게 직접 노출되는 UI 문구, API의 명시적 localized response, validation message, 문서/주석은 이 규칙의 대상이 아니다.
 - exception message가 실제 운영 로그로 그대로 기록되는 프로젝트라면 신규/수정 exception message도 영어를 우선한다.
 - 외부 시스템에서 받은 원문 값이나 사용자 입력을 context로 기록해야 하는 경우 언어를 번역하지 않지만, 민감정보/PII/credential 기록 금지 규칙을 우선한다.
-- Coder는 변경한 executable source의 logging call에 비영어 자연어가 새로 포함되지 않았는지 확인한다.
-- Reviewer는 변경 diff의 logging call에 한글 로그 메시지가 있으면 style nit가 아니라 **수정이 필요한 공통 Coding Rule 위반**으로 판단한다.
+- 구현 단계는 변경한 executable source의 logging call에 비영어 자연어가 새로 포함되지 않았는지 확인한다.
+- 자체 검토 단계는 변경 diff의 logging call에 한글 로그 메시지가 있으면 style nit가 아니라 **수정이 필요한 공통 Coding Rule 위반**으로 판단한다.
 
 예:
 
@@ -330,7 +330,7 @@ serialization / persistence compatibility
 
 동일 scope의 이미 유효한 PASS를 단순 확신 확보 목적으로 반복하지 않는다. 구현 변경으로 기존 PASS의 scope가 달라졌다면 fresh verification을 수행한다.
 
-Repository/Tooling상 가능하면 Reviewer handoff 전 `git diff --check`를 실행한다.
+Repository/Tooling상 가능하면 최종 자체 검토 전 `git diff --check`를 실행한다.
 
 ---
 
@@ -345,7 +345,7 @@ Common Coding Rules
         ↓
 Implementation Decision Rules
         ↓
-dev-implement-plan
+dev-lite-session
         ↓
 Optional Stack / Capability Skill
         ↓
@@ -353,7 +353,7 @@ Project-specific convention
         ↓
 Implementation
         ↓
-Reviewer
+자체 검토 단계
 ```
 
 전문 Skill은 다음을 지킨다.
@@ -365,7 +365,7 @@ Reviewer
 - 필요하지 않은 dependency를 자동 추가하지 않는다.
 - 여러 구현 방식이 합리적이고 사용자 선택이 필요한 경우 명시적인 선택을 받는다.
 - 생성/적용 결과에 대한 stack-specific verification을 정의한다.
-- Reviewer가 검증할 수 있는 명확한 Acceptance Criteria와 evidence를 남긴다.
+- 자체 검토 단계가 검증할 수 있는 명확한 Acceptance Criteria와 evidence를 남긴다.
 
 예정된 Spring 계열 Capability Skill 예:
 
@@ -392,9 +392,9 @@ Spring Capability Skill은 가능한 경우 Java와 Kotlin을 별도 Skill로 �
 
 ---
 
-# 13. Reviewer Quality Gate
+# 13. 자체 검토 단계 Quality Gate
 
-Reviewer는 correctness 검토와 함께 관련 있는 경우 다음을 확인한다.
+자체 검토 단계는 correctness 검토와 함께 관련 있는 경우 다음을 확인한다.
 
 - 새 helper/class가 기존 프로젝트 구현을 불필요하게 중복하지 않는가.
 - 범용 Utility와 Domain Logic의 위치가 책임에 맞는가.

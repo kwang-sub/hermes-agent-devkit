@@ -123,7 +123,7 @@ BLOCKER_CLASS=PROJECT_TOOLCHAIN_MIGRATION_REQUIRED
 SOURCE_VERIFICATION_POLICY=FORBIDDEN
 ```
 
-으로 즉시 중단한다. 이 상태에서 worker가 검증을 계속하기 위해 source worktree에서 다음 fallback을 실행하면 안 된다.
+으로 즉시 중단한다. 이 상태에서 에이전트가 검증을 계속하기 위해 source worktree에서 다음 fallback을 실행하면 안 된다.
 
 ```text
 npm test / npm run ...
@@ -196,7 +196,7 @@ python3 /opt/custom-skills/shared/dev-node-dependencies/scripts/pnpm_build_polic
   --deny "package@1.2.3"
 ```
 
-helper는 직접 project config를 수정하거나 dependency script를 실행하지 않는다. 기존 `allowBuilds`를 읽고 pnpm 공식 `config set --location=project --json` 기반의 exact `POLICY_UPDATE_COMMAND_<N>`을 출력한다. **사용자 승인 이후** Coder가 해당 명령을 source package root에서 Hermes terminal guard를 통해 실행한다.
+helper는 직접 project config를 수정하거나 dependency script를 실행하지 않는다. 기존 `allowBuilds`를 읽고 pnpm 공식 `config set --location=project --json` 기반의 exact `POLICY_UPDATE_COMMAND_<N>`을 출력한다. **사용자 승인 이후** 구현 단계가 해당 명령을 source package root에서 Hermes terminal guard를 통해 실행한다.
 
 DevKit 기본 승인 matcher는 registry dependency의 **`package@exact-version`** 이다. bare package 전체, version range, 모든 package 전역 승인은 자동 승인하지 않는다. 더 넓은 범위가 실제로 필요하면 별도 명시적 정책 결정으로 취급한다.
 
@@ -425,7 +425,7 @@ TIRITH_PREFLIGHT=allow
 → actual terminal guard까지 진행
 
 TIRITH_PREFLIGHT=approval_required
-→ headless worker에서 실행 금지, Kanban BLOCK
+→ 자동 실행 금지; 사용자에게 필요한 권한과 미실행 사유를 보고
 
 TIRITH_PREFLIGHT=unavailable
 → actual Hermes terminal guard를 그대로 사용

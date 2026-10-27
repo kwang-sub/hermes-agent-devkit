@@ -1,81 +1,57 @@
 {
-  "version": 1,
+  "version": 2,
   "policy": {
-    "description": "Standard Flow에서 Planner → Coder → Reviewer → Preflight 연결을 유지해야 하는 cross-flow capability 등록부",
-    "canonical_description_marker": "canonical entry"
+    "description": "Lite 작업의 domain별 선택적 capability 목록. 역할 pin이나 dispatch를 요구하지 않는다.",
+    "loading": "lazy"
   },
   "capabilities": [
     {
       "name": "dev-spring-feature",
       "domain": "backend",
       "kind": "domain_entry",
-      "planner_required": true,
-      "coder_required": true,
-      "reviewer_required": true,
-      "strict_pin": true
+      "approval_required": false
     },
     {
       "name": "dev-spring-data",
       "domain": "backend-data",
       "kind": "domain_entry",
-      "planner_required": true,
-      "coder_required": true,
-      "reviewer_required": true,
-      "strict_pin": true
+      "approval_required": false
     },
     {
       "name": "dev-frontend-feature",
       "domain": "frontend",
       "kind": "canonical_entry",
-      "planner_required": true,
-      "coder_required": true,
-      "reviewer_required": true,
-      "strict_pin": true
+      "approval_required": false
     },
     {
       "name": "dev-data-feature",
       "domain": "data",
       "kind": "canonical_entry",
-      "planner_required": true,
-      "coder_required": true,
-      "reviewer_required": true,
-      "strict_pin": true
+      "approval_required": false
     },
     {
       "name": "dev-db-migration",
       "domain": "data-migration",
       "kind": "critical_companion",
-      "planner_required": true,
-      "coder_required": true,
-      "reviewer_required": true,
-      "strict_pin": true
+      "approval_required": true
     },
     {
       "name": "dev-infrastructure",
       "domain": "infrastructure",
       "kind": "canonical_entry",
-      "planner_required": true,
-      "coder_required": true,
-      "reviewer_required": true,
-      "strict_pin": true
+      "approval_required": true
     },
     {
       "name": "dev-api-spec",
       "domain": "api-specification",
       "kind": "contract_entry",
-      "planner_required": true,
-      "coder_required": true,
-      "reviewer_required": true,
-      "strict_pin": true
+      "approval_required": false
     },
     {
       "name": "dev-api-contract",
       "domain": "api-contract",
       "kind": "cross_stack_companion",
-      "planner_required": true,
-      "coder_required": true,
-      "reviewer_required": true,
-      "strict_pin": false
+      "approval_required": false
     }
   ]
 }

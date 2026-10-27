@@ -231,4 +231,4 @@ JPA/JDBC → R2DBC
 legacy transaction structure → 새 architecture
 ```
 
-해당 migration이 요구사항에 직접 필요하면 Standard Flow에서 API/dependency/runtime/operational impact를 별도 결정한다.
+해당 migration이 요구사항에 직접 필요하면 합의된 직접 개발에서 API/dependency/runtime/operational impact를 별도 결정한다.

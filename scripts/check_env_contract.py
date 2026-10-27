@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = ROOT / "sample.env"
 COMPOSE = ROOT / "compose.yml"
-INIT = ROOT / "init-profiles.ps1"
+INIT = ROOT / "init-lite.ps1"
 
 DEFAULTS = {
     "HERMES_COMPOSE_PROJECT_NAME": "hermes-dev",
@@ -38,10 +38,6 @@ DEFAULTS = {
     "JIRA_ACCEPTANCE_CRITERIA_FIELDS": "Acceptance Criteria",
     "JIRA_INCLUDE_FIELD_NAMES": "",
     "JIRA_VERIFY_SSL": "true",
-    "HERMES_FLOW_MODEL_DEFAULT_PROVIDER": "openai-codex",
-    "HERMES_FLOW_MODEL_DEFAULT": "gpt-5.6-terra",
-    "HERMES_FLOW_MODEL_PREMIUM_PROVIDER": "openai-codex",
-    "HERMES_FLOW_MODEL_PREMIUM": "gpt-6-astra",
     "HERMES_KANBAN_NOTIFY_ENABLED": "false",
     "HERMES_KANBAN_NOTIFY_PLATFORM": "discord",
     "HERMES_KANBAN_NOTIFY_TARGET": "",
@@ -59,19 +55,6 @@ SENSITIVE_SAMPLE_KEYS = {
     "DISCORD_BOT_TOKEN",
 }
 REQUIRED_SAMPLE_KEYS = set(DEFAULTS) | SENSITIVE_SAMPLE_KEYS
-
-INIT_DEFAULTS = {
-    key: value
-    for key, value in DEFAULTS.items()
-    if key
-    in {
-        "HERMES_CONTAINER_NAME",
-        "HERMES_CONTAINER_WORKSPACE_PATH",
-        "HERMES_CONTAINER_CUSTOM_SKILLS_PATH",
-        "HERMES_CONTAINER_SHARED_PATH",
-    }
-}
-
 
 def parse_sample() -> dict[str, str]:
     values: dict[str, str] = {}
@@ -122,7 +105,7 @@ def main() -> int:
         if reference not in compose:
             raise SystemExit(f"compose.yml missing defaulted reference: {reference}")
 
-    if 'HERMES_KANBAN_BOOT_RECOVERY_ENABLED: "false"' not in compose:
+    if 'HERMES_KANBAN_DISPATCH_IN_GATEWAY: "false"' not in compose:
         raise SystemExit("Lite-only runtime must disable Standard worker auto-resume")
 
     if 'HERMES_DASHBOARD: "1"' not in compose:
@@ -267,15 +250,6 @@ def main() -> int:
         raise SystemExit("OpenAI-compatible API server must be explicitly disabled by default")
 
     for required in (
-        "HERMES_FLOW_MODEL_DEFAULT_PROVIDER: ${HERMES_FLOW_MODEL_DEFAULT_PROVIDER:-openai-codex}",
-        "HERMES_FLOW_MODEL_DEFAULT: ${HERMES_FLOW_MODEL_DEFAULT:-gpt-5.6-terra}",
-        "HERMES_FLOW_MODEL_PREMIUM_PROVIDER: ${HERMES_FLOW_MODEL_PREMIUM_PROVIDER:-openai-codex}",
-        "HERMES_FLOW_MODEL_PREMIUM: ${HERMES_FLOW_MODEL_PREMIUM:-gpt-6-astra}",
-    ):
-        if required not in compose:
-            raise SystemExit(f"compose.yml missing Flow model contract: {required}")
-
-    for required in (
         "HERMES_KANBAN_NOTIFY_ENABLED: ${HERMES_KANBAN_NOTIFY_ENABLED:-false}",
         "HERMES_KANBAN_NOTIFY_PLATFORM: ${HERMES_KANBAN_NOTIFY_PLATFORM:-discord}",
         "HERMES_KANBAN_NOTIFY_TARGET: ${HERMES_KANBAN_NOTIFY_TARGET:-}",
@@ -285,28 +259,12 @@ def main() -> int:
             raise SystemExit(f"compose.yml missing Kanban notification contract: {required}")
 
     init = INIT.read_text(encoding="utf-8-sig")
-    if 'Get-EnvOrDefault -Name "HERMES_CONTAINER_DATA_PATH"' in init:
-        raise SystemExit("init-profiles.ps1 must keep the official /opt/data runtime path")
-    for key, default in INIT_DEFAULTS.items():
-        pattern = (
-            r'Get-EnvOrDefault\s+-Name\s+"'
-            + re.escape(key)
-            + r'"\s+-Default\s+"'
-            + re.escape(default)
-            + r'"'
-        )
-        if not re.search(pattern, init):
-            raise SystemExit(f"init-profiles.ps1 missing env/default contract for {key}")
-    for required_term in (
-        "Import-DotEnv",
-        "Get-EnvOrDefault",
-        "EnvSelfTest",
-        '/opt/hermes/.venv/bin/hermes',
-        '/opt/hermes/.venv/bin/python',
-        "ConvertFrom-Json",
-    ):
-        if required_term not in init:
-            raise SystemExit(f"init-profiles.ps1 missing helper/runtime contract: {required_term}")
+    for term in ('--volumes-from', '--read-only', '--network', 'none', '--data-root', '/opt/data', 'status'):
+        if term not in init: raise SystemExit('Readonly preflight missing '+term)
+    for term in ('S6_BEHAVIOUR_IF_STAGE2_FAILS: "2"','HERMES_KANBAN_DISPATCH_IN_GATEWAY: "false"'):
+        if term not in compose: raise SystemExit('Unsafe Lite startup: '+term)
+    if 'HERMES_FLOW_MODEL_' in compose or 'HERMES_KANBAN_BOOT_RECOVERY_ENABLED' in compose:
+        raise SystemExit('Retired Flow model/recovery settings remain')
 
     print(f"[PASS] env contract verified ({len(REQUIRED_SAMPLE_KEYS)} public keys)")
     return 0

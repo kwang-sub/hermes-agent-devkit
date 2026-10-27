@@ -7,7 +7,7 @@ platforms: [linux]
 metadata:
   hermes:
     tags: [dev, infrastructure, runtime, host, port, docker, compose, database, supabase, transition, reconciliation]
-    related_skills: [dev-tech-dispatch, dev-data-feature, dev-db-migration, dev-spring-feature, dev-frontend-feature]
+    related_skills: [dev-project-pattern, dev-data-feature, dev-db-migration, dev-spring-feature, dev-frontend-feature]
     requires_tools: [terminal, skill_view]
 ---
 
@@ -73,17 +73,7 @@ Transition Plan = Observed와 Desired의 차이
 
 Observed State를 metadata의 현재값으로 신뢰하지 않는다. 사람이 Docker/Compose/env/Supabase 구성을 직접 변경해도 drift를 감지할 수 있어야 한다.
 
-반대로 사용자가 Plan에서 Infrastructure Desired State를 승인하면 Standard Dispatch는 worker 생성 전에 **Primary Repository**의 `.hermes/project.yaml infrastructure.desired`에 그 승인 snapshot을 atomic하게 영속화한다. linked worktree의 `.hermes/project.yaml`에는 Desired State를 기록하지 않는다.
-
-```text
-Plan Approval
-→ Workspace/Primary Repository 검증
-→ approved Infrastructure Desired State persist
-→ 동일 Desired snapshot을 Kanban body에 보존
-→ Coder dispatch
-```
-
-Desired State 영속화는 현재 상태가 바뀌었다는 의미가 아니다. 구현이 아직 끝나지 않았다면 `Observed != Desired` drift가 정상이며 다음 reconcile 근거가 된다.
+사용자가 Desired State를 합의하면 현재 세션에서 기존 프로젝트 설정·문서 규약을 우선한다. `.hermes/project.yaml`이 이미 있다면 사용자 승인 범위의 `infrastructure.desired`만 부분 갱신할 수 있지만 파일 생성이나 등록을 필수로 요구하지 않는다. 변경 직전에 현재 내용을 다시 읽고 동시 변경은 덮어쓰지 않는다. 연결 정보의 Secret은 저장하지 않는다. Kanban, dispatch, profile metadata는 필요한 입력이 아니다.
 
 ## 실행 순서
 

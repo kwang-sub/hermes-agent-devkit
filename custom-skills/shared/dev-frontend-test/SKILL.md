@@ -307,10 +307,10 @@ dependency 추가는 source package root에서 exact `pnpm add --lockfile-only .
 Browser-dependent AC가 있으면 `references/browser-verification.md`의 Browser Verification Contract V1을 따른다.
 기존 프로젝트 runner와 승인된 Verification Provider를 우선한다. 필요한 capability만 사전 확인하고,
 환경 차단은 AC `NOT_RUN`과 별도 실행 상태로 기록한다. 동일 provider/capability/signature의 반복 실패는
-새 근거 없이 제품 Coder를 반복 실행하지 않는다. A~E 격리 진단 PASS는 제품 화면의 PASS가 아니다.
+새 근거 없이 제품 구현 단계를 반복 실행하지 않는다. A~E 격리 진단 PASS는 제품 화면의 PASS가 아니다.
 실제 browser_exec 응답 경로, 사용자 활성화, beforeunload dismiss 및 데이터 보존을 구분하여 검증한다.
 브라우저 증적 파일은 `scripts/browser_verification_evidence.py`로 검증하며, 필수 AC 미확인 상태로
-Reviewer 인계하거나 기존 TRIAGE를 자동 해제하지 않는다.
+자체 검토 단계 인계하거나 기존 TRIAGE를 자동 해제하지 않는다.
 
 ## Handoff
 

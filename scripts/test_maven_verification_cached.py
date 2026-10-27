@@ -11,7 +11,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-HELPER = ROOT / "custom-skills/coder/dev-implement-plan/scripts/maven_verification_cached.py"
+HELPER = ROOT / "scripts/verification/maven_verification_cached.py"
 
 
 class CachedMavenVerificationTest(unittest.TestCase):
@@ -49,10 +49,10 @@ class CachedMavenVerificationTest(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def run_helper(self, *maven_args: str) -> subprocess.CompletedProcess[str]:
+    def run_helper(self, *maven_args: str, no_reuse: bool = False) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
         env["FAKE_MAVEN_COUNTER"] = str(self.counter)
-        env["HERMES_KANBAN_TASK"] = "t_cached_maven"
+        env.pop("HERMES_KANBAN_TASK", None)
         return subprocess.run(
             [
                 sys.executable,
@@ -67,6 +67,7 @@ class CachedMavenVerificationTest(unittest.TestCase):
                 "COMPILE",
                 "--scope-path",
                 "src/Main.java",
+                *(["--no-reuse"] if no_reuse else []),
                 "--",
                 *(maven_args or ("-B", "compile")),
             ],
@@ -93,6 +94,13 @@ class CachedMavenVerificationTest(unittest.TestCase):
         self.assertIn("VERIFICATION_EVIDENCE=REUSED", second.stdout)
         self.assertIn("PRIMARY_REUSED=true", second.stdout)
         self.assertEqual(self.counter_value(), 1)
+
+    def test_no_reuse_executes_even_with_identical_scope_and_no_kanban(self):
+        self.assertEqual(self.run_helper().returncode, 0)
+        second=self.run_helper(no_reuse=True)
+        self.assertEqual(second.returncode,0,second.stdout+second.stderr)
+        self.assertIn('VERIFICATION_EVIDENCE=EXECUTED',second.stdout)
+        self.assertEqual(self.counter_value(),2)
 
     def test_source_change_invalidates_cached_pass(self) -> None:
         self.assertEqual(self.run_helper().returncode, 0)

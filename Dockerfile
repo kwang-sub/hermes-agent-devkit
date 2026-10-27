@@ -48,25 +48,6 @@ RUN python3 /tmp/patch_hermes_gateway_site_identity.py --self-test \
 COPY --chmod=0755 scripts/devkit_gateway_readiness.py /opt/devkit/bin/devkit_gateway_readiness.py
 RUN /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_gateway_readiness.py --self-test
 
-COPY scripts/devkit_worker_startup.py /opt/hermes/hermes_cli/devkit_worker_startup.py
-RUN python3 -m py_compile /opt/hermes/hermes_cli/devkit_worker_startup.py
-
-COPY scripts/devkit_session_affinity.py /opt/hermes/hermes_cli/devkit_session_affinity.py
-RUN python3 /opt/hermes/hermes_cli/devkit_session_affinity.py --self-test
-
-COPY scripts/patch_hermes_kanban_session_affinity.py /tmp/patch_hermes_kanban_session_affinity.py
-RUN python3 /tmp/patch_hermes_kanban_session_affinity.py --self-test \
-    && python3 /tmp/patch_hermes_kanban_session_affinity.py --search-root /opt/hermes/hermes_cli \
-    && rm /tmp/patch_hermes_kanban_session_affinity.py
-
-# Reviewer DEFAULT / Coder approved-model transitions must run inside the claim-bound
-# Kanban lifecycle tool path, not in Codex native shell where ownership env is scrubbed.
-COPY scripts/patch_hermes_kanban_model_transition.py /tmp/patch_hermes_kanban_model_transition.py
-RUN python3 /tmp/patch_hermes_kanban_model_transition.py --self-test \
-    && python3 /tmp/patch_hermes_kanban_model_transition.py /opt/hermes/tools/kanban_tools.py \
-    && grep -q 'def _devkit_run_flow_model_transition' /opt/hermes/tools/kanban_tools.py \
-    && rm /tmp/patch_hermes_kanban_model_transition.py
-
 # Show DevKit tracking parent/child mapping directly on Kanban cards without
 # creating Hermes native task_links (those are execution dependencies). The preview
 # derives relationships from Child task body metadata and never links/unlinks cards.
@@ -92,18 +73,6 @@ RUN python3 /tmp/patch_hermes_parent_tracking_body.py --self-test \
          /opt/hermes/plugins/kanban/dashboard/plugin_api.py \
     && rm /tmp/patch_hermes_parent_tracking_body.py
 
-# Style user-visible Recovery Plan in the normal assistant response renderer.
-# Reasoning and durable Recovery Revision comments are deliberately unchanged.
-COPY scripts/devkit_recovery_plan_style.py /opt/hermes/hermes_cli/devkit_recovery_plan_style.py
-COPY scripts/patch_hermes_recovery_plan_style.py /tmp/patch_hermes_recovery_plan_style.py
-RUN python3 /tmp/patch_hermes_recovery_plan_style.py --self-test \
-    && python3 /tmp/patch_hermes_recovery_plan_style.py --hermes-root /opt/hermes \
-    && python3 /tmp/patch_hermes_recovery_plan_style.py --check-only --hermes-root /opt/hermes \
-    && /opt/hermes/.venv/bin/python -m py_compile \
-         /opt/hermes/hermes_cli/devkit_recovery_plan_style.py \
-         /opt/hermes/hermes_cli/cli_render.py \
-         /opt/hermes/hermes_cli/cli_stream_mixin.py \
-    && rm /tmp/patch_hermes_recovery_plan_style.py
 # Align the launcher policy with Hermes's explicit native-dialog responses.
 COPY scripts/patch_hermes_browser_dialog_policy.py /tmp/patch_hermes_browser_dialog_policy.py
 RUN /opt/hermes/.venv/bin/python /tmp/patch_hermes_browser_dialog_policy.py --hermes-root /opt/hermes \
@@ -121,7 +90,6 @@ RUN test -x /opt/hermes/.venv/bin/hermes \
        /opt/hermes/tools/approval_detection.py \
        /opt/hermes/tools/approval_floors.py \
        /opt/hermes/tools/kanban_tools.py \
-       /opt/hermes/hermes_cli/devkit_session_affinity.py \
        /opt/hermes/agent/skill_commands.py \
        /opt/hermes/hermes_cli/commands_completion.py \
        /opt/hermes/tui_gateway/methods_tools.py \
@@ -143,23 +111,22 @@ FROM hermes-upstream-patched AS hermes-devkit-runtime
 
 USER root
 
-COPY --chmod=0755 scripts/task_session_history.py /opt/devkit/bin/task_session_history.py
-RUN /opt/hermes/.venv/bin/python /opt/devkit/bin/task_session_history.py --self-test
-
-# Before normal s6 services start, reclaim only Kanban claims whose worker
-# fingerprint belongs to a previous container/VM instantiation. The dispatcher
-# remains the only component that creates the replacement worker.
-COPY --chmod=0755 scripts/devkit_kanban_boot_recovery.py /opt/devkit/bin/devkit_kanban_boot_recovery.py
-COPY --chmod=0755 docker/cont-init.d/018-devkit-kanban-boot-recovery /etc/cont-init.d/018-devkit-kanban-boot-recovery
-RUN sed -i 's/\r$//' /etc/cont-init.d/018-devkit-kanban-boot-recovery \
-    && sh -n /etc/cont-init.d/018-devkit-kanban-boot-recovery \
-    && /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_boot_recovery.py --self-test
+# Fail closed BEFORE upstream 02-reconcile-profiles can start gateways.
+ENV S6_BEHAVIOUR_IF_STAGE2_FAILS=2
+ENV HERMES_KANBAN_DISPATCH_IN_GATEWAY=false
+COPY --chmod=0755 scripts/lite_default_profile.py /opt/devkit/bin/lite_default_profile.py
+COPY --chmod=0755 docker/cont-init.d/018-devkit-lite-init /etc/cont-init.d/018-devkit-lite-init
+COPY scripts/verification /opt/devkit/scripts/verification
+COPY custom-skills/_lib/process_execution.py /opt/devkit/custom-skills/_lib/process_execution.py
+RUN test -f /etc/cont-init.d/02-reconcile-profiles \
+    && sed -i 's/\r$//' /etc/cont-init.d/018-devkit-lite-init \
+    && sh -n /etc/cont-init.d/018-devkit-lite-init \
+    && /opt/hermes/.venv/bin/python -m compileall -q /opt/devkit/scripts/verification /opt/devkit/bin/lite_default_profile.py
 
 # DevKit notification bridge: one additional s6-supervised process in the same
 # container. It reads Hermes Kanban task_events without modifying Hermes source,
 # formats developer-facing messages, and delivers through the official
 # `hermes send` scripting surface.
-COPY --chmod=0755 scripts/task_artifacts.py /opt/devkit/bin/task_artifacts.py
 COPY --chmod=0755 scripts/browser_dialog_trace.py /opt/devkit/bin/browser_dialog_trace.py
 COPY --chmod=0755 scripts/browser_verification_evidence.py /opt/devkit/bin/browser_verification_evidence.py
 COPY --chmod=0755 scripts/browser_runtime_adapter.py /opt/devkit/bin/browser_runtime_adapter.py
@@ -170,7 +137,6 @@ COPY --chmod=0755 scripts/browser_dialog_fixture.py /opt/devkit/bin/browser_dial
 COPY --chmod=0755 scripts/managed_dialog_evidence.py /opt/devkit/bin/managed_dialog_evidence.py
 COPY --chmod=0755 scripts/verify_browser_dialog_runtime.py /opt/devkit/bin/verify_browser_dialog_runtime.py
 COPY --chmod=0755 scripts/verify_ui_browser_runtime.py /opt/devkit/bin/verify_ui_browser_runtime.py
-COPY custom-skills/_lib/task_handoff.py /opt/devkit/bin/task_handoff.py
 COPY --chmod=0755 scripts/devkit_kanban_notifier.py /opt/devkit/bin/devkit_kanban_notifier.py
 COPY --chmod=0755 docker/cont-init.d/019-devkit-kanban-notifier-policy /etc/cont-init.d/019-devkit-kanban-notifier-policy
 COPY --chmod=0755 docker/devkit-svscan.d/devkit-notifier/run /opt/devkit/svscan/devkit-notifier/run

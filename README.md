@@ -1,714 +1,129 @@
-> **Hermes Lite / Standard 병행** — 기존 Standard Flow 지침과 프로필은 유지합니다. Lite는 `lite/AGENTS.md`와 자동 로딩되는 `dev-lite-session` 스킬을 통해 별도로 직접 개발하며, Kanban은 선택적으로 기록합니다. 전체 이관 근거는 [Lite 이관 문서](docs/hermes-lite-migration.md)를 참고하세요.
->
-> Windows PowerShell에서 Lite 적용 (PR #188이 `dev`에 병합되어 **Lite 전용 브랜치 전환은 필요하지 않습니다**):
->
-> ```powershell
-> git switch dev
-> git pull --ff-only origin dev
-> .\updatekit_lite.ps1 -SelfTest        # Git 인수 전달 회귀 검사 (Docker 불필요)
-> .\updatekit_lite.ps1 -MountSelfTest   # Docker inspect 마운트 형식 회귀 검사 (Docker 불필요)
-> .\updatekit_lite.ps1                  # 실제 기존 컨테이너의 마운트 검사 후 Lite 적용
-> docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit/lite hermes-dev /opt/hermes/.venv/bin/hermes -p default
-> ```
->
-> 기존 컨테이너의 `/opt/data`가 Docker named volume이든 영속 host bind든 **실제 Docker inspect 결과를 검증한 후** 그대로 보존합니다. 컨테이너를 재생성하거나 데이터를 이동하지 않습니다.
->
-> 상태 확인: `.\updatekit_lite.ps1 -Mode status` · 같은 브랜치에서 Standard 설정 복원: `.\updatekit_lite.ps1 -Mode standard` · 다시 Lite: `.\updatekit_lite.ps1`. Git Bash/WSL에서는 `./updatekit_lite.sh`를 사용합니다. 실제 PC의 Docker/인증 연결과 모델 응답은 별도로 확인합니다.
+# Hermes Agent DevKit — Lite
 
----
-
-# Hermes Agent DevKit
-
-Windows 11 + Docker Desktop 환경에서 Hermes Agent를 `orchestrator`, `coder`, `reviewer` 멀티 프로필로 운영하기 위한 개발 DevKit입니다.
-
-**모든 새 mutation request의 실행 진입점은 Orchestrator입니다.**  
-Orchestrator가 요청을 `DIRECT | STANDARD`로 분류하고, 승인된 작업만 Kanban을 통해 Coder와 Reviewer에게 전달합니다.
+Windows 11 + Docker Desktop에서 Hermes **default 프로필의 직접 개발**을 사용하는 환경이다. 사용자가 현재 세션에서 분석·구현·테스트·수정을 요청한다. DevKit의 Orchestrator/Coder/Reviewer 역할, Direct/Standard 분류·승인·자동 위임은 제거했다. Hermes 자체의 일반 프로필 기능을 제거하거나 사용자 정의 프로필을 일괄 삭제하지는 않는다.
 
 ```text
-User
-  ↓
-Orchestrator
-├─ Direct Flow    작고 명확한 단일 작업
-└─ Standard Flow  설계·분해·승인이 필요한 작업
-        ↓
-      Kanban
-        ↓
-      Coder
-        ↓
-     Reviewer
+사용자 ↔ default Hermes 세션
+           ├─ 기존 프로젝트 규칙 + 필요한 개발 스킬
+           ├─ 구현 → 위험 기반 테스트 → 자체 검토 → 반복 수정
+           ├─ Worktree / Git 게시 (요청 시)
+           └─ Kanban 기록 (요청 시, 실행 Gate 아님)
 ```
 
-> [!IMPORTANT]
-> Direct는 구현 단축 경로가 아니라 **Planning 단축 경로**입니다. Direct와 Standard 모두 `Kanban → Coder → Reviewer` 실행 구조를 유지합니다.
+## 유지되는 기능
 
----
+Java/Kotlin/Spring/JPA, TypeScript/React/Next.js, API·DBML·DB migration·SQL·성능·Infrastructure·Figma/화면 검증을 필요한 때에만 로드한다. 기존 프로젝트 패턴·버전·의존성·테스트 프레임워크를 우선한다. 모든 작업에 UI 검증이나 package build를 강제하지 않는다.
 
-# 1. 기능 요약
+JDK 8/17/21, Git 상대 Worktree, Maven·Gradle·Node/pnpm의 Linux 내부 캐시/산출물 격리, 실행 timeout·자식 프로세스 종료·유효한 PASS 증거 재사용, 영어 코드 로그·Secret 보호 규칙을 유지한다. 자체 검토는 독립 Reviewer 승인과 다르다.
 
-## Multi-Agent Workflow
-
-| Profile | 역할 |
+| 요청 | 스킬 |
 |---|---|
-| `orchestrator` | 요구사항 분석, Direct/Standard 분류, 승인 Gate, Work Unit 계획, Kanban Dispatch |
-| `coder` | 할당된 Workspace에서 구현, 테스트, 검증 Evidence 생성 |
-| `reviewer` | 동일 Workspace의 변경을 독립 검토하고 승인·수정 요청·차단 |
+| 분리된 작업 공간 생성 / 제거 | `dev-worktree-create` / `dev-worktree-remove` |
+| Git 커밋·푸시·PR 게시 | `git-pr-publish` |
+| 병합 후 Worktree·브랜치 정리 | `git-workspace-cleanup` |
+| 기능 논의·문서화·진행 상태 확인 | `dev-feature-docs` |
+| 프로젝트 구조·패턴 분석 | `dev-project-pattern` |
+| 선택적 프로젝트 툴체인·설정 보안 준비 | `dev-project-setup` |
+| Jira 요구사항 읽기 | `dev-work-intake` |
+| 변경사항 자체 리뷰 | `dev-lite-review` |
 
-Coder는 새 작업을 직접 시작하거나 self-dispatch하지 않고 **할당된 Kanban Task만 구현**합니다. Reviewer는 source를 직접 수정하지 않습니다.
+`dev-lite-session`만 기본 자동 로드한다. 스킬 전체 본문을 매번 로드하지 않는다. 별도 Managed Project 등록, Board 생성, 모델 등급 선택, Worker 소유권 검사는 없다.
 
-## Direct / Standard Flow
+## 설치
 
-**Direct Flow**
-- 작은 버그 수정
-- null / edge case 처리
-- 로그·메시지·테스트 보완
-- 기존 패턴 기반의 작은 구현 또는 리팩터링
-- current workspace / current branch에서 끝낼 수 있는 단일 Work Unit
-
-**Standard Flow**
-- 신규 기능
-- 화면·도메인·DB·API 설계
-- DB Migration
-- Infrastructure 변경
-- Dependency 변경
-- 여러 Module / Repository 영향
-- Architecture / Security / Transaction / Concurrency 결정
-- 요구사항 해석 또는 승인 경계가 필요한 작업
-
-## Work Unit Boundary
-
-Standard Flow는 하나의 Task가 너무 많은 책임을 가지지 않도록 다음 Work Unit으로 나눕니다.
-
-```text
-DESIGN
-IMPLEMENTATION
-MIGRATION
-REFACTOR
-AUDIT
-```
-
-독립 승인 가능한 설계 산출물이 다음 단계의 입력이 된다면 Task도 분리합니다.
-
-```text
-Logical DB Design
-        ↓
-   DESIGN 완료
-        ↓
-별도 MIGRATION Task
-        ↓
-Flyway / Liquibase / Physical Schema
-```
-
----
-
-# 2. 신규 프로젝트 개발 예시
-
-초기 아이디어나 화면 이미지/Figma를 입력으로 받아 **문서화된 설계 기준 → 데이터/API 계약 → Frontend/Backend 구현** 순서로 프로젝트를 발전시킬 수 있습니다.
-
-<p align="center">
-  <img src="docs/images/new-project-development-flow.png" alt="Hermes Agent DevKit 신규 프로젝트 개발 흐름" width="900" />
-</p>
-
-이미지의 파일 경로는 전체 흐름을 설명하기 위한 대표 예시입니다. 프로젝트에 기존 문서 convention이 있으면 기존 구조를 우선하며, 별도 convention이 없을 때 현재 DevKit의 기본/권장 산출물은 다음과 같습니다.
-
-| 단계 | 대표 산출물 | 기본/권장 경로 |
-|---|---|---|
-| 화면 디자인 입력 | 승인 이미지 / Figma Reference | 사용자 입력 또는 기존 디자인 소스 |
-| Screen Specification | 화면 목적, 상태, Interaction, Responsive 계약 | `docs/ui/screens/<screen>/screen-spec.md` |
-| 화면 Reference Package | 승인 이미지 | `docs/ui/screens/<screen>/reference.png` |
-| 기능 요구사항 / Use Case | 기능·Business Rule·Acceptance Criteria | 프로젝트 기존 요구사항 문서 구조 우선 |
-| 도메인 모델링 | Context / Aggregate / Entity / Value Object / 책임·관계 | 프로젝트 기존 Domain 문서 구조 우선 |
-| 논리 DB 모델 | canonical logical DBML | `docs/data/schema.dbml` |
-| API Specification | 사람이 검토하는 Markdown API 계약 | `docs/api/README.md`, `docs/api/<domain>.md` |
-| OpenAPI / Swagger | 승인 API 계약과 구현의 API 문서 | 프로젝트 SpringDoc/OpenAPI convention |
-| Backend | 현재 Backend Stack의 application / test source (예: Spring Boot) | 대상 프로젝트 기존 source 구조 |
-| Frontend | 현재 Frontend Stack의 application / test source (예: React / Next.js) | 대상 프로젝트 기존 source 구조 |
-
-### 예시 개발 순서
-
-```text
-초기 이미지 / Figma
-        ↓
-Screen Specification
-        ↓
-기능 요구사항 / Use Case
-        ↓
-도메인 모델링
-        ↓
-Logical DB Model (DBML)
-        ↓
-API Specification 승인
-        ↓
- ┌──────┴──────┐
- ↓             ↓
-Backend      Frontend
- ↓             ↓
- └──────┬──────┘
-        ↓
- Integration / Review
-        ↓
-다음 Work Unit 반복
-```
-
-DB 논리 설계와 물리 구현은 같은 Task에서 처리하지 않습니다.
-
-```text
-docs/data/schema.dbml
-        ↓
-  Logical Model 승인
-        ↓
-별도 Standard MIGRATION
-        ↓
-Flyway / Liquibase / JPA Physical Mapping
-```
-
-API도 먼저 사람이 읽고 검토할 수 있는 Markdown 계약을 승인한 뒤 Backend/Frontend 구현의 공통 기준으로 사용합니다.
-
-```text
-docs/api/<domain>.md
-        ↓
-  Approved API Contract
-      ↙          ↘
- Backend       Frontend
-      ↘          ↙
-    OpenAPI / Review
-```
-
----
-
-# 3. 설치
-
-## 3.1 사전 준비
-
-- Windows 11
-- Docker Desktop
-- Git
-- PowerShell 5.1 이상
-- 기본 Host Workspace 예: `D:\workspace`
+Docker Desktop, Git, Windows PowerShell 5.1 이상이 필요하다. 저장소의 운영 브랜치는 `dev`다. 아직 병합되지 않은 변경은 일반 `dev` 업데이트에 적용되지 않는다.
 
 ```powershell
-docker version
-docker compose version
-```
-
-## 3.2 Repository Clone
-
-```powershell
-cd D:\workspace
 git clone https://github.com/kwang-sub/hermes-agent-devkit.git
-cd .\hermes-agent-devkit
+cd hermes-agent-devkit
 git switch dev
-```
-
-## 3.3 환경 설정
-
-처음 설치에서만 `sample.env`를 복사합니다.
-
-```powershell
-if (Test-Path .env) { throw ".env already exists; update it manually instead of overwriting it." }
+if (Test-Path .env) { throw '.env exists; preserve it and edit explicitly.' }
 Copy-Item sample.env .env
 notepad .env
 ```
 
-최소 설정:
-
-```dotenv
-HERMES_DASHBOARD_USERNAME=admin
-HERMES_DASHBOARD_PASSWORD=<strong-password>
-HERMES_DASHBOARD_SECRET=<long-random-secret>
-
-HERMES_HOST_WORKSPACE_PATH=D:/workspace
-HERMES_CONTAINER_WORKSPACE_PATH=/workspace
-```
-
-> [!WARNING]
-> `.env`, OAuth Token, API Token, Password, Cookie 등 실제 credential은 Git에 Commit하거나 Kanban/로그에 기록하지 않습니다.
-
-## 3.4 Docker 실행
-
-```powershell
-docker compose config --quiet
-docker compose up -d --build
-docker compose ps
-```
-
-Dashboard:
-
-```text
-http://127.0.0.1:9119
-```
-
-Hermes CLI 확인:
-
-```powershell
-docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes --help
-```
-
----
-
-# 4. Profile 설정
-
-## 4.1 Profile 초기화
-
-```powershell
-.\init-profiles.ps1
-```
-
-다음 Profile을 생성하거나 기존 설정을 보정합니다.
-
-```text
-orchestrator
-coder
-reviewer
-```
-
-확인:
-
-```powershell
-docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes profile list
-```
-
-PowerShell 실행 정책에 막히는 경우에만 현재 Session에서:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\init-profiles.ps1
-```
-
-## 4.2 Model / OAuth 설정
-
-```powershell
-docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator model
-docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes -p coder model
-docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes -p reviewer model
-```
-
-설정 확인:
-
-```powershell
-docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator config get model --json
-docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p coder config get model --json
-docker exec --user hermes hermes-dev /opt/hermes/.venv/bin/hermes -p reviewer config get model --json
-```
-
-### Coder Model Policy
-
-Coder는 실행 전에 논리 등급을 승인받습니다.
-
-```text
-DEFAULT | PREMIUM
-```
-
-실제 provider/model은 실행 시 resolve되어 Task에 snapshot으로 고정됩니다. Reviewer는 별도 선택 없이 항상 Reviewer Profile의 `DEFAULT`를 사용합니다.
-
-Fallback Provider가 필요한 경우:
-
-```powershell
-docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator fallback add
-docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes -p coder fallback add
-```
-
----
-
-# 5. Capability
-
-작업 영역에 따라 필요한 Skill만 lazy-load합니다.
-
-```text
-Backend
-├─ Spring Feature
-└─ Spring Data
-
-Frontend
-└─ Frontend Feature
-
-Data
-├─ Data Feature
-├─ Data Modeling
-└─ DB Migration
-
-Infrastructure
-└─ Infrastructure
-
-API
-├─ API Specification
-├─ API Contract
-└─ API Docs / OpenAPI
-```
-
-Canonical capability와 Planner → Coder → Reviewer → Preflight 연결은 `custom-skills/shared/capability-lifecycle.json`과 CI에서 검증합니다.
-
-
-### Stack 확장 정책
-
-Hermes Agent DevKit의 **Workflow, Work Unit, API/Data/Infrastructure/Review 계약은 특정 Framework에 고정하지 않습니다.**
-
-현재 실제 프로젝트에서 사용·검증된 Stack을 우선 지원합니다.
-
-- Backend: Java / Kotlin / Spring Boot 중심
-- Frontend: TypeScript / React / Next.js 중심
-- Data / API / Infrastructure / Review Workflow는 Stack과 독립적으로 재사용
-
-새로운 Stack은 필요해지는 시점에 다음 흐름으로 추가합니다.
-
-```text
-Stack Detection
-→ Capability Entry / Hint
-→ Coder / Reviewer 연결
-→ 실제 프로젝트 검증
-```
-
-사용하지 않는 기술의 Skill을 미리 만들지 않고, 실제 프로젝트에서 필요할 때 Capability를 추가하는 방식으로 확장합니다.
-
-
-### Node / pnpm Toolchain
-
-DevKit의 Node package manager는 pnpm으로 고정합니다. Image에는 Node를 고정 설치하지 않고 pnpm standalone만 포함하며, 프로젝트의 `package.json`이 Node/pnpm version의 source of truth입니다.
-
-```json
-{
-  "devEngines": {
-    "runtime": {
-      "name": "node",
-      "version": "22.23.2",
-      "onFail": "download"
-    },
-    "packageManager": {
-      "name": "pnpm",
-      "version": ">=12.0.0 <13.0.0",
-      "onFail": "download"
-    }
-  }
-}
-```
-
-`pnpm install`은 선언된 Node runtime을 자동 준비하고 resolved version/checksum을 `pnpm-lock.yaml`에 기록합니다. DevKit은 npm/yarn/bun lockfile을 병행 지원하지 않습니다.
-
-Node/frontend 검증의 pnpm store/cache는 Linux named volume의 `/opt/data/node`에 두어 Windows host cache와 분리합니다.
-
-검증 명령은 Windows bind-mounted 프로젝트에서 직접 실행하지 않습니다. 현재 package source를 `/opt/data/node/workspaces/<workspace-id>/packages/<package-id>/source`로 동기화한 뒤 그 Linux 격리 workspace에서 실행합니다.
-
-```text
-Windows source
-├─ node_modules    (복사 안 함)
-├─ .next           (복사 안 함)
-└─ *.tsbuildinfo   (복사 안 함)
-        │ source/config/manifest만 sync
-        ▼
-/opt/data/node/workspaces/.../source
-├─ node_modules    (Linux 전용, dependency fingerprint 동일 시 유지)
-└─ .next/build/... (Linux 전용, 검증 시작마다 초기화)
-```
-
-이 때문에 Windows에서 같은 worktree의 `next dev`를 실행 중이어도 Hermes의 Next/TypeScript build와 generated type 경로를 공유하지 않습니다. Next.js `distDir` 같은 프로젝트별 우회 설정은 필요하지 않습니다.
-
-
-`package.json + pnpm-lock.yaml` fingerprint가 바뀌면 기존 Linux `node_modules`를 폐기하고 `pnpm install --frozen-lockfile`을 다시 요구합니다. restore 성공 후 fingerprint marker를 기록하므로 오래된 dependency tree를 재사용하지 않습니다.
-
----
-
-# 6. DevKit 업데이트
-
-기존 환경에 최신 DevKit과 현재 `nousresearch/hermes-agent:latest` Hermes Runtime을 반영합니다.
+Dashboard 인증 값, 호스트 Workspace, Git 작성자 이름·이메일 등을 `.env`에 지정한다. API 키·OAuth·실제 `.env`는 저장소에 커밋하지 않는다. 기존 `.env`를 sample로 덮어쓰지 않는다.
 
 ```powershell
 .\update-devkit.ps1
 ```
 
-운영 Runtime과 호환성 CI 모두 `nousresearch/hermes-agent:latest`를 기준으로 합니다. Hermes base image는 DevKit 내부 계약이라 `.env`에서 변경하지 않습니다. `update-devkit.ps1`는 최신 base image를 먼저 build하고, build가 성공한 경우에만 실행 컨테이너를 재생성하므로 upstream 변경으로 patch/build가 깨지면 현재 Runtime은 그대로 유지됩니다.
+신규 데이터 볼륨도 이미지의 서비스 시작 전 초기화가 default 설정과 스킬을 구성한다. `init-profiles.ps1`는 필요하지 않으며 제공하지 않는다. 모델·OAuth는 default에서 사용자 본인이 설정한다.
 
-기본 흐름:
-
-```text
-Git fast-forward
-→ 최신 Hermes base image pull / patch compatibility build
-→ Docker build
-→ Container recreate
-→ Profile reconcile
-→ Runtime verification
-→ Git / GitHub 설정 확인
+```powershell
+docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes -p default model
+docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes -p default
 ```
 
-`hermes-dev-data` volume은 유지되므로 일반 업데이트에서는 Profile / OAuth / Session / Kanban 상태가 보존됩니다.
+다른 프로젝트 작업은 실제 bind 경로에 대응하는 `--workdir`를 사용한다. `/workspace`와 `hermes-dev`는 기본값이며 환경설정이 다르면 맞게 지정한다. Lite 폴더에서 대화를 시작할 필요는 없다.
 
----
+## 업데이트와 기존 Standard 환경 전환
 
-# 7. 검증
+업데이트 전에 진행 중인 CLI·빌드·개발 작업을 안전하게 끝낸다. 업데이트는 컨테이너 재시작을 포함한다. 실행 중인 Kanban `running/review` 기록이 있으면 첫 전환을 차단하며 카드나 claim을 자동 변경하지 않는다. 죽은 Worker로 의심되는 과거 카드도 임의 완료 처리하지 않는다.
 
-Repository 전체 회귀 검증:
+```powershell
+.\update-devkit.ps1
+# 운영 브랜치 외에서 승인한 개발 버전을 검증할 때만:
+# .\update-devkit.ps1 -Branch <현재-브랜치> -NoPull
+```
+
+순서:
+
+```text
+깨끗한 DevKit checkout 확인 → Git fast-forward
+→ 실제 Docker mount 확인·보존 override 생성
+→ 기존 데이터를 readonly로 마이그레이션 계획 검증
+→ 최신 Hermes 이미지 build --pull (한 번)
+→ 재검증 → 기존 컨테이너 정상 정지 → 정지 상태 재검증
+→ 같은 mounts로 컨테이너 재생성
+→ 서비스 시작 전 default 전환·역할 프로필 보관
+→ mount 동일성·default·live Gateway·툴체인·Git 검증
+```
+
+기존 `/opt/data`가 named volume이든 영속 host bind든 그대로 사용한다. 외부 bind, 읽기 전용 여부, 사용자 정의 volume 이름도 보존한다. 알 수 없는 mount 유형, subpath, 중복 대상이나 Compose와 기존 Workspace의 불일치는 자동 변환하지 않고 중단한다. 실제 `/opt/data`를 새 빈 볼륨으로 교체하지 않는다.
+
+빌드 실패 시 기존 컨테이너를 교체하지 않는다. 전환/부팅 오류가 발생한 뒤 반복 재생성으로 덮지 않는다. 정지 이후 재검증에서 동시 작업을 발견하면 기존 컨테이너는 정지 상태로 보존되며 원인을 확인해야 한다. `-SkipVerify`도 mount/default 안전 검사는 생략하지 못한다. `-SkipProfileInit`은 폐기되어 오류로 종료한다. `-NoRepair`는 호환 인수이며 자동 repair는 사용하지 않는다.
+
+`updatekit_lite.ps1` / `updatekit_lite.sh`는 같은 updater로 연결하는 호환 진입점이다. `-Mode standard`는 더 이상 복원 동작을 실행하지 않는다. Git 모드 전환이나 Standard 재생성 경로는 없다.
+
+## 보존과 복구
+
+| 데이터 | 처리 |
+|---|---|
+| default 모델·OAuth·메모리·세션 및 사용자 설정 | 관리 대상 필드 외 보존 |
+| 기존 Kanban DB·카드·상태·사용자 프로젝트 | 수정/삭제하지 않음 |
+| 기존 `profiles/orchestrator`, `coder`, `reviewer` | `devkit-lite/legacy-profiles/`로 보관 |
+| 설정 및 이전 Lite overlay marker | `devkit-lite/backups/`에 보존 |
+| named volume / host bind / 외부 mounts | 실제 식별자와 권한 유지 |
+
+전환 전 데이터를 백업해 두는 것을 권장한다. 전환 도중 오류는 이 작업이 변경한 내용만 되돌린다. 프로세스 강제 종료·충돌로 `prepared` journal이 남았으면 자동 덮어쓰기/복구를 중단한다. 다음 부팅도 실패하도록 하여 부분 상태로 Worker가 시작되지 않게 한다.
+
+복구는 컨테이너를 정지한 상태에서 journal의 backup과 실제 현재 데이터를 대조한 뒤 수행한다. 이후 사용자 변경이 있으면 오래된 config를 통째로 복원하지 않는다. 동명 active/archive가 동시에 존재해도 자동 병합·삭제하지 않는다. 과거 Standard 코드로 되돌리는 작업과 데이터 복구는 별개의 명시적 운영 작업이다. `docker compose down -v`, 볼륨 삭제, `git reset/clean/stash`로 문제를 우회하지 않는다.
+
+상태 확인은 읽기 전용이다:
+
+```powershell
+.\init-lite.ps1 -Mode status
+.\init-lite.ps1 -Mode plan    # 실행 전 검사만; 파일/프로필 변경 없음
+.\scripts\verify-container-runtime.ps1
+```
+
+## Kanban과 Gateway
+
+Hermes의 native Gateway transport를 유지하되 DevKit 개발 역할은 default만 사용한다. `HERMES_KANBAN_DISPATCH_IN_GATEWAY=false`와 default `kanban.dispatch_in_gateway=false`로 자동 Worker 실행을 끈다. 기존 ready/review 카드를 재실행하거나 역할 프로필을 다시 생성하지 않는다.
+
+Kanban은 요청한 기록·조회 용도다. 선택적 알림 bridge는 이벤트와 자신만의 커서만 처리하며 작업 파일·handoff·scratch를 삭제하지 않는다. native notification 중복 구독은 기본에서 차단한다. 기존 부모·자식 관계 표시와 기록은 유지한다. 사용자 생성 다른 Hermes 프로필 데이터는 임의 변경하지 않는다.
+
+## 검증
 
 ```bash
 bash scripts/verify.sh
 ```
 
-주요 검증 범위:
+이 명령은 활성 스킬·참조·도메인 정책·빌드 격리·updater 구조 검사와 모든 보존된 Python 회귀 테스트를 실행한다. Linux 프로세스·Git fixture, Maven/Gradle 증거 캐시, Node 격리, UI adapter, 설정 보안, migration 실패·충돌·멱등성 등을 포함한다. 실제 사용자 DB나 프로젝트를 수정하지 않는다.
 
-- Direct Flow contract
-- Standard Work Unit contract
-- Capability Lifecycle
-- Infrastructure Capability
-- Coder / Reviewer Review Cycle
-- Model Policy / Notification
-- Gradle Verification / Evidence Reuse
-- Git Publish / Workspace Cleanup
-- DevKit updater contract
-- `update-devkit.ps1` PowerShell syntax
-- Latest Hermes compatibility
+CI는 Linux 전체 회귀, Windows PowerShell 5.1 문법과 모의 Docker updater, 실제 Maven 두 버전, 최신 Hermes 이미지 빌드 및 격리 볼륨 부팅/재시작·이관·실패 차단을 검증한다. 실제 제품의 UI 검증은 선택적인 별도 browser smoke다. Windows PowerShell 모의 검사와 Linux Docker 검증이 사용자의 Windows Docker Desktop/OAuth/모델 응답을 대신하지는 않는다.
 
-GitHub Actions에서도 동일한 핵심 계약을 지속적으로 검증합니다.
+Maven/Gradle canonical 실행기는 `/opt/devkit/scripts/verification/`에 있다. Node/pnpm은 `dev-node-dependencies`의 기존 도구를 쓴다. 시간·외부 서비스에 의존하는 검증은 `--no-reuse`로 캐시를 우회한다. 실행되지 않은 테스트나 미확인 결과를 PASS라고 보고하지 않는다.
 
----
-
-# 8. 작업 완료와 Git Publication
-
-정상적인 구현/리뷰 완료 상태:
-
-```text
-Kanban Task = done
-Workspace = 유지
-Working Tree = 미커밋 변경이 남을 수 있음
-```
-
-구현 Workflow는 자동으로 다음 작업을 수행하지 않습니다.
-
-```text
-commit
-push
-PR
-merge
-workspace cleanup
-```
-
-필요한 경우 별도 Git Workflow를 사용합니다.
-
-```text
-git-pr-publish
-→ 사용자 Merge
-→ git-workspace-cleanup
-```
-
----
-
-# 9. 사용 가이드
-
-**개발 작업 요청은 Orchestrator에 입력합니다.**
-
-```powershell
-docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes -p orchestrator chat
-```
-
-Orchestrator가 요청을 `DIRECT | STANDARD`로 분류합니다.
-
-예:
-
-```text
-/workspace/sample-api 프로젝트에서
-UserService의 null 입력 시 발생하는 오류를 수정해주세요.
-정상 입력 동작은 유지하고 관련 테스트도 확인해주세요.
-```
-
-## 9.1 Direct Flow
-
-작고 범위가 명확한 단일 구현/리팩터링을 위한 경량 Planning Flow입니다.
-
-```text
-User
-→ Orchestrator
-→ Direct eligibility
-→ 실행 방식 선택
-→ Coder Model 선택
-→ Compact Plan 승인
-→ Kanban
-→ Coder
-→ Reviewer
-```
-
-대표 조건:
-
-- managed 단일 Project
-- current workspace / current branch
-- `IMPLEMENTATION | REFACTOR`
-- `SINGLE_UNIT`
-- API Spec Gate 불필요
-- Infrastructure 영향 없음
-- 기존 패턴으로 해결 가능
-- bounded targeted verification 가능
-
-실제 Source에서 Direct 범위를 넘는 변경이 필요해지면 Coder가 임의로 확대하지 않고 다음 상태로 Block합니다.
-
-```text
-DIRECT_SCOPE_EXCEEDED
-Required Flow: STANDARD
-```
-
-Orchestrator가 Standard Flow 또는 Requirement Delta로 다시 계획합니다.
-
-## 9.2 Standard Flow
-
-설계·분해·승인 또는 복합 영향 분석이 필요한 작업입니다.
-
-```text
-Request
-→ Project Resolve / Approval
-→ Bootstrap (필요 시)
-→ Breakdown
-→ Work Unit Boundary
-→ API Spec Gate (필요 시)
-→ Workspace / Branch Approval
-→ Coder Model Approval
-→ Plan Approval
-→ Kanban
-→ Coder
-→ Reviewer
-```
-
-대표 대상:
-
-- 신규 기능
-- Screen / Domain / API / Data 설계
-- DB Migration
-- Infrastructure 변경
-- Dependency 변경
-- 여러 Module / Repository
-- Architecture / Security / Transaction / Concurrency 결정
-
-**Direct와 Standard 모두 동일 Review loop를 사용합니다.**
-
-```text
-Coder
-  ↓ kanban_request_review
-Reviewer DEFAULT
-  ├─ APPROVED → done
-  ├─ CHANGES_REQUESTED → original coder → re-review
-  └─ BLOCKED → human / external input
-```
-
-사용자가 명시적으로 Flow를 지정할 수도 있지만 eligibility를 우회하지 않습니다.
-
-```text
-Direct Flow로 진행해주세요.
-Standard Flow로 진행해주세요.
-```
-
-## 9.3 Task Recovery Flow
-
-기존 Kanban 카드가 `blocked` 또는 `triage` 상태에서 멈춘 경우 새 카드를 바로 만들지 않고 `dev-task-recovery`로 같은 Task를 복구할 수 있습니다.
-
-```text
-Recovery Flow
-→ [보드 선택]
-→ [차단 카드 선택]
-→ 원인/방향 read-only 분석
-→ [복구 계획 승인]
-→ durable Contract Revision
-→ SAME_TASK_RESUME
-→ 기존 Task ID 재개 (blocked: unblock / triage: 공식 specify API)
-→ Coder
-→ Reviewer
-```
-
-정상 Recovery는 사용자 승인 Gate가 정확히 3개입니다.
-
-```text
-1. Board
-2. blocked/triage Task
-3. Recovery Plan
-```
-
-같은 최종 산출물을 완료하기 위한 bounded dependency/source/test/config/verification 정합성 수정은 기존 카드 재사용을 우선합니다. Work Unit Class, Workspace/Branch/Model, 독립 API/Data/Infrastructure 승인 경계를 넘어가면 현재 카드를 blocked로 보존하고 Standard Flow로 전환합니다.
-
-예:
-
-```text
-리커버 플로우 실행해줘
-차단된 작업 복구해줘
-t_9ed73170 복구해줘
-```
-
-Task ID를 직접 지정해도 Board/Task 선택 Gate는 생략하지 않습니다.
-
----
-
-# 10. 주요 디렉터리
-
-```text
-hermes-agent-devkit
-├─ custom-skills/
-│  ├─ orchestrator/
-│  │  ├─ dev-direct-flow/
-│  │  ├─ dev-workflow-orchestrate/
-│  │  ├─ dev-task-recovery/
-│  │  ├─ dev-breakdown/
-│  │  └─ dev-workspace-dispatch/
-│  ├─ coder/
-│  │  ├─ dev-implement-plan/
-│  │  └─ dev-review-cycle/
-│  ├─ reviewer/
-│  │  ├─ dev-code-review/
-│  │  └─ dev-review-cycle/
-│  └─ shared/
-│     └─ capability skills
-├─ shared/
-├─ scripts/
-├─ docs/images/
-├─ Dockerfile
-├─ compose.yml
-├─ init-profiles.ps1
-└─ update-devkit.ps1
-```
-
----
-
-# 11. 운영 시 주의사항
-
-## Volume
-
-일반 종료:
-
-```powershell
-docker compose down
-```
-
-다음 명령은 **완전 초기화**입니다.
-
-```powershell
-docker compose down -v
-```
-
-`-v`를 사용하면 Profile, OAuth, Session, Memory, Kanban 등 Hermes Runtime 데이터가 삭제될 수 있습니다.
-
-## Git 변경 보호
-
-Agent는 기존 사용자 변경을 보존합니다. 명시적인 승인 없이 다음 작업을 수행하지 않습니다.
-
-```text
-git reset
-git restore
-git clean
-git stash
-commit
-push
-PR
-merge
-```
-
----
-
-## 핵심 원칙
-
-```text
-새 개발 요청
-    ↓
-Orchestrator
-    ↓
-DIRECT | STANDARD
-    ↓
-Kanban
-    ↓
-Coder
-    ↓
-Reviewer
-    ↓
-done / blocked
-```
-
-Hermes Agent DevKit은 설계 문서와 명시적인 작업 계약을 중심으로 개발 기준을 만들고, 그 기준에 따라 작은 Work Unit을 안정적으로 구현·검토하기 위한 개발 Workflow를 제공합니다. 차단된 기존 카드의 bounded 복구는 별도 `dev-task-recovery` 3-Gate Flow로 같은 Task ID를 우선 재사용합니다.
+상세 전환 경계는 `docs/hermes-lite-migration.md`, 검증 이동 내역은 `docs/lite-validation.md`를 참고한다.

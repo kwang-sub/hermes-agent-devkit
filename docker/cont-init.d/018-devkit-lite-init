@@ -1,0 +1,13 @@
+#!/command/with-contenv sh
+# Runs after upstream 01-hermes-setup/015-supervise-perms and BEFORE 02-reconcile-profiles.
+# S6_BEHAVIOUR_IF_STAGE2_FAILS=2 is mandatory: failed migration must not start services.
+set -eu
+export HOME=/opt/data HERMES_HOME=/opt/data
+if [ "${S6_BEHAVIOUR_IF_STAGE2_FAILS:-}" != 2 ]; then
+    echo '[devkit-lite] Fail-closed s6 startup contract is missing' >&2
+    exit 1
+fi
+if [ "$(id -u)" = 0 ]; then
+    exec s6-setuidgid hermes /opt/hermes/.venv/bin/python /opt/devkit/bin/lite_default_profile.py apply --boot
+fi
+exec /opt/hermes/.venv/bin/python /opt/devkit/bin/lite_default_profile.py apply --boot

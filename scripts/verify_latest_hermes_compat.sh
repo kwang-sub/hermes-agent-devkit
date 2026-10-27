@@ -1,75 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
-
 BASE_IMAGE="${HERMES_BASE_IMAGE:-nousresearch/hermes-agent:latest}"
-IMAGE_NAME="${HERMES_COMPAT_IMAGE:-hermes-devkit:latest-compat}"
-CONTAINER_NAME="${HERMES_COMPAT_CONTAINER:-hermes-devkit-latest-compat}"
-DATA_VOLUME="${HERMES_COMPAT_DATA_VOLUME:-hermes-devkit-latest-compat-data}"
-
-cleanup() {
-    docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-    docker volume rm -f "$DATA_VOLUME" >/dev/null 2>&1 || true
-    docker image rm -f "$IMAGE_NAME" >/dev/null 2>&1 || true
-}
+RUN_ID="$(python3 -c 'import uuid;print(uuid.uuid4().hex[:12])')"
+IMAGE_NAME="hermes-devkit:lite-ci-$RUN_ID"
+BUILT=0
+cleanup() { if [ "$BUILT" = 1 ]; then docker image rm "$IMAGE_NAME" >/dev/null 2>&1 || true; fi; }
 trap cleanup EXIT
-
-printf '[RUN ] Latest Hermes compatibility build\n'
-printf 'BASE_IMAGE=%s\n' "$BASE_IMAGE"
-
-docker build \
-    --pull \
-    --build-arg "HERMES_BASE_IMAGE=$BASE_IMAGE" \
-    --target hermes-upstream-patched \
-    --tag "$IMAGE_NAME" \
-    .
-
-printf '[RUN ] Pinned Git/runtime compatibility build\n'
-docker build \
-    --build-arg "HERMES_BASE_IMAGE=$BASE_IMAGE" \
-    --target hermes-devkit-runtime \
-    --tag "$IMAGE_NAME" \
-    .
-
-printf '[RUN ] Latest Hermes patched runtime smoke\n'
-docker run --rm \
-    --entrypoint /bin/sh \
+# The full runtime inherits the exact patched upstream stage. Pull latest only once.
+docker build --pull --build-arg "HERMES_BASE_IMAGE=$BASE_IMAGE" --target hermes-devkit-runtime --tag "$IMAGE_NAME" .
+BUILT=1
+docker run --rm --entrypoint /bin/sh \
     --mount "type=bind,source=$REPO_ROOT/custom-skills,target=/opt/custom-skills,readonly" \
     --mount "type=bind,source=$REPO_ROOT/shared,target=/opt/data/shared,readonly" \
-    --mount "type=bind,source=$REPO_ROOT/scripts,target=/opt/devkit-tests,readonly" \
-    "$IMAGE_NAME" \
-    -ceu '
-        test -x /opt/hermes/.venv/bin/hermes
-        /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_gateway_readiness.py --self-test
+    "$IMAGE_NAME" -ceu '
         /opt/hermes/.venv/bin/hermes --help >/dev/null
-        # Same Python interpreter and YAML interface used by init-profiles.ps1.
-        /opt/hermes/.venv/bin/python - <<"PY_PROFILE_YAML"
-import importlib
-import importlib.util
-
-name = "hermes_yaml" if importlib.util.find_spec("hermes_yaml") else "yaml"
-yaml = importlib.import_module(name)
-sample = "skills:\n  external_dirs:\n    - /opt/custom-skills/shared\ntoolsets:\n  - terminal\n"
-parsed = yaml.safe_load(sample)
-assert parsed["skills"]["external_dirs"] == ["/opt/custom-skills/shared"]
-assert parsed["toolsets"] == ["terminal"]
-rendered = yaml.safe_dump(
-    {"skills": {"external_dirs": parsed["skills"]["external_dirs"]}},
-    allow_unicode=True, default_flow_style=False, sort_keys=False,
-)
-assert yaml.safe_load(rendered)["skills"]["external_dirs"] == parsed["skills"]["external_dirs"]
-assert hasattr(yaml, "YAMLError")
-print("PASS: init-profiles YAML parser compatibility (" + name + ")")
-PY_PROFILE_YAML
-        /opt/hermes/.venv/bin/hermes kanban boards list --json >/tmp/devkit-kanban-boards.json
-        test -s /tmp/devkit-kanban-boards.json
-
+        /opt/hermes/.venv/bin/hermes kanban boards list --json >/tmp/kanban-boards.json
         test "$(/usr/local/bin/git --version)" = "git version 2.55.0"
         test "$(/usr/local/bin/git config --system --bool --get worktree.useRelativePaths)" = "true"
         test "$(/usr/local/bin/pnpm --version)" = "12.5.1"
-
+        /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_gateway_readiness.py --self-test
+        /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_notifier.py --self-test
+        /opt/hermes/.venv/bin/python /opt/devkit/scripts/verification/maven_verification_cached.py --help
+        /opt/hermes/.venv/bin/python /opt/devkit/scripts/verification/gradle_verification_cached.py --help
+        test ! -e /opt/hermes/hermes_cli/devkit_worker_startup.py
+        test ! -e /opt/hermes/hermes_cli/devkit_session_affinity.py
+        test ! -e /etc/cont-init.d/018-devkit-kanban-boot-recovery
+        for version in 8 17 21; do /opt/jdks/temurin-$version/bin/java -version; done
         runtime_smoke=/tmp/devkit-pnpm-runtime-smoke
         runtime_home=/tmp/devkit-pnpm-home
         mkdir -p "$runtime_smoke" "$runtime_home"
@@ -122,292 +80,11 @@ JSON
         )
         rm -rf "$runtime_smoke" "$runtime_home"
 
-        test -f /opt/hermes/hermes_cli/devkit_recovery_plan_style.py
-        grep -q "DEVKIT_RECOVERY_PLAN_RENDER_V1" /opt/hermes/hermes_cli/cli_render.py
-        grep -q "DEVKIT_RECOVERY_PLAN_STREAM_V1" /opt/hermes/hermes_cli/cli_stream_mixin.py
-        grep -q "DEVKIT_RECOVERY_PLAN_STREAM_RESET_V1" /opt/hermes/hermes_cli/cli_stream_mixin.py
-        /opt/hermes/.venv/bin/python - <<"PY_RECOVERY"
-from hermes_cli.devkit_recovery_plan_style import (
-    HEADING, split_recovery_response, style_stream_line, style_recovery_response,
-)
-plan = "## 작업 복구 분석\n## 🛠 복구 계획\n> 1. 기존 카드 보존\n---\n### 승인 기준\n- 재검증\n"
-parsed = split_recovery_response(plan)
-assert parsed is not None and "기존 카드 보존" in parsed.plan
-styled = style_recovery_response(plan)
-assert styled is not None
-title, active = style_stream_line(HEADING, False)
-assert active and "🛠 복구 계획" in title
-border, active = style_stream_line("> 1. 기존 카드 보존", active)
-assert active and "┃" in border
-separator, active = style_stream_line("---", active)
-assert not active and separator == "---"
-assert split_recovery_response("Recovery Plan:\n- existing evidence") is None
-PY_RECOVERY
-        test -f /opt/hermes/hermes_cli/devkit_session_affinity.py
-        test -f /opt/hermes/hermes_cli/devkit_parent_tracking.py
-        test -x /opt/devkit/bin/parent_tracking_body.py
-        grep -q "DEVKIT_PARENT_TRACKING_CREATE_V1" /opt/hermes/hermes_cli/kanban_db.py
-        grep -q "DEVKIT_PARENT_TRACKING_EDIT_V1" /opt/hermes/hermes_cli/kanban_db.py
-        grep -q "DEVKIT_PARENT_TRACKING_DASHBOARD_V1" /opt/hermes/plugins/kanban/dashboard/plugin_api.py
-        /opt/hermes/.venv/bin/python - <<"PY_TRACKING"
-from hermes_cli.devkit_parent_tracking import normalize_parent_body, validate_parent_body
-
-original = "Parent Task ID: t_0e028558 (tracking only; no execution dependency)\nExisting body"
-fixed = normalize_parent_body(original, title="[자식] Existing Task")
-assert fixed.startswith(
-    "Parent Tracking:\n- Parent Task ID: t_0e028558\n"
-    "- Relation: CHILD_WORK_UNIT\n\n"
-), repr(fixed)
-assert fixed.endswith(original)
-assert validate_parent_body(fixed, expected_parent="t_0e028558") == "t_0e028558"
-assert normalize_parent_body(fixed, title="[자식] Existing Task") == fixed
-PY_TRACKING
-        test -f /opt/hermes/tools/kanban_tools.py
-        grep -q "def _devkit_run_flow_model_transition" /opt/hermes/tools/kanban_tools.py
-        grep -q "MODEL_POLICY_SNAPSHOT_V1" /opt/hermes/tools/kanban_tools.py
-
-        test ! -e /opt/hermes/hermes_cli/devkit_kanban_worker_context.py
-        /opt/hermes/.venv/bin/python - <<"PY"
-from pathlib import Path
-
-from hermes_cli.devkit_worker_startup import with_worker_startup
-for profile in ("coder", "reviewer"):
-    argv = ["hermes", "--resume", "probe", "chat", "-q", "work kanban task t_probe"]
-    patched = with_worker_startup(argv, profile)
-    assert "DEVKIT_WORKER_STARTUP_V1" in patched[-1]
-    assert patched[:-1] == argv[:-1]
-    assert with_worker_startup(patched, profile) == patched
-
-legacy_pins = [
-    "hermes", "-p", "coder", "--cli",
-    "--skills", "sdlc-review", "--skills", "dev-java-guidelines",
-    "chat", "-q", "work kanban task t_legacy",
-]
-coder_argv = with_worker_startup(legacy_pins, "coder")
-assert "sdlc-review" not in coder_argv[:coder_argv.index("-q")]
-assert "dev-java-guidelines" in coder_argv
-assert "DEVKIT_LEGACY_REVIEW_PIN_SKIP_V1" in coder_argv[-1]
-assert with_worker_startup(coder_argv, "coder") == coder_argv
-reviewer_pins = list(legacy_pins)
-reviewer_pins[reviewer_pins.index("-p") + 1] = "reviewer"
-reviewer_argv = with_worker_startup(reviewer_pins, "reviewer")
-assert reviewer_argv[:-1] == reviewer_pins[:-1]
-assert "DEVKIT_LEGACY_REVIEW_PIN_SKIP_V1" not in reviewer_argv[-1]
-assert Path("/opt/custom-skills/reviewer/sdlc-review/SKILL.md").is_file()
-assert not Path("/opt/custom-skills/coder/sdlc-review/SKILL.md").exists()
-
-from agent.delegation_context import KANBAN_ENV_KEYS, delegated_child_subprocess_env
-from agent.transports.hermes_tools_mcp_server import EXPOSED_TOOLS
-
-required_env = {
-    "HERMES_KANBAN_TASK",
-    "HERMES_KANBAN_RUN_ID",
-    "HERMES_KANBAN_CLAIM_LOCK",
-}
-assert required_env.issubset(set(KANBAN_ENV_KEYS)), KANBAN_ENV_KEYS
-
-scrubbed = delegated_child_subprocess_env({
-    "HERMES_KANBAN_TASK": "t_probe",
-    "HERMES_KANBAN_RUN_ID": "7",
-    "HERMES_KANBAN_CLAIM_LOCK": "claim-probe",
-})
-assert not (required_env & set(scrubbed)), scrubbed
-
-required_tools = {
-    "kanban_list",
-    "kanban_show",
-    "kanban_comment",
-    "kanban_unblock",
-    "kanban_complete",
-    "kanban_block",
-    "kanban_request_review",
-    "kanban_request_changes",
-    "kanban_heartbeat",
-}
-assert required_tools.issubset(set(EXPOSED_TOOLS)), EXPOSED_TOOLS
-assert "kanban_worker_context" not in EXPOSED_TOOLS
-
-codex_source = Path("/opt/hermes/agent/transports/codex_app_server.py").read_text(encoding="utf-8")
-for token in (
-    "KANBAN_ENV_KEYS",
-    "mcp_servers.{HERMES_TOOLS_MCP_SERVER_NAME}.env.{key}",
-    "delegated_child_subprocess_env",
-):
-    assert token in codex_source, token
-
-kanban_source = Path("/opt/hermes/tools/kanban_tools.py").read_text(encoding="utf-8")
-for token in (
-    "HERMES_KANBAN_RUN_ID",
-    "expected_run_id",
-    "kanban_show",
-    "worker_context",
-):
-    assert token in kanban_source, token
-PY
-
-        grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/agent/skill_commands.py
-        grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/hermes_cli/commands_completion.py
-        { grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/tui_gateway/command_discovery.py 2>/dev/null ||
-          grep -q "DEVKIT_SLASH_SUGGEST_V1" /opt/hermes/tui_gateway/methods_tools.py; }
-        test -f /opt/hermes/tools/approval_detection.py
-        test -f /opt/hermes/tools/approval_floors.py
-        test -f /opt/hermes/hermes_cli/config_migrations.py
-        test -f /opt/data/shared/references/skill-slash-suggest-policy.json
-
-        /opt/hermes/.venv/bin/python -m py_compile \
-            /opt/hermes/tools/approval_detection.py \
-            /opt/hermes/tools/approval_floors.py \
-            /opt/hermes/tools/kanban_tools.py \
-            /opt/hermes/hermes_cli/devkit_session_affinity.py \
-            /opt/hermes/agent/skill_commands.py \
-            /opt/hermes/hermes_cli/commands_completion.py \
-            /opt/hermes/tui_gateway/methods_tools.py
-        if test -f /opt/hermes/tui_gateway/command_discovery.py; then
-            /opt/hermes/.venv/bin/python -m py_compile /opt/hermes/tui_gateway/command_discovery.py
-        fi
-
-        /opt/hermes/.venv/bin/python - <<"PY"
-import os
-from hermes_constants import reset_hermes_home_override, set_hermes_home_override
-from pathlib import Path
-from tools.approval_detection import detect_hardline_command, detect_dangerous_command
-from tools.approval_floors import _hardline_block_result
-assert callable(detect_hardline_command)
-assert callable(detect_dangerous_command)
-assert callable(_hardline_block_result)
-
-tirith_path = Path("/opt/hermes/tools/tirith_security.py")
-if tirith_path.is_file():
-    from tools.tirith_security import _devkit_only_analysis_incomplete, _devkit_tirith_subprocess_env
-
-    before_home = os.environ.get("HOME")
-    before_hermes_home = os.environ.get("HERMES_HOME")
-    token = set_hermes_home_override("/tmp/devkit-tirith-profile")
-    try:
-        env = _devkit_tirith_subprocess_env()
-        assert env.get("HERMES_HOME") == "/tmp/devkit-tirith-profile", env
-        assert env.get("HOME"), env
-        assert os.environ.get("HOME") == before_home
-        assert os.environ.get("HERMES_HOME") == before_hermes_home
-        assert _devkit_only_analysis_incomplete([{"rule_id": "analysis_incomplete"}])
-        assert not _devkit_only_analysis_incomplete([{"rule_id": "malware_package"}])
-    finally:
-        reset_hermes_home_override(token)
-else:
-    from hermes_cli.config_migrations import _RETIRED_TIRITH_KEYS
-    assert "tirith_enabled" in _RETIRED_TIRITH_KEYS
-    assert "tirith_fail_open" in _RETIRED_TIRITH_KEYS
-
-PY
-
-        test -f /opt/custom-skills/orchestrator/dev-task-recovery/SKILL.md
-        test -f /opt/custom-skills/orchestrator/dev-task-recovery/references/recovery-details.md
-        test -f /opt/custom-skills/orchestrator/dev-task-recovery/scripts/recovery_board_inventory.py
-        /opt/hermes/.venv/bin/python /opt/custom-skills/orchestrator/dev-task-recovery/scripts/recovery_board_inventory.py --help >/dev/null
-        grep -q "RECOVERY_GATE_COUNT=3" /opt/custom-skills/orchestrator/dev-task-recovery/SKILL.md
-        grep -q "TASK_RECOVERY_REVISION_V1" /opt/custom-skills/orchestrator/dev-task-recovery/SKILL.md
-        test -f /opt/custom-skills/shared/dev-api-spec/SKILL.md
-        test -f /opt/custom-skills/shared/dev-api-contract/SKILL.md
-        test -f /opt/custom-skills/shared/dev-api-docs/SKILL.md
-        test -f /opt/custom-skills/shared/dev-official-docs-context/SKILL.md
-        test -f /opt/custom-skills/shared/dev-official-docs-context/scripts/context7_docs.py
-        test -f /opt/custom-skills/shared/dev-official-docs-context/scripts/detect_dependency_versions.py
-        /opt/hermes/.venv/bin/python /opt/custom-skills/shared/dev-official-docs-context/scripts/context7_docs.py --self-test
-        test -x /opt/devkit/bin/devkit_kanban_notifier.py
-        /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_notifier.py --self-test
-        /opt/hermes/.venv/bin/hermes send --help >/dev/null
-        test -x /opt/devkit/svscan/devkit-notifier/run
-        test -x /etc/cont-init.d/019-devkit-kanban-notifier-policy
-        test ! -e /etc/s6-overlay/s6-rc.d/devkit-notifier
-        test -f /opt/custom-skills/shared/dev-java-guidelines/SKILL.md
-        test -f /opt/custom-skills/shared/dev-java-guidelines/references/official-java-practices.md
-        test -f /opt/custom-skills/shared/dev-kotlin-guidelines/SKILL.md
-        test -f /opt/custom-skills/shared/dev-spring-guidelines/SKILL.md
-        test -f /opt/custom-skills/shared/dev-spring-guidelines/references/official-spring-practices.md
-        test -f /opt/custom-skills/shared/dev-spring-feature/SKILL.md
-        test -f /opt/custom-skills/shared/dev-spring-data/SKILL.md
-        test -f /opt/custom-skills/shared/dev-spring-test/SKILL.md
-        test -f /opt/custom-skills/shared/dev-typescript-guidelines/SKILL.md
-        test -f /opt/custom-skills/shared/dev-typescript-guidelines/references/official-typescript-practices.md
-        test -f /opt/custom-skills/shared/dev-frontend-guidelines/SKILL.md
-        test -f /opt/custom-skills/shared/dev-frontend-guidelines/references/official-react-practices.md
-        test -f /opt/custom-skills/shared/dev-nextjs-feature/SKILL.md
-        test -f /opt/custom-skills/shared/dev-nextjs-feature/references/official-nextjs-practices.md
-        test -f /opt/custom-skills/shared/dev-node-dependencies/SKILL.md
-        test -f /opt/custom-skills/shared/dev-node-dependencies/scripts/node_environment_gate.py
-        test -f /opt/custom-skills/shared/dev-node-dependencies/scripts/pnpm_build_policy.py
-        test -f /opt/custom-skills/shared/dev-node-dependencies/scripts/node_runtime.py
-        test -f /opt/data/shared/references/approval-gate-rules.md
-        test -f /opt/data/shared/scripts/flow_model_policy.py
     '
-
-printf '[RUN ] Maven managed runtime as the non-root worker user\n'
-docker run --rm --user hermes \
-    --entrypoint /opt/hermes/.venv/bin/python \
-    --mount "type=bind,source=$REPO_ROOT/custom-skills,target=/opt/custom-skills,readonly" \
-    --mount "type=bind,source=$REPO_ROOT/scripts,target=/opt/devkit-tests,readonly" \
-    "$IMAGE_NAME" /opt/devkit-tests/smoke_maven_runtime.py \
-        --launcher-dir /usr/local/bin \
-        --extension-source-root /usr/local/share/hermes-maven-output
-
-printf '[RUN ] Latest Hermes live s6 notifier smoke\n'
-docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-docker volume rm -f "$DATA_VOLUME" >/dev/null 2>&1 || true
-docker volume create "$DATA_VOLUME" >/dev/null
-
-docker run --rm \
-    --entrypoint /bin/sh \
-    --mount "type=volume,source=$DATA_VOLUME,target=/opt/data" \
-    "$IMAGE_NAME" \
-    -ceu 'chown -R "$(id -u hermes):$(id -g hermes)" /opt/data'
-
-docker run -d \
-    --name "$CONTAINER_NAME" \
-    --mount "type=volume,source=$DATA_VOLUME,target=/opt/data" \
-    -e HERMES_KANBAN_NOTIFY_ENABLED=false \
-    "$IMAGE_NAME" \
-    sleep infinity >/dev/null
-
-ready=0
-for _ in $(seq 1 60); do
-    if docker exec "$CONTAINER_NAME" /command/s6-svstat -o up /run/service/devkit-notifier 2>/dev/null | grep -qx true; then
-        ready=1
-        break
-    fi
-    sleep 0.5
-done
-
-if [ "$ready" -ne 1 ]; then
-    docker logs "$CONTAINER_NAME" >&2 || true
-    docker exec "$CONTAINER_NAME" ls -la /run/service >&2 || true
-    exit 1
-fi
-
-docker exec "$CONTAINER_NAME" test -x /run/service/devkit-notifier/run
-test "$(docker exec "$CONTAINER_NAME" cat /proc/1/comm | tr -d '\r')" = "s6-svscan"
-docker exec --user hermes "$CONTAINER_NAME" \
-    /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_notifier.py --self-test
-
-docker exec -i --user hermes "$CONTAINER_NAME" /opt/hermes/.venv/bin/python - <<'PYTHON'
-from pathlib import Path
-import os
-import tempfile
-expected = {
-    "GRADLE_USER_HOME": "/opt/data/gradle/user-home",
-    "HERMES_MAVEN_ROOT": "/opt/data/maven",
-    "HERMES_MAVEN_REPO_ROOT": "/opt/data/maven/repository",
-    "HERMES_MAVEN_DIST_ROOT": "/opt/data/maven/distributions",
-    "HERMES_MAVEN_DOWNLOAD_ROOT": "/opt/data/maven/downloads",
-    "HERMES_MAVEN_LOCK_ROOT": "/opt/data/maven/locks",
-}
-for key, value in expected.items():
-    assert os.environ.get(key) == value, key
-    if key.startswith("HERMES_MAVEN_"):
-        directory = Path(value)
-        directory.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryFile(dir=directory):
-            pass
-print("PASS: actual Docker ENV and persistent Maven cache writable by hermes")
-PYTHON
-
-printf '[PASS] Latest Hermes base image, pinned Git/pnpm bootstrap, project Node runtime, DevKit patches, and live dynamic notifier supervision are compatible.\n'
+docker run --rm --user hermes --entrypoint /opt/hermes/.venv/bin/python \
+    --mount "type=bind,source=$REPO_ROOT,target=/opt/devkit-tests,readonly" \
+    "$IMAGE_NAME" /opt/devkit-tests/scripts/smoke_maven_runtime.py \
+        --launcher-dir /usr/local/bin --extension-source-root /usr/local/share/hermes-maven-output \
+        --verifier /opt/devkit/scripts/verification/maven_verification.py
+python3 scripts/smoke_lite_image.py --image "$IMAGE_NAME"
+printf '[PASS] Latest Hermes, JDK/Git/pnpm/Maven, actual Lite boot and persistent data safety.\n'

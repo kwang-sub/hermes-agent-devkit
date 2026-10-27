@@ -1,5 +1,7 @@
-# Lite 공통 Maven·Gradle 검증 헬퍼
+# 역할 독립 Maven·Gradle 검증
 
-기존 Coder의 검증 실행기를 역할 독립 경로로 이관한 복사본이다. Maven/Gradle 엔진과 PASS scope-fingerprint 재사용 래퍼 4개가 포함된다. 경로 변경에 따른 process_execution import와 Maven launcher fingerprint fallback을 보정했다.
+이 폴더가 canonical implementation이다. 이미지의 `/opt/devkit/scripts/verification/`에 그대로 설치한다. engine은 `/opt/devkit/custom-skills/_lib/process_execution.py`를 사용한다. 더 이상 Coder/Reviewer 디렉터리에 복사본을 유지하지 않는다.
 
-Standard 삭제 전에는 기존 경로를 보존하며 사용자를 위한 Lite 검사만 새 경로에서 수행한다. Standard 제거 단계에서 나머지 호출자와 회귀 테스트를 이 경로로 전환한다. 결과가 실패/차단일 때 PASS라고 선언하지 않는다.
+프로젝트의 기존 toolchain과 승인된 명령, 명시적인 `--scope-path`를 사용한다. `*_verification_cached.py`는 성공한 동일 request/scope의 증거만 재사용한다. 외부 환경·시간에 의존하면 `--no-reuse`를 지정한다. 코드/테스트/build/toolchain 변경과 실행 중 source 변경은 이전 PASS를 무효화한다. 환경변수의 과거 Task ID는 캐시 namespace의 선택적 값일 뿐 Task·Worker 소유권이 필요하지 않다.
+
+Maven은 `hermes-maven`, Gradle은 `hermes-java`를 통한 Linux 산출물·캐시 격리와 실행 제한을 유지한다. 기능 테스트가 필요한 변경은 compile PASS만으로 검증 완료 처리하지 않는다.

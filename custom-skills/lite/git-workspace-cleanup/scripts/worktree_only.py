@@ -29,6 +29,7 @@ from cleanup_lib import (
     run,
     select_merged_pr,
     status_bytes,
+    protect_ignored_files,
     worktree_snapshot,
 )
 
@@ -166,6 +167,7 @@ def try_inspect_base_worktree(
     if not base or branch != base:
         return None
 
+    protect_ignored_files(root)
     raw_status = status_bytes(root)
     semantic_rows, eol_only_rows = classify_worktree_status(root, raw_status)
     semantic_status = encode_status_rows(semantic_rows)

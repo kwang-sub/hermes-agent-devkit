@@ -72,7 +72,7 @@ def wait_ready(timeout: float, poll: float = 1.0) -> int:
         root, pid, record, served = snapshot()
         status = classify(pid, record, served)
         if status == "READY":
-            print("PASS: verified live Gateway serves default/coder/orchestrator/reviewer")
+            print("PASS: verified live Gateway serves default (legacy roles absent)")
             return 0
         if pid is not None and not rescanned and served is not None and "default" in served:
             # Ask the actual live multiplexer to refresh its profile inventory.

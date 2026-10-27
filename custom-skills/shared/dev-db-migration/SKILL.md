@@ -1,6 +1,6 @@
 ---
 name: dev-db-migration
-description: 승인된 DBA logical model을 별도 Standard MIGRATION Work Unit에서 target DBMS 물리 schema로 변환하고 기존 migration convention을 존중해 Flyway-first/Liquibase-compatible migration을 작성·검증할 때 Coder가 실행하고 Reviewer가 read-only 기준으로 공유하는 DB migration capability.
+description: 승인된 DBA logical model을 별도 승인된 마이그레이션 단계에서 target DBMS 물리 schema로 변환하고 기존 migration convention을 존중해 Flyway-first/Liquibase-compatible migration을 작성·검증할 때 구현 단계가 실행하고 자체 검토 단계가 read-only 기준으로 공유하는 DB migration capability.
 version: 0.3.0
 author: local
 platforms: [linux]
@@ -13,71 +13,19 @@ metadata:
 
 # dev-db-migration
 
-shared/pinnable DB physicalization / migration capability다. **migration 파일 작성·변경의 실행 책임은 Coder**, Reviewer는 동일 계약을 read-only 검토 기준으로 사용한다.
+DB physicalization / migration capability다. `/opt/data/shared/references/lite-development-contract.md`를 따른다. 현재 세션이 구현과 자체 검토를 수행하며 독립 Reviewer·Worker를 요구하지 않는다.
 
-`/opt/data/shared/references/standard-work-unit-rules.md`를 적용한다. 이 capability를 사용해 physicalization을 수행하는 Standard Task는 `Work Unit Class: MIGRATION`이어야 한다.
+## 시작 조건과 권한
+새 테이블 또는 의미 있는 schema 변경은 합의된 logical model/DBML, 업무 제약, 대상 DBMS/버전, 기존 migration tool과 배포 순서가 필요하다. 기존 schema의 작은 보정은 해당 근거를 재사용하고 불필요하게 새 DBML을 요구하지 않는다.
 
-```text
-APPROVED DBA Logical Model
-        ↓
-별도 Standard MIGRATION Work Unit
-        ↓
-Coder Physicalization
-        ↓
-Flyway / Liquibase Migration
-        ↓
-Migration Verification
-        ↓
-JPA / Application Mapping
-        ↓
-Reviewer read-only verification
-```
+설계만 요청했거나 logical model이 미확정이면 migration 파일을 자동 작성하지 않는다. 구현까지 명시 요청한 경우 같은 세션에서 합의된 물리화로 진행할 수 있다. `Work Unit Class`, Kanban Task, profile, 별도 Dispatch는 입력 조건이 아니다.
 
-## Work Unit Preconditions
+논리 의미를 변경해야 하면 영향과 변경안을 확인한 뒤 진행한다. 파일 작성·local/test 검증과 운영 DB 실제 적용은 별도 권한이다. Production은 프로젝트의 승인된 deployment/migration pipeline을 따른다.
 
-새 table 또는 의미 있는 schema 변경은 다음을 모두 요구한다.
+## 검토
+logical ↔ physical mapping, naming/version/order, backward compatibility, rollback/backfill, 검증 evidence를 확인한다. 리뷰만 요청했으면 파일을 수정하지 않으며 수정 요청이 있으면 같은 세션에서 반영한다.
 
-```text
-Work Unit Class: MIGRATION
-Work Unit Boundary: SINGLE_UNIT
-Data Model Status: APPROVED
-DBML Path: <repository canonical path or approved artifact path>
-Subject Areas: <approved mapping>
-Logical Tables / Relationships:
-Business Constraints:
-Target DBMS / Version: <known or detect before vendor DDL>
-```
-
-`DESIGN` Work Unit에서 이 Skill을 실행해 Flyway/Liquibase/DDL/JPA physical mapping을 만들지 않는다. logical DBML이 아직 DRAFT이거나 현재 Task가 logical design과 physicalization을 동시에 요구하면 migration을 시작하지 않고 Work Unit Boundary 위반으로 BLOCK한다.
-
-MIGRATION 중 responsibility/cardinality/ownership 같은 논리 의미를 바꿔야 한다는 사실이 드러나면 현재 Task를 확장하지 않는다. 새 `DESIGN` Work Unit에서 logical model을 다시 승인받은 뒤 별도 MIGRATION Task를 재계획한다.
-
-기존 승인 schema의 단순 migration-only 보정은 Task evidence에 따라 logical gate가 NOT_REQUIRED일 수 있지만, 그래도 현재 Task Class는 `MIGRATION`으로 명시한다.
-
-## Role Boundary
-
-### Coder
-
-```text
-physical schema 결정
-migration/changelog 작성·수정
-project-controlled local/test/CI migration 검증
-JPA physical mapping 반영
-```
-
-### Reviewer
-
-```text
-logical ↔ physical mapping 검토
-migration naming/version/order/compatibility 검토
-Work Unit Boundary 준수 검토
-검증 evidence 재사용 또는 필요한 read-only verification
-application/migration source 수정 금지
-```
-
-운영 DB에 직접 ad-hoc DDL을 실행하는 권한을 의미하지 않는다. Production 적용은 프로젝트의 승인된 deployment/migration pipeline을 따른다.
-
-## Coder 책임
+## 구현 단계 책임
 
 ```text
 기존 migration framework/convention 탐지
@@ -129,7 +77,7 @@ Physical Table = tbl_<subject_area>_<entity>
 
 1. `tbl_` prefix 필수.
 2. `<subject_area>`는 DBA가 승인한 Subject Area만 사용한다.
-3. Coder가 Subject Area를 임의 생성·변경·축약하지 않는다.
+3. 구현 단계가 Subject Area를 임의 생성·변경·축약하지 않는다.
 4. lowercase snake_case를 사용한다.
 5. logical table이 이미 `<subject_area>_` prefix를 갖는 legacy 형태라면 정확히 한 번만 제거한다.
 6. `tbl_investment_investment_account` 같은 중복 prefix를 만들지 않는다.
@@ -158,7 +106,7 @@ python3 /opt/custom-skills/shared/dev-db-migration/scripts/migration_guard.py \
 
 ## Physical Schema Decision
 
-Coder가 실제 물리 판단이 필요할 때 `skill_view("dev-db-schema")`를 로드한다.
+구현 단계가 실제 물리 판단이 필요할 때 `skill_view("dev-db-schema")`를 로드한다.
 
 ```text
 Approved logical intent
@@ -301,7 +249,7 @@ Flyway/Liquibase + schema.sql 이중 schema ownership
 
 ## Verification Gate
 
-Coder는 가능한 범위에서 다음을 수행하고 Reviewer는 그 evidence와 실제 diff를 대조한다.
+구현 단계는 가능한 범위에서 다음을 수행하고 자체 검토 단계는 그 evidence와 실제 diff를 대조한다.
 
 ```text
 1. migration tool/convention detection

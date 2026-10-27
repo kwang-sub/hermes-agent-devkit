@@ -111,7 +111,7 @@ Verification
 
 ## Dependency 정책
 
-프로젝트에 QueryDSL이 없는데 복잡 쿼리가 필요한 경우 자동으로 dependency를 추가하지 않는다. dependency 추가는 Standard Flow 결정사항으로 올린다.
+프로젝트에 QueryDSL이 없는데 복잡 쿼리가 필요한 경우 자동으로 dependency를 추가하지 않는다. dependency 추가는 합의된 직접 개발 결정사항으로 올린다.
 
 ## Verification / Evidence
 

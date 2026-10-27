@@ -188,7 +188,7 @@ application-level fan-out에서 직접 `Executors.newVirtualThreadPerTaskExecuto
 
 ## Review Hotspots
 
-Reviewer는 Java diff에서 다음을 우선 확인한다.
+자체 검토 단계는 Java diff에서 다음을 우선 확인한다.
 
 ```text
 unsupported/Preview language feature

@@ -38,7 +38,7 @@ FIGMA
 EXISTING_CODE
 ```
 
-IMAGE와 FIGMA의 차이는 provider 단계에서만 다루고 이후 Coder/Reviewer는 Normalized Design Evidence를 공통 계약으로 사용한다.
+IMAGE와 FIGMA의 차이는 provider 단계에서만 다루고 이후 구현 단계/자체 검토 단계는 Normalized Design Evidence를 공통 계약으로 사용한다.
 
 ## View Strategy / Implementation Architecture
 
@@ -164,7 +164,7 @@ UI 구성 차이를 API endpoint 분리 근거로 사용하지 않는다. 반대
 
 ### Planning / Handoff 필수 필드
 
-Desktop/Mobile이 범위에 포함된 Frontend Task는 다음을 Plan과 Coder handoff에 남긴다.
+Desktop/Mobile이 범위에 포함된 Frontend Task는 다음을 Plan과 구현 단계 handoff에 남긴다.
 
 ```text
 View Strategy: SHARED | RESPONSIVE | HYBRID | SPLIT_VIEW
@@ -193,7 +193,7 @@ UNKNOWN은 임의 구현하지 않는다. 확인 가능한 기존 규칙은 재�
 자동 조회/정보 표시와 조건부 UI도 누락하지 않는다. 웹/모바일은 기능 ID를 공유하고 차이만 기록한다.
 구현과 Screen Spec을 같은 변경에서 갱신하며 handoff에 F/UI/AC ID별 구현·검증 근거를 남긴다.
 
-## Coder 실행 순서
+## 구현 단계 실행 순서
 
 ```text
 1. Frontend package root 확인 후 Frontend Environment Gate 실행
@@ -231,7 +231,7 @@ FRONTEND_ENVIRONMENT_GATE=BLOCKED
 BLOCKER_CLASS=PROJECT_TOOLCHAIN_MIGRATION_REQUIRED
 ```
 
-이 경우 현재 기능 Task에서 package manager migration을 암묵적으로 수행하지 않고 작업을 BLOCK한다. 특히 worker는 검증을 계속하기 위해 Windows/source worktree에서 `npm`, `npx`, `next`, `tsc`, 직접 `pnpm run`을 fallback으로 실행하지 않는다. source worktree의 `.next` 권한 수정·삭제를 반복해 canonical 검증을 우회하지도 않는다.
+이 경우 현재 기능 Task에서 package manager migration을 암묵적으로 수행하지 않고 작업을 BLOCK한다. 특히 에이전트는 검증을 계속하기 위해 Windows/source worktree에서 `npm`, `npx`, `next`, `tsc`, 직접 `pnpm run`을 fallback으로 실행하지 않는다. source worktree의 `.next` 권한 수정·삭제를 반복해 canonical 검증을 우회하지도 않는다.
 
 Gate는 pnpm의 표준 build policy도 함께 확인한다. `dangerouslyAllowAllBuilds=true`, `strictDepBuilds=false`, non-boolean `allowBuilds` placeholder, exact version이 아닌 broad `true` 승인은 BLOCK한다. dependency restore 중 `ERR_PNPM_IGNORED_BUILDS`가 발생하면 `dev-node-dependencies`의 one-time build approval 절차를 사용한다. 이미 `pnpm-workspace.yaml > allowBuilds`에서 결정된 동일 exact package/version은 다시 승인받지 않는다.
 
@@ -294,7 +294,7 @@ exact package root
 
 `node_modules`에만 존재하는 package는 정상 dependency evidence가 아니다. `package.json`/canonical lockfile에 없으면 `EXTRANEOUS_PRESENT`로 취급하고 정상 manifest mutation이 필요하다.
 
-Tirith가 `analysis_incomplete`를 반환하면 security finding으로 오인해 package manager를 바꾸거나 install flag를 추가하지 않는다. `dev-node-dependencies`의 daemon 재검사 1회 경로만 사용하고, 이후에도 verdict가 불완전하면 headless worker에서 반복하지 않고 BLOCK한다.
+Tirith가 `analysis_incomplete`를 반환하면 security finding으로 오인해 package manager를 바꾸거나 install flag를 추가하지 않는다. `dev-node-dependencies`의 daemon 재검사 1회 경로만 사용하고, 이후에도 verdict가 불완전하면 현재 세션에서 반복하지 않고 BLOCK한다.
 
 ## REFERENCE_DRIVEN 우선순위
 
@@ -352,7 +352,7 @@ Error
 Selected / Disabled / Positive / Negative 등 실제 domain state
 ```
 
-Storybook이 없는 프로젝트에 이번 화면 구현만을 이유로 dependency를 자동 추가하지 않는다. 도입이 필요하면 dependency/architecture 결정으로 Standard Flow에서 별도 승인한다.
+Storybook이 없는 프로젝트에 이번 화면 구현만을 이유로 dependency를 자동 추가하지 않는다. 도입이 필요하면 dependency/architecture 결정으로 합의된 직접 개발에서 별도 승인한다.
 
 ## Visual Verification
 
@@ -382,18 +382,18 @@ ChatGPT/디자인 PNG를 곧바로 장기 regression golden으로 사용하지 �
 → 일반 best practice
 ```
 
-## Reviewer 적용
+## 자체 검토 단계 적용
 
-Reviewer는 기존 `dev-code-review`의 diff-first/verification reuse 계약을 유지하면서 다음을 추가한다.
+자체 검토 단계는 기존 `dev-lite-review`의 diff-first/verification reuse 계약을 유지하면서 다음을 추가한다.
 
 - Frontend Mode / Design Source / Status / Fidelity를 확인한다.
 - Desktop/Mobile 범위면 View Strategy와 실제 package/component 분리가 Plan과 일치하는지 확인한다.
 - `SPLIT_VIEW`/`HYBRID`에서 API/model/state/hooks가 presentation 차이만으로 불필요하게 복제되지 않았는지 확인한다.
 - `SHARED`/`RESPONSIVE`에서 동일 semantic tree를 불필요하게 desktop/mobile 별도 tree로 복제하지 않았는지 확인한다.
 - Desktop/Mobile 차이를 이유로 Backend API가 불필요한 superset DTO 또는 중복 endpoint로 확장되지 않았는지 확인한다.
-- REFERENCE_DRIVEN이면 Coder의 Normalized Design Evidence와 `screen-spec.md`를 우선 재사용한다.
+- REFERENCE_DRIVEN이면 구현 단계의 Normalized Design Evidence와 `screen-spec.md`를 우선 재사용한다.
 - fidelity finding에 원본이 필요할 때만 IMAGE/Figma Reference를 다시 확인한다.
-- `OBSERVED`, `INFERRED`, `UNKNOWN` 경계를 Coder가 무너뜨리지 않았는지 확인한다.
+- `OBSERVED`, `INFERRED`, `UNKNOWN` 경계를 구현 단계가 무너뜨리지 않았는지 확인한다.
 - approved reference와 project Design System 충돌을 global redesign 요구로 확대하지 않는다.
 - 외부 기술 변경이면 `Documentation Evidence`의 detected/resolved version, Version Match, local type/source, compiler evidence를 확인한다.
 - dependency 변경이 있으면 `dev-node-dependencies`의 package root/manager/lockfile/Tirith evidence를 확인한다.
@@ -477,4 +477,4 @@ Residual Risk:
 - package mutation이 필요한 경우 `node_modules`를 manifest/lockfile 대신 source of truth로 사용하지 않는다.
 - Tirith `analysis_incomplete`를 scanner 우회나 다른 package manager 사용의 근거로 삼지 않는다.
 - Design Conformance reference와 Visual Regression golden을 동일 개념으로 취급하지 않는다.
-- Reviewer가 독립성을 이유로 같은 이미지/Figma/test evidence를 불필요하게 반복 조회하지 않는다.
+- 자체 검토 단계가 독립성을 이유로 같은 이미지/Figma/test evidence를 불필요하게 반복 조회하지 않는다.

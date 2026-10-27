@@ -99,7 +99,7 @@ Decision Needed:
 
 ## 5. 구현 Evidence
 
-Coder는 handoff에 최소한 다음을 기록한다.
+구현 단계는 handoff에 최소한 다음을 기록한다.
 
 ```text
 Pattern References: <재사용한 기존 파일/클래스>
@@ -110,4 +110,4 @@ Improvement Deferred: <있으면 이유와 제안>
 
 새 abstraction/dependency를 추가했다면 기존 대안이 충분하지 않았던 근거와 verification도 함께 남긴다.
 
-Reviewer는 새 코드가 임의의 새 스타일을 만들지 않았는지 확인하고, 차이가 있다면 요구사항 또는 명시적 정책으로 설명되는지 검증한다.
+자체 검토 단계는 새 코드가 임의의 새 스타일을 만들지 않았는지 확인하고, 차이가 있다면 요구사항 또는 명시적 정책으로 설명되는지 검증한다.

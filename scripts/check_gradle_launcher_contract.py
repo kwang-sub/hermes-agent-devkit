@@ -6,40 +6,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
-COMMON_REQUIRED = (
-    "Build/test 실행은 현재 역할 Skill과 canonical runtime contract를 사용한다.",
-    "관리형 runtime이 있는 Maven/Gradle/Node 작업에서 raw executable fallback",
-    "launcher/helper/cache/timeout/process-cleanup",
-    "공통 Process Execution 계층",
-)
-
-PROFILE_REQUIRED = {
-    ROOT / "custom-skills/orchestrator/dev-direct-flow/SKILL.md": (
-        "Orchestrator는 project build/test를 실행하지 않는다",
-        "Gradle 재현이 필요하면 Direct 판정을 멈추고 Standard로 전환",
-        "`hermes-java ./gradlew ...`",
-        "canonical cached verification helper",
-    ),
-    ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md": (
-        "raw `./gradlew ...` 또는 `gradle ...` 직접 실행은 금지",
-        "`hermes-java ./gradlew ...`",
-        "`gradle_verification_cached.py`",
-    ),
-    ROOT / "custom-skills/reviewer/dev-code-review/SKILL.md": (
-        "raw `./gradlew ...` 또는 `gradle ...` 직접 실행도 금지",
-        "canonical cached helper",
-    ),
-}
-
-MARKDOWN_CONTRACTS = (
-    ROOT / "AGENTS.md",
-    ROOT / "shared/AGENTS.common.md",
-    ROOT / "custom-skills/orchestrator/dev-direct-flow/SKILL.md",
-    ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md",
-    ROOT / "custom-skills/coder/dev-implement-plan/references/implementation-details.md",
-    ROOT / "custom-skills/reviewer/dev-code-review/SKILL.md",
-    ROOT / "custom-skills/reviewer/dev-code-review/references/review-details.md",
-)
+MARKDOWN_CONTRACTS = tuple(ROOT.glob('custom-skills/lite/*/SKILL.md')) + (ROOT / 'shared/references/verification-level-policy.md',)
 
 RAW_MARKDOWN_COMMAND = re.compile(r"^\s*(?:\$\s*)?(?:\./gradlew|gradle)(?:\s|$)")
 RAW_SHELL_COMMAND = re.compile(
@@ -100,8 +67,8 @@ def candidate_runtime_scripts() -> list[Path]:
 
 
 def check_runtime_bypass(failures: list[str]) -> None:
-    engine = ROOT / "custom-skills/coder/dev-implement-plan/scripts/gradle_verification.py"
-    cached = ROOT / "custom-skills/coder/dev-implement-plan/scripts/gradle_verification_cached.py"
+    engine = ROOT / "scripts/verification/gradle_verification.py"
+    cached = ROOT / "scripts/verification/gradle_verification_cached.py"
     launcher = ROOT / "scripts/hermes-java"
 
     engine_text = require_terms(
@@ -158,12 +125,6 @@ def check_runtime_bypass(failures: list[str]) -> None:
 
 def main() -> int:
     failures: list[str] = []
-
-    for path in (ROOT / "AGENTS.md", ROOT / "shared/AGENTS.common.md"):
-        require_terms(path, COMMON_REQUIRED, failures)
-
-    for path, terms in PROFILE_REQUIRED.items():
-        require_terms(path, terms, failures)
 
     check_markdown_commands(failures)
     check_runtime_bypass(failures)

@@ -22,6 +22,13 @@
 - Windows 호스트 Workspace와 Linux 컨테이너의 유효 경로는 Docker bind mapping을 따른다. Windows Temp는 별도 read-only bind다.
 - 사용자 가시 계획·결과는 한국어, 실제 코드의 운영 로그는 영어로 작성한다. Secrets/비밀번호/token/PII를 소스·로그·문서·Kanban에 기록하지 않는다.
 
+## 공통 코드 품질과 실행 기준
+- 기존 Utility/Service/Policy/Validator/Mapper와 가까운 구현 패턴을 먼저 찾아 재사용한다. 함수 흐름은 기본 2-depth를 지향하되 기존 프로젝트 관례와 명확성을 우선한다.
+- target Java 및 Kotlin 버전을 따른다. Preview/Incubator, Entity record/data class, Optional, mutable collection, N+1, parallelStream, virtual thread, coroutine/GlobalScope는 해당 언어 지침으로 확인한다.
+- `shared/references/coding-rules.md`, `implementation-decision-rules.md`가 Stack/Capability Skill의 공통 기준이다. 기존 변경을 덮어쓰거나 무관한 style 정리로 범위를 넓히지 않는다.
+- 코드 로그 메시지는 영어로 작성한다. secret/token/password는 logging call과 검증 결과에도 노출하지 않는다.
+- Maven은 `shared/references/maven-runtime.md`, Gradle/Node는 `shared/references/verification-level-policy.md`의 canonical runtime contract를 사용한다. `hermes-java`/`hermes-maven` launcher와 공통 Process Execution 계층을 raw executable fallback으로 우회하지 않는다.
+
 <!-- HERMES-COMMON:END -->
 
 <!-- HERMES-PROJECT:START -->

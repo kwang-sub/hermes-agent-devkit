@@ -17,6 +17,7 @@ from cleanup_lib import (
     remote_branch_sha,
     run,
     worktree_snapshot,
+    protect_ignored_files,
 )
 from worktree_only import try_inspect_base_worktree
 
@@ -61,6 +62,7 @@ def remove_worktree(
     *,
     allow_eol_only_force: bool = False,
 ) -> None:
+    protect_ignored_files(worktree)
     command = ["git", "worktree", "remove"]
     if allow_eol_only_force:
         command.append("--force")
@@ -177,7 +179,6 @@ def main() -> int:
                         return 3
                     tracked_local_removed = True
 
-            run(["git", "worktree", "prune"], cwd=main_worktree)
 
             if args.delete_remote and tracked_branch and worktree_only.tracked_previous_remote_sha:
                 current_remote = remote_branch_sha(main_worktree, worktree_only.remote, tracked_branch)
@@ -266,7 +267,6 @@ def main() -> int:
                 return 3
             local_branch_removed = True
 
-        run(["git", "worktree", "prune"], cwd=main_worktree)
 
         if args.delete_remote and state.remote_branch_sha:
             current_remote = remote_branch_sha(main_worktree, state.remote, state.branch)
