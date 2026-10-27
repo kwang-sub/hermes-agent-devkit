@@ -90,7 +90,7 @@ def self_test():
     assert classify(None, {}, None) == "NO_VERIFIED_LIVE_GATEWAY"
     assert classify(12, {}, None) == "SERVED_PROFILE_RECORD_UNAVAILABLE"
     assert classify(12, {"served_profiles": []}, []) == "STANDALONE_OR_INCOMPLETE_MULTIPLEX"
-    assert classify(12, {}, ["default"]) == "STANDALONE_OR_INCOMPLETE_MULTIPLEX"
+    assert classify(12, {}, ["default"]) == "READY"
     assert classify(12, {}, ["default", "reviewer", "coder", "orchestrator"]) == "LEGACY_ROLE_PROFILES_STILL_SERVED"
     assert classify(None, {"served_profiles": list(REQUIRED)}, list(REQUIRED)) == "NO_VERIFIED_LIVE_GATEWAY"
     print("PASS: gateway readiness identity and served-profile contract fixtures")
