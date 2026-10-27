@@ -47,8 +47,10 @@ def main():
                         '--mount',f'type=bind,source={ROOT}/shared,target=/opt/data/shared,readonly',
                         '--mount',f'type=bind,source={temp}/workspace,target=/workspace',
                         '--mount',f'type=bind,source={temp}/external,target=/external,readonly']
-                # Seed without starting any service. Do not recurse through the nested RO shared bind.
-                run(['run','--rm','-i','--entrypoint',PYTHON,'--mount',data_mount,a.image,'-','seed',kind],code=fixture)
+                # A fresh volume must first be opened by the actual s6 bootstrap,
+                # not a root Python probe that creates install locks and logs.
+                if kind!='fresh':
+                    run(['run','--rm','-i','--entrypoint',PYTHON,'--mount',data_mount,a.image,'-','seed',kind],code=fixture)
                 run(['run','-d','--name',name,'--label','io.devkit.test='+tag,*mounts,
                      '-e','HERMES_KANBAN_DISPATCH_IN_GATEWAY=false','-e','HERMES_KANBAN_NOTIFY_ENABLED=false',
                      '-e','HERMES_DASHBOARD=0','-e','HERMES_GATEWAY_BOOTSTRAP_STATE=running',

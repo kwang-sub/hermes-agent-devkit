@@ -274,6 +274,14 @@ RUN set -eu; \
     ln -sf "$hermes_target" /usr/local/bin/hermes; \
     /usr/local/bin/hermes --help >/dev/null
 
+# Build-time probes can seed logs/install locks as root. Normalize ONLY the
+# image-owned seed before Docker copies it to a brand-new volume. This RUN has
+# no user volume mounted; production boot must never recursively chown user data.
+RUN test -d /opt/data && test ! -L /opt/data \
+    && chown -R hermes:hermes /opt/data
+USER hermes
+RUN /usr/local/bin/hermes --help >/dev/null
+
 WORKDIR /workspace
 
 USER root
