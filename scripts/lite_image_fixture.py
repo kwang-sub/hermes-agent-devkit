@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""Synthetic CI data only. Called through stdin in a newly created isolated volume."""
+"""Executed ONLY inside disposable integration containers by smoke_lite_image.py."""
 from pathlib import Path
 import hashlib
 import json
@@ -7,73 +6,74 @@ import os
 import pwd
 import sqlite3
 import sys
+try: import hermes_yaml as yaml
+except ImportError: import yaml
 ROOT=Path('/opt/data')
-MARKER=ROOT/'lite-ci-fixture.json'
+MARKER=ROOT/'devkit-ci-fixture.json'
+FILES=('auth.json','memories/MEMORY.md','state.db','sessions/history.txt','skills/custom-note/SKILL.md')
 
-def digest(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 def seed(kind):
-    assert not MARKER.exists(), 'Do not overwrite an existing fixture'
-    ROOT.mkdir(exist_ok=True)
-    if kind=='fresh': return
-    config={'custom_lite_ci': {'preserve': True}, 'skills': {'external_dirs':['/opt/custom-skills/coder'], 'auto_load':[]},
-            'kanban':{'dispatch_in_gateway':True,'notify_in_gateway':False}}
-    (ROOT/'config.yaml').write_text(json.dumps(config))  # JSON is valid YAML
-    files={}
-    for relative,content in {
-        'auth.json':'{"lite_ci_only":true}',
-        'memories/lite-ci.txt':'memory must survive',
-        'sessions/lite-ci.txt':'session must survive',
-        'profiles/coder/SOUL.md':'# archived coder fixture',
-        'profiles/coder/auth.json':'{"preserved_fixture":"coder"}',
-        'profiles/orchestrator/SOUL.md':'# archived orchestrator fixture',
-        'profiles/reviewer/SOUL.md':'# archived reviewer fixture',
-    }.items():
-        p=ROOT/relative;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(content)
-        files[relative]=digest(p)
-    if kind=='active':
-        with sqlite3.connect(ROOT/'kanban.db') as db:
-            db.execute('CREATE TABLE tasks (id TEXT, status TEXT)')
-            db.execute("INSERT INTO tasks VALUES ('fixture-running','running')")
-    else:
-        # Use the installed upstream schema, never emulate a production schema.
-        from hermes_cli import kanban_db
-        conn=kanban_db.connect()
-        db_path=conn.execute('PRAGMA database_list').fetchone()[2]
-        conn.execute('CREATE TABLE devkit_ci_preserved (id INTEGER PRIMARY KEY, value TEXT)')
-        conn.execute("INSERT INTO devkit_ci_preserved VALUES (1,'keep-board-record')")
-        conn.commit(); conn.close()
-        config['ci_db_path']=db_path
-    if kind=='collision':
-        path=ROOT/'devkit-lite/legacy-profiles/coder';path.mkdir(parents=True)
-        (path/'keep.txt').write_text('do not replace archive')
-    MARKER.write_text(json.dumps({'kind':kind,'files':files,'database':config.get('ci_db_path')}))
+    if kind=='fresh':return
+    original={'model':{'provider':'openai-codex'},'custom':{'keep':['user-setting']},
+              'skills':{'external_dirs':['/opt/custom-skills/coder'],'auto_load':['dev-implement-plan']}}
+    for rel in FILES:
+        p=ROOT/rel;p.parent.mkdir(parents=True,exist_ok=True)
+        if rel=='state.db':
+            with sqlite3.connect(p) as c:c.execute('CREATE TABLE keep(value TEXT)');c.execute("INSERT INTO keep VALUES ('session-preserved')")
+        elif rel=='auth.json':p.write_text('{"lite_ci_only":true}')
+        else:p.write_text('unchanged CI data: '+rel)
+    for role in ('orchestrator','coder','reviewer'):
+        home=ROOT/'profiles'/role;home.mkdir(parents=True)
+        (home/'SOUL.md').write_text('Legacy role instruction preserved')
+        (home/'auth.json').write_text('{"ci_only":true}')
+    if kind=='legacy':
+        before={'dirs':original['skills']['external_dirs'],'autoload':original['skills']['auto_load'],'tools':None}
+        applied={'dirs':['/opt/custom-skills/shared','/opt/custom-skills/lite'],
+                 'autoload':['dev-implement-plan','dev-lite-session'],'tools':['hermes-cli','kanban']}
+        original['skills']['external_dirs']=applied['dirs'];original['skills']['auto_load']=applied['autoload']
+        original['toolsets']=applied['tools']
+        p=ROOT/'devkit-lite/profile-state.json';p.parent.mkdir(parents=True)
+        p.write_text(json.dumps({'schema':2,'phase':'applied','before':before,'applied':applied}))
+        # Use the installed upstream connection module to create the real schema.
+        from hermes_cli.kanban_db_connect import connect
+        conn=connect()
+        path=Path(conn.execute('PRAGMA database_list').fetchone()[2])
+        info=conn.execute('PRAGMA table_info(tasks)').fetchall()
+        values={'id':'t_lite_ci','title':'preserved note','body':'manual record','status':'ready'}
+        for col in info:
+            _,name,typ,notnull,default,pk=col
+            if notnull and default is None and name not in values:values[name]=0 if 'INT' in typ.upper() or 'REAL' in typ.upper() else ''
+        names=list(values)
+        conn.execute('INSERT INTO tasks ('+','.join('"'+n+'"' for n in names)+') VALUES ('+','.join('?' for _ in names)+')',[values[n] for n in names])
+        conn.commit();conn.close()
+    elif kind=='active':
+        with sqlite3.connect(ROOT/'kanban.db') as c:
+            c.execute('CREATE TABLE tasks(status TEXT)');c.execute("INSERT INTO tasks VALUES ('running')")
+    elif kind=='collision':(ROOT/'devkit-lite/legacy-profiles/coder').mkdir(parents=True)
+    (ROOT/'config.yaml').write_text(yaml.safe_dump(original))
+    hashes={rel:hashlib.sha256((ROOT/rel).read_bytes()).hexdigest() for rel in FILES}
+    MARKER.write_text(json.dumps({'hashes':hashes,'original':original,'kind':kind}))
     user=pwd.getpwnam('hermes')
-    for base,dirs,names in os.walk(ROOT):
+    for base,dirs,files in os.walk(ROOT):
         os.chown(base,user.pw_uid,user.pw_gid)
-        for name in names: os.chown(Path(base)/name,user.pw_uid,user.pw_gid)
+        for name in files:os.chown(Path(base)/name,user.pw_uid,user.pw_gid)
 
-def verify(success):
-    if not MARKER.exists():
-        assert success
+def verify(blocked=False):
+    if not MARKER.exists():return
+    data=json.loads(MARKER.read_text())
+    for rel,expected in data['hashes'].items():assert hashlib.sha256((ROOT/rel).read_bytes()).hexdigest()==expected,rel
+    config=yaml.safe_load((ROOT/'config.yaml').read_text())
+    if blocked:
+        assert config==data['original'];assert (ROOT/'profiles/coder/SOUL.md').is_file()
+        assert not (ROOT/'devkit-lite/transition.json').exists()
         return
-    m=json.loads(MARKER.read_text())
-    for relative,sha in m['files'].items():
-        p=ROOT/relative
-        if success and relative.startswith('profiles/'):
-            p=ROOT/'devkit-lite/legacy-profiles'/relative[len('profiles/'):]
-        assert p.is_file() and digest(p)==sha,relative
-    if success:
-        import hermes_yaml as yaml
-        cfg=yaml.safe_load((ROOT/'config.yaml').read_text())
-        assert cfg['custom_lite_ci']=={'preserve':True}
-        assert cfg['kanban']['dispatch_in_gateway'] is False
-        assert all(not (ROOT/'profiles'/role).exists() for role in ('coder','orchestrator','reviewer'))
-        with sqlite3.connect('file:'+m['database']+'?mode=ro',uri=True) as db:
-            assert db.execute('SELECT value FROM devkit_ci_preserved WHERE id=1').fetchone()[0]=='keep-board-record'
-    else:
-        assert not (ROOT/'devkit-lite/migration-state.json').exists()
-    print('[PASS] Fixture data and archive boundary:',m['kind'])
-
-if __name__=='__main__':
-    if sys.argv[1]=='seed': seed(sys.argv[2])
-    else: verify(sys.argv[1]=='verify')
+    assert config['custom']==data['original']['custom']
+    for role in ('orchestrator','coder','reviewer'):
+        assert not (ROOT/'profiles'/role).exists()
+        assert (ROOT/'devkit-lite/legacy-profiles'/role/'SOUL.md').read_text()=='Legacy role instruction preserved'
+    from hermes_cli.kanban_db_connect import connect
+    conn=connect();row=conn.execute("SELECT status,body FROM tasks WHERE id='t_lite_ci'").fetchone();conn.close()
+    assert tuple(row)==('ready','manual record'),row
+    print('[PASS] synthetic OAuth/memory/sessions/custom-skill bytes and Kanban card preserved')
+if sys.argv[1]=='seed':seed(sys.argv[2])
+else:verify(sys.argv[1]=='verify-blocked')

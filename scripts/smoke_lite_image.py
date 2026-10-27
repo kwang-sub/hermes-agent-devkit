@@ -3,6 +3,7 @@
 from pathlib import Path
 import argparse
 import json
+import os
 import subprocess
 import tempfile
 import time
@@ -26,7 +27,7 @@ def diagnostics(name):
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--image',required=True);a=parser.parse_args()
     tag='devkit-lite-test-'+uuid.uuid4().hex[:12]
-    created_containers=[];created_volumes=[]
+    created_containers=[];created_volumes=[];created_binds=[]
     fixture=(ROOT/'scripts/lite_image_fixture.py').read_text()
     def exec_python(name,source): return run(['exec','-i','--user','hermes',name,PYTHON,'-'],code=source)
     with tempfile.TemporaryDirectory(prefix='devkit-lite-boot-') as temp:
@@ -37,7 +38,7 @@ def main():
                 name=f'{tag}-{kind}';volume=f'{name}-data'
                 print('[BOOT_SCENARIO] '+kind,flush=True)
                 if kind=='legacy':
-                    data=temp/'legacy-data';data.mkdir()
+                    data=temp/'legacy-data';data.mkdir();created_binds.append(data)
                     data_mount=f'type=bind,source={data},target=/opt/data'
                 else:
                     run(['volume','create','--label','io.devkit.test='+tag,volume]);created_volumes.append(volume)
@@ -46,9 +47,18 @@ def main():
                         '--mount',f'type=bind,source={ROOT}/shared,target=/opt/data/shared,readonly',
                         '--mount',f'type=bind,source={temp}/workspace,target=/workspace',
                         '--mount',f'type=bind,source={temp}/external,target=/external,readonly']
-                # Leave fresh data untouched until the actual s6 bootstrap.
                 if kind!='fresh':
                     run(['run','--rm','-i','--entrypoint',PYTHON,'--mount',data_mount,a.image,'-','seed',kind],code=fixture)
+                    plan=run(['run','--rm','-i','--read-only','--network','none','--user','hermes',
+                              '--mount',data_mount+',readonly','-e','PYTHONDONTWRITEBYTECODE=1',
+                              '--entrypoint',PYTHON,a.image,'-','plan'],
+                             code=(ROOT/'scripts/lite_default_profile.py').read_text(),check=False)
+                    if kind=='legacy':
+                        assert plan.returncode==0, 'Read-only upgrade preflight failed: '+plan.stderr
+                        print('[PASS] Read-only migration plan in the actual image',flush=True)
+                    else:
+                        expected='Active Kanban tasks' if kind=='active' else 'Profile archive collision'
+                        assert plan.returncode!=0 and expected in plan.stderr, plan.stdout+plan.stderr
                 run(['run','-d','--name',name,'--label','io.devkit.test='+tag,*mounts,
                      '-e','HERMES_KANBAN_DISPATCH_IN_GATEWAY=false','-e','HERMES_KANBAN_NOTIFY_ENABLED=false',
                      '-e','GATEWAY_MULTIPLEX_PROFILES=true',
@@ -75,8 +85,7 @@ def main():
                         raise RuntimeError('Boot stopped early: '+kind+' '+json.dumps(state))
                     probe=run(['exec','--user','hermes',name,PYTHON,'/opt/devkit/bin/lite_default_profile.py','status'],check=False)
                     if probe.returncode==0:break
-                    if time.monotonic()>deadline:
-                        raise RuntimeError('Boot status timeout: '+kind)
+                    if time.monotonic()>deadline:raise RuntimeError('Boot status timeout: '+kind)
                     time.sleep(1)
                 run(['exec','--user','hermes',name,PYTHON,'/opt/devkit/bin/devkit_gateway_readiness.py','--wait-seconds','90'])
                 exec_python(name,"import os\nfrom gateway.kanban_watchers import GatewayKanbanWatchersMixin\nassert os.environ['HERMES_KANBAN_DISPATCH_IN_GATEWAY']=='false'\nassert GatewayKanbanWatchersMixin()._kanban_dispatcher_boot() is None\n")
@@ -91,10 +100,18 @@ def main():
             print('[PASS] Lite image fresh/legacy/active/collision scenarios')
         except Exception:
             for name in created_containers:
-                try: diagnostics(name)
-                except (subprocess.TimeoutExpired,RuntimeError): pass
+                try:diagnostics(name)
+                except (subprocess.TimeoutExpired,RuntimeError):pass
             raise
         finally:
             for name in reversed(created_containers):run(['rm','-f',name],check=False)
             for name in reversed(created_volumes):run(['volume','rm',name],check=False)
+            # ONLY restore ownership of UUID-scoped CI bind fixtures for cleanup.
+            # This is not production boot or the updater.
+            for data in created_binds:
+                assert data.parent==temp and data.name=='legacy-data'
+                run(['run','--rm','--network','none','--user','root',
+                     '--mount',f'type=bind,source={data},target=/fixture',
+                     '--entrypoint','/bin/chown',a.image,'-R',
+                     f'{os.getuid()}:{os.getgid()}','/fixture'],check=False)
 if __name__=='__main__':main()
