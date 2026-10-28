@@ -24,6 +24,22 @@ def verify_session_data(root):
         assert rows==SESSION_ROWS, 'Session data changed: '+repr(rows)
 
 
+def upstream_config_baseline():
+    """Normalize synthetic config before measuring the DevKit cutover boundary."""
+    from hermes_cli.config import get_config_path, migrate_config
+    config_path=ROOT/'config.yaml'
+    assert Path(get_config_path()).resolve()==config_path.resolve(), 'Unexpected fixture config root'
+    original=yaml.safe_load(config_path.read_text())
+    # The real image performs this migration in 01-hermes-setup, BEFORE the
+    # DevKit boot guard. Execute that supported migration once during seeding,
+    # rather than confusing its version stamp with a refused DevKit write.
+    migrate_config(interactive=False, quiet=True)
+    baseline=yaml.safe_load(config_path.read_text())
+    for key,value in original.items():
+        assert baseline.get(key)==value, 'Fixture setting changed during upstream normalization: '+key
+    return baseline
+
+
 def seed(kind):
     if kind=='fresh':return
     original={'model':{'provider':'openai-codex'},'custom':{'keep':['user-setting']},
@@ -65,6 +81,7 @@ def seed(kind):
             conn.commit()
     elif kind=='collision':(ROOT/'devkit-lite/legacy-profiles/coder').mkdir(parents=True)
     (ROOT/'config.yaml').write_text(yaml.safe_dump(original))
+    original=upstream_config_baseline()
     hashes={rel:hashlib.sha256((ROOT/rel).read_bytes()).hexdigest() for rel in FILES}
     MARKER.write_text(json.dumps({'hashes':hashes,'original':original,'kind':kind}))
     user=pwd.getpwnam('hermes')
@@ -81,7 +98,8 @@ def verify(blocked=False):
     config=yaml.safe_load((ROOT/'config.yaml').read_text())
     journal=ROOT/'devkit-lite/migration-state.json'
     if blocked:
-        assert config==data['original'];assert (ROOT/'profiles/coder/SOUL.md').is_file()
+        assert config==data['original'], 'Blocked migration changed normalized config'
+        assert (ROOT/'profiles/coder/SOUL.md').is_file()
         assert not journal.exists(), 'Blocked migration wrote its journal'
         return
     assert config['custom']==data['original']['custom']

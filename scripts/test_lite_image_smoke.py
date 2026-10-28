@@ -3,10 +3,11 @@
 from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import copy
 import json
 import sqlite3
+import sys
 import tempfile
 import unittest
 
@@ -57,6 +58,37 @@ class PlanTests(unittest.TestCase):
         for kind, code in [('legacy', 1), ('active', 0), ('active', 1), ('collision', 0), ('collision', 1)]:
             with self.subTest(kind=kind, code=code), self.assertRaises(AssertionError):
                 assert_plan_result(kind, SimpleNamespace(returncode=code, stdout='', stderr='Permission denied'))
+
+
+class ConfigBaselineTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name); self.path = self.root / 'config.yaml'
+        self.original = {'model': {'provider': 'keep'}, 'skills': {'auto_load': ['dev-implement-plan']}}
+        self.path.write_text(fixture.yaml.safe_dump(self.original))
+
+    def normalize(self, content, path=None):
+        migrate = Mock(side_effect=lambda **kwargs: self.path.write_text(fixture.yaml.safe_dump(content)))
+        module = SimpleNamespace(get_config_path=lambda: path or self.path, migrate_config=migrate)
+        with patch.dict(sys.modules, {'hermes_cli.config': module}), patch.object(fixture, 'ROOT', self.root):
+            result = fixture.upstream_config_baseline()
+        migrate.assert_called_once_with(interactive=False, quiet=True)
+        return result
+
+    def test_baseline_includes_supported_upstream_version_stamp(self):
+        normalized = dict(self.original, _config_version=51)
+        self.assertEqual(self.normalize(normalized), normalized)
+
+    def test_normalization_does_not_hide_user_setting_changes(self):
+        changed = dict(self.original, model={'provider': 'wrong'})
+        with self.assertRaisesRegex(AssertionError, 'Fixture setting changed'):
+            self.normalize(changed)
+
+    def test_unexpected_config_root_is_refused_before_migration(self):
+        before = self.path.read_bytes()
+        with self.assertRaisesRegex(AssertionError, 'Unexpected fixture config root'):
+            self.normalize({}, self.root / 'elsewhere.yaml')
+        self.assertEqual(before, self.path.read_bytes())
 
 
 class SessionTests(unittest.TestCase):
