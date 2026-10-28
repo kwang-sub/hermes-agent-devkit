@@ -1,7 +1,7 @@
 ---
 name: dev-api-docs
 description: Framework에 종속되지 않은 API 문서화 skill로 승인 Markdown API Specification과 실제 Application Source를 대조해 OpenAPI/Swagger와 Postman Collection을 생성·갱신한다.
-version: 0.3.0
+version: 0.3.1
 author: local
 platforms: [linux]
 metadata:
@@ -84,6 +84,10 @@ BOTH
 
 Reference는 외부 GitHub 저장소를 매번 조회하기 위한 것이 아니라, 합의된 패턴을 로컬에 고정해 반복 사용량과 네트워크 의존성을 줄이기 위한 것이다.
 
+ErrorCode 기반 응답 예시가 실제 범위라면 `/opt/data/shared/references/samples/spring/README.md`, `ADAPTATION.md`, `openapi.md` 및 필요한 코드만 읽는다. 기존 프로젝트 구성·응답 wrapper·OpenAPI 확장이 샘플보다 우선한다. Kotlin은 한 구현 예시이며 Java/Python 등에서는 해당 언어·문서화 프레임워크의 기존 확장 지점에 맞게 책임을 옮긴다. SpringDoc이나 샘플 dependency를 다른 환경에 강제하지 않는다.
+
+실제 읽은 샘플 경로, 재사용할 기존 설정, 언어별 차이와 이유, 생성 문서 검증을 기존 계획에 기록한다. 전체 샘플을 자동 복사하거나 기존 API 응답을 샘플에 맞춰 바꾸지 않는다.
+
 ## 공통 실행 순서
 
 1. API Spec Mode/Status/Path를 확인한다.
@@ -101,12 +105,7 @@ Reference는 외부 GitHub 저장소를 매번 조회하기 위한 것이 아니
 
 Spring/Spring Boot + SpringDoc에서는 `references/spring-openapi-reference.md`를 기본 reference로 사용한다.
 
-해당 reference의 origin은 다음 예시 프로젝트다.
-
-```text
-Repository: kwang-sub/backend-lab-archive
-Path: level-up-backend-gpt/level2-book-management-system
-```
+사용자가 지정한 `kwang-sub/level-up-backend-gpt`의 코드를 일반화한 로컬 샘플을 사용한다. 원본 고정 커밋·업무명 제거·안전성 보완은 `/opt/data/shared/references/samples/spring/SOURCE.md`에 기록돼 있다. 원문과 샘플을 동일 코드로 취급하지 않는다.
 
 핵심 패턴:
 
@@ -130,6 +129,8 @@ OperationCustomizer 기반 error response example 생성
 - request/response field description/example annotation은 기존 DTO 문서화 패턴을 따른다.
 - 새 `SwaggerConfig`, custom annotation, dependency를 편의상 중복 생성하지 않는다.
 - SpringDoc이 없는 프로젝트에 신규 dependency를 추가해야 하면 자동 추가하지 않는다.
+- 기존 description/headers/links/schema/examples와 response `$ref`를 보존한다. 다른 응답 계약에 sample 예시를 억지로 붙이지 않는다.
+- `example`과 `examples`의 충돌, HTTP 상태·code 중복, 반복 생성의 idempotence를 확인한다. 실제 생성 문서로 검증한다.
 
 ## Postman
 

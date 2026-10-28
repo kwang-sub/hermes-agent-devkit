@@ -1,7 +1,7 @@
 ---
 name: dev-spring-feature
 description: Spring 기능 단위 구현에서 기존 프로젝트 패턴을 유지하며 Controller, Service, DTO, Validation, Exception을 함께 변경하고 version-aware MVC validation/error contract를 적용한다.
-version: 0.2.1
+version: 0.2.2
 author: local
 platforms: [linux]
 metadata:
@@ -111,6 +111,14 @@ Framework 6.1+ MVC에서는 built-in method validation이 `HandlerMethodValidati
 - Spring `ProblemDetail`, `ErrorResponse`, `ResponseEntityExceptionHandler`는 기존 contract와 호환되거나 명시적 migration 범위일 때만 사용한다.
 - ProblemDetail 도입 시 status/body/content-type/extension field가 기존 client contract에 미치는 영향을 확인한다.
 - framework exception을 그대로 노출해 내부 메시지/stack/구현 정보가 API contract가 되지 않게 한다.
+
+## 오류 처리 샘플의 선택적 적용
+
+오류 코드·예외·응답 구조의 생성/보완이 실제 범위일 때만 `references/exception-handling-reference.md`를 읽는다. 기존 프로젝트 구성·명명·공통 응답이 샘플보다 우선하며 중복 Exception/Handler/DTO를 생성하지 않는다.
+
+공통 샘플은 `/opt/data/shared/references/samples/spring/README.md`에 있다. Kotlin 예제는 Java/Python을 포함한 대상 언어·프레임워크의 관례로 책임과 동작을 옮기는 참고 자료다. 오류 코드·HTTP 상태·실제 응답·OpenAPI 일치, 안전한 공개 메시지, 필터 계층 401/403을 확인한다. 기존 인증 방식을 샘플 때문에 변경하지 않는다.
+
+읽은 경로·재사용할 기존 코드·언어별 차이·대상 환경 검증을 기존 계획에 기록한다. 샘플의 의존성 버전이나 클래스명을 강제하지 않고 전체 샘플을 자동 복사하지 않는다.
 
 ## 변경 금지 기본값
 

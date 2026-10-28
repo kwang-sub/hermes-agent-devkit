@@ -41,7 +41,7 @@ class OpenApiMergeTest {
             .addLink("retry", Link().operationId("retryOperation"))
         val operation = operation(response)
         customizer.customize(operation, handler)
-        val media = response.content["application/json"]
+        val media = checkNotNull(response.content["application/json"])
         assertEquals(2, media.examples.size)
         val manual = Example().value(mapOf("code" to "preserve-me"))
         media.addExamples("INVALID_REQUEST", manual)

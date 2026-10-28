@@ -17,7 +17,7 @@ import org.springframework.test.context.DynamicPropertySource
 import java.security.SecureRandom
 import java.util.Base64
 
-@SpringBootConfiguration
+@SpringBootConfiguration(proxyBeanMethods = false)
 @EnableAutoConfiguration(exclude = [SecurityAutoConfiguration::class])
 @EntityScan(basePackageClasses = [SecretRecord::class])
 @Import(SampleConfiguration::class, SampleResourceController::class, GlobalExceptionHandler::class)
