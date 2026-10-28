@@ -128,7 +128,7 @@ def _cold_board_signature(db: Path) -> tuple:
 def _cold_board_counts(db: Path) -> list:
     """Read a stable, checkpointed WAL database without creating WAL/SHM files.
 
-    This narrow fallback is for SQLITE_READONLY from a cold WAL DB on a read-only
+    This narrow fallback is for READONLY/CANTOPEN from a cold WAL DB on a read-only
     mount. Live boards always use SQLite's normal reader/locking. The updater
     still rechecks after stopping the old container; a plan is not an apply lease.
     """
@@ -146,6 +146,7 @@ def _cold_board_counts(db: Path) -> list:
     with closing(sqlite3.connect(':memory:')) as conn:
         conn.deserialize(image)
         conn.execute('PRAGMA query_only=ON')
+        conn.execute('PRAGMA temp_store=MEMORY')
         if conn.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
             raise RuntimeError('Kanban snapshot integrity check failed')
         rows = conn.execute(_ACTIVE_TASK_SQL).fetchall()
@@ -161,7 +162,8 @@ def read_active_task_counts(db: Path) -> list:
     except sqlite3.OperationalError as exc:
         # A read-only cold WAL DB cannot create its SHM file. Other failures
         # (busy/corrupt/schema/permissions) must not be turned into an empty board.
-        if getattr(exc, 'sqlite_errorcode', 0) & 0xff != sqlite3.SQLITE_READONLY:
+        code = getattr(exc, 'sqlite_errorcode', 0) & 0xff
+        if code not in (sqlite3.SQLITE_READONLY, sqlite3.SQLITE_CANTOPEN):
             raise
     return _cold_board_counts(db)
 

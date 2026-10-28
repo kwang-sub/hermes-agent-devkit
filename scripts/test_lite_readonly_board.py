@@ -87,6 +87,21 @@ class ReadOnlyBoardTests(unittest.TestCase):
         with self.assertRaises(sqlite3.DatabaseError):
             migration.read_active_task_counts(self.db)
 
+    def test_readonly_and_cantopen_use_only_the_guarded_fallback(self):
+        for code in (sqlite3.SQLITE_READONLY, sqlite3.SQLITE_CANTOPEN):
+            error = sqlite3.OperationalError('cold WAL cannot create sidecars')
+            error.sqlite_errorcode = code
+            with patch.object(migration.sqlite3, 'connect', side_effect=error):
+                with patch.object(migration, '_cold_board_counts', return_value=[('running', 1)]) as fallback:
+                    self.assertEqual(migration.read_active_task_counts(self.db), [('running', 1)])
+                    fallback.assert_called_once_with(self.db)
+
+    def test_missing_source_is_never_created_by_fallback(self):
+        missing = self.root / 'missing.db'
+        with self.assertRaises((OSError, sqlite3.Error)):
+            migration.read_active_task_counts(missing)
+        self.assertFalse(missing.exists())
+
     def test_busy_error_does_not_use_fallback(self):
         with patch.object(migration.sqlite3, 'connect', side_effect=sqlite3.OperationalError('database is locked')):
             with patch.object(migration, '_cold_board_counts') as fallback:
