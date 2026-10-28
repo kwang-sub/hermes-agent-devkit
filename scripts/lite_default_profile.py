@@ -8,7 +8,7 @@ failure. Legacy role homes are renamed, never deleted or merged with archives.
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import copy
 from datetime import datetime, timezone
 import hashlib
@@ -108,6 +108,64 @@ def desired(doc: dict, skills_root: str) -> dict:
     return result
 
 
+_ACTIVE_TASK_SQL = "SELECT status, COUNT(*) FROM tasks WHERE status IN ('running','review') GROUP BY status"
+_COLD_BOARD_LIMIT = 64 * 1024 * 1024
+
+
+def _cold_board_signature(db: Path) -> tuple:
+    # Never ignore a live WAL or a hot rollback journal, even an empty sidecar.
+    for suffix in ('-wal', '-shm', '-journal'):
+        if os.path.lexists(str(db) + suffix):
+            raise RuntimeError('Cannot snapshot a board with SQLite sidecars; safely stop writers and retry')
+    metadata = db.lstat()
+    if not stat.S_ISREG(metadata.st_mode):
+        raise ValueError('Kanban database must remain a regular file')
+    if metadata.st_size > _COLD_BOARD_LIMIT:
+        raise RuntimeError('Cold read-only board exceeds the 64 MiB snapshot limit')
+    return (metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns)
+
+
+def _cold_board_counts(db: Path) -> list:
+    """Read a stable, checkpointed WAL database without creating WAL/SHM files.
+
+    This narrow fallback is for SQLITE_READONLY from a cold WAL DB on a read-only
+    mount. Live boards always use SQLite's normal reader/locking. The updater
+    still rechecks after stopping the old container; a plan is not an apply lease.
+    """
+    before = _cold_board_signature(db)
+    with db.open('rb') as stream:
+        image = stream.read(_COLD_BOARD_LIMIT + 1)
+    if len(image) > _COLD_BOARD_LIMIT or before != _cold_board_signature(db):
+        raise RuntimeError('Kanban database changed during read-only snapshot; retry after stopping writers')
+    if len(image) < 100 or image[:16] != b'SQLite format 3\x00' or image[18:20] != b'\x02\x02':
+        raise ValueError('Read-only snapshot requires a checkpointed WAL database')
+    # SQLite documents this change for deserialize: only the private memory copy
+    # changes journal format. The source DB and any WAL are NEVER modified.
+    # https://www.sqlite.org/c3ref/deserialize.html
+    image = image[:18] + b'\x01\x01' + image[20:]
+    with closing(sqlite3.connect(':memory:')) as conn:
+        conn.deserialize(image)
+        conn.execute('PRAGMA query_only=ON')
+        if conn.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
+            raise RuntimeError('Kanban snapshot integrity check failed')
+        rows = conn.execute(_ACTIVE_TASK_SQL).fetchall()
+    if before != _cold_board_signature(db):
+        raise RuntimeError('Kanban database changed during read-only snapshot; retry after stopping writers')
+    return rows
+
+
+def read_active_task_counts(db: Path) -> list:
+    try:
+        with closing(sqlite3.connect(db.resolve().as_uri() + '?mode=ro', uri=True, timeout=3)) as conn:
+            return conn.execute(_ACTIVE_TASK_SQL).fetchall()
+    except sqlite3.OperationalError as exc:
+        # A read-only cold WAL DB cannot create its SHM file. Other failures
+        # (busy/corrupt/schema/permissions) must not be turned into an empty board.
+        if getattr(exc, 'sqlite_errorcode', 0) & 0xff != sqlite3.SQLITE_READONLY:
+            raise
+    return _cold_board_counts(db)
+
+
 def active_tasks(root: Path) -> None:
     """Read known root/role board locations, never change a historical task state."""
     homes = [root]
@@ -129,9 +187,7 @@ def active_tasks(root: Path) -> None:
             safe_path(root, str(db.relative_to(root)))
             if not db.exists(): continue
             if not db.is_file(): raise ValueError('Kanban database is not a file')
-            # mode=ro prevents accidentally creating or changing a SQLite DB.
-            with sqlite3.connect(db.resolve().as_uri() + '?mode=ro', uri=True, timeout=3) as conn:
-                rows = conn.execute("SELECT status, COUNT(*) FROM tasks WHERE status IN ('running','review') GROUP BY status").fetchall()
+            rows = read_active_task_counts(db)
             found.extend(f'{status}={count}' for status, count in rows if count)
     if found:
         raise RuntimeError('Active Kanban tasks; finish or safely pause before migration: ' + ', '.join(found))
