@@ -20,3 +20,5 @@ Windows PowerShell 5.1은 named volume/host bind/외부 readonly mount를 비롯
 최신 Hermes CI는 실제 이미지로 새로운 볼륨 및 기존 역할 데이터를 가진 host bind의 부팅·재시작, default Gateway, 자동 dispatcher 비활성화, 데이터 보존을 검사한다. active task/보관 경로 충돌 fixture는 서비스가 시작되기 전에 종료되어야 한다. 이 테스트가 만든 UUID-labelled 자원만 정리한다.
 
 이 검사들의 성공은 실제 사용자 제품 코드의 검증이나 Windows Docker Desktop/OAuth/모델 응답 확인을 의미하지 않는다. 실행 결과는 CI와 해당 실행의 regression report를 기준으로 보고한다.
+
+업데이트 이미지 생명주기 회귀는 기존 컨테이너 이미지가 Docker 저장소에서 사라져도 빌드 후 새 이미지 ID로 사전 검사를 수행하는지, 이전 이미지가 없을 때 필수 검사를 건너뛰지 않는지, 루트에는 `update-devkit.ps1` 하나만 남는지를 확인한다.

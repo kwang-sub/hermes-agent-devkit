@@ -43,7 +43,10 @@ def main():
         '/opt/devkit/bin/lite_default_profile.py', 'Default Lite Gateway served-profile contract'))
     require('scripts/lite_default_profile.py', ('dispatch_in_gateway', 'mode=ro', 'legacy-profiles', 'fcntl',
         'rolled-back', 'prepared', 'os.fsync', 'safe_path'))
-    require('updatekit_lite.ps1', ('standard', 'throw', 'update-devkit.ps1'))
+    require('update-devkit.ps1', ('Invoke-MigrationPlan','Resolve-LocalImageId','scripts/init-lite.ps1'))
+    require('scripts/init-lite.ps1', ('--read-only', '$ImageReference'))
+    if sorted(p.name for p in ROOT.glob('*.ps1')) != ['update-devkit.ps1']:
+        problems.append('Root must expose only update-devkit.ps1')
     # Referenced runtime files must resolve, even after entire role directories disappear.
     for path in list((ROOT/'custom-skills').rglob('*.md')) + list((ROOT/'shared').rglob('*.md')):
         text = path.read_text(encoding='utf-8')

@@ -13,7 +13,8 @@ configured operational branch.
 Default behavior:
 1. Reject dirty/divergent checkouts; fast-forward and re-exec an updated updater.
 2. Inspect the actual container mounts and generate a private Compose override.
-3. Read-only migration preflight against the existing persistent mounts.
+3. Read-only migration preflight against the existing mounts when an image exists.
+   Check again against the newly built image digest before and after stopping the old container.
 4. Build latest once. A failed build leaves the current container running.
 5. Recheck, stop, recheck read-only, then recreate preserving every mount.
 6. Image boot migrates default configuration before any Gateway service starts.
@@ -334,9 +335,30 @@ function Read-ContainerInspect {
     return $Result[0]
 }
 
+function Resolve-LocalImageId {
+    param([Parameter(Mandatory=$true)][string]$Reference)
+    if ([string]::IsNullOrWhiteSpace($Reference)) { throw "Docker image reference is empty" }
+    # docker inspect <container>.Image can become unresolvable after a tagged build.
+    # Always resolve and pin the image actually used by each read-only check.
+    $PreviousPreference=$ErrorActionPreference
+    try {
+        $ErrorActionPreference="SilentlyContinue"
+        $Raw=& docker image inspect --format "{{.Id}}" $Reference 2>$null
+        $Code=$LASTEXITCODE
+    }
+    finally { $ErrorActionPreference=$PreviousPreference }
+    if ($Code -ne 0) { return $null }
+    $Digest=Get-CapturedText -Output $Raw
+    if ($Digest -notmatch "^sha256:[0-9a-fA-F]{64}$") {
+        throw "Docker image lookup returned an invalid identity for $Reference"
+    }
+    return $Digest
+}
+
 function Invoke-MigrationPlan {
-    param([string]$Name, [string]$SkillsRoot)
-    & (Join-Path $RepoRoot "init-lite.ps1") -Container $Name -Mode plan -SkillsRoot $SkillsRoot
+    param([string]$Name, [string]$SkillsRoot, [string]$ImageReference)
+    if ([string]::IsNullOrWhiteSpace($ImageReference)) { throw "Migration image identity is required" }
+    & (Join-Path $RepoRoot "scripts/init-lite.ps1") -Container $Name -Mode plan -SkillsRoot $SkillsRoot -ImageReference $ImageReference
     if ($LASTEXITCODE -ne 0) { throw "Read-only migration preflight failed; no recreation performed" }
 }
 
@@ -361,7 +383,7 @@ function Assert-PostUpdate {
         Start-Sleep -Seconds 2
     }
     if (-not $Ready) { throw "Default Lite configuration not ready. Inspect boot migration diagnostics; automatic repair is disabled." }
-    & (Join-Path $RepoRoot "init-lite.ps1") -Container $Name -Mode status -SkillsRoot $SkillsRoot
+    & (Join-Path $RepoRoot "scripts/init-lite.ps1") -Container $Name -Mode status -SkillsRoot $SkillsRoot
     if ($LASTEXITCODE -ne 0) { throw "Mandatory default configuration verification failed" }
 }
 
@@ -415,6 +437,8 @@ try {
     if ($Model.services.hermes.container_name -cne $Container) { throw "Container selection differs from .env/Compose; reconcile before updating" }
     $SkillsRoot=[string]$Model.services.hermes.environment.HERMES_CONTAINER_CUSTOM_SKILLS_PATH
     $Existing=Read-ContainerInspect -Name $Container -AllowMissing
+    $ImageName=[string]$Model.services.hermes.image
+    if ([string]::IsNullOrWhiteSpace($ImageName)) { throw "Compose Hermes image name is missing" }
     $BeforeMounts=@()
     if ($null -ne $Existing) {
         $BeforeMounts=@($Existing.Mounts)
@@ -422,17 +446,31 @@ try {
         $OverrideFile=[IO.Path]::GetTempFileName()
         [IO.File]::WriteAllText($OverrideFile,($Override | ConvertTo-Json -Depth 30),(New-Object Text.UTF8Encoding($false)))
         $ComposeArgs+=@("-f",$OverrideFile)
-        Invoke-MigrationPlan -Name $Container -SkillsRoot $SkillsRoot
+        # Existing image can be pruned even while the container continues running.
+        $PreBuildImage=Resolve-LocalImageId -Reference $ImageName
+        if (-not $PreBuildImage) {
+            $PreBuildImage=Resolve-LocalImageId -Reference ([string]$Existing.Image)
+        }
+        if ($PreBuildImage) {
+            Invoke-MigrationPlan -Name $Container -SkillsRoot $SkillsRoot -ImageReference $PreBuildImage
+        }
+        else {
+            # The new build cannot change the running container or its volumes.
+            # The post-build and post-stop read-only gates remain mandatory.
+            Write-Warning "No pre-build image available; mandatory migration check runs after the new image builds."
+        }
     }
     Invoke-Native -FilePath "docker" -Arguments ($ComposeArgs+@("config","--quiet"))
     Write-Host "[RUN] Build latest Hermes once; existing runtime remains until success"
     Invoke-Native -FilePath "docker" -Arguments ($ComposeArgs+@("build","--pull"))
+    $BuiltImage=Resolve-LocalImageId -Reference $ImageName
+    if (-not $BuiltImage) { throw "Newly built Hermes image is not available; existing container was not stopped." }
     if ($null -ne $Existing) {
-        Invoke-MigrationPlan -Name $Container -SkillsRoot $SkillsRoot
-        # No blind kill/claim reset. Active tasks fail the readonly plan before stop.
+        # Pin the NEW immutable image for BOTH remaining safety gates.
+        Invoke-MigrationPlan -Name $Container -SkillsRoot $SkillsRoot -ImageReference $BuiltImage
         Invoke-Native -FilePath "docker" -Arguments @("stop","--time","30",$Container)
         # Catch a task that started between preflight and graceful stop.
-        Invoke-MigrationPlan -Name $Container -SkillsRoot $SkillsRoot
+        Invoke-MigrationPlan -Name $Container -SkillsRoot $SkillsRoot -ImageReference $BuiltImage
     }
     Write-Host "[RUN] Recreate with preserved mounts; pre-service boot migration is mandatory"
     Invoke-Native -FilePath "docker" -Arguments ($ComposeArgs+@("up","-d","--force-recreate","--no-build"))

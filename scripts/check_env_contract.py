@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = ROOT / "sample.env"
 COMPOSE = ROOT / "compose.yml"
-INIT = ROOT / "init-lite.ps1"
+INIT = ROOT / "scripts/init-lite.ps1"
 
 DEFAULTS = {
     "HERMES_COMPOSE_PROJECT_NAME": "hermes-dev",

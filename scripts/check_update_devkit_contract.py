@@ -16,8 +16,17 @@ def main():
     if updater.count('"build","--pull"') != 1: raise SystemExit('Mutable latest must be built once')
     if not updater.index('"build","--pull"') < updater.index('"stop","--time","30"') < updater.index('"up","-d","--force-recreate","--no-build"'):
         raise SystemExit('Unsafe build/stop/recreate ordering')
-    if updater.count('Invoke-MigrationPlan -Name $Container') != 3: raise SystemExit('Preflight required before build, before stop and after stop')
-    require('init-lite.ps1', ('--read-only','--network','none',"':ro'",'--volumes-from', "'plan'", "'status'"))
+    if updater.count('Invoke-MigrationPlan -Name $Container') != 3: raise SystemExit('Three preflight call sites required (one optional before build)')
+    for term in ('Resolve-LocalImageId -Reference $ImageName', 'Resolve-LocalImageId -Reference ([string]$Existing.Image)',
+                 '-ImageReference $PreBuildImage', '-ImageReference $BuiltImage',
+                 'Newly built Hermes image is not available'):
+        if term not in updater: raise SystemExit('Missing immutable migration image lifecycle: '+term)
+    if updater.count('-ImageReference $BuiltImage') != 2: raise SystemExit('Post-build/post-stop checks must pin the same built image')
+    require('scripts/init-lite.ps1', ('--read-only','--network','none',"':ro'",'--volumes-from', "'plan'", "'status'", '$ImageReference'))
+    root_ps1=sorted(p.name for p in ROOT.glob('*.ps1'))
+    if root_ps1!=['update-devkit.ps1']: raise SystemExit('Only update-devkit.ps1 may be exposed at root: '+str(root_ps1))
+    for deprecated in ('updatekit_lite.sh','updatekit_lite.ps1','init-lite.ps1'):
+        if (ROOT/deprecated).exists(): raise SystemExit('Retired root entrypoint still exists: '+deprecated)
     require('scripts/devkit-mounts.ps1', ('create_host_path = $false','external = $true','nocopy = $true','Get-MountSignature','ConvertTo-FlatMounts'))
     for bad in ('"down", "-v"','"volume", "rm"','"reset", "--hard"','"clean", "-fd"'):
         if bad in updater: raise SystemExit('Unsafe update operation: '+bad)

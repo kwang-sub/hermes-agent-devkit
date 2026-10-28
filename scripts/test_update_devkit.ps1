@@ -8,6 +8,10 @@ $env:LOCALAPPDATA='C:\Users\fixture\AppData\Local'
 $global:FixtureCalls=New-Object System.Collections.ArrayList
 $global:FixtureMode='normal'
 $global:FixtureRecreated=$false
+$global:FixtureBuildComplete=$false
+$global:FixtureOldDigest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+$global:FixtureNewDigest="sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+$global:FixtureLegacyDigest="sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 $global:FixtureMounts=@(
     [pscustomobject]@{Type='volume';Name='keep-me';Source='/var/lib/docker/volumes/keep-me/_data';Destination='/opt/data';RW=$true;Propagation=''},
     [pscustomobject]@{Type='bind';Source='D:/workspace';Destination='/workspace';RW=$true;Propagation='rprivate'},
@@ -33,18 +37,37 @@ function global:docker {
         if ($global:FixtureMode -eq 'mount-mismatch' -and $global:FixtureRecreated) {
             $Mounts=@([pscustomobject]@{Type='volume';Name='wrong-volume';Source='/wrong';Destination='/opt/data';RW=$true;Propagation=''})+$Mounts[1..2]
         }
-        ConvertTo-Json -InputObject @([pscustomobject]@{Image='sha256:old';Mounts=$Mounts;State=[pscustomobject]@{Running=$true};Config=[pscustomobject]@{WorkingDir='/workspace'}}) -Depth 10 -Compress
+        ConvertTo-Json -InputObject @([pscustomobject]@{Image=$global:FixtureLegacyDigest;Mounts=$Mounts;State=[pscustomobject]@{Running=$true};Config=[pscustomobject]@{WorkingDir='/workspace'}}) -Depth 10 -Compress
+        return
+    }
+    if ($A[0] -eq 'image' -and $A[1] -eq 'inspect') {
+        if ($A[-1] -eq $global:FixtureLegacyDigest) {
+            # The original image is untagged/pruned, as on the user's PC.
+            $global:LASTEXITCODE=1; return
+        }
+        if ($A[-1] -ne 'hermes-dev:0.1.0') { throw "Unexpected image lookup: $($A[-1])" }
+        if (-not $global:FixtureBuildComplete -and $global:FixtureMode -eq 'image-missing-before-build') {
+            $global:LASTEXITCODE=1; return
+        }
+        if ($global:FixtureBuildComplete -and $global:FixtureMode -eq 'image-missing-after-build') {
+            $global:LASTEXITCODE=1; return
+        }
+        if ($global:FixtureBuildComplete) { $global:FixtureNewDigest }
+        else { $global:FixtureOldDigest }
         return
     }
     if ($A[0] -eq 'compose') {
         if ($A -contains '--format') {
             [pscustomobject]@{services=[pscustomobject]@{hermes=[pscustomobject]@{
-                container_name='fixture-hermes';working_dir='/workspace';
+                container_name='fixture-hermes';working_dir='/workspace';image='hermes-dev:0.1.0';
                 environment=[pscustomobject]@{HERMES_CONTAINER_CUSTOM_SKILLS_PATH='/opt/custom-skills'};
                 volumes=@([pscustomobject]@{target='/opt/data'},[pscustomobject]@{target='/workspace'})
             }}} | ConvertTo-Json -Depth 10 -Compress
         }
-        if ($A -contains 'build' -and $global:FixtureMode -eq 'build-fail') {$global:LASTEXITCODE=1}
+        if ($A -contains 'build') {
+            if ($global:FixtureMode -eq 'build-fail') {$global:LASTEXITCODE=1}
+            else {$global:FixtureBuildComplete=$true}
+        }
         if ($A -contains 'up') { $global:FixtureRecreated=$true }
         return
     }
@@ -52,6 +75,11 @@ function global:docker {
         if ($A -notcontains '--read-only' -or $A -notcontains 'none' -or $A -notcontains 'fixture-hermes:ro') {
             throw 'Migration plan was not readonly/network-free'
         }
+        $Entry=[Array]::IndexOf($A,'--entrypoint')
+        if ($Entry -lt 0) { throw 'Migration subprocess entrypoint was not explicit' }
+        $ActualImage=$A[$Entry+2]
+        $Expected=if ($global:FixtureBuildComplete) {$global:FixtureNewDigest} else {$global:FixtureOldDigest}
+        if ($ActualImage -ne $Expected) { throw "Migration used stale image: $ActualImage instead of $Expected" }
         if ($global:FixtureMode -eq 'active-worker') {$global:LASTEXITCODE=1}
         return
     }
@@ -70,7 +98,7 @@ function global:docker {
     throw 'Unexpected Docker command in updater fixture'
 }
 function Run-Fixture([string]$Mode,[bool]$Fail) {
-    $global:FixtureMode=$Mode; $global:FixtureRecreated=$false; $global:FixtureCalls.Clear()
+    $global:FixtureMode=$Mode; $global:FixtureRecreated=$false; $global:FixtureBuildComplete=$false; $global:FixtureCalls.Clear()
     $Caught=$false
     try {
         & (Join-Path $Root 'update-devkit.ps1') -Container 'fixture-hermes' -Branch 'refactor/lite-only-runtime' -NoPull -SkipVerify -SkipGitHubAuth | Out-Null
@@ -84,13 +112,22 @@ try {
     if (@($Calls | Where-Object {$_ -like '* build --pull'}).Count -ne 1) { throw 'Latest was not built exactly once' }
     if (@($Calls | Where-Object {$_ -like 'docker run *'}).Count -ne 3) { throw 'Three readonly preflights required' }
     if (@($Calls | Where-Object {$_ -like '* up -d --force-recreate --no-build'}).Count -ne 1) { throw 'Expected one recreation' }
-    foreach ($Mode in @('active-worker','build-fail','dirty')) {
+    if (@($Calls | Where-Object {$_ -like '* image inspect *'}).Count -ne 2) { throw 'Pre/post build tagged image lookup missing' }
+    if (@($Calls | Where-Object {$_ -like '* image inspect *' + $global:FixtureLegacyDigest}).Count) {
+        throw 'Obsolete container image was queried despite a usable tagged image'
+    }
+    $Skipped=Run-Fixture 'image-missing-before-build' $false
+    if (@($Skipped | Where-Object {$_ -like 'docker run *'}).Count -ne 2) { throw 'Both mandatory post-build gates missing after pre-build image lookup failed' }
+    if (@($Skipped | Where-Object {$_ -like '* image inspect *' + $global:FixtureLegacyDigest}).Count -ne 1) {
+        throw 'Missing tagged image did not trigger safe old-image fallback'
+    }
+    foreach ($Mode in @('active-worker','build-fail','dirty','image-missing-after-build')) {
         $Calls=Run-Fixture $Mode $true
         if (@($Calls | Where-Object {$_ -like 'docker stop *' -or $_ -like '* up -d *'}).Count) { throw "Current runtime changed after $Mode" }
     }
     $Calls=Run-Fixture 'mount-mismatch' $true
     if (@($Calls | Where-Object {$_ -like '* up -d *'}).Count -ne 1) { throw 'Mount mismatch triggered unsafe automatic repair' }
-    Write-Host '[PASS] Updater success, dirty checkout, active worker, build failure and changed-mount fixtures'
+    Write-Host '[PASS] Image digest pinned after rebuild; pruned old image; missing image fallback; readonly plans; mount/dirty/build/worker guards'
 }
 finally {
     Remove-Item Function:\git -ErrorAction SilentlyContinue
