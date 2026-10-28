@@ -42,34 +42,7 @@ def main() -> int:
         failures.append("hermes-java must delegate Maven before raw execution")
     if java.index('exec "$maven_launcher" "$@"') > java.index('gradle_root='):
         failures.append("Maven delegation must precede Gradle state initialization")
-    for path in (
-        "AGENTS.md", "shared/AGENTS.common.md",
-        "custom-skills/coder/dev-implement-plan/SKILL.md",
-        "custom-skills/reviewer/dev-code-review/SKILL.md",
-        "custom-skills/orchestrator/dev-workspace-dispatch/SKILL.md",
-    ):
-        if "maven-worker-runtime.md" not in (ROOT / path).read_text(encoding="utf-8"):
-            failures.append(f"Maven canonical worker contract not linked: {path}")
-    for path, term in (
-        ("Dockerfile", "COPY scripts/devkit_worker_startup.py /opt/hermes/hermes_cli/devkit_worker_startup.py"),
-        ("scripts/patch_hermes_kanban_session_affinity.py", "cmd = with_worker_startup(cmd, profile_arg)"),
-        ("scripts/verify-container-runtime.ps1", "hermes-maven"),
-    ):
-        if term not in (ROOT / path).read_text(encoding="utf-8"):
-            failures.append(f"Maven runtime delivery missing: {path}")
-
-    runtime_verifier = (ROOT / "scripts/verify-container-runtime.ps1").read_text(encoding="utf-8")
-    for term in (
-        'skill_view("dev-implement-plan")',
-        "KANBAN_EXECUTION_BOUNDARY_V1",
-        'assert "hermes-maven" not in query',
-        'assert "maven_verification.py" not in query',
-    ):
-        if term not in runtime_verifier:
-            failures.append(f"runtime verifier missing worker boundary assertion: {term}")
-    if 'assert "dev-implement-plan" in query and "hermes-maven" in query' in runtime_verifier:
-        failures.append("runtime verifier still requires Maven HOW in worker startup prompt")
-    cached = ROOT / "custom-skills/coder/dev-implement-plan/scripts/maven_verification_cached.py"
+    cached = ROOT / "scripts/verification/maven_verification_cached.py"
     if not cached.is_file():
         failures.append("missing Maven cached verification helper")
     else:
@@ -84,14 +57,6 @@ def main() -> int:
         ):
             if term not in cached_text:
                 failures.append(f"maven_verification_cached.py missing: {term}")
-    for path in (
-        "custom-skills/coder/dev-implement-plan/SKILL.md",
-        "custom-skills/reviewer/dev-code-review/SKILL.md",
-        "shared/references/maven-worker-runtime.md",
-    ):
-        text = (ROOT / path).read_text(encoding="utf-8")
-        if "maven_verification_cached.py" not in text:
-            failures.append(f"Maven cached verification contract not linked: {path}")
     if failures:
         for failure in failures:
             print(f"[FAIL] {failure}")

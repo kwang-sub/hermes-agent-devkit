@@ -15,7 +15,7 @@ metadata:
 
 Design-Time DBA의 **논리 모델링** capability다. Use Case와 업무 의미를 기준으로 Subject Area와 logical relational model을 확정한다. 특정 DBMS DDL, 물리 table 이름, migration framework, ORM annotation을 먼저 선택하지 않는다.
 
-`/opt/data/shared/references/standard-work-unit-rules.md`를 적용한다. Data DESIGN_FIRST에서는 이 capability가 속한 현재 Standard Task의 `Work Unit Class`는 `DESIGN`이며, physicalization은 같은 Task에서 이어서 수행하지 않는다.
+`/opt/data/shared/references/lite-development-contract.md`를 적용한다. Data DESIGN_FIRST는 논리 설계를 의미하며, 설계 요청만으로 물리화 권한을 추정하지 않는다. 구현까지 합의된 경우 같은 세션에서 다음 단계로 이어갈 수 있다.
 
 ## 책임 경계
 
@@ -45,28 +45,10 @@ JPA @Table / @Column annotation
 실제 DB migration 실행
 ```
 
-위 물리화는 승인된 logical model을 입력으로 **별도 Standard MIGRATION Work Unit**에서 Coder의 `dev-db-migration`이 담당한다.
+위 물리화는 승인된 logical model을 입력으로 **별도 승인된 마이그레이션 단계**에서 구현 단계의 `dev-db-migration`이 담당한다.
 
-## Work Unit Contract
-
-Data logical modeling Task의 기본 계약:
-
-```text
-Work Unit Class: DESIGN
-Current Deliverable: approved/materialized logical DBML
-```
-
-`Physicalization Required: YES`이면:
-
-```text
-Work Unit Boundary: SPLIT_REQUIRED
-Follow-up Required: YES
-Follow-up Work Unit: MIGRATION
-Follow-up Input: approved/materialized logical DBML
-Excluded Follow-up Scope: Flyway/Liquibase, DDL, physical schema, JPA physical mapping
-```
-
-현재 DESIGN Task에서 Coder는 승인된 logical DBML/documentation을 repository에 materialize할 수 있으나 physical schema나 application persistence mapping을 함께 구현하지 않는다.
+## 단계별 산출물
+현재 논리 설계에서는 합의한 DBML·업무 불변식·미확정 사항과 물리화 필요 여부를 기록한다. 물리화가 필요해도 카드 생성/분리나 자동 구현을 요구하지 않는다. 실제 migration 파일·JPA mapping은 합의된 다음 단계에서 `dev-db-migration`으로 처리한다.
 
 ## 실행 순서
 
@@ -134,7 +116,7 @@ Logical Table: account
 금지: tbl_investment_account   # 물리 이름
 ```
 
-기존 프로젝트의 승인된 logical naming을 대규모 rename하지 않는다. `investment_account` 같은 기존 logical name은 유지할 수 있으며 Coder physicalization이 Subject Area prefix 중복을 방지한다.
+기존 프로젝트의 승인된 logical naming을 대규모 rename하지 않는다. `investment_account` 같은 기존 logical name은 유지할 수 있으며 구현 단계 physicalization이 Subject Area prefix 중복을 방지한다.
 
 ## 분리 기준
 
@@ -224,7 +206,7 @@ snapshot 생성
 migration/backfill에 필요한 logical intent
 ```
 
-물리 migration 전략 자체는 Coder 책임이며 DBA는 그 전략에 필요한 업무 의미와 불변식만 handoff한다.
+물리 migration 전략 자체는 구현 단계 책임이며 DBA는 그 전략에 필요한 업무 의미와 불변식만 handoff한다.
 
 ## Logical Model Gate
 
@@ -234,7 +216,7 @@ migration/backfill에 필요한 logical intent
 Data Model Status: DRAFT | APPROVED
 ```
 
-`DRAFT`를 Agent가 임의로 `APPROVED`로 승격하지 않는다. Coder physicalization은 `APPROVED` logical model만 입력으로 사용한다.
+`DRAFT`를 Agent가 임의로 `APPROVED`로 승격하지 않는다. 구현 단계 physicalization은 `APPROVED` logical model만 입력으로 사용한다.
 
 ## Handoff
 

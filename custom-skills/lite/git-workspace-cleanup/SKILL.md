@@ -46,6 +46,9 @@ Primary worktree는 표시만 하고 선택하지 않는다. Path, Branch, HEAD,
 
 ## 공통 안전 조건
 
+실제 삭제 전에 현재 작업 경로·실행 중인 세션·프로세스와 ignored 파일을 확인한다. 데이터 가치가 있는 ignored 파일이 있으면 보존하고 제거를 중단한다. 알 수 없는 경우 삭제하지 않는다.
+
+
 선택 대상은 primary가 아닌 linked worktree, non-detached, 정확히 등록된 worktree, unlocked/non-prunable이어야 한다. 일반적으로 `CLEAN`이어야 하며, `EOL_ONLY`는 아래의 좁은 예외 계약으로만 허용한다. semantic modified/staged/untracked 변경이 하나라도 있으면 force/reset/restore/stash/clean으로 우회하지 않고 BLOCK한다.
 
 ## EOL-only Noise 예외

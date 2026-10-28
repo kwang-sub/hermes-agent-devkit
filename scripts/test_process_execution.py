@@ -35,7 +35,7 @@ def test_capture_success() -> None:
 
 def test_capture_timeout() -> None:
     result, _stdout, _stderr = run_capture(
-        [sys.executable, "-c", "import time; time.sleep(30)"],
+        [sys.executable, "-S", "-c", "import time; time.sleep(30)"],
         cwd=REPO_ROOT,
         timeout_seconds=1,
     )
@@ -51,14 +51,14 @@ def test_timeout_kills_child_when_process_leader_exits_first() -> None:
             "child=\"import os, pathlib, signal, sys, time; "
             "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
             "pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(60)\"; "
-            "subprocess.Popen([sys.executable, '-c', child, sys.argv[1]]); "
+            "subprocess.Popen([sys.executable, '-S', '-c', child, sys.argv[1]]); "
             "p=pathlib.Path(sys.argv[1]); "
             "deadline=time.monotonic()+2; "
             "\nwhile not p.exists() and time.monotonic() < deadline: time.sleep(0.01)\n"
             "time.sleep(60)"
         )
         result, _stdout, _stderr = run_capture(
-            [sys.executable, "-c", parent_code, str(pid_file)],
+            [sys.executable, "-S", "-c", parent_code, str(pid_file)],
             cwd=REPO_ROOT,
             timeout_seconds=1,
         )
@@ -95,7 +95,7 @@ def test_stream_redirection() -> None:
 
 def test_inherited_exit_code() -> None:
     result = run_inherit(
-        [sys.executable, "-c", "raise SystemExit(3)"],
+        [sys.executable, "-S", "-c", "raise SystemExit(3)"],
         cwd=REPO_ROOT,
         timeout_seconds=5,
     )
@@ -106,12 +106,12 @@ def test_inherited_exit_code() -> None:
 def test_adapters_use_shared_execution() -> None:
     contracts = {
         REPO_ROOT
-        / "custom-skills/coder/dev-implement-plan/scripts/gradle_verification.py": (
+        / "scripts/verification/gradle_verification.py": (
             "from process_execution import run_capture as run_process_capture",
             "run_process_capture(",
         ),
         REPO_ROOT
-        / "custom-skills/coder/dev-implement-plan/scripts/maven_verification.py": (
+        / "scripts/verification/maven_verification.py": (
             "from process_execution import run_to_stream",
             "run_to_stream(",
         ),

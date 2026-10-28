@@ -1,61 +1,34 @@
 #!/command/with-contenv sh
-# shellcheck shell=sh
+# Keep optional notifications, but never initialize or edit legacy role profiles.
 set -eu
-
-export HOME=/opt/data
-export HERMES_HOME=/opt/data
+if [ ! -f /run/devkit-lite-ready ] || [ -L /run/devkit-lite-ready ]; then
+    echo "[devkit-lite] Notifier setup refused before successful migration" >&2
+    exit 1
+fi
+export HOME=/opt/data HERMES_HOME=/opt/data
 HERMES_CLI=/opt/hermes/.venv/bin/hermes
-
-run_as_hermes() {
-    if [ "$(id -u)" = 0 ]; then
-        s6-setuidgid hermes "$@"
-    else
-        "$@"
-    fi
-}
-
-# DevKit owns Kanban notification delivery through the separate
-# devkit-notifier process. Keep Hermes' native notifier and automatic
-# session subscriptions disabled even when user-facing notifications are off;
-# HERMES_KANBAN_NOTIFY_ENABLED controls only the bridge delivery loop.
+HERMES_PYTHON=/opt/hermes/.venv/bin/python
+run_as_hermes() { if [ "$(id -u)" = 0 ]; then s6-setuidgid hermes "$@"; else "$@"; fi; }
+# Native dispatch is independently disabled by config and immutable container ENV.
 run_as_hermes "$HERMES_CLI" config set kanban.notify_in_gateway false >/dev/null
 run_as_hermes "$HERMES_CLI" config set kanban.auto_subscribe_on_create false >/dev/null
-
-for profile_dir in /opt/data/profiles/*; do
-    [ -d "$profile_dir" ] || continue
-    profile="$(basename "$profile_dir")"
-    run_as_hermes "$HERMES_CLI" -p "$profile" config set kanban.notify_in_gateway false >/dev/null
-    run_as_hermes "$HERMES_CLI" -p "$profile" config set kanban.auto_subscribe_on_create false >/dev/null
-done
-
-# Seed the persistent cursor before profile gateway reconciliation starts.
-# Existing historical events are skipped exactly once; events created after
-# this boot barrier are observed by the bridge.
-run_as_hermes /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_kanban_notifier.py --initialize-state >/dev/null
-
-# Publish the notifier through PID 1 s6-svscan's actual runtime surface.
-# Build in a dot-prefixed sibling so s6-svscan never observes a half-written service.
+run_as_hermes "$HERMES_PYTHON" /opt/devkit/bin/devkit_kanban_notifier.py --initialize-state >/dev/null
 NOTIFIER_SERVICE_DIR=/run/service/devkit-notifier
 NOTIFIER_TMP_DIR=/run/service/.devkit-notifier.tmp
-NOTIFIER_RUN_TEMPLATE=/opt/devkit/svscan/devkit-notifier/run
-
-if [ ! -d "$NOTIFIER_SERVICE_DIR" ]; then
-    rm -rf "$NOTIFIER_TMP_DIR"
+if [ ! -e "$NOTIFIER_SERVICE_DIR/run" ]; then
     mkdir -p "$NOTIFIER_TMP_DIR"
-    cp "$NOTIFIER_RUN_TEMPLATE" "$NOTIFIER_TMP_DIR/run"
+    cp /opt/devkit/svscan/devkit-notifier/run "$NOTIFIER_TMP_DIR/run"
     chmod 0755 "$NOTIFIER_TMP_DIR/run"
     mv "$NOTIFIER_TMP_DIR" "$NOTIFIER_SERVICE_DIR"
-    /command/s6-svscanctl -a /run/service
 fi
-
+/command/s6-svscanctl -a /run/service
 attempt=0
-while ! /command/s6-svstat "$NOTIFIER_SERVICE_DIR" >/dev/null 2>&1; do
-    attempt=$((attempt + 1))
-    if [ "$attempt" -ge 50 ]; then
-        echo "[devkit-notifier] s6-supervise did not register $NOTIFIER_SERVICE_DIR" >&2
-        exit 1
+while [ "$attempt" -lt 50 ]; do
+    if /command/s6-svstat "$NOTIFIER_SERVICE_DIR" >/dev/null 2>&1; then
+        echo '[devkit-lite] Optional Kanban notifier service registered'
+        exit 0
     fi
-    sleep 0.1
+    attempt=$((attempt + 1)); sleep 0.1
 done
-
-echo "[devkit-notifier] native Kanban notifier/auto-subscribe disabled; dynamic s6 service registered"
+echo '[devkit-lite] Notifier registration failed' >&2
+exit 1

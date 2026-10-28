@@ -51,6 +51,7 @@ def parse_args() -> argparse.Namespace:
         )
     )
     p.add_argument("--workspace", required=True)
+    p.add_argument("--no-reuse", action="store_true", help="Run fresh when verification depends on external state")
     p.add_argument("--mode", required=True, choices=["COMPILE", "TARGETED_TEST"])
     p.add_argument("--test", action="append", default=[])
     p.add_argument("--task", default=None)
@@ -375,6 +376,7 @@ def main() -> int:
     cached = load_evidence(evidence)
     if (
         cached
+        and not args.no_reuse
         and cached.get("status") == "PASS"
         and cached.get("request_sha256") == request_sha
         and cached.get("scope_sha256") == before_sha

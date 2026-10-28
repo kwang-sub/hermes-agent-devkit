@@ -1,6 +1,6 @@
 # Browser Verification Contract V1
 
-Applies to Direct, Standard, Recovery and CHANGES_REQUESTED frontend work.
+Applies to Lite frontend work, including same-session fixes and retries.
 이 문서는 실행 정책이며 새 브라우저 Provider나 프로젝트 테스트 프레임워크가 아니다.
 실행 코드와 사용법은 `ui-runtime.md`, 네이티브 대화상자는 `managed-dialog-policy.md`를 참조한다.
 
@@ -33,7 +33,7 @@ A~E 독립 CDP PASS, 정책 모델 PASS, 새 카드 생성, 파일 수정 시각
 검사 결과를 즉시 저장하고 독립 검사를 분리한다. 캡처 실패가 입력·키보드·정적 검사의
 선행 실패가 되지 않도록 한다. 세션이 정상인 경우 독립 검사는 계속하며 세션이 죽으면
 그 세션을 사용하는 검사만 NOT_RUN으로 남긴다. Node workspace lock은 우회하지 않는다.
-필수 시각/동작 검증이 남아 있으면 최종 완료나 Reviewer 인계는 보류한다.
+필수 시각/동작 검증이 남아 있으면 검증 완료라고 주장하지 않는다.
 
 ## 결과·증적
 
@@ -68,11 +68,11 @@ runtime/설정 변경에 따른 재시도 Fingerprint는 별개이며 새 세션
 Probe와 서버 정리 경고를 합산하고 최종 상태·다음 행동·오류 식별값을 일관되게 계산한다.
 오류를 숨기기 위한 불필요한 config 변경·보안 검사 해제·전역 permission 허용을 하지 않는다.
 
-필수 AC 미확인 상태로 Kanban unblock / Reviewer handoff / 완료 처리하지 않는다.
+필수 AC 미확인 상태로 검증 완료로 처리하지 않는다.
 기존 PASS는 원래 scope/시각과 함께 보존하되 이번 제품 검증으로 자동 승격하지 않는다.
 검증 Runtime 수리와 제품 UI 변경은 승인된 작업 범위를 유지한다.
 
-## Handoff
+## 검증 결과
 
 Browser Provider: <approved project runner | Hermes browser_exec | NOT_REQUIRED>
 Browser Capability Gate: PASS | BLOCKED | NOT_REQUIRED

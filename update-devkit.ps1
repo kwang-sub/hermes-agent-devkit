@@ -3,7 +3,7 @@
 <#
 .SYNOPSIS
 Updates the local Hermes Agent DevKit checkout, refreshes the DevKit image from
-the latest Hermes Agent base image, recreates the runtime, and reconciles profiles.
+the latest Hermes Agent base image and migrates to default-only Lite before services start.
 
 .DESCRIPTION
 The script keeps the persistent hermes-data volume intact. It never runs
@@ -11,21 +11,14 @@ The script keeps the persistent hermes-data volume intact. It never runs
 configured operational branch.
 
 Default behavior:
-1. Refuse to run on a dirty DevKit checkout.
-2. Fetch the remote and fast-forward the current branch.
-3. Classify changed files for warnings and runtime context.
-4. Derive the Hermes-visible Windows Temp path from LOCALAPPDATA.
-5. Use the DevKit-internal Hermes base contract: nousresearch/hermes-agent:latest.
-6. Build with `docker compose build --pull` so the current latest Hermes base image is refreshed.
-7. Force-recreate the container only after the build succeeds.
-8. Keep the existing hermes-data volume and profile/OAuth/session state intact.
-9. Run init-profiles.ps1 to reconcile the role profile and skill contract.
-10. Ensure the default multiplex Gateway is running.
-11. Verify the running container contract.
-12. If verification fails, perform one force-recreate repair from the image that
-    already passed the planned pull-build, reconcile profiles/runtime services and the
-    default Gateway again, then verify once more unless -NoRepair is specified.
-13. Re-apply Git commit identity from .env and ensure persistent GitHub CLI auth.
+1. Reject dirty/divergent checkouts; fast-forward and re-exec an updated updater.
+2. Inspect the actual container mounts and generate a private Compose override.
+3. Read-only migration preflight against the existing persistent mounts.
+4. Build latest once. A failed build leaves the current container running.
+5. Recheck, stop, recheck read-only, then recreate preserving every mount.
+6. Image boot migrates default configuration before any Gateway service starts.
+7. Verify mount identity, default config, live Gateway and Git publishing.
+No automatic repair/recreation is attempted after a data/migration failure.
 
 The process-local Windows Temp override is restored before the script exits.
 #>
@@ -36,9 +29,9 @@ param(
     [string]$Container = "hermes-dev",
     [switch]$NoPull,
     [switch]$ForceRebuild,
-    [switch]$NoRepair,
+    [switch]$NoRepair, # Deprecated: unsafe automatic repair is no longer performed.
     [switch]$SkipVerify,
-    [switch]$SkipProfileInit,
+    [switch]$SkipProfileInit, # Deprecated; cannot bypass mandatory boot migration.
     [switch]$SkipGitHubAuth
 )
 
@@ -316,485 +309,153 @@ function Initialize-GitPublishing {
     }
 }
 
-function Invoke-RuntimeVerification {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Verifier,
-        [Parameter(Mandatory = $true)]
-        [string]$ContainerName
-    )
 
-    try {
-        & $Verifier -Container $ContainerName | Out-Host
-        return $true
-    }
-    catch {
-        $Script:LastRuntimeVerificationError = $_.Exception.Message
-        Write-Warning $_.Exception.Message
-        return $false
-    }
-}
-
-function Invoke-ProfileInitialization {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Initializer,
-        [Parameter(Mandatory = $true)]
-        [string]$ContainerName
-    )
-
-    $PreviousContainerExists = Test-Path Env:HERMES_CONTAINER_NAME
-    $PreviousContainer = if ($PreviousContainerExists) { $env:HERMES_CONTAINER_NAME } else { $null }
-    try {
-        $env:HERMES_CONTAINER_NAME = $ContainerName
-        & $Initializer
-        if ($LASTEXITCODE -ne 0) {
-            throw "Profile initialization failed. ExitCode=$LASTEXITCODE"
-        }
-    }
-    finally {
-        if ($PreviousContainerExists) {
-            $env:HERMES_CONTAINER_NAME = $PreviousContainer
-        }
-        else {
-            Remove-Item Env:HERMES_CONTAINER_NAME -ErrorAction SilentlyContinue
-        }
-    }
-}
-
-function Test-ContainerPathExists {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ContainerName,
-        [Parameter(Mandatory = $true)]
-        [string]$Path
-    )
-
-    $PreviousPreference = $ErrorActionPreference
+function Read-ContainerInspect {
+    param([string]$Name, [switch]$AllowMissing)
+    $Prior = $ErrorActionPreference
     try {
         $ErrorActionPreference = "SilentlyContinue"
-        & docker exec --user root $ContainerName test -e $Path 1>$null 2>$null
-        $ExitCode = $LASTEXITCODE
+        $Raw = & docker inspect $Name 2>$null
+        $Code = $LASTEXITCODE
     }
-    finally {
-        $ErrorActionPreference = $PreviousPreference
-    }
-
-    return ($ExitCode -eq 0)
-}
-
-function Remove-ContainerProbePath {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ContainerName,
-        [Parameter(Mandatory = $true)]
-        [string]$Path
-    )
-
-    if (-not (Test-ContainerPathExists -ContainerName $ContainerName -Path $Path)) {
-        return
-    }
-
-    $PreviousPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = "SilentlyContinue"
-        & docker exec --user root $ContainerName rmdir $Path 1>$null 2>$null
-    }
-    finally {
-        $ErrorActionPreference = $PreviousPreference
-    }
-}
-
-function Ensure-S6GatewayRuntimePermissions {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ContainerName
-    )
-
-    Write-Host "[RUN ] Ensure s6 dynamic Gateway scandir permissions"
-
-    # Keep this path shell-free. Windows PowerShell 5.1 does not reliably
-    # preserve multiline script arguments passed through docker exec sh -c /
-    # python -c. Use one native argv per operation instead.
-    Invoke-Native -FilePath "docker" -Arguments @(
-        "exec", "--user", "root", $ContainerName,
-        "chown", "hermes:hermes", "/run/service"
-    )
-
-    foreach ($ControlPath in @(
-        "/run/service/.s6-svscan/control",
-        "/run/service/.s6-svscan/lock"
-    )) {
-        if (Test-ContainerPathExists -ContainerName $ContainerName -Path $ControlPath) {
-            Invoke-Native -FilePath "docker" -Arguments @(
-                "exec", "--user", "root", $ContainerName,
-                "chown", "hermes:hermes", $ControlPath
-            )
+    finally { $ErrorActionPreference = $Prior }
+    if ($Code -ne 0) {
+        if ($AllowMissing) {
+            # A daemon failure is not proof of an absent container.
+            Invoke-Native -FilePath "docker" -Arguments @("info", "--format", "{{.ServerVersion}}")
+            $Names = Get-CapturedText -Output (Invoke-NativeCapture -FilePath "docker" -Arguments @("container", "ls", "-a", "--format", "{{.Names}}"))
+            if (@($Names -split "`n") -contains $Name) { throw "Existing container inspection failed" }
+            return $null
         }
+        throw "Container inspection failed: $Name"
     }
-
-    $ProbePath = "/run/service/.devkit-hermes-write-check"
-    Remove-ContainerProbePath -ContainerName $ContainerName -Path $ProbePath
-
-    try {
-        Invoke-Native -FilePath "docker" -Arguments @(
-            "exec", "--user", "hermes", $ContainerName,
-            "mkdir", $ProbePath
-        )
-        Invoke-Native -FilePath "docker" -Arguments @(
-            "exec", "--user", "hermes", $ContainerName,
-            "rmdir", $ProbePath
-        )
-    }
-    finally {
-        Remove-ContainerProbePath -ContainerName $ContainerName -Path $ProbePath
-    }
-
-    foreach ($ControlPath in @(
-        "/run/service/.s6-svscan/control",
-        "/run/service/.s6-svscan/lock"
-    )) {
-        if (Test-ContainerPathExists -ContainerName $ContainerName -Path $ControlPath) {
-            Invoke-Native -FilePath "docker" -Arguments @(
-                "exec", "--user", "hermes", $ContainerName,
-                "test", "-w", $ControlPath
-            )
-        }
-    }
-
-    Write-Host "[OK] s6 dynamic Gateway scandir is hermes-writable"
+    $Result = @(ConvertFrom-Json -InputObject (Get-CapturedText -Output $Raw))
+    if ($Result.Count -ne 1) { throw "Expected exactly one container inspection result" }
+    return $Result[0]
 }
 
-function Test-S6ServiceRegistered {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ContainerName,
-        [Parameter(Mandatory = $true)]
-        [string]$ServicePath
-    )
-
-    $PreviousPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = "SilentlyContinue"
-        & docker exec --user root $ContainerName /command/s6-svstat $ServicePath 1>$null 2>$null
-        $ExitCode = $LASTEXITCODE
-    }
-    finally {
-        $ErrorActionPreference = $PreviousPreference
-    }
-
-    return ($ExitCode -eq 0)
+function Invoke-MigrationPlan {
+    param([string]$Name, [string]$SkillsRoot)
+    & (Join-Path $RepoRoot "init-lite.ps1") -Container $Name -Mode plan -SkillsRoot $SkillsRoot
+    if ($LASTEXITCODE -ne 0) { throw "Read-only migration preflight failed; no recreation performed" }
 }
 
-function Ensure-DevKitKanbanNotifierRuntime {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ContainerName
-    )
-
-    Write-Host "[RUN ] Ensure DevKit Kanban notifier dynamic service"
-
-    $ServiceDir = "/run/service/devkit-notifier"
-    $RunPath = "$ServiceDir/run"
-    $TempDir = "/run/service/.devkit-notifier.update"
-    $RunTemplate = "/opt/devkit/svscan/devkit-notifier/run"
-
-    if (-not (Test-ContainerPathExists -ContainerName $ContainerName -Path $RunPath)) {
-        foreach ($Path in @($TempDir, $ServiceDir)) {
-            if (Test-ContainerPathExists -ContainerName $ContainerName -Path $Path) {
-                Invoke-Native -FilePath "docker" -Arguments @(
-                    "exec", "--user", "root", $ContainerName,
-                    "rm", "-rf", $Path
-                )
-            }
+function Assert-PostUpdate {
+    param([object[]]$BeforeMounts, [string]$Name, [string]$SkillsRoot)
+    $After = Read-ContainerInspect -Name $Name
+    if (-not $After.State.Running) { throw "Container boot/migration failed; inspect Docker logs. No automatic repair." }
+    if ($BeforeMounts.Count -gt 0 -and (Get-MountSignature $BeforeMounts) -cne (Get-MountSignature @($After.Mounts))) {
+        throw "Mount identity changed after recreation. Do not use the container; reconcile saved mount evidence."
+    }
+    # Boot is asynchronous. A bounded status wait does not re-run any migration.
+    $Ready = $false
+    for ($Attempt=0; $Attempt -lt 30; $Attempt++) {
+        $Prior=$ErrorActionPreference
+        try {
+            $ErrorActionPreference="SilentlyContinue"
+            & docker exec --user hermes $Name /opt/hermes/.venv/bin/python /opt/devkit/bin/lite_default_profile.py status --skills-root $SkillsRoot 1>$null 2>$null
+            $Code=$LASTEXITCODE
         }
-
-        Invoke-Native -FilePath "docker" -Arguments @(
-            "exec", "--user", "root", $ContainerName,
-            "mkdir", "-p", $TempDir
-        )
-        Invoke-Native -FilePath "docker" -Arguments @(
-            "exec", "--user", "root", $ContainerName,
-            "cp", $RunTemplate, "$TempDir/run"
-        )
-        Invoke-Native -FilePath "docker" -Arguments @(
-            "exec", "--user", "root", $ContainerName,
-            "chmod", "0755", "$TempDir/run"
-        )
-        Invoke-Native -FilePath "docker" -Arguments @(
-            "exec", "--user", "root", $ContainerName,
-            "mv", $TempDir, $ServiceDir
-        )
+        finally { $ErrorActionPreference=$Prior }
+        if ($Code -eq 0) { $Ready=$true; break }
+        Start-Sleep -Seconds 2
     }
-
-    Invoke-Native -FilePath "docker" -Arguments @(
-        "exec", "--user", "root", $ContainerName,
-        "/command/s6-svscanctl", "-a", "/run/service"
-    )
-
-    $Registered = $false
-    for ($Attempt = 0; $Attempt -lt 50; $Attempt++) {
-        if (Test-S6ServiceRegistered -ContainerName $ContainerName -ServicePath $ServiceDir) {
-            $Registered = $true
-            break
-        }
-        Start-Sleep -Milliseconds 100
-    }
-
-    if (-not $Registered) {
-        throw "DevKit Kanban notifier was not registered by s6-svscan: $ServiceDir"
-    }
-
-    Invoke-Native -FilePath "docker" -Arguments @(
-        "exec", "--user", "root", $ContainerName,
-        "test", "-x", $RunPath
-    )
-    Write-Host "[OK] DevKit Kanban notifier dynamic service registered"
-}
-
-function Ensure-DefaultMultiplexGateway {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ContainerName
-    )
-
-    Ensure-S6GatewayRuntimePermissions -ContainerName $ContainerName
-    Ensure-DevKitKanbanNotifierRuntime -ContainerName $ContainerName
-
-    Write-Host "[RUN ] Ensure default multiplex Gateway is running"
-    Invoke-Native -FilePath "docker" -Arguments @(
-        "exec", "--user", "hermes", $ContainerName,
-        "/opt/hermes/.venv/bin/hermes", "gateway", "start"
-    )
+    if (-not $Ready) { throw "Default Lite configuration not ready. Inspect boot migration diagnostics; automatic repair is disabled." }
+    & (Join-Path $RepoRoot "init-lite.ps1") -Container $Name -Mode status -SkillsRoot $SkillsRoot
+    if ($LASTEXITCODE -ne 0) { throw "Mandatory default configuration verification failed" }
 }
 
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $OriginalLocation = Get-Location
-$ImageRebuilt = $false
-$ContainerRecreated = $false
-$ProfilesReconciled = $false
-$AutomaticRepairUsed = $false
-$GitIdentityConfigured = $false
-$GitHubAuthReady = $false
-$HermesBaseImage = "nousresearch/hermes-agent:latest"
 $PreviousWindowsTempPathExists = Test-Path Env:HERMES_WINDOWS_TEMP_CONTAINER_PATH
 $PreviousWindowsTempPath = if ($PreviousWindowsTempPathExists) { $env:HERMES_WINDOWS_TEMP_CONTAINER_PATH } else { $null }
-
+$HermesBaseImage = "nousresearch/hermes-agent:latest"
+$OverrideFile = $null
 try {
     Set-Location $RepoRoot
-
-    foreach ($Command in @("git", "docker")) {
-        if (-not (Get-Command $Command -ErrorAction SilentlyContinue)) {
-            throw "Required command was not found: $Command"
-        }
+    . (Join-Path $RepoRoot "scripts/devkit-mounts.ps1")
+    if ($SkipProfileInit) { throw "-SkipProfileInit is retired; default boot migration cannot be skipped." }
+    if ($NoRepair) { Write-Host "[INFO] Automatic repair is disabled for all Lite updates." }
+    foreach ($Command in @("git","docker")) {
+        if (-not (Get-Command $Command -ErrorAction SilentlyContinue)) { throw "Missing required command: $Command" }
     }
-
-    Invoke-Native -FilePath "docker" -Arguments @("info")
+    Invoke-Native -FilePath "docker" -Arguments @("info", "--format", "{{.ServerVersion}}")
     Invoke-Native -FilePath "docker" -Arguments @("compose", "version")
-
-    $ResolvedRepoRoot = Get-CapturedText -Output (Invoke-NativeCapture -FilePath "git" -Arguments @("rev-parse", "--show-toplevel"))
-    $ExpectedRepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
-    if ([System.IO.Path]::GetFullPath($ResolvedRepoRoot).TrimEnd('\', '/') -ne
-        [System.IO.Path]::GetFullPath($ExpectedRepoRoot).TrimEnd('\', '/')) {
-        throw "update-devkit.ps1 must be run from its own DevKit repository. GitRoot=$ResolvedRepoRoot ScriptRoot=$ExpectedRepoRoot"
+    $GitRoot=Get-CapturedText -Output (Invoke-NativeCapture -FilePath "git" -Arguments @("rev-parse","--show-toplevel"))
+    if ([IO.Path]::GetFullPath($GitRoot).TrimEnd('\','/') -ne [IO.Path]::GetFullPath($RepoRoot).TrimEnd('\','/')) {
+        throw "Updater must run in its own DevKit checkout"
     }
-
-    $Dirty = Get-CapturedText -Output (Invoke-NativeCapture -FilePath "git" -Arguments @("status", "--porcelain=v1", "--untracked-files=normal"))
-    if (-not [string]::IsNullOrWhiteSpace($Dirty)) {
-        throw "DevKit checkout has local changes. Commit/stash them before updating.`n$Dirty"
-    }
-
-    $CurrentBranch = Get-CapturedText -Output (Invoke-NativeCapture -FilePath "git" -Arguments @("branch", "--show-current"))
-    if ($CurrentBranch -ne $Branch) {
-        throw "Current branch is '$CurrentBranch'. Switch to '$Branch' before running the updater."
-    }
-
-    $BeforeSha = Get-CapturedText -Output (Invoke-NativeCapture -FilePath "git" -Arguments @("rev-parse", "HEAD"))
-    $AfterSha = $BeforeSha
-
+    $Dirty=Get-CapturedText -Output (Invoke-NativeCapture -FilePath "git" -Arguments @("status", "--porcelain=v1", "--untracked-files=normal"))
+    if ($Dirty) { throw "DevKit has local changes; preserve/reconcile them before updating." }
+    $Current=Get-CapturedText -Output (Invoke-NativeCapture -FilePath "git" -Arguments @("branch","--show-current"))
+    if ($Current -cne $Branch) { throw "Expected branch $Branch; current=$Current" }
+    $BeforeSha=Get-CapturedText -Output (Invoke-NativeCapture -FilePath "git" -Arguments @("rev-parse","HEAD"))
     if (-not $NoPull) {
-        Write-Host "[RUN ] Fetch $Remote/$Branch"
         Invoke-Native -FilePath "git" -Arguments @("fetch", "--prune", $Remote)
-
-        $RemoteRef = "$Remote/$Branch"
-        Invoke-NativeCapture -FilePath "git" -Arguments @("rev-parse", "--verify", "$RemoteRef^{commit}") | Out-Null
-
-        $CountsText = Get-CapturedText -Output (Invoke-NativeCapture -FilePath "git" -Arguments @("rev-list", "--left-right", "--count", "HEAD...$RemoteRef"))
-        $Counts = @($CountsText -split '\s+' | Where-Object { $_ -ne "" })
-        if ($Counts.Count -ne 2) {
-            throw "Unexpected git divergence output: $CountsText"
-        }
-
-        $LocalOnly = [int]$Counts[0]
-        $RemoteOnly = [int]$Counts[1]
-        if ($LocalOnly -gt 0) {
-            throw "Local '$Branch' contains $LocalOnly commit(s) not present in $RemoteRef. Refusing automatic merge/rebase."
-        }
-
-        if ($RemoteOnly -gt 0) {
-            Write-Host "[RUN ] Fast-forward $Branch by $RemoteOnly commit(s)"
-            Invoke-Native -FilePath "git" -Arguments @("merge", "--ff-only", $RemoteRef)
-        }
-        else {
-            Write-Host "[OK] Repository already up to date."
-        }
-
-        $AfterSha = Get-CapturedText -Output (Invoke-NativeCapture -FilePath "git" -Arguments @("rev-parse", "HEAD"))
+        $RemoteRef="$Remote/$Branch"
+        $Counts=(Get-CapturedText -Output (Invoke-NativeCapture -FilePath "git" -Arguments @("rev-list","--left-right","--count","HEAD...$RemoteRef"))) -split '\s+'
+        if ($Counts.Count -ne 2 -or [int]$Counts[0] -gt 0) { throw "Local commits/divergence detected; refusing merge or rebase" }
+        Invoke-Native -FilePath "git" -Arguments @("merge", "--ff-only", $RemoteRef)
     }
-    else {
-        Write-Host "[SKIP] Git pull disabled by -NoPull."
-    }
-
-    $ChangedFiles = @()
+    $AfterSha=Get-CapturedText -Output (Invoke-NativeCapture -FilePath "git" -Arguments @("rev-parse","HEAD"))
+    $ChangedFiles=@()
     if ($BeforeSha -ne $AfterSha) {
-        $ChangedFiles = @(
-            Invoke-NativeCapture -FilePath "git" -Arguments @("diff", "--name-only", $BeforeSha, $AfterSha) |
-                ForEach-Object { ([string]$_).Trim() } |
-                Where-Object { $_ -ne "" }
-        )
+        $ChangedFiles=@(Invoke-NativeCapture -FilePath "git" -Arguments @("diff","--name-only",$BeforeSha,$AfterSha))
     }
-
     if (-not $NoPull -and $ChangedFiles -contains "update-devkit.ps1") {
-        Restart-UpdatedUpdater `
-            -ScriptPath $MyInvocation.MyCommand.Path `
-            -BranchName $Branch `
-            -RemoteName $Remote `
-            -ContainerName $Container `
-            -ForceRebuildRequested:$ForceRebuild `
-            -NoRepairRequested:$NoRepair `
-            -SkipVerifyRequested:$SkipVerify `
-            -SkipProfileInitRequested:$SkipProfileInit `
-            -SkipGitHubAuthRequested:$SkipGitHubAuth
+        Restart-UpdatedUpdater -ScriptPath $MyInvocation.MyCommand.Path -BranchName $Branch -RemoteName $Remote -ContainerName $Container -ForceRebuildRequested:$ForceRebuild -NoRepairRequested:$NoRepair -SkipVerifyRequested:$SkipVerify -SkipGitHubAuthRequested:$SkipGitHubAuth
         return
     }
-
-    $WindowsTempContainerPath = Get-HermesWindowsTempContainerPath
-
-    Write-Host ""
-    Write-Host "== DevKit update plan =="
-    Write-Host "Before            : $BeforeSha"
-    Write-Host "After             : $AfterSha"
-    Write-Host "Hermes base image : $HermesBaseImage"
-    Write-Host "Windows temp      : $WindowsTempContainerPath"
-    if ($ChangedFiles.Count -eq 0) {
-        Write-Host "Changes           : none"
+    if ($ChangedFiles -contains "sample.env") { Write-Warning "sample.env changed. Existing .env is intentionally not overwritten." }
+    $env:HERMES_WINDOWS_TEMP_CONTAINER_PATH=Get-HermesWindowsTempContainerPath
+    $ComposeArgs=@("compose","--project-directory",$RepoRoot,"-f",(Join-Path $RepoRoot "compose.yml"))
+    # Never print resolved compose configuration: it contains user credentials.
+    $ModelRaw=Get-CapturedText -Output (Invoke-NativeCapture -FilePath "docker" -Arguments ($ComposeArgs+@("config","--format","json")))
+    $Model=ConvertFrom-Json -InputObject $ModelRaw
+    if ($Model.services.hermes.container_name -cne $Container) { throw "Container selection differs from .env/Compose; reconcile before updating" }
+    $SkillsRoot=[string]$Model.services.hermes.environment.HERMES_CONTAINER_CUSTOM_SKILLS_PATH
+    $Existing=Read-ContainerInspect -Name $Container -AllowMissing
+    $BeforeMounts=@()
+    if ($null -ne $Existing) {
+        $BeforeMounts=@($Existing.Mounts)
+        $Override=New-PreservedMountOverride -Mounts $BeforeMounts -Workspace ([string]$Existing.Config.WorkingDir) -ComposeModel $Model
+        $OverrideFile=[IO.Path]::GetTempFileName()
+        [IO.File]::WriteAllText($OverrideFile,($Override | ConvertTo-Json -Depth 30),(New-Object Text.UTF8Encoding($false)))
+        $ComposeArgs+=@("-f",$OverrideFile)
+        Invoke-MigrationPlan -Name $Container -SkillsRoot $SkillsRoot
     }
-    else {
-        Write-Host "Changes           : $($ChangedFiles.Count) file(s)"
-        foreach ($ChangedFile in $ChangedFiles) {
-            Write-Host "  - $ChangedFile"
-        }
+    Invoke-Native -FilePath "docker" -Arguments ($ComposeArgs+@("config","--quiet"))
+    Write-Host "[RUN] Build latest Hermes once; existing runtime remains until success"
+    Invoke-Native -FilePath "docker" -Arguments ($ComposeArgs+@("build","--pull"))
+    if ($null -ne $Existing) {
+        Invoke-MigrationPlan -Name $Container -SkillsRoot $SkillsRoot
+        # No blind kill/claim reset. Active tasks fail the readonly plan before stop.
+        Invoke-Native -FilePath "docker" -Arguments @("stop","--time","30",$Container)
+        # Catch a task that started between preflight and graceful stop.
+        Invoke-MigrationPlan -Name $Container -SkillsRoot $SkillsRoot
     }
-
-    $ImageBuildInputs = @(
-        "Dockerfile",
-        ".dockerignore",
-        "scripts/hermes-java",
-        "scripts/patch_hermes_syntax_warning.py"
-    )
-
-    $BuildRequired = $true
-    $RecreateRequired = $true
-
-    if ($ChangedFiles -contains "sample.env") {
-        Write-Warning "sample.env changed. Existing .env is intentionally not overwritten; review the new sample manually."
+    Write-Host "[RUN] Recreate with preserved mounts; pre-service boot migration is mandatory"
+    Invoke-Native -FilePath "docker" -Arguments ($ComposeArgs+@("up","-d","--force-recreate","--no-build"))
+    Assert-PostUpdate -BeforeMounts $BeforeMounts -Name $Container -SkillsRoot $SkillsRoot
+    if (-not $SkipVerify) {
+        & (Join-Path $RepoRoot "scripts/verify-container-runtime.ps1") -Container $Container
+        if ($LASTEXITCODE -ne 0) { throw "Runtime verification failed; no automatic repair or data rollback" }
     }
-
-    $env:HERMES_WINDOWS_TEMP_CONTAINER_PATH = $WindowsTempContainerPath
-
-    Write-Host "Action            : pull latest Hermes base + build + force-recreate + profile reconcile"
-    Invoke-Native -FilePath "docker" -Arguments @("compose", "config", "--quiet")
-
-    Write-Host "[RUN ] docker compose build --pull"
-    Invoke-Native -FilePath "docker" -Arguments @("compose", "build", "--pull")
-    $ImageRebuilt = $true
-
-    Write-Host "[RUN ] docker compose up -d --force-recreate"
-    Invoke-Native -FilePath "docker" -Arguments @("compose", "up", "-d", "--force-recreate")
-    $ContainerRecreated = $true
-
-    $ProfileInitializer = Join-Path $RepoRoot "init-profiles.ps1"
-    if (-not $SkipProfileInit) {
-        if (-not (Test-Path -LiteralPath $ProfileInitializer -PathType Leaf)) {
-            throw "Profile initializer is missing: $ProfileInitializer"
-        }
-        Write-Host "[RUN ] Profile/skill reconciliation"
-        Invoke-ProfileInitialization -Initializer $ProfileInitializer -ContainerName $Container
-        $ProfilesReconciled = $true
-    }
-    else {
-        Write-Host "[SKIP] Profile initialization disabled by -SkipProfileInit."
-    }
-
-    Ensure-DefaultMultiplexGateway -ContainerName $Container
-
-    if ($SkipVerify) {
-        Write-Host "[SKIP] Runtime verification disabled by -SkipVerify."
-    }
-    else {
-        $Verifier = Join-Path $RepoRoot "scripts\verify-container-runtime.ps1"
-        if (-not (Test-Path -LiteralPath $Verifier -PathType Leaf)) {
-            throw "Runtime verifier is missing: $Verifier"
-        }
-
-        Write-Host "[RUN ] Runtime verification"
-        $Verified = Invoke-RuntimeVerification -Verifier $Verifier -ContainerName $Container
-        if (-not $Verified) {
-            # Recreating the same image cannot cure a successfully supervised
-            # but standalone/unverified multiplex Gateway. Preserve the
-            # container and its state for the classified diagnostic instead.
-            if ($Script:LastRuntimeVerificationError -match "Default multiplex Gateway served-profile contract") {
-                throw "GATEWAY_MULTIPLEX_NOT_READY: default Gateway is supervised but has not verified serving all role profiles. No automatic container recreation: inspect the classified readiness diagnostics, gateway_state.json and Gateway startup logs before migration or restart."
-            }
-            if ($NoRepair) {
-                throw "Runtime verification failed and automatic repair is disabled by -NoRepair."
-            }
-
-            Write-Warning "Runtime verification failed. Recreating once from the already-built image; the mutable latest base is not resolved again."
-            $AutomaticRepairUsed = $true
-            Invoke-Native -FilePath "docker" -Arguments @("compose", "up", "-d", "--force-recreate")
-            $ContainerRecreated = $true
-
-            if (-not $SkipProfileInit) {
-                Write-Host "[RUN ] Profile/skill reconciliation after repair"
-                Invoke-ProfileInitialization -Initializer $ProfileInitializer -ContainerName $Container
-                $ProfilesReconciled = $true
-            }
-
-            Ensure-DefaultMultiplexGateway -ContainerName $Container
-
-            Write-Host "[RUN ] Runtime verification after repair"
-            if (-not (Invoke-RuntimeVerification -Verifier $Verifier -ContainerName $Container)) {
-                throw "Runtime verification still fails after one automatic repair. Inspect the verifier output before using the DevKit."
-            }
-        }
-    }
-
-    Write-Host "[RUN ] Git publish identity/auth bootstrap"
-    $GitPublishState = Initialize-GitPublishing -ContainerName $Container -SkipAuthentication:$SkipGitHubAuth
-    $GitIdentityConfigured = [bool]$GitPublishState.IdentityConfigured
-    $GitHubAuthReady = [bool]$GitPublishState.GitHubAuthReady
-
-    Write-Host ""
-    Write-Host "[PASS] DevKit update completed."
+    else { Write-Warning "Extended runtime verification skipped; mount/default safety checks still ran." }
+    Write-Host "[RUN] Git publish identity/auth bootstrap"
+    $GitState=Initialize-GitPublishing -ContainerName $Container -SkipAuthentication:$SkipGitHubAuth
+    Write-Host "[PASS] Lite DevKit update completed"
     Write-Host "UPDATED_FROM=$BeforeSha"
     Write-Host "UPDATED_TO=$AfterSha"
-    Write-Host "HERMES_BASE_IMAGE=$HermesBaseImage"
-    Write-Host "HERMES_WINDOWS_TEMP_CONTAINER_PATH=$WindowsTempContainerPath"
-    Write-Host "IMAGE_REBUILT=$($ImageRebuilt.ToString().ToLowerInvariant())"
-    Write-Host "CONTAINER_RECREATED=$($ContainerRecreated.ToString().ToLowerInvariant())"
-    Write-Host "PROFILES_RECONCILED=$($ProfilesReconciled.ToString().ToLowerInvariant())"
-    Write-Host "AUTOMATIC_REPAIR_USED=$($AutomaticRepairUsed.ToString().ToLowerInvariant())"
-    Write-Host "GIT_IDENTITY_CONFIGURED=$($GitIdentityConfigured.ToString().ToLowerInvariant())"
-    Write-Host "GITHUB_AUTH_READY=$($GitHubAuthReady.ToString().ToLowerInvariant())"
+    Write-Host "LITE_DEFAULT_RECONCILED=true"
+    Write-Host "AUTOMATIC_REPAIR_USED=false"
+    Write-Host "GIT_IDENTITY_CONFIGURED=$($GitState.IdentityConfigured)"
+    Write-Host "GITHUB_AUTH_READY=$($GitState.GitHubAuthReady)"
 }
 finally {
-    if ($PreviousWindowsTempPathExists) {
-        $env:HERMES_WINDOWS_TEMP_CONTAINER_PATH = $PreviousWindowsTempPath
-    }
-    else {
-        Remove-Item Env:HERMES_WINDOWS_TEMP_CONTAINER_PATH -ErrorAction SilentlyContinue
-    }
-
+    # Only our generated temporary override is removed, never a source or data mount.
+    if ($OverrideFile -and (Test-Path -LiteralPath $OverrideFile)) { Remove-Item -LiteralPath $OverrideFile -Force }
+    if ($PreviousWindowsTempPathExists) { $env:HERMES_WINDOWS_TEMP_CONTAINER_PATH=$PreviousWindowsTempPath }
+    else { Remove-Item Env:HERMES_WINDOWS_TEMP_CONTAINER_PATH -ErrorAction SilentlyContinue }
     Set-Location $OriginalLocation
 }

@@ -7,7 +7,7 @@ platforms: [linux]
 metadata:
   hermes:
     tags: [dev, api, spec, markdown, design-first, source-sync, audit, legacy, contract]
-    related_skills: [dev-api-contract, dev-api-docs, dev-breakdown, dev-workflow-orchestrate, dev-spring-feature, dev-frontend-feature]
+    related_skills: [dev-api-contract, dev-api-docs, dev-project-pattern, dev-spring-feature, dev-frontend-feature]
     requires_tools: [terminal, skill_view]
 ---
 
@@ -36,7 +36,7 @@ Requirement / Use Case
 → Markdown API Spec DRAFT
 → [API 규격 승인]
 → APPROVED snapshot
-→ Coder가 repository Markdown으로 materialize/update
+→ 구현 단계가 repository Markdown으로 materialize/update
 → Backend / Frontend 구현
 → dev-api-contract 검증
 → dev-api-docs OpenAPI/Postman 정렬
@@ -159,30 +159,9 @@ Compatibility / Migration note
 프로젝트 공통 규칙으로 충분한 항목은 `docs/api/README.md`를 참조하고 endpoint마다 중복 복사하지 않는다.
 
 ## DESIGN_FIRST 승인 계약
+새 API 계약을 설계할 때는 Markdown DRAFT로 method/path/request/response/error와 하위 호환성 영향을 먼저 설명한다. 사용자의 명시적 승인 없이 미확정 계약을 production API 변경으로 확대하지 않는다. 요청 자체에 계약과 구현 범위가 이미 명확하면 그 요청을 승인 근거로 재사용하며 동일한 결정을 반복 확인하지 않는다.
 
-Orchestrator는 source/config를 수정하지 않고 Markdown 형태의 Spec DRAFT를 사용자에게 먼저 보여준다.
-
-계약 변경이 있는 경우:
-
-```text
-API_SPEC_MODE=DESIGN_FIRST
-API_SPEC_GATE=REQUIRED
-API_SPEC_STATUS=DRAFT
-API_SPEC_PATH=<planned markdown path>
-API_SPEC_SOURCE=DESIGN
-```
-
-사용자가 독립 `[API 규격 승인]` Gate에서 `규격 승인`을 선택한 뒤:
-
-```text
-API_SPEC_APPROVED=true
-API_SPEC_STATUS=APPROVED
-API_SPEC_SOURCE=approved-plan-snapshot
-```
-
-승인된 Spec 내용은 Implementation Plan/Kanban body에 보존한다. Coder는 production API를 변경하기 전에 승인 snapshot을 대상 Markdown 파일에 동일 의미로 materialize/update한다.
-
-Spec Gate에서 필드/method/path/error 같은 계약 내용이 바뀌면 기존 API Spec 승인을 무효화하고 갱신된 Spec을 같은 Gate에서 다시 승인받는다.
+승인된 내용은 프로젝트의 Markdown API 문서로 materialize/update한다. `API_SPEC_APPROVED=true`처럼 문서화한 확인 상태는 선택적 근거이며 Kanban body, Task metadata, 별도 `[API 규격 승인]` UI Gate를 요구하지 않는다. 이후 계약이 바뀌면 영향을 설명하고 새 범위를 확인한다.
 
 ## SOURCE_SYNC 역문서화 계약
 

@@ -128,6 +128,33 @@ class WorkspaceCleanupTests(unittest.TestCase):
             "--remote", "origin", "--base-branch", "main",
         ], cwd=self.f.repo, env=env, check=False)
 
+    def ignored_secret(self):
+        exclude = Path(git(self.f.worktree, "rev-parse", "--git-common-dir").stdout.strip()) / "info/exclude"
+        with exclude.open("a") as f:
+            f.write("\n.secret-fixture\n")
+        (self.f.worktree / ".secret-fixture").write_text("keep-ignored-data")
+
+    def test_ignored_file_blocks_prepare_and_preserves_data(self):
+        self.f.merge()
+        self.ignored_secret()
+        result = self.prepare()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("ignored files", result.stderr)
+        self.assertEqual((self.f.worktree / ".secret-fixture").read_text(), "keep-ignored-data")
+
+    def test_ignored_file_added_after_preview_blocks_mutation(self):
+        self.f.merge()
+        preview = self.prepare()
+        self.assertEqual(preview.returncode, 0, preview.stderr)
+        fingerprint = values(preview.stdout)["CLEANUP_FINGERPRINT"]
+        self.ignored_secret()
+        result = run(["python3", str(CLEANUP), "--workspace", str(self.f.worktree),
+                      "--remote", "origin", "--base-branch", "main", "--fingerprint", fingerprint],
+                     cwd=self.f.repo, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(self.f.worktree.exists())
+        self.assertEqual(git(self.f.repo, "rev-parse", self.f.branch).stdout.strip(), self.f.head)
+
     def test_lists_linked_worktree_with_branch_and_remote(self):
         result = run(["python3", str(LIST), "--repo", str(self.f.repo), "--remote", "origin"], cwd=self.f.repo, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)

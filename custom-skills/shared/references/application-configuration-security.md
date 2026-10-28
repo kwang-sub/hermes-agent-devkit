@@ -135,7 +135,7 @@ Bootstrap은 다음을 보장한다.
 7. tracked Spring 공통 설정에 password/secret/token/private key 또는 환경별 datasource/Supabase 값이 하드코딩되어 있으면 자동 치환하지 않는다. `WARN` 후 그대로 보존하고 Bootstrap을 계속한다.
 8. 경고에는 실제 secret 값 대신 `relative/path:key`만 출력한다.
 9. 기존 `.env.example`은 덮어쓰지 않는다.
-10. 신규 Hermes/Coder 설정은 가능한 경우 environment placeholder 방식으로 생성한다.
+10. 신규 Hermes/구현 단계 설정은 가능한 경우 environment placeholder 방식으로 생성한다.
 
 Bootstrap 설정 보안의 기본 모드는 다음과 같다.
 

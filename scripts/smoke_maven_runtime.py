@@ -24,6 +24,7 @@ def main() -> None:
         "--extension-source-root", type=Path, default=ROOT / "scripts/maven-output-extension",
         help="Directory containing the Maven output lifecycle extension sources",
     )
+    parser.add_argument("--verifier", type=Path, default=ROOT / "scripts/verification/maven_verification.py")
     parser.add_argument("--version", choices=("3.6.3", "3.9.9"), default="3.6.3")
     args = parser.parse_args()
     extension_root = args.extension_source_root.resolve()
@@ -36,13 +37,13 @@ def main() -> None:
     launcher = args.launcher_dir / "hermes-maven"
     bridge = args.launcher_dir / "hermes-java"
     assert os.access(launcher, os.X_OK) and os.access(bridge, os.X_OK)
-    spec = importlib.util.spec_from_file_location("verification", ROOT / "custom-skills/coder/dev-implement-plan/scripts/maven_verification.py")
+    spec = importlib.util.spec_from_file_location("verification", args.verifier)
     verifier = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(verifier)
     with tempfile.TemporaryDirectory(prefix="devkit-maven-smoke-") as tmp:
         root = Path(tmp)
         project = root / "project"
-        home = root / "coder-home"
+        home = root / "default-home"
         project.mkdir()
         home.mkdir()
         cache = root / "maven"

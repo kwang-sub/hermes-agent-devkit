@@ -31,7 +31,7 @@
 `UNKNOWN: 원인과 필요한 결정`처럼 명시한다. 미확정 항목을 빈칸이나 임의의 동작으로 대체하지 않는다.
 
 `behavior_status: APPROVED`인 명세의 범위 내 기능은 모두 `CONFIRMED`여야 한다.
-새 제품 동작의 승인 이력과 사실상 중요한 미확정 사항의 해소 여부는 Reviewer가 확인한다.
+새 제품 동작의 승인 이력과 사실상 중요한 미확정 사항의 해소 여부는 자체 검토 단계가 확인한다.
 guard는 기록된 상태와 구조만 검사하며 실제 승인자를 검증하지 않는다.
 이미 승인된 화면의 의미 있는 동작을 바꾸면 기존 디자인 승인은 유지할 수 있지만
 동작 상태는 `DRAFT`로 되돌리고 변경된 기능/근거를 갱신한다. 검토되지 않은 새 동작을
@@ -101,7 +101,7 @@ API/DB 세부 계약은 별도 명세를 참조하고 Screen Spec에 DTO/DB 규�
 
 AC-01 형식의 ID를 사용한다. 모든 기능에는 최소 한 개의 관찰 가능한 검증 조건을 연결한다.
 복잡한 기능은 노출/권한, 입력 제약, 성공, 빈 결과, 실패·재시도, 플랫폼 차이 중 해당 사례를 추가한다.
-표의 검증 방법은 계획이며 PASS 증거가 아니다. Coder/Reviewer handoff에서
+표의 검증 방법은 계획이며 PASS 증거가 아니다. 구현 단계/자체 검토 단계 handoff에서
 `AC-ID → F-ID → UI-ID → 실제 테스트/수동 증거 → PASS | FAIL | NOT_RUN`을 남긴다.
 기능 테스트와 이미지 일치/시각 회귀 검증을 별도로 보고한다.
 
@@ -142,7 +142,7 @@ python3 /opt/custom-skills/shared/dev-design-reference/scripts/screen_spec_guard
 
 `BEHAVIOR_CONTRACT_STATUS=STRUCTURE_PASS`는 필수 섹션/셀, ID 중복, 존재하지 않는 참조,
 기능↔UI 양방향 연결, 상세 동작/AC 누락이 없다는 뜻이다. 기능 정확성/디자인 일치/실제 승인/테스트
-성공을 보증하지 않는다. 본문 설명이 실제 UI를 빠짐없이 나타내는지는 Reviewer와 기능 테스트가 확인한다.
+성공을 보증하지 않는다. 본문 설명이 실제 UI를 빠짐없이 나타내는지는 자체 검토 단계와 기능 테스트가 확인한다.
 
 지원 문법은 지정된 제목과 단일 행 Markdown pipe table이다. literal pipe는 `\|`로 이스케이프한다.
 inline code ID와 표 셀의 `<br>`는 허용하지만 multiline cell, 복잡한 HTML 표, 임의의 제목 별칭은 지원하지 않는다.

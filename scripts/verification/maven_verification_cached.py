@@ -34,6 +34,7 @@ AUTO_SCOPE_PATHS = (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", required=True)
+    parser.add_argument("--no-reuse", action="store_true", help="Run fresh when verification depends on external state")
     parser.add_argument("--wrapper", default="./mvnw")
     parser.add_argument(
         "--mode",
@@ -269,6 +270,7 @@ def main() -> int:
     cached = load_evidence(evidence)
     if (
         cached
+        and not options.no_reuse
         and cached.get("status") == "PASS"
         and cached.get("request_sha256") == request_sha
         and cached.get("scope_sha256") == before_sha

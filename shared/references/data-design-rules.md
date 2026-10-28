@@ -18,7 +18,7 @@ Use Case / Business Rule
 → transaction / concurrency 경계
 → logical relational model
 → DBA Logical Model Approval
-→ Coder physical DBMS mapping
+→ 구현 단계 physical DBMS mapping
 → Flyway/Liquibase migration / implementation
 ```
 
@@ -34,7 +34,7 @@ DBA logical modeling
 - business invariant
 - canonical logical DBML
 
-Coder physicalization
+구현 단계 physicalization
 - physical table/type/key/index/constraint
 - target DBMS mapping
 - Flyway/Liquibase migration
@@ -88,7 +88,7 @@ Optimistic/pessimistic concurrency control
 
 DB constraint가 실제 업무 불변식을 안전하게 표현할 수 있으면 우선 검토한다. 단, legacy compatibility 또는 migration 위험 때문에 즉시 적용하기 어렵다면 이유와 단계적 적용 전략을 기록한다.
 
-DBA logical model은 constraint의 **업무 의미**를 확정하고, target DBMS의 실제 DDL 표현은 Coder physicalization이 결정한다.
+DBA logical model은 constraint의 **업무 의미**를 확정하고, target DBMS의 실제 DDL 표현은 구현 단계 physicalization이 결정한다.
 
 ## 5. 기존 Convention 우선과 신규 프로젝트 Fallback
 
@@ -143,11 +143,11 @@ Subject Area: investment
 Logical Table: account
 ```
 
-기존 logical model이 `investment_account`처럼 주제영역 prefix를 이미 사용하면 대규모 rename하지 않는다. 물리화 시 Coder가 prefix를 정확히 한 번만 조합한다.
+기존 logical model이 `investment_account`처럼 주제영역 prefix를 이미 사용하면 대규모 rename하지 않는다. 물리화 시 구현 단계가 prefix를 정확히 한 번만 조합한다.
 
 ## 7. DEVKIT_DEFAULT Physical Naming
 
-기존 physical convention evidence가 전혀 없는 신규 migration-managed schema에서 Coder fallback은 다음과 같다.
+기존 physical convention evidence가 전혀 없는 신규 migration-managed schema에서 구현 단계 fallback은 다음과 같다.
 
 ```text
 Physical DB table → tbl_<subject_area>_<entity>
@@ -173,10 +173,10 @@ Physical Table: tbl_investment_account
 - `tbl_` prefix 필수.
 - 승인된 Subject Area만 사용.
 - lowercase snake_case.
-- Coder가 `inv`, `mkt` 같은 임의 약어를 발명하지 않는다.
+- 구현 단계가 `inv`, `mkt` 같은 임의 약어를 발명하지 않는다.
 - logical table이 `investment_account`이면 `tbl_investment_account`로 만들고 `tbl_investment_investment_account`로 중복하지 않는다.
 
-SQL reserved word와 target DBMS identifier 제약은 Coder physical mapping 단계에서 확인한다.
+SQL reserved word와 target DBMS identifier 제약은 구현 단계 physical mapping 단계에서 확인한다.
 
 `public_id`는 application이 소유하는 외부/API/Event 식별자다. 내부 FK/JOIN은 특별한 근거가 없으면 internal PK를 사용한다. `external_id`는 다른 시스템이 소유하는 식별자이므로 `public_id`와 동일 개념으로 취급하지 않는다.
 
@@ -199,7 +199,7 @@ External System ID
 
 ### Internal PK
 
-단일 primary DB, 높은 FK/JOIN 밀도, DB 중심 ID 생성이면 `BIGINT + IDENTITY/SEQUENCE/AUTO_INCREMENT` 계열을 우선 검토할 수 있다. 이 선택은 target DBMS evidence가 있는 Coder physicalization 단계에서 확정한다.
+단일 primary DB, 높은 FK/JOIN 밀도, DB 중심 ID 생성이면 `BIGINT + IDENTITY/SEQUENCE/AUTO_INCREMENT` 계열을 우선 검토할 수 있다. 이 선택은 target DBMS evidence가 있는 구현 단계 physicalization 단계에서 확정한다.
 
 여러 node/service가 DB INSERT 전 ID를 생성해야 하거나 multi-writer/distributed/offline 생성처럼 전역 충돌 회피가 중요한 경우 UUID 계열을 검토한다.
 
@@ -275,12 +275,12 @@ Soft Delete와 업무 lifecycle 종료를 구분한다. 계좌 해지, 계약 �
 ```text
 DBA Logical / Relational Intent
 → Subject Area + logical DBML approval
-→ Coder Target DBMS/version evidence
+→ 구현 단계 Target DBMS/version evidence
 → Physical naming/type/index/DDL
 → Migration implementation
 ```
 
-`IDENTITY`, `AUTO_INCREMENT`, vendor-specific index option, proprietary JSON type처럼 DBMS에 종속되는 선택은 Coder 물리 단계에서 결정한다.
+`IDENTITY`, `AUTO_INCREMENT`, vendor-specific index option, proprietary JSON type처럼 DBMS에 종속되는 선택은 구현 단계 물리 단계에서 결정한다.
 
 Target DBMS/version을 모르면 vendor-specific syntax를 추측하지 않는다.
 
@@ -359,8 +359,8 @@ V<yyyyMMddHHmmss>__<lowercase_snake_case_description>.sql
 ```text
 QUERY_ONLY    → schema 문서 변경 불필요가 기본
 MODEL_CHANGE  → Subject Area + schema.dbml + domain 의미 검토
-SCHEMA_CHANGE → logical model 승인 + Coder migration 영향 검토
-MIGRATION     → Coder migration + compatibility / roll-forward evidence
+SCHEMA_CHANGE → logical model 승인 + 구현 단계 migration 영향 검토
+MIGRATION     → 구현 단계 migration + compatibility / roll-forward evidence
 PERFORMANCE   → logical 의미가 실제로 바뀔 때만 DBA model 반영
 ```
 
@@ -374,7 +374,7 @@ PERFORMANCE   → logical 의미가 실제로 바뀔 때만 DBA model 반영
 DBA Common Logical Rules
 → dev-data-feature / dev-data-modeling
 → APPROVED handoff
-→ Coder dev-db-migration + dev-db-schema
+→ 구현 단계 dev-db-migration + dev-db-schema
 → detected DBMS vendor reference
 ```
 
@@ -396,6 +396,6 @@ ERD/DBML은 그림 자체가 완료 조건이 아니다. 관련 Use Case로 검�
 
 DBA Foundation과 logical modeling capability는 Design-Time DBA다.
 
-Coder `dev-db-migration`은 repository의 Flyway/Liquibase migration을 구현하고 project-controlled local/test/CI에서 검증할 수 있지만, 운영 DB 직접 ad-hoc DDL/DML 실행, backup/restore, session kill, 통계 강제 갱신, 운영 index maintenance, 권한/계정 변경 권한을 자동으로 부여하지 않는다.
+구현 단계 `dev-db-migration`은 repository의 Flyway/Liquibase migration을 구현하고 project-controlled local/test/CI에서 검증할 수 있지만, 운영 DB 직접 ad-hoc DDL/DML 실행, backup/restore, session kill, 통계 강제 갱신, 운영 index maintenance, 권한/계정 변경 권한을 자동으로 부여하지 않는다.
 
 SQL/migration 생성·검토와 실제 production 적용 권한은 분리한다.

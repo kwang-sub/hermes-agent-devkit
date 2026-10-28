@@ -13,11 +13,6 @@ git:
   default_base_branch: dev
   worktree_root: /workspace/.worktrees/hermes-agent-devkit
 
-profiles:
-  orchestrator: orchestrator
-  coder: coder
-  reviewer: reviewer
-
 resolver:
   aliases:
     - hermes-agent-devkit
@@ -25,7 +20,7 @@ resolver:
   modules: []
   files:
     - compose.yml
-    - init-profiles.ps1
+    - init-lite.ps1
     - Dockerfile
   paths:
     - custom-skills

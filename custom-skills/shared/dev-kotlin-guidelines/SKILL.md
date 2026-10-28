@@ -7,7 +7,7 @@ platforms: [linux]
 metadata:
   hermes:
     tags: [dev, kotlin, jvm, guidelines, convention, null-safety, coroutine, spring, jpa, ksp]
-    related_skills: [dev-implement-plan, dev-project-pattern, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test]
+    related_skills: [dev-project-pattern, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test]
     requires_tools: [terminal]
 ---
 

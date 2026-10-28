@@ -1,6 +1,6 @@
 ---
 name: dev-db-schema
-description: 승인된 logical relational model을 Coder/Reviewer가 PK/FK/UNIQUE/nullability/default/type/index/constraint와 물리 naming으로 구체화할 때 사용하는 DBMS 중립 physical schema support capability.
+description: 승인된 logical relational model을 구현 단계/자체 검토 단계가 PK/FK/UNIQUE/nullability/default/type/index/constraint와 물리 naming으로 구체화할 때 사용하는 DBMS 중립 physical schema support capability.
 version: 0.3.0
 author: local
 platforms: [linux]
@@ -13,7 +13,7 @@ metadata:
 
 # dev-db-schema
 
-`dev-data-modeling`에서 **APPROVED**된 논리 의미를 Coder migration 단계가 관계형/물리 schema로 구체화할 때 사용하는 support capability다. DBA logical modeling capability가 아니다.
+`dev-data-modeling`에서 **APPROVED**된 논리 의미를 구현 단계 migration 단계가 관계형/물리 schema로 구체화할 때 사용하는 support capability다. DBA logical modeling capability가 아니다.
 
 ## Role Boundary
 
@@ -38,7 +38,7 @@ Index design
 Migration implementation decision evidence
 ```
 
-Subject Area를 임의로 추가·변경하지 않는다. 실제 migration/changelog 생성과 실행 순서는 Coder `dev-db-migration`이 담당한다.
+Subject Area를 임의로 추가·변경하지 않는다. 실제 migration/changelog 생성과 실행 순서는 구현 단계 `dev-db-migration`이 담당한다.
 
 ## 판단 순서
 

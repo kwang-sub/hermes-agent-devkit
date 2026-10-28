@@ -8,6 +8,7 @@ on:
       - "feat/**"
       - "feature/**"
       - "perf/**"
+      - "refactor/**"
   pull_request:
 
 permissions:
@@ -17,7 +18,7 @@ jobs:
   latest-hermes-compat:
     name: latest Hermes update-devkit compatibility
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -29,4 +30,18 @@ jobs:
 
       - name: Verify latest Hermes upstream patch compatibility
         shell: bash
-        run: HERMES_BASE_IMAGE=nousresearch/hermes-agent:latest bash scripts/verify_latest_hermes_compat.sh
+        run: |
+          set +e
+          set -o pipefail
+          HERMES_BASE_IMAGE=nousresearch/hermes-agent:latest bash scripts/verify_latest_hermes_compat.sh > "$RUNNER_TEMP/hermes-compat.log" 2>&1
+          result=$?
+          tail -n 160 "$RUNNER_TEMP/hermes-compat.log"
+          exit "$result"
+      - name: Preserve full image validation evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hermes-image-validation-log
+          path: ${{ runner.temp }}/hermes-compat.log
+          if-no-files-found: warn
+          retention-days: 7

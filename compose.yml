@@ -39,7 +39,7 @@ services:
         target: /opt/data
 
       # 역할별 Skill과 공통 Skill은 하나의 read-only custom-skills root에서 관리한다.
-      # 각 Profile의 skills.external_dirs가 자신의 역할 디렉터리와 shared를 함께 참조한다.
+      # default의 skills.external_dirs가 lite와 shared를 참조한다.
       - type: bind
         source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}
         target: ${HERMES_CONTAINER_CUSTOM_SKILLS_PATH:-/opt/custom-skills}
@@ -53,9 +53,12 @@ services:
     environment:
       TZ: ${HERMES_TIMEZONE:-Asia/Seoul}
 
-      # DevKit Gateway topology is fixed: one default Gateway multiplexes every role profile.
+      # Upstream transport remains native; DevKit only configures the default development profile.
       # Bootstrap state covers fresh volumes; update-devkit.ps1 also reconciles a stopped persisted gateway.
       GATEWAY_MULTIPLEX_PROFILES: "true"
+      S6_BEHAVIOUR_IF_STAGE2_FAILS: "2"
+      HERMES_KANBAN_DISPATCH_IN_GATEWAY: "false"
+      HERMES_CONTAINER_CUSTOM_SKILLS_PATH: ${HERMES_CONTAINER_CUSTOM_SKILLS_PATH:-/opt/custom-skills}
       HERMES_GATEWAY_BOOTSTRAP_STATE: "running"
 
       # Host/Container workspace bind mapping. Agent/skill path resolution must
@@ -117,12 +120,7 @@ services:
       FIGMA_OAUTH_TOKEN: ${FIGMA_OAUTH_TOKEN:-}
       CONTEXT7_API_KEY: ${CONTEXT7_API_KEY:-}
 
-      HERMES_FLOW_MODEL_DEFAULT_PROVIDER: ${HERMES_FLOW_MODEL_DEFAULT_PROVIDER:-openai-codex}
-      HERMES_FLOW_MODEL_DEFAULT: ${HERMES_FLOW_MODEL_DEFAULT:-gpt-5.6-terra}
-      HERMES_FLOW_MODEL_PREMIUM_PROVIDER: ${HERMES_FLOW_MODEL_PREMIUM_PROVIDER:-openai-codex}
-      HERMES_FLOW_MODEL_PREMIUM: ${HERMES_FLOW_MODEL_PREMIUM:-gpt-6-astra}
 
-      HERMES_KANBAN_BOOT_RECOVERY_ENABLED: ${HERMES_KANBAN_BOOT_RECOVERY_ENABLED:-true}
       HERMES_KANBAN_NOTIFY_ENABLED: ${HERMES_KANBAN_NOTIFY_ENABLED:-false}
       HERMES_KANBAN_NOTIFY_PLATFORM: ${HERMES_KANBAN_NOTIFY_PLATFORM:-discord}
       HERMES_KANBAN_NOTIFY_TARGET: ${HERMES_KANBAN_NOTIFY_TARGET:-}

@@ -27,7 +27,7 @@ Hermes Lite에서 새 대화 세션을 시작할 때 자동으로 읽는 기본 
 - Kanban 기능 장애 때문에 일반 코드 개발을 중단하지 않는다. 사용자가 요청한 기록이 실패하면 실패를 명시한다.
 
 ## 개발 규칙과 검증
-- 대상 프로젝트에 이미 존재하는 AGENTS.md/관례/빌드 설정이 소스 변경의 기준이다. Standard Flow를 명시적으로 선택하지 않았다면 역할 기반 승인·인계 계약은 Lite에 적용하지 않는다.
+- 대상 프로젝트에 이미 존재하는 AGENTS.md/관례/빌드 설정이 소스 변경의 기준이다. 역할 기반 승인·인계 계약은 적용하지 않는다.
 - Java/Spring/Kotlin/Frontend/DB에 해당하는 shared capability 스킬을 필요한 경우에만 불러온다. 모든 스킬 본문을 한꺼번에 읽지 않는다.
 - 기존 Devkit의 Docker Workspace·JDK·Maven·Gradle·Node·pnpm 격리 방식을 유지한다.
 - 실질적 테스트를 실행하고 통과/실패/미실행 이유를 보고한다. `dev-lite-review`는 선택적 자체 검토이므로 독립 Reviewer와 동일하게 표현하지 않는다.
@@ -46,7 +46,7 @@ Hermes Lite에서 새 대화 세션을 시작할 때 자동으로 읽는 기본 
 - Git 커밋·푸시·PR 게시 요청은 `git-pr-publish`로 Preview와 사용자 승인을 나누어 처리한다. 구현/검토 완료만으로 Git 게시를 자동 수행하지 않는다.
 
 ## 공통 검증 헬퍼
-- Java/Spring의 Maven·Gradle을 검증할 때 프로젝트 버전/기존 명령과 `/opt/data` 실행·캐시 격리 정책을 유지하고 `/workspace/hermes-agent-devkit/scripts/verification/`의 역할 독립 helper를 필요 시 사용한다. Coder Worker나 Kanban Task ID를 필수로 요구하지 않는다.
+- Java/Spring의 Maven·Gradle을 검증할 때 프로젝트 버전/기존 명령과 `/opt/data` 실행·캐시 격리 정책을 유지하고 `/opt/devkit/scripts/verification/`의 역할 독립 helper를 필요 시 사용한다. Coder Worker나 Kanban Task ID를 필수로 요구하지 않는다.
 
 ## PR 병합 후 Worktree·브랜치 정리
 - merged PR과 브랜치 ref를 증명한 뒤 Worktree·local/remote branch를 선택 정리하는 요청에는 `git-workspace-cleanup`을 필요 시 호출한다. 일반 Worktree 삭제는 `dev-worktree-remove`를 우선 사용한다. 원격 ref 삭제는 별도 확인한다.

@@ -143,6 +143,16 @@ def status_bytes(root: Path) -> bytes:
     ).stdout
 
 
+def protect_ignored_files(root: Path) -> None:
+    """Git worktree remove can discard ignored secrets/build data even without --force."""
+    ignored = run(
+        ["git", "ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
+        cwd=root, text=False,
+    ).stdout
+    if ignored:
+        raise CleanupError("worktree contains ignored files; preserve or explicitly relocate them before cleanup")
+
+
 def parse_status(raw: bytes) -> list[tuple[str, str, str | None]]:
     parts = raw.split(b"\0")
     rows: list[tuple[str, str, str | None]] = []
@@ -559,6 +569,7 @@ def inspect_cleanup(
     common = common_git_dir(root)
     branch = current_branch(root)
     head = head_sha(root)
+    protect_ignored_files(root)
     raw_status = status_bytes(root)
     semantic_rows, eol_only_rows = classify_worktree_status(root, raw_status)
     semantic_status = encode_status_rows(semantic_rows)

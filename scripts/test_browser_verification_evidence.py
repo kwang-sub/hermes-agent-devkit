@@ -53,17 +53,17 @@ class BrowserEvidenceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate(value)
 
-    def test_policy_is_integrated_across_flows(self):
+    def test_policy_is_integrated_in_lite(self):
         test = (ROOT / "custom-skills/shared/dev-frontend-test/SKILL.md").read_text(encoding="utf-8")
         feature = (ROOT / "custom-skills/shared/dev-frontend-feature/SKILL.md").read_text(encoding="utf-8")
-        coder = (ROOT / "custom-skills/coder/dev-implement-plan/SKILL.md").read_text(encoding="utf-8")
+        coder = (ROOT / "custom-skills/lite/dev-lite-review/SKILL.md").read_text(encoding="utf-8")
         policy = (ROOT / "custom-skills/shared/dev-frontend-test/references/browser-verification.md").read_text(encoding="utf-8")
         for token in ("Browser Verification Contract V1", "beforeunload", "BLOCKED_ENV",
                       "NOT_RUN", "browser_verification_evidence.py"):
             self.assertIn(token, test + policy)
         self.assertIn("browser-verification.md", feature)
         self.assertIn("Browser Verification Contract V1", coder)
-        self.assertIn("Direct, Standard, Recovery", policy)
+        self.assertIn("Lite", policy)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
