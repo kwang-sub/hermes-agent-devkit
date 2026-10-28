@@ -1,7 +1,7 @@
 ---
 name: dev-spring-data
 description: Spring Data JPA/JPA 구현에서 단순 조회는 Data JPA 메서드 쿼리를 우선하고 복잡·동적 조회는 QueryDSL로 해결하며 Native Query는 최후 수단으로 제한한다.
-version: 0.1.0
+version: 0.2.0
 author: local
 platforms: [linux]
 metadata:
@@ -100,6 +100,14 @@ Verification
 - 새 association은 N+1, cascade/orphanRemoval, lifecycle 영향을 확인한다.
 - `EAGER` 또는 광범위한 cascade를 편의상 추가하지 않는다.
 - Converter가 이미 있으면 재사용하고 null/legacy persisted value를 확인한다.
+
+## Converter / 암호화 샘플의 선택적 적용
+
+Converter 신규 작성·변경 또는 저장값 암복호화/해싱이 실제 범위일 때만 `references/jpa-converter-reference.md`를 읽는다. 먼저 기존 Converter/암호 서비스·DB 저장 포맷·키 주입·provider/언어 버전을 확인한다. 기존 프로젝트 구성과 동작 계약이 샘플보다 우선한다.
+
+공통 코드는 `/opt/data/shared/references/samples/spring/README.md`와 `ADAPTATION.md`에 연결돼 있다. Kotlin은 구현 예시일 뿐 Java/Python에 같은 클래스·문법·JPA를 강제하지 않는다. 대상 언어/ORM의 기존 확장 지점으로 책임과 동작을 옮긴다.
+
+명시적 `@Convert`, null/빈 값, 기존 암호문, 저장·조회 round-trip과 재저장을 확인한다. Argon2 해싱은 암복호화와 구분하고 해시를 재저장할 때 재해시하는 Converter 패턴을 자동 채택하지 않는다. 필요한 샘플만 읽고 실제 읽은 경로·재사용 대상·차이·검증을 기존 계획에 기록한다. 전체 샘플 복사·새 의존성 자동 설치·운영 데이터 변경은 하지 않는다.
 
 ## Repository / QueryDSL
 

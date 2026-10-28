@@ -1,7 +1,7 @@
 ---
 name: dev-spring-test
 description: Spring/Spring Data JPA 기능의 테스트를 프로젝트 기존 테스트 프레임워크와 스타일에 맞춰 작성하고 변경 위험에 비례한 최소 검증을 수행한다.
-version: 0.1.0
+version: 0.2.0
 author: local
 platforms: [linux]
 metadata:
@@ -67,6 +67,17 @@ AttributeConverter null/legacy value
 fetch/join으로 인한 duplicate
 N+1 가능성에 대한 실행 근거
 ```
+
+## 공통 샘플을 참고한 변경의 검증
+
+Converter·암호화·예외·OpenAPI 샘플이 실제 사용된 경우에만 `/opt/data/shared/references/samples/spring/README.md`, `ADAPTATION.md`, `compatibility.md` 및 해당 테스트를 읽는다. 기존 프로젝트 구성·테스트 프레임워크가 샘플보다 우선한다. Java/Python 등에 포팅했다면 그 환경에서 실제 테스트하고 Kotlin CI PASS를 전용하지 않는다.
+
+- 암호화: null/빈 값, 기존 저장값, tamper/wrong key, 등록된 Converter 주입, flush/clear 후 재조회, 다른 필드 수정 뒤 재저장.
+- 해싱: 명시적 원문 해싱·일치 검증, 재해시 경계, 성공/예외 시 민감 배열 정리.
+- 예외: code/HTTP/body 일치, validation과 JSON 오류, framework 상태/headers, 민감정보 비노출, 필요 시 필터 401/403.
+- 문서: 실제 OpenAPI 생성과 parser 검증, 기존 response/ref/schema/examples 보존, idempotence. source annotation만 보고 문서 PASS 선언 금지.
+
+샘플은 전체 복사나 새 테스트 의존성 자동 추가의 근거가 아니다. 실행 명령·대상 버전·실패/미실행 사유를 구분하고 실제 운영 DB/인증/키 관리까지 검증됐다고 확대하지 않는다.
 
 ## Verification / Evidence
 
