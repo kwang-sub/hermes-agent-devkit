@@ -96,6 +96,14 @@ docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-de
 
 기존 이미지가 새 빌드 후 Docker 로컬 이미지 저장소에서 사라져도 정상 이관 검사를 계속할 수 있도록, 빌드 전에는 사용 가능한 로컬 이미지를 사용하고 빌드 후·정지 후에는 **새로 빌드한 이미지 ID**로 고정해 사전 검사를 수행한다. 빌드 전 사용 가능한 이미지가 없을 때에는 빌드 후 검사를 필수로 수행하며, 기존 컨테이너는 사전 검사 성공 전에 정지하지 않는다.
 
+### 마운트 진단 이력
+
+업데이터는 `%LOCALAPPDATA%\HermesAgentDevKit\update-history\<UTC 시각>-<GUID>\`에 실행별 `before.json`과 `after.json`을 기록하고 실제 저장 경로를 출력한다. `before.json`은 빌드 전에, `after.json`은 재생성 후 컨테이너를 조회했을 때 기록한다. 빌드나 사전 검사에서 중단되면 `before.json`만 남을 수 있다. 성공·실패 후에도 이력을 자동 삭제하거나 다음 실행으로 덮어쓰지 않는다.
+
+기록에는 마운트 필드, 기존 비교 함수의 서명, 컨테이너·이미지 ID와 UTC 시각만 포함한다. `after.json`의 `comparison`에는 대소문자를 구분한 일치 여부와 `before_only` / `after_only` 차이가 들어가며 불일치 행은 콘솔에도 표시한다. 전체 inspect, 환경변수, 인증 값, Compose 설정은 저장하지 않는다. 마운트의 호스트 경로는 포함되므로 이력은 필요한 범위에서 공유한다.
+
+저장 위치를 바꾸려면 실행할 PowerShell 세션에서 `HERMES_DEVKIT_UPDATE_HISTORY_ROOT` 환경변수에 절대 경로를 지정한다. 이력 저장 실패는 경고로 안내하며 기존 마운트 판정과 업데이트 성공·실패 처리는 그대로 유지한다. 이력 수집은 과거 실행의 마운트를 복원하거나 마운트 불일치를 자동 수정하지 않는다.
+
 ## 보존과 복구
 
 | 데이터 | 처리 |

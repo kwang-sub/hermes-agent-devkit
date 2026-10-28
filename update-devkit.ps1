@@ -363,11 +363,12 @@ function Invoke-MigrationPlan {
 }
 
 function Assert-PostUpdate {
-    param([object[]]$BeforeMounts, [string]$Name, [string]$SkillsRoot)
+    param([object[]]$BeforeMounts, [string]$Name, [string]$SkillsRoot, [string]$MountEvidenceDirectory)
     $After = Read-ContainerInspect -Name $Name
+    Write-MountEvidence -Directory $MountEvidenceDirectory -Phase after -Inspect $After -ContainerName $Name -BeforeMounts $BeforeMounts
     if (-not $After.State.Running) { throw "Container boot/migration failed; inspect Docker logs. No automatic repair." }
     if ($BeforeMounts.Count -gt 0 -and (Get-MountSignature $BeforeMounts) -cne (Get-MountSignature @($After.Mounts))) {
-        throw "Mount identity changed after recreation. Do not use the container; reconcile saved mount evidence."
+        throw "Mount identity changed after recreation. Do not use the container; review the mount evidence paths or warnings above."
     }
     # Boot is asynchronous. A bounded status wait does not re-run any migration.
     $Ready = $false
@@ -440,6 +441,8 @@ try {
     $ImageName=[string]$Model.services.hermes.image
     if ([string]::IsNullOrWhiteSpace($ImageName)) { throw "Compose Hermes image name is missing" }
     $BeforeMounts=@()
+    $MountEvidenceDirectory=New-MountEvidenceDirectory
+    Write-MountEvidence -Directory $MountEvidenceDirectory -Phase before -Inspect $Existing -ContainerName $Container
     if ($null -ne $Existing) {
         $BeforeMounts=@($Existing.Mounts)
         $Override=New-PreservedMountOverride -Mounts $BeforeMounts -Workspace ([string]$Existing.Config.WorkingDir) -ComposeModel $Model
@@ -474,7 +477,7 @@ try {
     }
     Write-Host "[RUN] Recreate with preserved mounts; pre-service boot migration is mandatory"
     Invoke-Native -FilePath "docker" -Arguments ($ComposeArgs+@("up","-d","--force-recreate","--no-build"))
-    Assert-PostUpdate -BeforeMounts $BeforeMounts -Name $Container -SkillsRoot $SkillsRoot
+    Assert-PostUpdate -BeforeMounts $BeforeMounts -Name $Container -SkillsRoot $SkillsRoot -MountEvidenceDirectory $MountEvidenceDirectory
     if (-not $SkipVerify) {
         & (Join-Path $RepoRoot "scripts/verify-container-runtime.ps1") -Container $Container
         if ($LASTEXITCODE -ne 0) { throw "Runtime verification failed; no automatic repair or data rollback" }

@@ -1,4 +1,4 @@
-# Pure mount-contract helpers; importing this file does not access Docker or .env.
+# Mount-contract and evidence helpers; importing this file does not access Docker or .env.
 Set-StrictMode -Version 2.0
 
 function ConvertTo-FlatMounts {
@@ -48,6 +48,93 @@ function Get-MountSignature {
         "{0}|{1}|{2}|{3}|{4}" -f $Mount.Type,$Source,$Mount.Destination,$Mount.RW,$Propagation
     }
     return (($Rows | Sort-Object) -join "`n")
+}
+
+function New-MountEvidenceDirectory {
+    param([string]$Root = $env:HERMES_DEVKIT_UPDATE_HISTORY_ROOT)
+    try {
+        if ([string]::IsNullOrWhiteSpace($Root)) {
+            $LocalData = [Environment]::GetFolderPath('LocalApplicationData')
+            if ([string]::IsNullOrWhiteSpace($LocalData)) { throw 'Local application data directory is unavailable' }
+            $Root = Join-Path $LocalData 'HermesAgentDevKit/update-history'
+        }
+        if (-not [IO.Path]::IsPathRooted($Root)) { throw 'Mount evidence root must be an absolute path' }
+        if ([IO.Path]::DirectorySeparatorChar -eq '\' -and $Root -notmatch '^(?:[A-Za-z]:[\\/]|[\\/]{2}[^\\/]+[\\/][^\\/]+)') {
+            throw 'Mount evidence root must include a drive or UNC share'
+        }
+        $Root = [IO.Path]::GetFullPath($Root)
+        $Run = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ') + '-' + [Guid]::NewGuid().ToString('N')
+        $Directory = Join-Path $Root $Run
+        [void][IO.Directory]::CreateDirectory($Directory)
+        return $Directory
+    }
+    catch {
+        Write-Warning "Mount evidence directory could not be created ($($_.Exception.GetType().Name)); updater checks remain unchanged." -WarningAction Continue
+        return $null
+    }
+}
+
+function Write-MountEvidence {
+    param(
+        [string]$Directory,
+        [ValidateSet('before','after')][string]$Phase,
+        [AllowNull()][object]$Inspect,
+        [string]$ContainerName,
+        [object[]]$BeforeMounts = @()
+    )
+    if ([string]::IsNullOrWhiteSpace($Directory)) { return }
+    try {
+        $Mounts = @()
+        $ContainerId = ''
+        $ImageId = ''
+        if ($null -ne $Inspect) {
+            $Mounts = @($Inspect.Mounts)
+            if ($null -ne $Inspect.PSObject.Properties['Id']) { $ContainerId = [string]$Inspect.Id }
+            if ($null -ne $Inspect.PSObject.Properties['Image']) { $ImageId = [string]$Inspect.Image }
+        }
+        # Rebuild only mount fields. Never serialize Config.Env, labels or the Compose model.
+        $Records = New-Object System.Collections.ArrayList
+        foreach ($Mount in $Mounts) {
+            $VolumeName = if ($null -ne $Mount.PSObject.Properties['Name']) { [string]$Mount.Name } else { $null }
+            $Propagation = if ($null -ne $Mount.PSObject.Properties['Propagation']) { [string]$Mount.Propagation } else { '' }
+            [void]$Records.Add([ordered]@{
+                Type = [string]$Mount.Type; Name = $VolumeName; Source = [string]$Mount.Source
+                Destination = [string]$Mount.Destination; RW = [bool]$Mount.RW; Propagation = $Propagation
+            })
+        }
+        $Signature = Get-MountSignature $Mounts
+        $Snapshot = [ordered]@{
+            schema_version = 1; phase = $Phase; captured_at_utc = [DateTime]::UtcNow.ToString('o')
+            container_name = $ContainerName; container_id = $ContainerId; image_id = $ImageId
+            mounts = @($Records.ToArray()); signature = $Signature
+        }
+        if ($Phase -eq 'after') {
+            $BeforeSignature = Get-MountSignature $BeforeMounts
+            $BeforeRows = @()
+            $AfterRows = @()
+            if ($BeforeMounts.Count -gt 0) { $BeforeRows = @($BeforeSignature -split "`n") }
+            if ($Mounts.Count -gt 0) { $AfterRows = @($Signature -split "`n") }
+            $Snapshot.comparison = [ordered]@{
+                had_previous_mounts = ($BeforeMounts.Count -gt 0)
+                matches = ($BeforeSignature -ceq $Signature)
+                before_signature = $BeforeSignature
+                before_only = @($BeforeRows | Where-Object { $AfterRows -cnotcontains $_ })
+                after_only = @($AfterRows | Where-Object { $BeforeRows -cnotcontains $_ })
+            }
+        }
+        $Path = Join-Path $Directory ($Phase + '.json')
+        $Pending = $Path + '.tmp'
+        [IO.File]::WriteAllText($Pending, (ConvertTo-Json -InputObject $Snapshot -Depth 12), (New-Object Text.UTF8Encoding($false)))
+        [IO.File]::Move($Pending, $Path)
+        Write-Host "[INFO] Mount evidence ($Phase) -> $Path"
+        if ($Phase -eq 'after' -and $BeforeMounts.Count -gt 0 -and -not $Snapshot.comparison.matches) {
+            foreach ($Row in $Snapshot.comparison.before_only) { Write-Host "[MOUNT BEFORE ONLY] $Row" }
+            foreach ($Row in $Snapshot.comparison.after_only) { Write-Host "[MOUNT AFTER ONLY] $Row" }
+        }
+    }
+    catch {
+        Write-Warning "Mount evidence ($Phase) could not be saved in $Directory ($($_.Exception.GetType().Name)); updater checks remain unchanged." -WarningAction Continue
+    }
 }
 
 function New-PreservedMountOverride {
