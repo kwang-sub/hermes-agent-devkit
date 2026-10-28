@@ -18,6 +18,14 @@ RUN python3 /tmp/patch_hermes_tui_semantic_input.py --self-test \
     && python3 /tmp/patch_hermes_tui_semantic_input.py --check-only --search-root /opt/hermes \
     && rm /tmp/patch_hermes_tui_semantic_input.py
 
+# Opt-in Lite change approval reuses native Clarify choices and free text.
+# Validate actual CLI handlers and the Gateway wire path before shipping the image.
+COPY scripts/devkit_approval_ui.py scripts/patch_hermes_approval_ui.py scripts/check_hermes_approval_ui.py /tmp/
+RUN /opt/hermes/.venv/bin/python /tmp/patch_hermes_approval_ui.py --hermes-root /opt/hermes \
+    && /opt/hermes/.venv/bin/python /tmp/patch_hermes_approval_ui.py --hermes-root /opt/hermes --check-only \
+    && /opt/hermes/.venv/bin/python /tmp/check_hermes_approval_ui.py --hermes-root /opt/hermes \
+    && rm /tmp/devkit_approval_ui.py /tmp/patch_hermes_approval_ui.py /tmp/check_hermes_approval_ui.py
+
 # Keep every skill directly invokable and visible to runtime/management, but allow
 # DevKit internal skills to opt out of user input slash suggestions.
 COPY scripts/patch_hermes_skill_slash_suggest.py /tmp/patch_hermes_skill_slash_suggest.py
