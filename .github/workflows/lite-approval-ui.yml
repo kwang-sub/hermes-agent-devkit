@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: NousResearch/hermes-agent
-          ref: bf0203a7
+          ref: bf0203a794a07aac3ff764972ab9087baa4e4f4e
           path: upstream-hermes
           persist-credentials: false
       - name: Capture exact source fixtures for UI contract development
