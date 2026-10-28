@@ -7,7 +7,7 @@ platforms: [linux]
 metadata:
   hermes:
     tags: [dev, lite, review, self-review, code-quality, regression, verification]
-    related_skills: [dev-java-guidelines, dev-spring-guidelines, dev-spring-test, dev-frontend-test, dev-official-docs-context]
+    related_skills: [dev-project-pattern, dev-java-guidelines, dev-spring-guidelines, dev-spring-test, dev-frontend-test, dev-official-docs-context]
     requires_tools: [terminal]
 ---
 
@@ -43,3 +43,12 @@ metadata:
 - 테스트: 실제 실행한 command, PASS/FAIL, 미실행 이유
 - 잔여 위험: 추가 수동/독립 검증이 필요한 내용
 - 권장 후속 작업: 사용자 요청이 있는 경우에만 반영
+
+## 변경 범위별 Lite 품질 판정
+- 현재 요구사항과 실제 diff를 대조해 P0(보안·데이터 손실·계약 파괴), P1(동작/회귀/트랜잭션 실패), 기타 개선을 구분한다. 프로젝트 규칙을 우선하며 근거 없는 스타일 취향으로 BLOCK하지 않는다.
+- Java/JPA: 실제 JDK 문법 호환, Optional·mutable entity·N+1·반복 I/O, 예외 처리·동시성·트랜잭션을 확인한다. 변경한 코드의 운영 로깅 문구는 영어다.
+- Spring: Controller/Service/DTO/Validation/Error Contract와 책임 혼재, 구조적 변경을 확인한다. DB schema/API는 기존 소비자·데이터와의 호환성을 검증하고 변경 범위에 맞춰 후속 점검한다.
+- Frontend: 기존 디자인 Reference/컴포넌트·반응형·접근성·API 계약을 대조한다. 실제 UI/browser 영향을 근거로 검증을 선택하며 일괄 Screenshot/Package Build 강제 금지.
+- 검증은 `/opt/data/shared/references/verification-level-policy.md`의 위험별 `STATIC_COMPILE / TARGETED_TEST / PACKAGE_BUILD`를 기준으로 선택한다. 실제 프로젝트 기존 검증 명령을 우선한다.
+- Maven/Gradle 검증은 `/workspace/hermes-agent-devkit/scripts/verification/`의 역할 독립 캐시 helper를 사용할 수 있다. `--scope-path` 변경, 테스트 명령·코드·툴체인 변경, 외부 상태 의존 시 과거 PASS를 그대로 믿지 않는다.
+- 검증 명령/결과/미실행 사유, 잔여 위험을 기록한다. 자체 검토를 독립 Reviewer 승인과 동일하게 주장하지 않는다.
