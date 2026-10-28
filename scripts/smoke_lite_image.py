@@ -11,11 +11,50 @@ import uuid
 ROOT=Path(__file__).resolve().parents[1]
 PYTHON='/opt/hermes/.venv/bin/python'
 
+
+def mount_snapshot(raw):
+    """Compare mount identity and every inspect field, not JSON/list ordering."""
+    mounts = json.loads(raw)
+    if not isinstance(mounts, list):
+        raise ValueError('Docker mounts must be a JSON list')
+    result = {}
+    for mount in mounts:
+        if not isinstance(mount, dict):
+            raise ValueError('Invalid Docker mount entry')
+        destination = mount.get('Destination')
+        if not isinstance(destination, str) or not destination:
+            raise ValueError('Docker mount destination is missing')
+        if destination in result:
+            raise ValueError('Duplicate Docker mount destination: ' + destination)
+        result[destination] = mount
+    return result
+
+
+def assert_mounts_preserved(before, after):
+    old, new = mount_snapshot(before), mount_snapshot(after)
+    changed = sorted(key for key in old.keys() | new.keys() if old.get(key) != new.get(key))
+    if changed:
+        # These are disposable CI mounts, never a user's Docker configuration.
+        details = {key: {'before': old.get(key), 'after': new.get(key)} for key in changed}
+        raise AssertionError('Docker mounts changed across restart: ' + json.dumps(details, sort_keys=True))
+    if before != after:
+        print('[PASS] Mount JSON ordering changed; all mount fields are unchanged', flush=True)
+
+
+def assert_plan_result(kind, result):
+    if kind == 'legacy':
+        assert result.returncode == 0, 'Read-only upgrade preflight failed: ' + result.stderr
+    else:
+        expected = 'Active Kanban tasks' if kind == 'active' else 'Active/archive profile conflict'
+        assert result.returncode != 0 and expected in result.stderr, result.stdout + result.stderr
+
+
 def run(args,*,code=None,check=True,timeout=180):
     p=subprocess.run(['docker',*args],input=code,text=True,capture_output=True,timeout=timeout)
     if check and p.returncode:
         raise RuntimeError('Docker fixture command failed (exit '+str(p.returncode)+'): '+str(args[:3])+'\n'+p.stdout[-3000:]+p.stderr[-5000:])
     return p
+
 
 def diagnostics(name):
     # These are synthetic fixtures only. Never inspect a user's credentials/config.
@@ -23,6 +62,7 @@ def diagnostics(name):
         result=run(args,check=False,timeout=20)
         print('[BOOT_DIAGNOSTIC] '+name+' '+args[0],flush=True)
         print(result.stdout[-12000:]+result.stderr[-12000:],flush=True)
+
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--image',required=True);a=parser.parse_args()
@@ -53,12 +93,9 @@ def main():
                               '--mount',data_mount+',readonly','-e','PYTHONDONTWRITEBYTECODE=1',
                               '--entrypoint',PYTHON,a.image,'-','plan'],
                              code=(ROOT/'scripts/lite_default_profile.py').read_text(),check=False)
+                    assert_plan_result(kind, plan)
                     if kind=='legacy':
-                        assert plan.returncode==0, 'Read-only upgrade preflight failed: '+plan.stderr
                         print('[PASS] Read-only migration plan in the actual image',flush=True)
-                    else:
-                        expected='Active Kanban tasks' if kind=='active' else 'Profile archive collision'
-                        assert plan.returncode!=0 and expected in plan.stderr, plan.stdout+plan.stderr
                 run(['run','-d','--name',name,'--label','io.devkit.test='+tag,*mounts,
                      '-e','HERMES_KANBAN_DISPATCH_IN_GATEWAY=false','-e','HERMES_KANBAN_NOTIFY_ENABLED=false',
                      '-e','GATEWAY_MULTIPLEX_PROFILES=true',
@@ -94,7 +131,7 @@ def main():
                 run(['restart',name])
                 run(['exec','--user','hermes',name,PYTHON,'/opt/devkit/bin/devkit_gateway_readiness.py','--wait-seconds','90'])
                 run(['exec','-i','--user','hermes',name,PYTHON,'-','verify'],code=fixture)
-                assert before==run(['inspect','--format','{{json .Mounts}}',name]).stdout
+                assert_mounts_preserved(before, run(['inspect','--format','{{json .Mounts}}',name]).stdout)
                 assert (temp/'external/sentinel').read_text()=='readonly-external-data'
                 print('[PASS] Real boot, restart, no dispatcher, profile archive and data/mount retention:',kind,flush=True)
             print('[PASS] Lite image fresh/legacy/active/collision scenarios')

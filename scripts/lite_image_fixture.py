@@ -1,5 +1,6 @@
 """Executed ONLY inside disposable integration containers by smoke_lite_image.py."""
 from pathlib import Path
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -10,7 +11,18 @@ try: import hermes_yaml as yaml
 except ImportError: import yaml
 ROOT=Path('/opt/data')
 MARKER=ROOT/'devkit-ci-fixture.json'
-FILES=('auth.json','memories/MEMORY.md','state.db','sessions/history.txt','skills/custom-note/SKILL.md')
+FILES=('auth.json','memories/MEMORY.md','sessions/history.txt','skills/custom-note/SKILL.md')
+SESSION_ROWS=[('session-preserved',)]
+
+
+def verify_session_data(root):
+    """Allow upstream schema/WAL maintenance, never lost or changed fixture rows."""
+    uri=(root/'state.db').resolve().as_uri()+'?mode=ro'
+    with closing(sqlite3.connect(uri, uri=True, timeout=3)) as conn:
+        assert conn.execute('PRAGMA integrity_check').fetchall()==[('ok',)], 'Session DB integrity failed'
+        rows=conn.execute('SELECT value FROM keep ORDER BY value').fetchall()
+        assert rows==SESSION_ROWS, 'Session data changed: '+repr(rows)
+
 
 def seed(kind):
     if kind=='fresh':return
@@ -18,10 +30,12 @@ def seed(kind):
               'skills':{'external_dirs':['/opt/custom-skills/coder'],'auto_load':['dev-implement-plan']}}
     for rel in FILES:
         p=ROOT/rel;p.parent.mkdir(parents=True,exist_ok=True)
-        if rel=='state.db':
-            with sqlite3.connect(p) as c:c.execute('CREATE TABLE keep(value TEXT)');c.execute("INSERT INTO keep VALUES ('session-preserved')")
-        elif rel=='auth.json':p.write_text('{"lite_ci_only":true}')
+        if rel=='auth.json':p.write_text('{"lite_ci_only":true}')
         else:p.write_text('unchanged CI data: '+rel)
+    with closing(sqlite3.connect(ROOT/'state.db')) as conn:
+        conn.execute('CREATE TABLE keep(value TEXT)')
+        conn.executemany('INSERT INTO keep VALUES (?)', SESSION_ROWS)
+        conn.commit()
     for role in ('orchestrator','coder','reviewer'):
         home=ROOT/'profiles'/role;home.mkdir(parents=True)
         (home/'SOUL.md').write_text('Legacy role instruction preserved')
@@ -36,19 +50,19 @@ def seed(kind):
         p.write_text(json.dumps({'schema':2,'phase':'applied','before':before,'applied':applied}))
         # Use the installed upstream connection module to create the real schema.
         from hermes_cli.kanban_db_connect import connect
-        conn=connect()
-        path=Path(conn.execute('PRAGMA database_list').fetchone()[2])
-        info=conn.execute('PRAGMA table_info(tasks)').fetchall()
-        values={'id':'t_lite_ci','title':'preserved note','body':'manual record','status':'ready'}
-        for col in info:
-            _,name,typ,notnull,default,pk=col
-            if notnull and default is None and name not in values:values[name]=0 if 'INT' in typ.upper() or 'REAL' in typ.upper() else ''
-        names=list(values)
-        conn.execute('INSERT INTO tasks ('+','.join('"'+n+'"' for n in names)+') VALUES ('+','.join('?' for _ in names)+')',[values[n] for n in names])
-        conn.commit();conn.close()
+        with closing(connect()) as conn:
+            info=conn.execute('PRAGMA table_info(tasks)').fetchall()
+            values={'id':'t_lite_ci','title':'preserved note','body':'manual record','status':'ready'}
+            for col in info:
+                _,name,typ,notnull,default,pk=col
+                if notnull and default is None and name not in values:values[name]=0 if 'INT' in typ.upper() or 'REAL' in typ.upper() else ''
+            names=list(values)
+            conn.execute('INSERT INTO tasks ('+','.join('"'+n+'"' for n in names)+') VALUES ('+','.join('?' for _ in names)+')',[values[n] for n in names])
+            conn.commit()
     elif kind=='active':
-        with sqlite3.connect(ROOT/'kanban.db') as c:
-            c.execute('CREATE TABLE tasks(status TEXT)');c.execute("INSERT INTO tasks VALUES ('running')")
+        with closing(sqlite3.connect(ROOT/'kanban.db')) as conn:
+            conn.execute('CREATE TABLE tasks(status TEXT)');conn.execute("INSERT INTO tasks VALUES ('running')")
+            conn.commit()
     elif kind=='collision':(ROOT/'devkit-lite/legacy-profiles/coder').mkdir(parents=True)
     (ROOT/'config.yaml').write_text(yaml.safe_dump(original))
     hashes={rel:hashlib.sha256((ROOT/rel).read_bytes()).hexdigest() for rel in FILES}
@@ -58,22 +72,30 @@ def seed(kind):
         os.chown(base,user.pw_uid,user.pw_gid)
         for name in files:os.chown(Path(base)/name,user.pw_uid,user.pw_gid)
 
+
 def verify(blocked=False):
     if not MARKER.exists():return
     data=json.loads(MARKER.read_text())
     for rel,expected in data['hashes'].items():assert hashlib.sha256((ROOT/rel).read_bytes()).hexdigest()==expected,rel
+    verify_session_data(ROOT)
     config=yaml.safe_load((ROOT/'config.yaml').read_text())
+    journal=ROOT/'devkit-lite/migration-state.json'
     if blocked:
         assert config==data['original'];assert (ROOT/'profiles/coder/SOUL.md').is_file()
-        assert not (ROOT/'devkit-lite/transition.json').exists()
+        assert not journal.exists(), 'Blocked migration wrote its journal'
         return
     assert config['custom']==data['original']['custom']
+    assert json.loads(journal.read_text())['phase']=='applied', 'Migration journal is not applied'
     for role in ('orchestrator','coder','reviewer'):
         assert not (ROOT/'profiles'/role).exists()
         assert (ROOT/'devkit-lite/legacy-profiles'/role/'SOUL.md').read_text()=='Legacy role instruction preserved'
     from hermes_cli.kanban_db_connect import connect
-    conn=connect();row=conn.execute("SELECT status,body FROM tasks WHERE id='t_lite_ci'").fetchone();conn.close()
+    with closing(connect()) as conn:
+        row=conn.execute("SELECT status,body FROM tasks WHERE id='t_lite_ci'").fetchone()
     assert tuple(row)==('ready','manual record'),row
-    print('[PASS] synthetic OAuth/memory/sessions/custom-skill bytes and Kanban card preserved')
-if sys.argv[1]=='seed':seed(sys.argv[2])
-else:verify(sys.argv[1]=='verify-blocked')
+    print('[PASS] Synthetic auth/memory/history/custom-skill bytes, session rows and Kanban card preserved')
+
+
+if __name__=='__main__':
+    if sys.argv[1]=='seed':seed(sys.argv[2])
+    else:verify(sys.argv[1]=='verify-blocked')
