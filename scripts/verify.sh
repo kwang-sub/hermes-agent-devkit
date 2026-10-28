@@ -10,7 +10,6 @@ for helper in patch_hermes_tui_semantic_input patch_hermes_skill_slash_suggest p
 done
 bash -n scripts/hermes-java
 bash -n scripts/hermes-maven
-bash -n updatekit_lite.sh
 sh -n docker/cont-init.d/018-devkit-lite-init
 sh -n docker/cont-init.d/019-devkit-kanban-notifier-policy
 python3 scripts/run_regression_tests.py

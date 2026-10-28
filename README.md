@@ -84,7 +84,9 @@ docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-de
 
 빌드 실패 시 기존 컨테이너를 교체하지 않는다. 전환/부팅 오류가 발생한 뒤 반복 재생성으로 덮지 않는다. 정지 이후 재검증에서 동시 작업을 발견하면 기존 컨테이너는 정지 상태로 보존되며 원인을 확인해야 한다. `-SkipVerify`도 mount/default 안전 검사는 생략하지 못한다. `-SkipProfileInit`은 폐기되어 오류로 종료한다. `-NoRepair`는 호환 인수이며 자동 repair는 사용하지 않는다.
 
-`updatekit_lite.ps1` / `updatekit_lite.sh`는 같은 updater로 연결하는 호환 진입점이다. `-Mode standard`는 더 이상 복원 동작을 실행하지 않는다. Git 모드 전환이나 Standard 재생성 경로는 없다.
+루트에서 실행할 PowerShell 스크립트는 `update-devkit.ps1` 하나만 제공한다. 과거 `updatekit_lite.ps1` / `updatekit_lite.sh` 호환 진입점은 제거했다. Git 모드 전환이나 Standard 재생성 경로는 없다.
+
+기존 이미지가 새 빌드 후 Docker 로컬 이미지 저장소에서 사라져도 정상 이관 검사를 계속할 수 있도록, 빌드 전에는 사용 가능한 로컬 이미지를 사용하고 빌드 후·정지 후에는 **새로 빌드한 이미지 ID**로 고정해 사전 검사를 수행한다. 빌드 전 사용 가능한 이미지가 없을 때에는 빌드 후 검사를 필수로 수행하며, 기존 컨테이너는 사전 검사 성공 전에 정지하지 않는다.
 
 ## 보존과 복구
 
@@ -103,8 +105,9 @@ docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-de
 상태 확인은 읽기 전용이다:
 
 ```powershell
-.\init-lite.ps1 -Mode status
-.\init-lite.ps1 -Mode plan    # 실행 전 검사만; 파일/프로필 변경 없음
+.\scripts\init-lite.ps1 -Mode status
+# 내부 진단 시에만 사용: 사용할 Docker 이미지 명시 필요
+.\scripts\init-lite.ps1 -Mode plan -ImageReference 'hermes-dev:0.1.0'
 .\scripts\verify-container-runtime.ps1
 ```
 

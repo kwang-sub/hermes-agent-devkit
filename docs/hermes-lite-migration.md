@@ -20,7 +20,7 @@ Shared 데이터·API·Infrastructure의 설계와 실행 권한은 유지하되
 
 `update-devkit.ps1` 하나가 설치/업데이트를 담당한다. 기존 컨테이너의 실제 mount를 보존하며 read-only 계획을 통과한 뒤 새 이미지를 사용한다. 이미지 빌드는 실행 컨테이너 정지 전에 완료된다. 전환 실패 후 재생성·재시도를 자동 반복하지 않는다.
 
-표준 전환 이후 `updatekit_lite.ps1 -Mode standard`로 복원하지 않는다. 보관된 이전 코드 버전과 `devkit-lite/backups/`는 명시적 운영 복구의 자료다. 프로필 archive를 복원하려면 먼저 서비스를 정지하고 동일 경로 충돌·이후 사용자 변경 여부를 검토해야 한다. archive/data volume을 제거해서 해결하지 않는다.
+표준 전환 이후 루트에는 `update-devkit.ps1`만 남긴다. `updatekit_lite.ps1` / `updatekit_lite.sh`와 루트 `init-lite.ps1`은 제거되며, 내부 읽기 전용 진단은 `scripts/init-lite.ps1`에서 수행한다. 빌드 전 존재하는 이미지가 불명확하거나 기존 이미지 ID가 삭제돼도 **빌드 후 새 이미지 ID를 고정하여** 마이그레이션 사전 검사를 수행한다. 전환 결과가 실패하면 자동 재시도하지 않는다. Standard 복원 명령은 제공하지 않는다. 보관된 이전 코드 버전과 `devkit-lite/backups/`는 명시적 운영 복구의 자료다. 프로필 archive를 복원하려면 먼저 서비스를 정지하고 동일 경로 충돌·이후 사용자 변경 여부를 검토해야 한다. archive/data volume을 제거해서 해결하지 않는다.
 
 ## 운영 확인
 
