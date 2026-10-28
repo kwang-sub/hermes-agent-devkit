@@ -1,0 +1,41 @@
+name: Lite approval UI contracts
+on:
+  push:
+    branches: [dev, "feat/**", "fix/**"]
+    paths:
+      - "scripts/*approval*"
+      - "custom-skills/lite/dev-lite-session/**"
+      - ".github/workflows/lite-approval-ui.yml"
+  pull_request:
+    paths:
+      - "scripts/*approval*"
+      - "custom-skills/lite/dev-lite-session/**"
+      - ".github/workflows/lite-approval-ui.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          ref: bf0203a7
+          path: upstream-hermes
+          persist-credentials: false
+      - name: Capture exact source fixtures for UI contract development
+        run: |
+          mkdir -p "$RUNNER_TEMP/approval-fixtures"
+          git archive HEAD > "$RUNNER_TEMP/approval-fixtures/devkit.tar"
+          git -C upstream-hermes rev-parse HEAD > "$RUNNER_TEMP/approval-fixtures/upstream-sha.txt"
+          git -C upstream-hermes archive HEAD tools/clarify_tool.py hermes_cli tui_gateway/server.py tools/clarify_gateway.py tests > "$RUNNER_TEMP/approval-fixtures/upstream.tar"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lite-approval-source-fixtures
+          path: ${{ runner.temp }}/approval-fixtures/
+          retention-days: 7
