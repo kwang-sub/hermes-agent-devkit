@@ -50,7 +50,7 @@ RUN python3 /tmp/patch_hermes_tirith_profile_guard.py --self-test \
 COPY scripts/patch_hermes_gateway_site_identity.py /tmp/patch_hermes_gateway_site_identity.py
 RUN python3 /tmp/patch_hermes_gateway_site_identity.py --self-test \
     && /opt/hermes/.venv/bin/python /tmp/patch_hermes_gateway_site_identity.py --hermes-root /opt/hermes \
-    && python3 /tmp/patch_hermes_gateway_site_identity.py --check-only --hermes-root /opt/hermes \
+    && /opt/hermes/.venv/bin/python /tmp/patch_hermes_gateway_site_identity.py --check-only --hermes-root /opt/hermes \
     && rm /tmp/patch_hermes_gateway_site_identity.py
 
 COPY --chmod=0755 scripts/devkit_gateway_readiness.py /opt/devkit/bin/devkit_gateway_readiness.py
