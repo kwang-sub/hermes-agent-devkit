@@ -46,6 +46,25 @@ class JvmDisplayNamePolicyTests(unittest.TestCase):
         for path in ('shared/references/coding-rules.md','custom-skills/lite/dev-lite-review/SKILL.md'):
             s=(ROOT/path).read_text();self.assertIn('jvm-test-display-name-policy.md',s);self.assertIn('@DisplayName',s)
 
+    def test_bundled_kotlin_reference_tests_have_explicit_korean_display_names(self):
+        """Check the four bounded sample classes, not arbitrary user repositories."""
+        folder = ROOT/'shared/references/samples/spring/kotlin/src/test/kotlin/com/example/samples'
+        total = 0
+        files = sorted(folder.glob('*Test.kt'))
+        self.assertEqual(len(files), 4)
+        for path in files:
+            content = path.read_text(encoding='utf-8')
+            with self.subTest(class_name=path.stem):
+                self.assertIn('import org.junit.jupiter.api.DisplayName', content)
+                self.assertRegex(content, r'@DisplayName\("[^"\n]*[가-힣][^"\n]*"\)\s*class\s+' + path.stem)
+                matches = re.findall(
+                    r'(?m)^\s*@Test\s*\n\s*@DisplayName\("[^"\n]*[가-힣][^"\n]*"\)\s*\n\s*fun\s+',
+                    content,
+                )
+                self.assertEqual(len(matches), len(re.findall(r'(?m)^\s*@Test\b', content)))
+                total += len(matches)
+        self.assertEqual(total, 22)
+
     def test_test_labels_do_not_override_english_logs_or_leak_secrets(self):
         for term in ('코드 운영 로그 영어 작성','password/token/PII','UTF-8','실제 테스트 실행 성공을 대신하지 않는다'):
             self.assertIn(term,self.policy)

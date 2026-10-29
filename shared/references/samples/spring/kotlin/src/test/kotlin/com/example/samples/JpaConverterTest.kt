@@ -3,14 +3,18 @@ package com.example.samples
 import jakarta.persistence.EntityManager
 import jakarta.persistence.PersistenceContext
 import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.transaction.annotation.Transactional
 
 @Transactional
+@DisplayName("JPA 암호화 컨버터 영속성 검증")
 class JpaConverterTest : SampleIntegrationSupport() {
     @PersistenceContext lateinit var entityManager: EntityManager
 
-    @Test fun `actual Hibernate converter injection persists ciphertext and reads plaintext`() {
+    @Test
+    @DisplayName("실제 Hibernate 컨버터 주입으로 암호문을 저장하고 평문을 조회한다")
+    fun `actual Hibernate converter injection persists ciphertext and reads plaintext`() {
         val record = SecretRecord(value = "private-fixture", label = "unchanged-label")
         entityManager.persist(record)
         entityManager.flush()
@@ -28,7 +32,9 @@ class JpaConverterTest : SampleIntegrationSupport() {
         assertEquals("private-fixture", entityManager.find(SecretRecord::class.java, record.id).value)
     }
 
-    @Test fun `null persistence and subsequent plaintext update round trip`() {
+    @Test
+    @DisplayName("null 저장 후 평문 갱신 값을 다시 조회할 수 있다")
+    fun `null persistence and subsequent plaintext update round trip`() {
         val record = SecretRecord(value = null)
         entityManager.persist(record)
         entityManager.flush()
