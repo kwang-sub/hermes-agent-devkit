@@ -1,7 +1,7 @@
 ---
 name: dev-git-init
-description: Git이 없는 작업공간에 로컬 Git(main)을 안전하게 초기화하고 Java·Node·Python·IDE .gitignore와 표준 최초 커밋을 승인 범위에서 생성한다.
-version: 0.1.0
+description: Git이 없는 작업공간에 로컬 Git(dev)을 안전하게 초기화하고 Java·Node·Python·IDE .gitignore와 표준 최초 커밋을 승인 범위에서 생성한다.
+version: 0.1.1
 author: local
 platforms: [linux]
 metadata:
@@ -17,7 +17,7 @@ metadata:
 
 ## 고정 규격
 
-- 새 로컬 브랜치: main (git init -b main).
+- 새 로컬 브랜치: dev (git init -b dev). 기존 Git 저장소의 브랜치를 임의 변경하지 않는다.
 - 최초 커밋 메시지: chore(init): initialize workspace.
 - 기본 .gitignore: 이 스킬의 templates/.gitignore. 운영 컨테이너에서는 /opt/custom-skills/lite/dev-git-init/templates/.gitignore.
 - 템플릿: Java/Kotlin, Gradle, Node.js/npm/pnpm/Yarn, Python, IntelliJ IDEA/PyCharm/WebStorm, VS Code, Eclipse, OS 및 대표적인 로컬 비밀정보.
@@ -37,7 +37,7 @@ metadata:
 
 1. 직전 확인한 작업 루트와 Git 부재 상태를 재조회한다. 다른 프로세스가 Git을 생성했거나 검토한 파일 목록이 달라졌다면 중단·재확인한다.
 2. .gitignore가 없을 때만 템플릿을 복사한다. 이미 있으면 줄바꿈/인코딩/주석/기존 규칙을 보존하며, 승인된 누락 항목만 보강한다. 기존 파일을 포맷하거나 덮어쓰지 않는다. dev-project-setup의 ensure_gitignore.py는 기존 저장소 보안 보강용으로 필요할 때만 사용하며 초기화 전 선행조건이 아니다.
-3. git -C "$WORKSPACE" init -b main 실행. 원격 연결이나 global Git 설정 변경은 하지 않는다.
+3. git -C "$WORKSPACE" init -b dev 실행. 원격 연결이나 global Git 설정 변경은 하지 않는다.
 4. git check-ignore -v, git status --short --untracked-files=all로 실제 포함·제외를 확인한다. 미리 승인한 경로만 git add -- <approved-relative-paths>로 스테이징한다. git add -A 또는 git add . 같은 일괄 추가는 하지 않는다.
 5. git diff --cached --name-only, git diff --cached --stat, git diff --cached --check로 실제 staged 파일 목록을 승인된 목록과 비교한다. 비밀정보·예상치 못한 파일·중첩 저장소 등 문제가 있으면 커밋을 중단하고 사용자에게 알린다.
 6. 최초 커밋까지 승인됐고 staged 파일이 검증됐을 때만 git -C "$WORKSPACE" commit -m "chore(init): initialize workspace" 실행. Git 작성자 이름/이메일이 없으면 중단한다. global config를 임의 설정하지 않는다.

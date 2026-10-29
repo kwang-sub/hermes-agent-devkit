@@ -25,7 +25,7 @@ class GitInitSkillTests(unittest.TestCase):
                 self.assertIn(term, self.skill)
 
     def test_branch_first_commit_and_scope(self):
-        for term in ("git init -b main", "chore(init): initialize workspace", "git add --",
+        for term in ("git init -b dev", "chore(init): initialize workspace", "git add --",
                      "git add -A", "일괄 추가는 하지 않는다", "git diff --cached",
                      "global config", "다른 Worktree"):
             with self.subTest(term=term):
@@ -39,6 +39,13 @@ class GitInitSkillTests(unittest.TestCase):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, rules)
 
+    def test_branch_policy_excludes_main(self):
+        self.assertIn('새 로컬 브랜치: dev', self.skill)
+        self.assertIn('git -C "$WORKSPACE" init -b dev', self.skill)
+        self.assertNotIn('git init -b main', self.skill)
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("기본 브랜치는 `dev`", readme)
+
     def test_language_and_ide_sections(self):
         for term in ("Java / Kotlin", "Node.js", "Python", "IntelliJ IDEA",
                      "PyCharm", "VS Code", "Eclipse"):
@@ -49,8 +56,12 @@ class GitInitSkillTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="dev-git-init-") as tmp:
             root = Path(tmp)
             (root / ".gitignore").write_text(self.template, encoding="utf-8")
-            subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True,
+            subprocess.run(["git", "init", "-q", "-b", "dev"], cwd=root, check=True,
                            capture_output=True)
+
+            head = subprocess.run(["git", "symbolic-ref", "--short", "HEAD"], cwd=root,
+                                  check=True, capture_output=True, text=True)
+            self.assertEqual(head.stdout.strip(), "dev")
 
             def ignored(path):
                 result = subprocess.run(["git", "check-ignore", "-q", "--no-index", path],
