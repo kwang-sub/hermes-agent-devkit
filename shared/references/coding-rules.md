@@ -326,6 +326,8 @@ serialization / persistence compatibility
 
 프로젝트에 test framework가 존재하면 기존 test style을 따른다.
 
+Java/Kotlin에서 신규·변경 JUnit 테스트의 표시명은 한글 필수다. `jvm-test-display-name-policy.md`에 따라 Jupiter의 명시적 `@DisplayName("한글 설명")`을 작성하며, 기존 영어 표시명 관례만으로 생략하지 않는다. 기존 테스트 엔진·메서드명은 유지하고 JUnit 4 미지원은 대체 방식과 함께 보고한다. 한글 테스트 표시명은 운영 로그 영어 작성 규칙과 별개다.
+
 실제로 실행하지 않은 검증을 PASS라고 보고하지 않는다.
 
 동일 scope의 이미 유효한 PASS를 단순 확신 확보 목적으로 반복하지 않는다. 구현 변경으로 기존 PASS의 scope가 달라졌다면 fresh verification을 수행한다.

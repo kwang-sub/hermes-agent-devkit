@@ -1,7 +1,7 @@
 ---
 name: dev-java-guidelines
 description: Java 구현에서 대상 프로젝트의 target Java와 기존 convention을 우선하고 Oracle/OpenJDK 공식 문서 기준의 Stable 언어 기능·Optional·collection·동시성·문서화 규칙을 적용하는 공통 capability skill.
-version: 0.2.0
+version: 0.3.0
 author: local
 platforms: [linux]
 metadata:
@@ -217,6 +217,10 @@ catch Exception / swallowed cause
 virtual thread의 CPU-bound 오용 또는 runtime context 영향
 unrelated Java/JDK/Gradle/Maven/framework upgrade
 ```
+
+## JUnit 한글 표시명 — 필수
+
+Java/Kotlin의 신규·변경 JUnit 테스트는 `/opt/data/shared/references/jvm-test-display-name-policy.md`를 적용한다. JUnit Jupiter 테스트 메서드와 신규 클래스/그룹에는 `@DisplayName("한글 설명")`을 반드시 작성한다. 기존 메서드·패키지·테스트 엔진은 유지하며 영어 표시명 관례만으로 생략하지 않는다. Parameterized/Repeated/Dynamic 테스트의 표시명과 JUnit 4 미지원 처리도 이 단일 정책을 따른다. Kotlin backtick 이름만으로 대체하지 않고, 무관한 테스트 일괄 변경이나 의존성 업그레이드는 하지 않는다.
 
 ## Verification / Evidence
 
