@@ -1,0 +1,43 @@
+name: Approval native rendering
+on:
+  push:
+    branches: [dev, 'fix/**', 'feat/**']
+    paths:
+      - 'scripts/*approval*'
+      - 'scripts/*display_name*'
+      - '.github/workflows/approval-rendering.yml'
+  pull_request:
+    paths:
+      - 'scripts/*approval*'
+      - 'scripts/*display_name*'
+      - '.github/workflows/approval-rendering.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-rendering:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          ref: bf0203a794a07aac3ff764972ab9087baa4e4f4e
+          path: upstream-hermes
+          persist-credentials: false
+      - name: Baseline approval contracts
+        run: python scripts/test_approval_ui.py
+      - name: Capture exact native source for rendering regression
+        run: |
+          mkdir -p "$RUNNER_TEMP/approval-rendering"
+          git archive HEAD > "$RUNNER_TEMP/approval-rendering/devkit.tar"
+          git -C upstream-hermes rev-parse HEAD > "$RUNNER_TEMP/approval-rendering/upstream-sha.txt"
+          git -C upstream-hermes archive HEAD cli.py hermes_cli tools/clarify_tool.py tools/clarify_batch.py gateway/session_clarify_batch.py tui_gateway/server.py tui_gateway/contracts/server_requests.py > "$RUNNER_TEMP/approval-rendering/upstream.tar"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: approval-rendering-source
+          path: ${{ runner.temp }}/approval-rendering/
+          retention-days: 7
