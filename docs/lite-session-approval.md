@@ -107,3 +107,11 @@ PR 병합 후 기존 `update-devkit.ps1` 경로로 최신화한다. 새 Hermes �
 `scripts/test_approval_ui.py`는 어댑터·패치 불변식과 정책 연결을 검사한다. `scripts/check_hermes_approval_ui.py --hermes-root <path>`는 실제 upstream 소스의 normalizer/result, CLI 렌더러·키 처리 함수, Gateway 왕복 변환을 실행하며 prompt_toolkit 입력 파이프도 구동한다. 모델/알림 등 비관련 계층은 테스트 대역이다. pinned upstream과 최신 이미지에서 검증하되 실제 사용자 Windows Terminal의 IME·전체 라이브 모델 세션까지 실행했다고 주장하지 않는다.
 
 지원 UI는 기본 Python CLI다. Desktop/Web/메신저는 이번 변경 대상이 아니며 출처 메타데이터가 없는 승인 응답은 fail-closed 처리한다. 추가된 것은 UI 질문·결과 어댑터이지, 쓰기 도구를 감시하는 승인 실행 엔진이나 영속 상태 저장소가 아니다. 기존 위험 명령 확인을 우회하지 않는다.
+
+## 승인 본문의 기존 채팅 렌더링
+
+계획·스킬을 담은 중간 assistant 응답은 일반 상태 로그 `_emit_print` 대신 기존 `_chat_print_response_panel`로 표시한다. 별도의 흰색 텍스트·고정 색상 박스를 만들지 않으며 현재 skin, light-mode remapping, classic/modern layout, `final_response_markdown` 설정을 그대로 따른다. 두 챕터는 한 메시지에 작성하고 코드/인용 예시는 승인 본문으로 판정하지 않는다.
+
+렌더링용 view는 live turn/stream 상태를 바꾸지 않는다. 실제로 이미 표시된 스트리밍 본문만 중복 생략하고, streaming을 끈 viewer에서는 upstream의 already_streamed 플래그만으로 내용을 숨기지 않는다. 일반 진행 메시지와 headless 실행 경로는 유지한다. 선택/보류/즉시 입력의 승인 결과·Gateway 계약은 변경하지 않는다.
+
+`scripts/check_hermes_approval_render.py --hermes-root <path>`는 실제 upstream Gateway의 중간 응답 전달과 기본 답변 렌더러를 연결하여 classic/modern, Markdown/raw/strip, 테마·라이트 모드 및 좁은 폭 출력을 비교한다. 모델·터미널 IME·사용자 실행 세션은 별도 수동 검증 대상이다.

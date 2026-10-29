@@ -1,7 +1,7 @@
 ---
 name: dev-spring-test
 description: Spring/Spring Data JPA 기능의 테스트를 프로젝트 기존 테스트 프레임워크와 스타일에 맞춰 작성하고 변경 위험에 비례한 최소 검증을 수행한다.
-version: 0.2.0
+version: 0.3.0
 author: local
 platforms: [linux]
 metadata:
@@ -78,6 +78,10 @@ Converter·암호화·예외·OpenAPI 샘플이 실제 사용된 경우에만 `/
 - 문서: 실제 OpenAPI 생성과 parser 검증, 기존 response/ref/schema/examples 보존, idempotence. source annotation만 보고 문서 PASS 선언 금지.
 
 샘플은 전체 복사나 새 테스트 의존성 자동 추가의 근거가 아니다. 실행 명령·대상 버전·실패/미실행 사유를 구분하고 실제 운영 DB/인증/키 관리까지 검증됐다고 확대하지 않는다.
+
+## JUnit 한글 표시명 — 필수
+
+Java/Kotlin의 신규·변경 JUnit 테스트는 `/opt/data/shared/references/jvm-test-display-name-policy.md`를 적용한다. JUnit Jupiter 테스트 메서드와 신규 클래스/그룹에는 `@DisplayName("한글 설명")`을 반드시 작성한다. 기존 메서드·패키지·테스트 엔진은 유지하며 영어 표시명 관례만으로 생략하지 않는다. Parameterized/Repeated/Dynamic 테스트의 표시명과 JUnit 4 미지원 처리도 이 단일 정책을 따른다. Kotlin backtick 이름만으로 대체하지 않고, 무관한 테스트 일괄 변경이나 의존성 업그레이드는 하지 않는다.
 
 ## Verification / Evidence
 

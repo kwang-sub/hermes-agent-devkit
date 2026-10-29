@@ -1,0 +1,71 @@
+name: Approval native rendering
+on:
+  push:
+    branches: [dev, 'fix/**', 'feat/**']
+    paths:
+      - 'scripts/*approval*'
+      - 'scripts/*display_name*'
+      - 'custom-skills/lite/dev-lite-session/**'
+      - 'custom-skills/shared/dev-java-guidelines/**'
+      - 'custom-skills/shared/dev-kotlin-guidelines/**'
+      - 'custom-skills/shared/dev-spring-test/**'
+      - 'shared/references/jvm-test-display-name-policy.md'
+      - '.github/workflows/approval-rendering.yml'
+  pull_request:
+    paths:
+      - 'scripts/*approval*'
+      - 'scripts/*display_name*'
+      - 'custom-skills/lite/dev-lite-session/**'
+      - 'custom-skills/shared/dev-java-guidelines/**'
+      - 'custom-skills/shared/dev-kotlin-guidelines/**'
+      - 'custom-skills/shared/dev-spring-test/**'
+      - 'shared/references/jvm-test-display-name-policy.md'
+      - '.github/workflows/approval-rendering.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-rendering:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        upstream: [bf0203a794a07aac3ff764972ab9087baa4e4f4e, main]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          ref: ${{ matrix.upstream }}
+          path: upstream-hermes
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'rich>=13,<15' 'prompt-toolkit>=3,<4' 'pydantic>=2,<3'
+      - name: Policy and offline rendering contracts
+        run: |
+          python scripts/test_approval_render.py
+          python scripts/test_jvm_display_name_policy.py
+      - name: Compare real native rendering and retain approval controls
+        run: |
+          set -o pipefail
+          git -C upstream-hermes rev-parse HEAD | tee "$RUNNER_TEMP/render-upstream-sha.txt"
+          python scripts/patch_hermes_tui_semantic_input.py --search-root upstream-hermes
+          python scripts/patch_hermes_approval_ui.py --hermes-root upstream-hermes
+          python scripts/patch_hermes_approval_render.py --hermes-root upstream-hermes
+          python scripts/patch_hermes_approval_render.py --hermes-root upstream-hermes --check-only
+          python scripts/check_hermes_approval_render.py --hermes-root upstream-hermes 2>&1 | tee "$RUNNER_TEMP/native-render-results.txt"
+          python scripts/check_hermes_approval_ui.py --hermes-root upstream-hermes 2>&1 | tee "$RUNNER_TEMP/native-choice-results.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-rendering-${{ matrix.upstream }}
+          path: |
+            ${{ runner.temp }}/render-upstream-sha.txt
+            ${{ runner.temp }}/native-render-results.txt
+            ${{ runner.temp }}/native-choice-results.txt
+          retention-days: 7
