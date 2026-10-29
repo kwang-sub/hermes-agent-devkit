@@ -1,7 +1,7 @@
 ---
 name: dev-kotlin-guidelines
 description: Kotlin/JVM 구현에서 프로젝트 Kotlin 버전과 기존 convention을 우선하면서 null-safety, immutable modeling, data/value/sealed class, annotation target, coroutine, KSP/kapt, Spring/JPA interop을 안전하게 적용하는 공통 capability skill.
-version: 0.1.0
+version: 0.1.1
 author: local
 platforms: [linux]
 metadata:
@@ -304,3 +304,9 @@ Java interop boundary
 Intentional deviations
 Verification
 ```
+
+## JUnit 한글 표시 이름 — 필수
+
+Java/Kotlin에서 신규·수정하는 JUnit Jupiter 테스트 메서드에는 **한글 `@DisplayName`을 반드시 작성**한다. 조건과 기대 결과를 설명하며 메서드명·패키지·fixture는 프로젝트 기존 관례를 유지한다. 구현·자체 검토 시 `/opt/data/shared/references/junit-display-name-policy.md`의 `JUNIT_KOREAN_DISPLAY_NAME_V1`을 적용한다. Kotlin 백틱 메서드명이나 DisplayNameGeneration은 명시적 한글 DisplayName의 대체가 아니다.
+
+파라미터화·반복·동적 테스트, 새 테스트 클래스의 표시 이름과 JUnit 4 미지원 경계도 해당 공통 규칙을 따른다. 의존성을 자동 변경하거나 무관한 기존 테스트를 일괄 수정하지 않는다. 운영 로그 영어 규칙은 유지한다.

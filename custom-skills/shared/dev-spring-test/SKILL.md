@@ -1,7 +1,7 @@
 ---
 name: dev-spring-test
 description: Spring/Spring Data JPA 기능의 테스트를 프로젝트 기존 테스트 프레임워크와 스타일에 맞춰 작성하고 변경 위험에 비례한 최소 검증을 수행한다.
-version: 0.2.0
+version: 0.2.1
 author: local
 platforms: [linux]
 metadata:
@@ -97,3 +97,9 @@ Residual Risk
 - 테스트를 통과시키기 위해 production behavior를 요구사항 밖으로 변경하지 않는다.
 - flaky test를 삭제/skip/disable해서 성공으로 만들지 않는다.
 - 기존 테스트 실패가 Task 변경과 무관하면 사실과 영향 범위를 구분해 보고한다.
+
+## JUnit 한글 표시 이름 — 필수
+
+Java/Kotlin에서 신규·수정하는 JUnit Jupiter 테스트 메서드에는 **한글 `@DisplayName`을 반드시 작성**한다. 조건과 기대 결과를 설명하며 메서드명·패키지·fixture는 프로젝트 기존 관례를 유지한다. 구현·자체 검토 시 `/opt/data/shared/references/junit-display-name-policy.md`의 `JUNIT_KOREAN_DISPLAY_NAME_V1`을 적용한다. Kotlin 백틱 메서드명이나 DisplayNameGeneration은 명시적 한글 DisplayName의 대체가 아니다.
+
+파라미터화·반복·동적 테스트, 새 테스트 클래스의 표시 이름과 JUnit 4 미지원 경계도 해당 공통 규칙을 따른다. 의존성을 자동 변경하거나 무관한 기존 테스트를 일괄 수정하지 않는다. 운영 로그 영어 규칙은 유지한다.

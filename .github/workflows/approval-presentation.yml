@@ -1,0 +1,49 @@
+name: Native approval presentation
+on:
+  push:
+    branches: [dev, 'feat/**', 'fix/**']
+    paths: ['scripts/*approval*', 'Dockerfile', '.github/workflows/approval-presentation.yml']
+  pull_request:
+    paths: ['scripts/*approval*', 'Dockerfile', '.github/workflows/approval-presentation.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        upstream: ['bf0203a794a07aac3ff764972ab9087baa4e4f4e', main]
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          ref: ${{ matrix.upstream }}
+          path: upstream-hermes
+          persist-credentials: false
+      - run: python -m pip install rich prompt_toolkit PyYAML
+      - name: Native chat parity and unchanged approval actions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/presentation-evidence"
+          git -C upstream-hermes rev-parse HEAD > "$RUNNER_TEMP/presentation-evidence/upstream-sha.txt"
+          python scripts/patch_hermes_tui_semantic_input.py --search-root upstream-hermes
+          python scripts/patch_hermes_approval_ui.py --hermes-root upstream-hermes
+          python scripts/patch_hermes_approval_presentation.py --hermes-root upstream-hermes
+          python scripts/patch_hermes_approval_presentation.py --hermes-root upstream-hermes --check-only
+          export PYTHONPATH="$PWD/upstream-hermes:$PWD/scripts${PYTHONPATH:+:$PYTHONPATH}"
+          python scripts/check_hermes_approval_ui.py --hermes-root upstream-hermes 2>&1 | tee "$RUNNER_TEMP/presentation-evidence/approval-results.txt"
+          python scripts/check_hermes_approval_presentation.py --hermes-root upstream-hermes 2>&1 | tee "$RUNNER_TEMP/presentation-evidence/presentation-results.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: approval-presentation-${{ matrix.upstream }}
+          path: ${{ runner.temp }}/presentation-evidence/
+          retention-days: 7
