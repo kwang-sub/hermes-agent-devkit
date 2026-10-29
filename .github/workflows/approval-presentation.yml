@@ -27,13 +27,14 @@ jobs:
           ref: ${{ matrix.upstream }}
           path: upstream-hermes
           persist-credentials: false
-      - run: python -m pip install rich prompt_toolkit PyYAML
+      - run: python -m pip install rich prompt_toolkit PyYAML "pydantic>=2,<3"
       - name: Native chat parity and unchanged approval actions
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/presentation-evidence"
           git -C upstream-hermes rev-parse HEAD > "$RUNNER_TEMP/presentation-evidence/upstream-sha.txt"
+          git ls-files -s > "$RUNNER_TEMP/presentation-evidence/devkit-source-index.txt"
           python scripts/patch_hermes_tui_semantic_input.py --search-root upstream-hermes
           python scripts/patch_hermes_approval_ui.py --hermes-root upstream-hermes
           python scripts/patch_hermes_approval_presentation.py --hermes-root upstream-hermes
