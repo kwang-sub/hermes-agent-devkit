@@ -7,6 +7,7 @@ import com.example.samples.security.ApiAuthenticationEntryPoint
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.swagger.v3.parser.OpenAPIV3Parser
 import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
@@ -20,21 +21,28 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
 import java.nio.file.Files
 import java.nio.file.Path
 
+@DisplayName("오류 응답과 OpenAPI 통합 검증")
 class ErrorAndOpenApiIntegrationTest : SampleIntegrationSupport() {
     @Autowired lateinit var mvc: MockMvc
     @Autowired lateinit var mapper: ObjectMapper
 
-    @Test fun `registry codes are unique`() {
+    @Test
+    @DisplayName("등록된 업무 오류 코드는 서로 중복되지 않는다")
+    fun `registry codes are unique`() {
         assertEquals(ErrorCode.values().size, ErrorCode.values().map { it.code }.toSet().size)
     }
 
-    @Test fun `business error HTTP status and body agree`() {
+    @Test
+    @DisplayName("업무 오류의 HTTP 상태와 응답 본문이 일치한다")
+    fun `business error HTTP status and body agree`() {
         mvc.perform(get("/api/sample/resources/999"))
             .andExpect(status().isNotFound).andExpect(jsonPath("$.code").value("RES_001"))
             .andExpect(jsonPath("$.status").value(404)).andExpect(jsonPath("$.path").value("/api/sample/resources/999"))
     }
 
-    @Test fun `validation and malformed JSON return safe 400 bodies`() {
+    @Test
+    @DisplayName("검증 실패와 잘못된 JSON에 안전한 400 응답을 반환한다")
+    fun `validation and malformed JSON return safe 400 bodies`() {
         mvc.perform(post("/api/sample/resources").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"\"}"))
             .andExpect(status().isBadRequest).andExpect(jsonPath("$.code").value("REQ_002"))
             .andExpect(jsonPath("$.fieldErrors[0].field").value("name"))
@@ -46,20 +54,26 @@ class ErrorAndOpenApiIntegrationTest : SampleIntegrationSupport() {
         assertFalse(result.contains("not-json-secret-fixture"))
     }
 
-    @Test fun `framework method rejection remains 405 with Allow header`() {
+    @Test
+    @DisplayName("지원하지 않는 메서드는 Allow 헤더를 포함한 405 응답을 유지한다")
+    fun `framework method rejection remains 405 with Allow header`() {
         mvc.perform(put("/api/sample/resources/1"))
             .andExpect(status().isMethodNotAllowed).andExpect(header().exists("Allow"))
             .andExpect(jsonPath("$.status").value(405))
     }
 
-    @Test fun `unexpected failures do not expose the exception message`() {
+    @Test
+    @DisplayName("예상하지 못한 오류의 내부 예외 메시지를 노출하지 않는다")
+    fun `unexpected failures do not expose the exception message`() {
         val response = GlobalExceptionHandler().unexpected(IllegalStateException("database-password-fixture"), MockHttpServletRequest())
         assertEquals(500, response.statusCode.value())
         assertEquals(500, response.body!!.status)
         assertFalse(mapper.writeValueAsString(response.body).contains("database-password-fixture"))
     }
 
-    @Test fun `security filter adapters use the same 401 and 403 contracts`() {
+    @Test
+    @DisplayName("인증과 인가 처리기가 동일한 오류 규격으로 401과 403을 반환한다")
+    fun `security filter adapters use the same 401 and 403 contracts`() {
         val request = MockHttpServletRequest("GET", "/api/private")
         val unauthorized = MockHttpServletResponse()
         ApiAuthenticationEntryPoint(mapper).commence(request, unauthorized, BadCredentialsException("private-detail"))
@@ -72,7 +86,9 @@ class ErrorAndOpenApiIntegrationTest : SampleIntegrationSupport() {
         assertFalse(forbidden.contentAsString.contains("private-detail"))
     }
 
-    @Test fun `generated OpenAPI validates and matches actual errors`() {
+    @Test
+    @DisplayName("생성된 OpenAPI가 규격을 통과하고 실제 오류 응답과 일치한다")
+    fun `generated OpenAPI validates and matches actual errors`() {
         val json = mvc.perform(get("/v3/api-docs")).andExpect(status().isOk).andReturn().response.contentAsString
         val parsed = OpenAPIV3Parser().readContents(json, null, null)
         assertNotNull(parsed.openAPI)
