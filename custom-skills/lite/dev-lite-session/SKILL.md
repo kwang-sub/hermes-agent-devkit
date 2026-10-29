@@ -1,13 +1,13 @@
 ---
 name: dev-lite-session
 description: Hermes Lite 기본 대화형 개발 정책. 논의는 자유롭게 진행하고 실제 변경 직전에 구현 계획·사용 스킬을 공개해 한 번 승인받은 뒤 직접 구현·검증한다.
-version: 0.3.0
+version: 0.3.1
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, lite, direct, interactive, kanban-optional]
-    related_skills: [dev-lite-review, dev-project-pattern, dev-feature-docs, git-pr-publish, dev-data-feature, dev-data-modeling, dev-java-guidelines, dev-spring-guidelines, dev-spring-test, dev-official-docs-context]
+    related_skills: [dev-git-init, dev-lite-review, dev-project-pattern, dev-feature-docs, git-pr-publish, dev-data-feature, dev-data-modeling, dev-java-guidelines, dev-spring-guidelines, dev-spring-test, dev-official-docs-context]
     requires_tools: [terminal, clarify]
 ---
 
@@ -99,6 +99,10 @@ Hermes Lite에서 새 대화 세션을 시작할 때 자동으로 읽는 기본 
 - 변경 내용은 최소화하고 기존 코드·파일 및 미커밋 변경을 보존한다. Git commit/push/PR/merge는 사용자가 요청할 때만 수행한다.
 
 사용자의 최종 판단을 존중하며, 프로젝트의 기존 보안·품질 기준은 완화하지 않는다.
+
+## Git 없는 작업공간 초기화
+- 기존 폴더를 로컬 Git 저장소로 만들거나 최초 커밋해 달라는 **명시적 요청**에서만 `dev-git-init`을 선택한다. Java/Node/Python/IDE를 포함한 기본 `.gitignore`를 제안하되 기존 관례·JAR·엑셀·ZIP 산출물과 민감정보 제외를 우선한다.
+- `dev-lite-session`의 변경 직전 구현 계획·사용 스킬·선택형 승인 절차를 그대로 사용한다. 최초 커밋은 계획과 승인 범위에 명시했을 때만 수행하며 원격 연결·푸시는 별도 작업이다.
 
 ## Git worktree 작업
 - 사용자가 작업 공간 분리를 요청하면 `dev-worktree-create`, 제거를 요청하면 `dev-worktree-remove` 스킬을 필요 시 로드한다.
