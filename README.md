@@ -18,6 +18,7 @@ JDK 8/17/21, Git 상대 Worktree, Maven·Gradle·Node/pnpm의 Linux 내부 캐�
 
 | 요청 | 스킬 |
 |---|---|
+| 기존 비Git 폴더의 로컬 Git 초기화·최초 커밋 | `dev-git-init` (Java·Node·Python·IDE `.gitignore` 템플릿 포함) |
 | 분리된 작업 공간 생성 / 제거 | `dev-worktree-create` / `dev-worktree-remove` |
 | Git 커밋·푸시·PR 게시 | `git-pr-publish` |
 | 병합 후 Worktree·브랜치 정리 | `git-workspace-cleanup` |
@@ -26,6 +27,8 @@ JDK 8/17/21, Git 상대 Worktree, Maven·Gradle·Node/pnpm의 Linux 내부 캐�
 | 선택적 프로젝트 툴체인·설정 보안 준비 | `dev-project-setup` |
 | Jira 요구사항 읽기 | `dev-work-intake` |
 | 변경사항 자체 리뷰 | `dev-lite-review` |
+
+`dev-git-init`은 기존 프로젝트 파일과 `.gitignore`를 보존하고 승인된 파일만 최초 커밋한다. JAR·XLSX·ZIP은 최종 산출물일 수 있어 기본적으로 일괄 제외하지 않는다. 기본 브랜치는 `main`, 최초 커밋 메시지는 `chore(init): initialize workspace`이며 원격 연결과 푸시는 하지 않는다.
 
 `dev-lite-session`만 기본 자동 로드한다. 스킬 전체 본문을 매번 로드하지 않는다. 별도 Managed Project 등록, Board 생성, 모델 등급 선택, Worker 소유권 검사는 없다.
 

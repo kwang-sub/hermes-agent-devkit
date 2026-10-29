@@ -1,0 +1,92 @@
+# Local Git baseline for Java / Kotlin / Node.js / Python / IDE workspaces.
+# The target project's existing .gitignore always takes precedence.
+
+# OS / editor temporary files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+~$*
+
+# Environment / local credentials; inspect other secrets before any commit
+.env
+.env.*
+!.env.example
+!.env.sample
+application-local.yml
+application-local.yaml
+application-local.properties
+application-secret.yml
+application-secret.yaml
+application-secret.properties
+application-private.yml
+application-private.yaml
+application-private.properties
+private.pem
+*-private.pem
+*.private.pem
+*.p12
+*.pfx
+*.jks
+
+# Hermes runtime files at workspace root
+/.hermes/
+/.worktrees/
+
+# Java / Kotlin / Gradle caches and bytecode
+*.class
+.gradle/
+.kotlin/
+
+# Node.js / package managers / framework caches
+node_modules/
+.pnpm-store/
+.npm/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/install-state.gz
+.next/
+.nuxt/
+.turbo/
+.svelte-kit/
+
+# Python virtualenv / compiled bytecode / test caches
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+
+# IntelliJ IDEA / PyCharm / WebStorm
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# VS Code / Eclipse
+.vscode/
+.settings/
+.metadata/
+.project
+.classpath
+.factorypath
+
+# OPTIONAL: enable only after identifying outputs that are NOT deliverables
+# build/
+# target/
+# dist/
+# out/
+# coverage/
+#
+# NEVER globally ignore *.jar / *.xlsx / *.zip / Gradle wrapper / lockfiles.
