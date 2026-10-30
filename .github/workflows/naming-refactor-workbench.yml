@@ -6,21 +6,38 @@ on:
 permissions:
   contents: read
 jobs:
-  inspect:
+  candidate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false}
-      - name: Inspect tracked naming references
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install PyYAML
+      - name: Prepare the exact locally reviewed candidate
         run: |
-          git rev-parse HEAD
-          git ls-files | grep -Ei 'lite|라이트' || true
-          git grep -n -i -E '(^|[^a-z])(lite|라이트)' -- ':!*.lock' || true
-      - name: Archive this isolated checkout for review
-        run: git archive --format=tar.gz HEAD -o "$RUNNER_TEMP/devkit-naming-source.tar.gz"
+          cp scripts/prepare_naming_refactor.py "$RUNNER_TEMP/prepare_naming_refactor.py"
+          python "$RUNNER_TEMP/prepare_naming_refactor.py" prepare
+      - name: Verify all candidate contracts and regression suites
+        env:
+          DEVKIT_TEST_REPORT: ${{ runner.temp }}/naming-regression-results.json
+        run: |
+          set -o pipefail
+          bash scripts/verify.sh 2>&1 | tee "$RUNNER_TEMP/naming-regression.log"
+      - name: Publish verified tree object without updating any ref
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python "$RUNNER_TEMP/prepare_naming_refactor.py" publish-tree
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: devkit-naming-source
-          path: ${{ runner.temp }}/devkit-naming-source.tar.gz
+          name: devkit-naming-candidate
+          path: |
+            ${{ runner.temp }}/naming-candidate.json
+            ${{ runner.temp }}/naming-candidate.patch
+            ${{ runner.temp }}/naming-regression-results.json
+            ${{ runner.temp }}/naming-regression.log
           retention-days: 3
