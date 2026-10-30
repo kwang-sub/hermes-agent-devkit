@@ -23,6 +23,7 @@ JDK 8/17/21, Git 상대 Worktree, Maven·Gradle·Node/pnpm의 Linux 내부 캐�
 | Git 커밋·푸시·PR 게시 | `git-pr-publish` |
 | 병합 후 Worktree·브랜치 정리 | `git-workspace-cleanup` |
 | 기능 논의·문서화·진행 상태 확인 | `dev-feature-docs` |
+| 자연스러운 문서 작성·수정 및 여러 포맷 출력 | `dev-document-author` |
 | 프로젝트 구조·패턴 분석 | `dev-project-pattern` |
 | 선택적 프로젝트 툴체인·설정 보안 준비 | `dev-project-setup` |
 | Jira 요구사항 읽기 | `dev-work-intake` |
@@ -31,6 +32,8 @@ JDK 8/17/21, Git 상대 Worktree, Maven·Gradle·Node/pnpm의 Linux 내부 캐�
 `dev-git-init`은 기존 프로젝트 파일과 `.gitignore`를 보존하고 승인된 파일만 최초 커밋한다. JAR·XLSX·ZIP은 최종 산출물일 수 있어 기본적으로 일괄 제외하지 않는다. 기본 브랜치는 `dev`, 최초 커밋 메시지는 `chore(init): initialize workspace`이며 원격 연결과 푸시는 하지 않는다.
 
 `dev-lite-session`만 기본 자동 로드한다. 스킬 전체 본문을 매번 로드하지 않는다. 별도 Managed Project 등록, Board 생성, 모델 등급 선택, Worker 소유권 검사는 없다.
+
+`dev-document-author`는 자연스러운 한국어와 내용 보존을 우선한다. 실제 DOCX/PPTX/XLSX/CSV/PDF 작업은 설치된 Hermes 공식 스킬에 맡기며, 문서 요청에서만 필요한 정책을 읽는다. [사용 방법과 검증 범위](docs/document-author.md)를 참고한다.
 
 ## 변경 작업 전 계획과 스킬 확인
 
