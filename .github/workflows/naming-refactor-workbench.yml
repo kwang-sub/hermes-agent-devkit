@@ -1,0 +1,26 @@
+name: Naming refactor workbench
+on:
+  push:
+    branches: ['refactor/devkit-neutral-names']
+    paths: ['.github/workflows/naming-refactor-workbench.yml', 'scripts/prepare_naming_refactor.py']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Inspect tracked naming references
+        run: |
+          git rev-parse HEAD
+          git ls-files | grep -Ei 'lite|라이트' || true
+          git grep -n -i -E '(^|[^a-z])(lite|라이트)' -- ':!*.lock' || true
+      - name: Archive this isolated checkout for review
+        run: git archive --format=tar.gz HEAD -o "$RUNNER_TEMP/devkit-naming-source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: devkit-naming-source
+          path: ${{ runner.temp }}/devkit-naming-source.tar.gz
+          retention-days: 3
