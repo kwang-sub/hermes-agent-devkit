@@ -20,7 +20,7 @@ resolver:
   modules: []
   files:
     - compose.yml
-    - init-lite.ps1
+    - scripts/init-devkit.ps1
     - Dockerfile
   paths:
     - custom-skills

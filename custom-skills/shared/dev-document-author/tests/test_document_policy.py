@@ -154,7 +154,7 @@ class RepositoryIntegrationTests(unittest.TestCase):
                 self.assertIn(name.strip(), active)
 
     def test_session_routes_document_writing(self):
-        text = (REPO_ROOT / "custom-skills/lite/dev-lite-session/SKILL.md").read_text(encoding="utf-8")
+        text = (REPO_ROOT / "custom-skills/core/dev-session/SKILL.md").read_text(encoding="utf-8")
         self.assertIn(NAME, text)
         self.assertIn("문서 작성·수정", text)
         self.assertIn("필요할 때만", text)
@@ -165,12 +165,12 @@ class RepositoryIntegrationTests(unittest.TestCase):
         self.assertIn("docs/document-author.md", text)
         self.assertTrue((REPO_ROOT / "docs/document-author.md").is_file())
 
-    def test_default_autoload_remains_lite_session(self):
-        tree = ast.parse((REPO_ROOT / "scripts/lite_default_profile.py").read_text(encoding="utf-8"))
+    def test_default_autoload_remains_devkit_session(self):
+        tree = ast.parse((REPO_ROOT / "scripts/devkit_default_profile.py").read_text(encoding="utf-8"))
         values = [node.value.value for node in tree.body if isinstance(node, ast.Assign)
                   and any(isinstance(target, ast.Name) and target.id == "AUTOLOAD" for target in node.targets)
                   and isinstance(node.value, ast.Constant)]
-        self.assertEqual(values, ["dev-lite-session"])
+        self.assertEqual(values, ["dev-session"])
 
     def test_existing_runner_discovers_suite(self):
         runner = (REPO_ROOT / "scripts/run_regression_tests.py").read_text(encoding="utf-8")

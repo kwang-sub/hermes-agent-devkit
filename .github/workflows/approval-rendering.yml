@@ -1,11 +1,11 @@
 name: Approval native rendering
 on:
   push:
-    branches: [dev, 'fix/**', 'feat/**']
+    branches: [dev, 'fix/**', 'feat/**', 'refactor/**']
     paths:
       - 'scripts/*approval*'
       - 'scripts/*display_name*'
-      - 'custom-skills/lite/dev-lite-session/**'
+      - 'custom-skills/core/dev-session/**'
       - 'custom-skills/shared/dev-java-guidelines/**'
       - 'custom-skills/shared/dev-kotlin-guidelines/**'
       - 'custom-skills/shared/dev-spring-test/**'
@@ -15,7 +15,7 @@ on:
     paths:
       - 'scripts/*approval*'
       - 'scripts/*display_name*'
-      - 'custom-skills/lite/dev-lite-session/**'
+      - 'custom-skills/core/dev-session/**'
       - 'custom-skills/shared/dev-java-guidelines/**'
       - 'custom-skills/shared/dev-kotlin-guidelines/**'
       - 'custom-skills/shared/dev-spring-test/**'

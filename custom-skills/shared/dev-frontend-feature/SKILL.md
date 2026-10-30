@@ -1,7 +1,7 @@
 ---
 name: dev-frontend-feature
 description: Frontend 작업의 canonical entry point로 승인된 Design Reference 또는 기존 코드 기준을 TypeScript·React/Next.js·UI/UX·API contract·test capability와 조합한다.
-version: 0.5.1
+version: 0.5.2
 author: local
 platforms: [linux]
 metadata:
@@ -384,7 +384,7 @@ ChatGPT/디자인 PNG를 곧바로 장기 regression golden으로 사용하지 �
 
 ## 자체 검토 단계 적용
 
-자체 검토 단계는 기존 `dev-lite-review`의 diff-first/verification reuse 계약을 유지하면서 다음을 추가한다.
+자체 검토 단계는 기존 `dev-review`의 diff-first/verification reuse 계약을 유지하면서 다음을 추가한다.
 
 - Frontend Mode / Design Source / Status / Fidelity를 확인한다.
 - Desktop/Mobile 범위면 View Strategy와 실제 package/component 분리가 Plan과 일치하는지 확인한다.

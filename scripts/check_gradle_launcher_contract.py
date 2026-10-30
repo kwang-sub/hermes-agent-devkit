@@ -6,7 +6,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
-MARKDOWN_CONTRACTS = tuple(ROOT.glob('custom-skills/lite/*/SKILL.md')) + (ROOT / 'shared/references/verification-level-policy.md',)
+MARKDOWN_CONTRACTS = tuple(ROOT.glob('custom-skills/core/*/SKILL.md')) + (ROOT / 'shared/references/verification-level-policy.md',)
 
 RAW_MARKDOWN_COMMAND = re.compile(r"^\s*(?:\$\s*)?(?:\./gradlew|gradle)(?:\s|$)")
 RAW_SHELL_COMMAND = re.compile(

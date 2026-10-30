@@ -8,4 +8,4 @@
 
 필수 검토: 코드 유일성, 오류 정의와 실제 HTTP/body 상태의 일치, 예외 등록 대상, framework 405 등 기존 상태/헤더 보존, rejected value·exception message 비노출, 401/403의 MVC와 필터 경계 구분. Kotlin 샘플 테스트 성공을 다른 언어/실제 SecurityFilterChain 검증으로 간주하지 않는다.
 
-참조 경로·기존 코드와의 차이·검증 범위를 기존 `dev-lite-session` 변경 승인에 포함한다. 별도 승인 절차·보드·Worker를 만들지 않는다.
+참조 경로·기존 코드와의 차이·검증 범위를 기존 `dev-session` 변경 승인에 포함한다. 별도 승인 절차·보드·Worker를 만들지 않는다.

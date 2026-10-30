@@ -1,4 +1,4 @@
-# Hermes Agent DevKit — Lite
+# Hermes Agent DevKit
 
 Windows 11 + Docker Desktop에서 Hermes **default 프로필의 직접 개발**을 사용하는 환경이다. 사용자가 현재 세션에서 분석·구현·테스트·수정을 요청한다. DevKit의 Orchestrator/Coder/Reviewer 역할, Direct/Standard 분류·승인·자동 위임은 제거했다. Hermes 자체의 일반 프로필 기능을 제거하거나 사용자 정의 프로필을 일괄 삭제하지는 않는다.
 
@@ -27,23 +27,25 @@ JDK 8/17/21, Git 상대 Worktree, Maven·Gradle·Node/pnpm의 Linux 내부 캐�
 | 프로젝트 구조·패턴 분석 | `dev-project-pattern` |
 | 선택적 프로젝트 툴체인·설정 보안 준비 | `dev-project-setup` |
 | Jira 요구사항 읽기 | `dev-work-intake` |
-| 변경사항 자체 리뷰 | `dev-lite-review` |
+| 변경사항 자체 리뷰 | `dev-review` |
 
 `dev-git-init`은 기존 프로젝트 파일과 `.gitignore`를 보존하고 승인된 파일만 최초 커밋한다. JAR·XLSX·ZIP은 최종 산출물일 수 있어 기본적으로 일괄 제외하지 않는다. 기본 브랜치는 `dev`, 최초 커밋 메시지는 `chore(init): initialize workspace`이며 원격 연결과 푸시는 하지 않는다.
 
-`dev-lite-session`만 기본 자동 로드한다. 스킬 전체 본문을 매번 로드하지 않는다. 별도 Managed Project 등록, Board 생성, 모델 등급 선택, Worker 소유권 검사는 없다.
+`dev-session`만 기본 자동 로드한다. 스킬 전체 본문을 매번 로드하지 않는다. 별도 Managed Project 등록, Board 생성, 모델 등급 선택, Worker 소유권 검사는 없다.
 
 `dev-document-author`는 자연스러운 한국어와 내용 보존을 우선한다. 실제 DOCX/PPTX/XLSX/CSV/PDF 작업은 설치된 Hermes 공식 스킬에 맡기며, 문서 요청에서만 필요한 정책을 읽는다. [사용 방법과 검증 범위](docs/document-author.md)를 참고한다.
 
+옛 스킬명과 경로는 업데이트 시 관리 항목만 새 이름으로 전환한다. 기존 백업과 복구 기록은 보존한다. [명칭 변경과 기존 설정 전환](docs/naming-migration.md)을 참고한다.
+
 ## 변경 작업 전 계획과 스킬 확인
 
-논의·설계 비교·원인 분석에서는 기존처럼 자유롭게 대화한다. 실제 코드·문서·설정 등을 변경할 시점에만 `dev-lite-session`이 **`# 구현 계획` → `# 사용 스킬`**을 한 번 보여주고 사용자 승인을 기다린다. 스킬은 본문을 실제 읽은 근거가 있을 때만 확인 완료로 표시한다.
+논의·설계 비교·원인 분석에서는 기존처럼 자유롭게 대화한다. 실제 코드·문서·설정 등을 변경할 시점에만 `dev-session`이 **`# 구현 계획` → `# 사용 스킬`**을 한 번 보여주고 사용자 승인을 기다린다. 스킬은 본문을 실제 읽은 근거가 있을 때만 확인 완료로 표시한다.
 
 승인은 기본 Hermes CLI의 선택 화면으로 받는다: **작업 진행 / 작업 보류 / 추가 요구사항**. 3번을 선택하면 즉시 입력 모드로 바뀌며, 추가 입력은 승인이 아니라 계획 수정 요청이다. 취소·빈 입력·미지원 UI는 자동 승인하지 않는다.
 
 이미 공개한 동일 계획을 승인했다면 다시 묻지 않고 구현·테스트·동일 범위의 수정을 이어간다. 범위나 위험이 실질적으로 커질 때만 변경분을 재승인받는다. 별도 Kanban/Worker/Reviewer나 승인 저장소는 추가하지 않는다. 이 규칙은 에이전트 동작 정책이며 파일 쓰기 도구를 차단하는 런타임 잠금은 아니다.
 
-최신 코드 적용 후에는 새 Hermes 세션에서 자동 로드된 정책을 확인한다. 열려 있던 세션이 이미 읽은 스킬 내용은 자동 갱신됐다고 가정하지 않는다. 대화 예시와 수동 검증 기준은 `docs/lite-session-approval.md`를 참고한다.
+최신 코드 적용 후에는 새 Hermes 세션에서 자동 로드된 정책을 확인한다. 열려 있던 세션이 이미 읽은 스킬 내용은 자동 갱신됐다고 가정하지 않는다. 대화 예시와 수동 검증 기준은 `docs/session-approval.md`를 참고한다.
 
 ## 설치
 
@@ -71,7 +73,7 @@ docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-de
 docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-dev /opt/hermes/.venv/bin/hermes -p default
 ```
 
-다른 프로젝트 작업은 실제 bind 경로에 대응하는 `--workdir`를 사용한다. `/workspace`와 `hermes-dev`는 기본값이며 환경설정이 다르면 맞게 지정한다. Lite 폴더에서 대화를 시작할 필요는 없다.
+다른 프로젝트 작업은 실제 bind 경로에 대응하는 `--workdir`를 사용한다. `/workspace`와 `hermes-dev`는 기본값이며 환경설정이 다르면 맞게 지정한다. 작업할 프로젝트 경로에서 시작하면 된다.
 
 ## 업데이트와 기존 Standard 환경 전환
 
@@ -100,7 +102,7 @@ docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-de
 
 빌드 실패 시 기존 컨테이너를 교체하지 않는다. 전환/부팅 오류가 발생한 뒤 반복 재생성으로 덮지 않는다. 정지 이후 재검증에서 동시 작업을 발견하면 기존 컨테이너는 정지 상태로 보존되며 원인을 확인해야 한다. `-SkipVerify`도 mount/default 안전 검사는 생략하지 못한다. `-SkipProfileInit`은 폐기되어 오류로 종료한다. `-NoRepair`는 호환 인수이며 자동 repair는 사용하지 않는다.
 
-루트에서 실행할 PowerShell 스크립트는 `update-devkit.ps1` 하나만 제공한다. 과거 `updatekit_lite.ps1` / `updatekit_lite.sh` 호환 진입점은 제거했다. Git 모드 전환이나 Standard 재생성 경로는 없다.
+루트에서 실행할 PowerShell 스크립트는 `update-devkit.ps1` 하나만 제공한다. Git 모드 전환이나 Standard 재생성 경로는 없다.
 
 기존 이미지가 새 빌드 후 Docker 로컬 이미지 저장소에서 사라져도 정상 이관 검사를 계속할 수 있도록, 빌드 전에는 사용 가능한 로컬 이미지를 사용하고 빌드 후·정지 후에는 **새로 빌드한 이미지 ID**로 고정해 사전 검사를 수행한다. 빌드 전 사용 가능한 이미지가 없을 때에는 빌드 후 검사를 필수로 수행하며, 기존 컨테이너는 사전 검사 성공 전에 정지하지 않는다.
 
@@ -118,9 +120,11 @@ docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-de
 |---|---|
 | default 모델·OAuth·메모리·세션 및 사용자 설정 | 관리 대상 필드 외 보존 |
 | 기존 Kanban DB·카드·상태·사용자 프로젝트 | 수정/삭제하지 않음 |
-| 기존 `profiles/orchestrator`, `coder`, `reviewer` | `devkit-lite/legacy-profiles/`로 보관 |
-| 설정 및 이전 Lite overlay marker | `devkit-lite/backups/`에 보존 |
+| 기존 `profiles/orchestrator`, `coder`, `reviewer` | `devkit-state/legacy-profiles/`로 보관 |
+| 설정 및 이전 overlay 기록 | `devkit-state/backups/`에 보존 |
 | named volume / host bind / 외부 mounts | 실제 식별자와 권한 유지 |
+
+위 경로는 새 기록의 위치다. 이전 버전에서 이미 만든 백업·보관본은 기존 위치에 남으며 함께 검사한다. 상세 기준은 `docs/naming-migration.md`를 참고한다.
 
 전환 전 데이터를 백업해 두는 것을 권장한다. 전환 도중 오류는 이 작업이 변경한 내용만 되돌린다. 프로세스 강제 종료·충돌로 `prepared` journal이 남았으면 자동 덮어쓰기/복구를 중단한다. 다음 부팅도 실패하도록 하여 부분 상태로 Worker가 시작되지 않게 한다.
 
@@ -129,9 +133,9 @@ docker exec -it --user hermes --workdir /workspace/hermes-agent-devkit hermes-de
 상태 확인은 읽기 전용이다:
 
 ```powershell
-.\scripts\init-lite.ps1 -Mode status
+.\scripts\init-devkit.ps1 -Mode status
 # 내부 진단 시에만 사용: 사용할 Docker 이미지 명시 필요
-.\scripts\init-lite.ps1 -Mode plan -ImageReference 'hermes-dev:0.1.0'
+.\scripts\init-devkit.ps1 -Mode plan -ImageReference 'hermes-dev:0.1.0'
 .\scripts\verify-container-runtime.ps1
 ```
 
@@ -153,4 +157,4 @@ CI는 Linux 전체 회귀, Windows PowerShell 5.1 문법과 모의 Docker update
 
 Maven/Gradle canonical 실행기는 `/opt/devkit/scripts/verification/`에 있다. Node/pnpm은 `dev-node-dependencies`의 기존 도구를 쓴다. 시간·외부 서비스에 의존하는 검증은 `--no-reuse`로 캐시를 우회한다. 실행되지 않은 테스트나 미확인 결과를 PASS라고 보고하지 않는다.
 
-상세 전환 경계는 `docs/hermes-lite-migration.md`, 검증 이동 내역은 `docs/lite-validation.md`를 참고한다.
+상세 전환 경계는 `docs/devkit-migration.md`, 검증 이동 내역은 `docs/validation-history.md`를 참고한다.

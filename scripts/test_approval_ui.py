@@ -107,7 +107,7 @@ class ApprovalAdapterTests(unittest.TestCase):
 
 class ApprovalPolicyTests(unittest.TestCase):
     def test_skill_calls_real_single_question_ui(self):
-        text=(ROOT/'custom-skills/lite/dev-lite-session/SKILL.md').read_text()
+        text=(ROOT/'custom-skills/core/dev-session/SKILL.md').read_text()
         self.assertIn('requires_tools: [terminal, clarify]',text)
         example=json.loads(re.search(r'```json\n(.*?)\n```',text,re.S)[1])
         self.assertEqual(len(example['questions']),1)
@@ -123,7 +123,7 @@ class ApprovalPolicyTests(unittest.TestCase):
         for name in ('devkit_approval_ui.py','patch_hermes_approval_ui.py','check_hermes_approval_ui.py'):
             self.assertIn(name,docker)
         self.assertIn('/tmp/check_hermes_approval_ui.py --hermes-root /opt/hermes',docker)
-        workflow=(ROOT/'.github/workflows/lite-approval-ui.yml').read_text()
+        workflow=(ROOT/'.github/workflows/approval-ui.yml').read_text()
         self.assertIn('bf0203a794a07aac3ff764972ab9087baa4e4f4e',workflow)
         self.assertIn('main',workflow)
         self.assertIn('check_hermes_approval_ui.py',workflow)
@@ -136,7 +136,7 @@ class ApprovalPolicyTests(unittest.TestCase):
         self.assertNotIn('subprocess',helper)
 
     def test_docs_distinguish_native_ui_tests_from_llm_guarantee(self):
-        text=(ROOT/'docs/lite-session-approval.md').read_text()
+        text=(ROOT/'docs/session-approval.md').read_text()
         for term in ('작업 진행','작업 보류','추가 요구사항','Python CLI','prompt_toolkit','LLM'):
             self.assertIn(term,text)
 

@@ -1,4 +1,4 @@
-"""Render only a Lite approval brief through Hermes' native assistant renderer.
+"""Render only a DevKit approval brief through Hermes' native assistant renderer.
 
 This is a presentation adapter, not consent detection. No theme/palette is
 copied, no conversation entry is appended and no turn is completed here.

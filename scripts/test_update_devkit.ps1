@@ -33,7 +33,7 @@ function global:git {
     switch ($A[0]) {
         'rev-parse' { if ($A[1] -eq '--show-toplevel') {$global:FixtureRoot} else {'fixture-sha'} }
         'status' { if ($global:FixtureMode -eq 'dirty') {' M user-file.txt'} }
-        'branch' { 'refactor/lite-only-runtime' }
+        'branch' { 'refactor/devkit-only-runtime' }
         default { throw 'Unexpected Git mutation in readonly fixture' }
     }
 }
@@ -125,7 +125,7 @@ function Run-Fixture([string]$Mode,[bool]$Fail) {
     $global:FixtureCaughtMessage=''
     $Caught=$false
     try {
-        & (Join-Path $Root 'update-devkit.ps1') -Container 'fixture-hermes' -Branch 'refactor/lite-only-runtime' -NoPull -SkipVerify -SkipGitHubAuth | Out-Null
+        & (Join-Path $Root 'update-devkit.ps1') -Container 'fixture-hermes' -Branch 'refactor/devkit-only-runtime' -NoPull -SkipVerify -SkipGitHubAuth | Out-Null
     }
     catch { $Caught=$true; $global:FixtureCaughtMessage=$_.Exception.Message; Write-Host "[FIXTURE] $Mode -> $($_.Exception.Message)" }
     if ($Caught -ne $Fail) { throw "Unexpected updater result: $Mode (failed=$Caught)" }

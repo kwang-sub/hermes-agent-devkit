@@ -1,7 +1,7 @@
 {
   "version": 2,
   "policy": {
-    "description": "Lite 작업의 domain별 선택적 capability 목록. 역할 pin이나 dispatch를 요구하지 않는다.",
+    "description": "DevKit 작업의 domain별 선택적 capability 목록. 역할 pin이나 dispatch를 요구하지 않는다.",
     "loading": "lazy"
   },
   "capabilities": [

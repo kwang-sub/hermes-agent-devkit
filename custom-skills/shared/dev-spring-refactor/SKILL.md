@@ -1,13 +1,13 @@
 ---
 name: dev-spring-refactor
 description: Spring 구현 완료 후 변경 범위에서 드러난 책임 혼재, orchestration/detail 결합, 문서화 부족을 점검하고 기존 프로젝트 패턴 안에서 behavior-preserving task-coupled refactoring을 수행한다.
-version: 0.1.1
+version: 0.1.2
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, coder, spring, refactor, structural-quality, orchestration, javadoc, comments]
-    related_skills: [dev-lite-review, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test]
+    related_skills: [dev-review, dev-spring-guidelines, dev-spring-feature, dev-spring-data, dev-spring-test]
     requires_tools: [terminal]
 ---
 

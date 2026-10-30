@@ -3,7 +3,7 @@
 <#
 .SYNOPSIS
 Updates the local Hermes Agent DevKit checkout, refreshes the DevKit image from
-the latest Hermes Agent base image and migrates to default-only Lite before services start.
+the latest Hermes Agent base image and migrates to default-only DevKit before services start.
 
 .DESCRIPTION
 The script keeps the persistent hermes-data volume intact. It never runs
@@ -358,7 +358,7 @@ function Resolve-LocalImageId {
 function Invoke-MigrationPlan {
     param([string]$Name, [string]$SkillsRoot, [string]$ImageReference)
     if ([string]::IsNullOrWhiteSpace($ImageReference)) { throw "Migration image identity is required" }
-    & (Join-Path $RepoRoot "scripts/init-lite.ps1") -Container $Name -Mode plan -SkillsRoot $SkillsRoot -ImageReference $ImageReference
+    & (Join-Path $RepoRoot "scripts/init-devkit.ps1") -Container $Name -Mode plan -SkillsRoot $SkillsRoot -ImageReference $ImageReference
     if ($LASTEXITCODE -ne 0) { throw "Read-only migration preflight failed; no recreation performed" }
 }
 
@@ -376,15 +376,15 @@ function Assert-PostUpdate {
         $Prior=$ErrorActionPreference
         try {
             $ErrorActionPreference="SilentlyContinue"
-            & docker exec --user hermes $Name /opt/hermes/.venv/bin/python /opt/devkit/bin/lite_default_profile.py status --skills-root $SkillsRoot 1>$null 2>$null
+            & docker exec --user hermes $Name /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_default_profile.py status --skills-root $SkillsRoot 1>$null 2>$null
             $Code=$LASTEXITCODE
         }
         finally { $ErrorActionPreference=$Prior }
         if ($Code -eq 0) { $Ready=$true; break }
         Start-Sleep -Seconds 2
     }
-    if (-not $Ready) { throw "Default Lite configuration not ready. Inspect boot migration diagnostics; automatic repair is disabled." }
-    & (Join-Path $RepoRoot "scripts/init-lite.ps1") -Container $Name -Mode status -SkillsRoot $SkillsRoot
+    if (-not $Ready) { throw "Default DevKit configuration not ready. Inspect boot migration diagnostics; automatic repair is disabled." }
+    & (Join-Path $RepoRoot "scripts/init-devkit.ps1") -Container $Name -Mode status -SkillsRoot $SkillsRoot
     if ($LASTEXITCODE -ne 0) { throw "Mandatory default configuration verification failed" }
 }
 
@@ -398,7 +398,7 @@ try {
     Set-Location $RepoRoot
     . (Join-Path $RepoRoot "scripts/devkit-mounts.ps1")
     if ($SkipProfileInit) { throw "-SkipProfileInit is retired; default boot migration cannot be skipped." }
-    if ($NoRepair) { Write-Host "[INFO] Automatic repair is disabled for all Lite updates." }
+    if ($NoRepair) { Write-Host "[INFO] Automatic repair is disabled for all DevKit updates." }
     foreach ($Command in @("git","docker")) {
         if (-not (Get-Command $Command -ErrorAction SilentlyContinue)) { throw "Missing required command: $Command" }
     }
@@ -485,10 +485,10 @@ try {
     else { Write-Warning "Extended runtime verification skipped; mount/default safety checks still ran." }
     Write-Host "[RUN] Git publish identity/auth bootstrap"
     $GitState=Initialize-GitPublishing -ContainerName $Container -SkipAuthentication:$SkipGitHubAuth
-    Write-Host "[PASS] Lite DevKit update completed"
+    Write-Host "[PASS] DevKit update completed"
     Write-Host "UPDATED_FROM=$BeforeSha"
     Write-Host "UPDATED_TO=$AfterSha"
-    Write-Host "LITE_DEFAULT_RECONCILED=true"
+    Write-Host "DEVKIT_DEFAULT_RECONCILED=true"
     Write-Host "AUTOMATIC_REPAIR_USED=false"
     Write-Host "GIT_IDENTITY_CONFIGURED=$($GitState.IdentityConfigured)"
     Write-Host "GITHUB_AUTH_READY=$($GitState.GitHubAuthReady)"

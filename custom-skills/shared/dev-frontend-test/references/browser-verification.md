@@ -1,6 +1,6 @@
 # Browser Verification Contract V1
 
-Applies to Lite frontend work, including same-session fixes and retries.
+Applies to DevKit frontend work, including same-session fixes and retries.
 이 문서는 실행 정책이며 새 브라우저 Provider나 프로젝트 테스트 프레임워크가 아니다.
 실행 코드와 사용법은 `ui-runtime.md`, 네이티브 대화상자는 `managed-dialog-policy.md`를 참조한다.
 

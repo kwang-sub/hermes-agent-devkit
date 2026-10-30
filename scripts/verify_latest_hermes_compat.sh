@@ -4,7 +4,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 BASE_IMAGE="${HERMES_BASE_IMAGE:-nousresearch/hermes-agent:latest}"
 RUN_ID="$(python3 -c 'import uuid;print(uuid.uuid4().hex[:12])')"
-IMAGE_NAME="hermes-devkit:lite-ci-$RUN_ID"
+IMAGE_NAME="hermes-devkit:devkit-ci-$RUN_ID"
 BUILT=0
 cleanup() { if [ "$BUILT" = 1 ]; then docker image rm "$IMAGE_NAME" >/dev/null 2>&1 || true; fi; }
 trap cleanup EXIT
@@ -86,5 +86,5 @@ docker run --rm --user hermes --entrypoint /opt/hermes/.venv/bin/python \
     "$IMAGE_NAME" /opt/devkit-tests/scripts/smoke_maven_runtime.py \
         --launcher-dir /usr/local/bin --extension-source-root /usr/local/share/hermes-maven-output \
         --verifier /opt/devkit/scripts/verification/maven_verification.py
-python3 scripts/smoke_lite_image.py --image "$IMAGE_NAME"
-printf '[PASS] Latest Hermes, JDK/Git/pnpm/Maven, actual Lite boot and persistent data safety.\n'
+python3 scripts/smoke_devkit_image.py --image "$IMAGE_NAME"
+printf '[PASS] Latest Hermes, JDK/Git/pnpm/Maven, actual DevKit boot and persistent data safety.\n'

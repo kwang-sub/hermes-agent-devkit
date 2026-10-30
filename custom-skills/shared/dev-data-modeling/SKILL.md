@@ -1,7 +1,7 @@
 ---
 name: dev-data-modeling
 description: Use Case에서 주제영역·데이터 책임·소유권·lifecycle·cardinality·Current/History/Snapshot/Derived를 정의하고 canonical logical DBML로 표현하는 DBMS 중립 DBA capability.
-version: 0.4.0
+version: 0.4.1
 author: local
 platforms: [linux]
 metadata:
@@ -15,7 +15,7 @@ metadata:
 
 Design-Time DBA의 **논리 모델링** capability다. Use Case와 업무 의미를 기준으로 Subject Area와 logical relational model을 확정한다. 특정 DBMS DDL, 물리 table 이름, migration framework, ORM annotation을 먼저 선택하지 않는다.
 
-`/opt/data/shared/references/lite-development-contract.md`를 적용한다. Data DESIGN_FIRST는 논리 설계를 의미하며, 설계 요청만으로 물리화 권한을 추정하지 않는다. 구현까지 합의된 경우 같은 세션에서 다음 단계로 이어갈 수 있다.
+`/opt/data/shared/references/development-contract.md`를 적용한다. Data DESIGN_FIRST는 논리 설계를 의미하며, 설계 요청만으로 물리화 권한을 추정하지 않는다. 구현까지 합의된 경우 같은 세션에서 다음 단계로 이어갈 수 있다.
 
 ## 책임 경계
 

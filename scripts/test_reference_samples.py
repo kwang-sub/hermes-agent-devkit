@@ -39,9 +39,9 @@ class ReferenceSampleContractTest(unittest.TestCase):
 
     def test_samples_are_not_new_auto_loaded_skills(self):
         self.assertEqual([], list(SAMPLES.rglob('SKILL.md')))
-        session = self.text(ROOT / 'custom-skills/lite/dev-lite-session/SKILL.md')
+        session = self.text(ROOT / 'custom-skills/core/dev-session/SKILL.md')
         self.assertNotIn('samples/spring/kotlin', session)
-        self.assertNotIn('samples/spring', self.text(ROOT / 'scripts/lite_default_profile.py'))
+        self.assertNotIn('samples/spring', self.text(ROOT / 'scripts/devkit_default_profile.py'))
 
     def test_source_provenance_and_known_limitations(self):
         source = self.text(SAMPLES / 'SOURCE.md')

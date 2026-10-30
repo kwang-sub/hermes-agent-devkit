@@ -1,7 +1,7 @@
 ---
 name: dev-db-migration
 description: 승인된 DBA logical model을 별도 승인된 마이그레이션 단계에서 target DBMS 물리 schema로 변환하고 기존 migration convention을 존중해 Flyway-first/Liquibase-compatible migration을 작성·검증할 때 구현 단계가 실행하고 자체 검토 단계가 read-only 기준으로 공유하는 DB migration capability.
-version: 0.3.0
+version: 0.3.1
 author: local
 platforms: [linux]
 metadata:
@@ -13,7 +13,7 @@ metadata:
 
 # dev-db-migration
 
-DB physicalization / migration capability다. `/opt/data/shared/references/lite-development-contract.md`를 따른다. 현재 세션이 구현과 자체 검토를 수행하며 독립 Reviewer·Worker를 요구하지 않는다.
+DB physicalization / migration capability다. `/opt/data/shared/references/development-contract.md`를 따른다. 현재 세션이 구현과 자체 검토를 수행하며 독립 Reviewer·Worker를 요구하지 않는다.
 
 ## 시작 조건과 권한
 새 테이블 또는 의미 있는 schema 변경은 합의된 logical model/DBML, 업무 제약, 대상 DBMS/버전, 기존 migration tool과 배포 순서가 필요하다. 기존 schema의 작은 보정은 해당 근거를 재사용하고 불필요하게 새 DBML을 요구하지 않는다.
