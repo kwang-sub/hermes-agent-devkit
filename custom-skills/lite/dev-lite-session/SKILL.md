@@ -1,13 +1,13 @@
 ---
 name: dev-lite-session
 description: Hermes Lite 기본 대화형 개발 정책. 논의는 자유롭게 진행하고 실제 변경 직전에 구현 계획·사용 스킬을 공개해 한 번 승인받은 뒤 직접 구현·검증한다.
-version: 0.3.1
+version: 0.3.2
 author: local
 platforms: [linux]
 metadata:
   hermes:
     tags: [dev, lite, direct, interactive, kanban-optional]
-    related_skills: [dev-git-init, dev-lite-review, dev-project-pattern, dev-feature-docs, git-pr-publish, dev-data-feature, dev-data-modeling, dev-java-guidelines, dev-spring-guidelines, dev-spring-test, dev-official-docs-context]
+    related_skills: [dev-git-init, dev-lite-review, dev-project-pattern, dev-feature-docs, dev-document-author, git-pr-publish, dev-data-feature, dev-data-modeling, dev-java-guidelines, dev-spring-guidelines, dev-spring-test, dev-official-docs-context]
     requires_tools: [terminal, clarify]
 ---
 
@@ -117,6 +117,9 @@ Hermes Lite에서 새 대화 세션을 시작할 때 자동으로 읽는 기본 
 - 변경 전에 프로젝트 구조/관례 근거가 필요하면 `dev-project-pattern`을 선택한다. 작은 수정에 전체 프로젝트 탐색을 강제하지 않는다.
 - 기능 요구사항 문서 생성/수정/상태 확인 요청은 `dev-feature-docs`를 사용한다. 문서 작업은 구현·Kanban 승인과 독립이다.
 - Git 커밋·푸시·PR 게시 요청은 `git-pr-publish`로 Preview와 사용자 승인을 나누어 처리한다. 구현/검토 완료만으로 Git 게시를 자동 수행하지 않는다.
+
+## 문서 작성·수정
+- 보고서·안내문·연동 가이드와 기존 문장 수정에는 `dev-document-author`를 필요할 때만 읽는다. 자연스러운 한국어 정책을 적용하고 실제 파일 작업은 설치된 공식 스킬에 맡긴다. 기능 문서와 API 문서는 기존 담당 스킬의 범위·상태·계약을 유지한다. 일반 코드 작업이나 문서 단순 조회에는 강제하지 않는다.
 
 ## 공통 검증 헬퍼
 - Java/Spring의 Maven·Gradle을 검증할 때 프로젝트 버전/기존 명령과 `/opt/data` 실행·캐시 격리 정책을 유지하고 `/opt/devkit/scripts/verification/`의 역할 독립 helper를 필요 시 사용한다. Coder Worker나 Kanban Task ID를 필수로 요구하지 않는다.
