@@ -1,9 +1,9 @@
 #!/command/with-contenv sh
 # Installed in place of 02-reconcile-profiles; original stays image-local.
 set -eu
-if [ ! -f /run/devkit-lite-ready ] || [ -L /run/devkit-lite-ready ]; then
-    echo '[devkit-lite] Reconciliation refused before successful migration' >&2
+if [ ! -f /run/devkit-ready ] || [ -L /run/devkit-ready ]; then
+    echo '[devkit] Reconciliation refused before successful migration' >&2
     exit 1
 fi
-echo '[devkit-lite] Reconciliation enabled after successful migration'
+echo '[devkit] Reconciliation enabled after successful migration'
 exec /opt/devkit/upstream/02-reconcile-profiles

@@ -11,4 +11,4 @@
 - `api-specification`: `dev-api-spec`
 - `api-contract`: `dev-api-contract`
 
-Java/Kotlin/TypeScript는 각 language guideline, 기술 버전 확인은 `dev-official-docs-context`, 선택적 전체 자체 검토는 `dev-lite-review`를 사용한다.
+Java/Kotlin/TypeScript는 각 language guideline, 기술 버전 확인은 `dev-official-docs-context`, 선택적 전체 자체 검토는 `dev-review`를 사용한다.

@@ -8,7 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_ROOT = REPO_ROOT / "custom-skills"
 REQUIRED_SKILLS = {"dev-project-pattern","dev-java-guidelines","dev-spring-guidelines","dev-spring-feature","dev-spring-data","dev-spring-test","dev-api-docs"}
 REQUIRED_REFERENCES = {}
-SHARED_REQUIRED_REFERENCES={"lite-development-contract.md","maven-runtime.md","verification-level-policy.md"}
+SHARED_REQUIRED_REFERENCES={"development-contract.md","maven-runtime.md","verification-level-policy.md"}
 
 def fail(message:str)->None: raise SystemExit(f"[FAIL] {message}")
 def parse_inline_list(value:str)->list[str]:
@@ -54,13 +54,13 @@ def main():
     for path in sorted(SKILLS_ROOT.glob('*/*/SKILL.md')):
         scalar,lists,body=parse_frontmatter(path.read_text(encoding='utf-8'),path)
         scope=path.parent.parent.name; name=scalar.get('name','')
-        if scope not in ('lite','shared'): fail(f'Legacy skill scope: {scope}')
+        if scope not in ('core','shared'): fail(f'Legacy skill scope: {scope}')
         if name!=path.parent.name or not re.fullmatch(r'[a-z0-9][a-z0-9-]*',name): fail(f'Invalid name: {path}')
         if name in names: fail(f'Duplicate effective skill name: {name}')
         if not re.fullmatch(r'\d+\.\d+\.\d+',scalar.get('version','')): fail(f'Invalid version: {name}')
         if not scalar.get('description') or len(scalar['description'])>1024: fail(f'Invalid description: {name}')
         names[name]=path; related[name]=lists.get('related_skills',[])
-    missing=(REQUIRED_SKILLS | {'dev-lite-session','dev-lite-review','git-pr-publish','dev-feature-docs','dev-project-setup'})-names.keys()
+    missing=(REQUIRED_SKILLS | {'dev-session','dev-review','git-pr-publish','dev-feature-docs','dev-project-setup'})-names.keys()
     if missing: fail(f'Missing active skills: {sorted(missing)}')
     for name, refs in related.items():
         for ref in refs:
@@ -69,5 +69,5 @@ def main():
         if not (REPO_ROOT/'shared/references'/reference).is_file(): fail('Missing shared reference '+reference)
     for scope in ('orchestrator','coder','reviewer'):
         if (SKILLS_ROOT/scope).exists(): fail('Legacy role catalog remains: '+scope)
-    print(f'[PASS] {len(names)} unique Lite/shared skills; references resolvable')
+    print(f'[PASS] {len(names)} unique DevKit/shared skills; references resolvable')
 if __name__=='__main__': main()

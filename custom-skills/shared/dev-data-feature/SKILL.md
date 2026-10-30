@@ -1,7 +1,7 @@
 ---
 name: dev-data-feature
 description: 데이터 작업의 canonical entry로 DBA logical modeling과 SQL·성능 분석을 task evidence에 따라 조합하고, 승인된 논리 모델의 물리화는 명시적으로 합의한 마이그레이션 단계에서 구현하는 DBMS 중립 shared skill.
-version: 0.4.0
+version: 0.4.1
 author: local
 platforms: [linux]
 metadata:
@@ -13,7 +13,7 @@ metadata:
 
 # dev-data-feature
 
-데이터 affected area의 canonical runtime entry다. 논리 설계와 물리화의 책임·승인 범위를 구분하되 같은 Lite 세션에서 이어서 진행할 수 있다. 별도 Task·프로필을 요구하지 않는다.
+데이터 affected area의 canonical runtime entry다. 논리 설계와 물리화의 책임·승인 범위를 구분하되 같은 DevKit 세션에서 이어서 진행할 수 있다. 별도 Task·프로필을 요구하지 않는다.
 
 공통 Foundation:
 
@@ -22,7 +22,7 @@ metadata:
 /opt/data/shared/references/implementation-decision-rules.md
 /opt/data/shared/references/project-pattern-rules.md
 /opt/data/shared/references/data-design-rules.md
-/opt/data/shared/references/lite-development-contract.md
+/opt/data/shared/references/development-contract.md
 ```
 
 ## 책임 분리

@@ -43,7 +43,7 @@ class JvmDisplayNamePolicyTests(unittest.TestCase):
             self.assertIn('반드시',s)
 
     def test_common_and_self_review_enforce_rule(self):
-        for path in ('shared/references/coding-rules.md','custom-skills/lite/dev-lite-review/SKILL.md'):
+        for path in ('shared/references/coding-rules.md','custom-skills/core/dev-review/SKILL.md'):
             s=(ROOT/path).read_text();self.assertIn('jvm-test-display-name-policy.md',s);self.assertIn('@DisplayName',s)
 
     def test_bundled_kotlin_reference_tests_have_explicit_korean_display_names(self):

@@ -347,7 +347,7 @@ Common Coding Rules
         ↓
 Implementation Decision Rules
         ↓
-dev-lite-session
+dev-session
         ↓
 Optional Stack / Capability Skill
         ↓

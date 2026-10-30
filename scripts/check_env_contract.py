@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = ROOT / "sample.env"
 COMPOSE = ROOT / "compose.yml"
-INIT = ROOT / "scripts/init-lite.ps1"
+INIT = ROOT / "scripts/init-devkit.ps1"
 
 DEFAULTS = {
     "HERMES_COMPOSE_PROJECT_NAME": "hermes-dev",
@@ -106,7 +106,7 @@ def main() -> int:
             raise SystemExit(f"compose.yml missing defaulted reference: {reference}")
 
     if 'HERMES_KANBAN_DISPATCH_IN_GATEWAY: "false"' not in compose:
-        raise SystemExit("Lite-only runtime must disable Standard worker auto-resume")
+        raise SystemExit("DevKit-only runtime must disable Standard worker auto-resume")
 
     if 'HERMES_DASHBOARD: "1"' not in compose:
         raise SystemExit("compose.yml must keep the baseline dashboard enabled for the healthcheck contract")
@@ -262,7 +262,7 @@ def main() -> int:
     for term in ('--volumes-from', '--read-only', '--network', 'none', '--data-root', '/opt/data', 'status'):
         if term not in init: raise SystemExit('Readonly preflight missing '+term)
     for term in ('S6_BEHAVIOUR_IF_STAGE2_FAILS: "2"','HERMES_KANBAN_DISPATCH_IN_GATEWAY: "false"'):
-        if term not in compose: raise SystemExit('Unsafe Lite startup: '+term)
+        if term not in compose: raise SystemExit('Unsafe DevKit startup: '+term)
     if 'HERMES_FLOW_MODEL_' in compose or 'HERMES_KANBAN_BOOT_RECOVERY_ENABLED' in compose:
         raise SystemExit('Retired Flow model/recovery settings remain')
 

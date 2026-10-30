@@ -39,7 +39,7 @@ services:
         target: /opt/data
 
       # 역할별 Skill과 공통 Skill은 하나의 read-only custom-skills root에서 관리한다.
-      # default의 skills.external_dirs가 lite와 shared를 참조한다.
+      # default의 skills.external_dirs가 core와 shared를 참조한다.
       - type: bind
         source: ${HERMES_HOST_CUSTOM_SKILLS_PATH:-./custom-skills}
         target: ${HERMES_CONTAINER_CUSTOM_SKILLS_PATH:-/opt/custom-skills}

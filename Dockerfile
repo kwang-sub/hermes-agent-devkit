@@ -18,7 +18,7 @@ RUN python3 /tmp/patch_hermes_tui_semantic_input.py --self-test \
     && python3 /tmp/patch_hermes_tui_semantic_input.py --check-only --search-root /opt/hermes \
     && rm /tmp/patch_hermes_tui_semantic_input.py
 
-# Opt-in Lite change approval reuses native Clarify choices and free text.
+# Opt-in DevKit change approval reuses native Clarify choices and free text.
 # Validate actual CLI handlers and the Gateway wire path before shipping the image.
 COPY scripts/devkit_approval_ui.py scripts/patch_hermes_approval_ui.py scripts/check_hermes_approval_ui.py /tmp/
 RUN /opt/hermes/.venv/bin/python /tmp/patch_hermes_approval_ui.py --hermes-root /opt/hermes \
@@ -129,8 +129,8 @@ USER root
 # Fail closed BEFORE upstream 02-reconcile-profiles can start gateways.
 ENV S6_BEHAVIOUR_IF_STAGE2_FAILS=2
 ENV HERMES_KANBAN_DISPATCH_IN_GATEWAY=false
-COPY --chmod=0755 scripts/lite_default_profile.py /opt/devkit/bin/lite_default_profile.py
-COPY --chmod=0755 docker/cont-init.d/018-devkit-lite-init /etc/cont-init.d/018-devkit-lite-init
+COPY --chmod=0755 scripts/devkit_default_profile.py /opt/devkit/bin/devkit_default_profile.py
+COPY --chmod=0755 docker/cont-init.d/018-devkit-init /etc/cont-init.d/018-devkit-init
 COPY --chmod=0755 docker/cont-init.d/02-devkit-reconcile-guard /opt/devkit/bin/reconcile-guard
 RUN mkdir -p /opt/devkit/upstream \
     && mv /etc/cont-init.d/02-reconcile-profiles /opt/devkit/upstream/02-reconcile-profiles \
@@ -139,9 +139,9 @@ RUN mkdir -p /opt/devkit/upstream \
 COPY scripts/verification /opt/devkit/scripts/verification
 COPY custom-skills/_lib/process_execution.py /opt/devkit/custom-skills/_lib/process_execution.py
 RUN test -f /etc/cont-init.d/02-reconcile-profiles \
-    && sed -i 's/\r$//' /etc/cont-init.d/018-devkit-lite-init \
-    && sh -n /etc/cont-init.d/018-devkit-lite-init \
-    && /opt/hermes/.venv/bin/python -m compileall -q /opt/devkit/scripts/verification /opt/devkit/bin/lite_default_profile.py
+    && sed -i 's/\r$//' /etc/cont-init.d/018-devkit-init \
+    && sh -n /etc/cont-init.d/018-devkit-init \
+    && /opt/hermes/.venv/bin/python -m compileall -q /opt/devkit/scripts/verification /opt/devkit/bin/devkit_default_profile.py
 
 # DevKit notification bridge: one additional s6-supervised process in the same
 # container. It reads Hermes Kanban task_events without modifying Hermes source,

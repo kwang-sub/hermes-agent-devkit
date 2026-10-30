@@ -48,7 +48,7 @@ class ApprovalRenderContractTests(unittest.TestCase):
             self.assertNotIn(forbidden,source)
 
     def test_policy_keeps_two_chapters_and_real_choice_ui(self):
-        skill=(ROOT/'custom-skills/lite/dev-lite-session/SKILL.md').read_text()
+        skill=(ROOT/'custom-skills/core/dev-session/SKILL.md').read_text()
         for term in ('하나의 일반 assistant Markdown 메시지','기존 Hermes 답변 렌더러','clarify','devkit_approval','approval.approved=true'):
             self.assertIn(term,skill)
         self.assertIn('기존 native Clarify UI',skill)

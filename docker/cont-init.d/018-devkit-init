@@ -1,0 +1,17 @@
+#!/command/with-contenv sh
+# S6 continues later cont-init hooks after a failure. Publish a boot-scoped
+# success marker only after migration; the upstream reconcile wrapper requires it.
+set -eu
+export HOME=/opt/data HERMES_HOME=/opt/data
+ready=/run/devkit-ready
+rm -f "$ready"
+if [ "${S6_BEHAVIOUR_IF_STAGE2_FAILS:-}" != 2 ]; then
+    echo '[devkit] Fail-closed s6 startup contract is missing' >&2
+    exit 1
+fi
+if [ "$(id -u)" = 0 ]; then
+    s6-setuidgid hermes /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_default_profile.py apply --boot
+else
+    /opt/hermes/.venv/bin/python /opt/devkit/bin/devkit_default_profile.py apply --boot
+fi
+(umask 022; : > "$ready")

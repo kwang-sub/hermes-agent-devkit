@@ -1,8 +1,8 @@
 #!/command/with-contenv sh
 # Keep optional notifications, but never initialize or edit legacy role profiles.
 set -eu
-if [ ! -f /run/devkit-lite-ready ] || [ -L /run/devkit-lite-ready ]; then
-    echo "[devkit-lite] Notifier setup refused before successful migration" >&2
+if [ ! -f /run/devkit-ready ] || [ -L /run/devkit-ready ]; then
+    echo "[devkit] Notifier setup refused before successful migration" >&2
     exit 1
 fi
 export HOME=/opt/data HERMES_HOME=/opt/data
@@ -25,10 +25,10 @@ fi
 attempt=0
 while [ "$attempt" -lt 50 ]; do
     if /command/s6-svstat "$NOTIFIER_SERVICE_DIR" >/dev/null 2>&1; then
-        echo '[devkit-lite] Optional Kanban notifier service registered'
+        echo '[devkit] Optional Kanban notifier service registered'
         exit 0
     fi
     attempt=$((attempt + 1)); sleep 0.1
 done
-echo '[devkit-lite] Notifier registration failed' >&2
+echo '[devkit] Notifier registration failed' >&2
 exit 1

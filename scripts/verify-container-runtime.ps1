@@ -142,7 +142,7 @@ for key in ("HERMES_MAVEN_ROOT", "HERMES_MAVEN_REPO_ROOT", "HERMES_MAVEN_DIST_RO
     with tempfile.TemporaryFile(dir=root):
         pass
 assert os.environ.get("GRADLE_USER_HOME") == "/opt/data/gradle/user-home"
-print("Managed Maven cache contract valid for Lite default")
+print("Managed Maven cache contract valid for DevKit default")
 '@
 
 $MavenRuntimeCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
@@ -251,14 +251,14 @@ Invoke-DockerExactOutputCheck -Label "Default Gateway service is running" -Docke
 # multiplex served-profile publication. The probe inspects both, waits for
 # bounded startup, attempts one control-socket rescan only for a live host,
 # and prints a classified diagnostic on failure.
-Invoke-DockerCheck -Label "Default Lite Gateway served-profile contract" -DockerArgs @(
+Invoke-DockerCheck -Label "Default DevKit Gateway served-profile contract" -DockerArgs @(
     "exec", "--user", "hermes", $Container,
     "/opt/hermes/.venv/bin/python",
     "/opt/devkit/bin/devkit_gateway_readiness.py",
     "--wait-seconds", "60"
 )
 
-Write-Host "[OK] Default Lite Gateway serves default"
+Write-Host "[OK] Default DevKit Gateway serves default"
 $SecurityContractCheck = @'
 import os
 from pathlib import Path
@@ -307,15 +307,15 @@ Invoke-DockerCheck -Label "Kanban tracking relation preview UI v2" -DockerArgs @
     "grep -q DEVKIT_KANBAN_RELATION_PREVIEW_UI_V2 /opt/hermes/plugins/kanban/dashboard/dist/index.js && grep -q DEVKIT_KANBAN_RELATION_PREVIEW_CSS_V2 /opt/hermes/plugins/kanban/dashboard/dist/style.css"
 )
 
-$LiteDispatcherCheck = @'
+$DevKitDispatcherCheck = @'
 import os
 from gateway.kanban_watchers import GatewayKanbanWatchersMixin
 assert os.environ.get("HERMES_KANBAN_DISPATCH_IN_GATEWAY") == "false"
 assert GatewayKanbanWatchersMixin()._kanban_dispatcher_boot() is None
 print("Native Kanban dispatcher disabled; no worker spawned")
 '@
-$LiteDispatcherCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
-if ($LASTEXITCODE -ne 0) { throw "[FAIL] Lite record-only Kanban contract" }
+$DevKitDispatcherCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
+if ($LASTEXITCODE -ne 0) { throw "[FAIL] DevKit record-only Kanban contract" }
 
 Invoke-DockerCheck -Label "Shared custom skill root" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "test", "-d", "$SkillsRoot/shared"
@@ -329,10 +329,10 @@ Invoke-DockerCheck -Label "Shared Spring test capability" -DockerArgs @(
 Invoke-DockerCheck -Label "Shared Node dependency capability" -DockerArgs @(
     "exec", "--user", "hermes", $Container, "test", "-f", "$SkillsRoot/shared/dev-node-dependencies/SKILL.md"
 )
-Invoke-DockerCheck -Label "Lite default runtime adapter" -DockerArgs @(
-    "exec", "--user", "hermes", $Container, "/opt/hermes/.venv/bin/python", "/opt/devkit/bin/lite_default_profile.py", "status"
+Invoke-DockerCheck -Label "DevKit default runtime adapter" -DockerArgs @(
+    "exec", "--user", "hermes", $Container, "/opt/hermes/.venv/bin/python", "/opt/devkit/bin/devkit_default_profile.py", "status"
 )
-$DefaultLiteCheck = @'
+$DefaultDevKitCheck = @'
 from pathlib import Path
 try:
     import hermes_yaml as yaml
@@ -345,21 +345,21 @@ root=Path(os.environ.get("HERMES_CONTAINER_CUSTOM_SKILLS_PATH","/opt/custom-skil
 config=Path("/opt/data/config.yaml")
 data=yaml.safe_load(config.read_text(encoding="utf-8")) or {}
 skills=data.get("skills") or {}
-assert {str(root/"shared"),str(root/"lite")}.issubset(set(skills.get("external_dirs") or []))
-assert "dev-lite-session" in (skills.get("auto_load") or [])
+assert {str(root/"shared"),str(root/"core")}.issubset(set(skills.get("external_dirs") or []))
+assert "dev-session" in (skills.get("auto_load") or [])
 assert {"hermes-cli", "kanban"}.issubset(set(data.get("toolsets") or []))
 for profile in ("orchestrator", "coder", "reviewer"):
     assert not (Path("/opt/data/profiles") / profile).exists(), profile
-for name in ("dev-lite-session", "dev-lite-review", "dev-worktree-create",
+for name in ("dev-session", "dev-review", "dev-worktree-create",
              "dev-worktree-remove", "dev-feature-docs", "dev-project-pattern",
              "git-pr-publish", "git-workspace-cleanup"):
-    assert (root / "lite" / name / "SKILL.md").is_file(), name
-print("Default-only Lite config and skills validated")
+    assert (root / "core" / name / "SKILL.md").is_file(), name
+print("Default-only DevKit config and skills validated")
 '@
-$DefaultLiteCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
+$DefaultDevKitCheck | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
 if ($LASTEXITCODE -ne 0) {
-    throw "[FAIL] Default Lite skill/profile contract. Re-run .\update-devkit.ps1."
+    throw "[FAIL] Default DevKit skill/profile contract. Re-run .\update-devkit.ps1."
 }
-Write-Host "[OK] Default Lite skill/profile contract"
+Write-Host "[OK] Default DevKit skill/profile contract"
 
 Write-Host "[PASS] Hermes container runtime matches the current DevKit contract."

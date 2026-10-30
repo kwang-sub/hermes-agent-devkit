@@ -1,0 +1,56 @@
+name: DevKit approval UI contracts
+on:
+  push:
+    branches: [dev, "feat/**", "fix/**", "refactor/**"]
+    paths:
+      - "scripts/*approval*"
+      - "scripts/patch_hermes_tui_semantic_input.py"
+      - "custom-skills/core/dev-session/**"
+      - ".github/workflows/approval-ui.yml"
+  pull_request:
+    paths:
+      - "scripts/*approval*"
+      - "scripts/patch_hermes_tui_semantic_input.py"
+      - "custom-skills/core/dev-session/**"
+      - ".github/workflows/approval-ui.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-clarify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        upstream: [bf0203a794a07aac3ff764972ab9087baa4e4f4e, main]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          ref: ${{ matrix.upstream }}
+          path: upstream-hermes
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'prompt-toolkit>=3,<4' 'pydantic>=2,<3'
+      - name: Patch and exercise actual Clarify UI and Gateway methods
+        run: |
+          set -o pipefail
+          git -C upstream-hermes rev-parse HEAD | tee "$RUNNER_TEMP/approval-upstream-sha.txt"
+          python scripts/patch_hermes_tui_semantic_input.py --search-root upstream-hermes
+          python scripts/patch_hermes_approval_ui.py --hermes-root upstream-hermes
+          python scripts/patch_hermes_approval_ui.py --hermes-root upstream-hermes --check-only
+          python scripts/check_hermes_approval_ui.py --hermes-root upstream-hermes 2>&1 | tee "$RUNNER_TEMP/approval-ui-results.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: devkit-approval-ui-${{ matrix.upstream }}
+          path: |
+            ${{ runner.temp }}/approval-upstream-sha.txt
+            ${{ runner.temp }}/approval-ui-results.txt
+          retention-days: 7

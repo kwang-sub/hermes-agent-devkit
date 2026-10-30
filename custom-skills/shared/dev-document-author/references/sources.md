@@ -15,8 +15,8 @@ Humanizer의 의미 보존·독자에 맞는 문체·과장과 반복 줄이기�
 
 ## 저장소의 기존 기준
 
-- `custom-skills/lite/dev-lite-session/SKILL.md`: 변경 승인과 필요 시 스킬 로딩.
-- `custom-skills/lite/dev-feature-docs/SKILL.md`: 기능 문서의 범위와 구현 상태.
+- `custom-skills/core/dev-session/SKILL.md`: 변경 승인과 필요 시 스킬 로딩.
+- `custom-skills/core/dev-feature-docs/SKILL.md`: 기능 문서의 범위와 구현 상태.
 - `custom-skills/shared/dev-api-docs/SKILL.md`: API 계약과 문서 동기화.
 - `scripts/run_regression_tests.py`: 스킬의 `tests/test_*.py` 자동 탐색.
 

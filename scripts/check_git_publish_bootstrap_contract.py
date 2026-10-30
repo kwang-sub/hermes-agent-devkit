@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 UPDATER = ROOT / "update-devkit.ps1"
 COMPOSE = ROOT / "compose.yml"
 SAMPLE_ENV = ROOT / "sample.env"
-PR_PUBLISH_LIB = ROOT / "custom-skills/lite/git-pr-publish/scripts/pr_publish_lib.py"
+PR_PUBLISH_LIB = ROOT / "custom-skills/core/git-pr-publish/scripts/pr_publish_lib.py"
 
 
 def read(path: Path) -> str:

@@ -1,4 +1,4 @@
-"""Optional Lite plan approval on Hermes's existing Clarify UI.
+"""Optional DevKit plan approval on Hermes's existing Clarify UI.
 
 This is a question/result adapter, not an execution permission gate. Generic
 Clarify calls are untouched. Only an explicit, single approval question gets
@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 
 FIELD = "devkit_approval"
+# Legacy wire ID, retained for in-flight CLI/Gateway clients; not a runtime mode.
 PROTOCOL = "lite_change_approval_v1"
 CHOICES = ["작업 진행", "작업 보류"]
 OTHER_LABEL = "추가 요구사항"
@@ -96,7 +97,7 @@ def install_core(namespace: dict) -> None:
             approvals = [q for q in questions if is_approval(q)]
             if approvals and (len(questions) != 1 or approvals[0].get("choices") != CHOICES
                               or approvals[0].get("multi_select", False) is not False):
-                return None, "Lite approval requires one single-select question and choices ['작업 진행', '작업 보류']; do not add a third choice"
+                return None, "DevKit approval requires one single-select question and choices ['작업 진행', '작업 보류']; do not add a third choice"
         normalized, error = original_normalize(questions)
         if error:
             return normalized, error
@@ -128,7 +129,7 @@ def install_core(namespace: dict) -> None:
     properties = schema["parameters"]["properties"]["questions"]["items"]["properties"]
     properties[FIELD] = {
         "type": "boolean",
-        "description": "Lite development approval only: after showing the final implementation plan and skills, set true on ONE question with choices exactly ['작업 진행', '작업 보류']. The CLI adds '추가 요구사항' as immediate free text. Proceed ONLY when the returned approval.approved is true; requirements, hold, cancellation and unsupported clients are NOT consent. Not for dangerous-command confirmation."
+        "description": "DevKit development approval only: after showing the final implementation plan and skills, set true on ONE question with choices exactly ['작업 진행', '작업 보류']. The CLI adds '추가 요구사항' as immediate free text. Proceed ONLY when the returned approval.approved is true; requirements, hold, cancellation and unsupported clients are NOT consent. Not for dangerous-command confirmation."
     }
     namespace["_normalize_questions"] = normalize
     namespace["_result"] = result

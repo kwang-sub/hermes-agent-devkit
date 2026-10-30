@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install an opt-in Lite approval adapter on the native Clarify CLI.
+"""Install an opt-in DevKit approval adapter on the native Clarify CLI.
 
 All upstream anchors and syntax are checked before any source write. A new or
 partially changed upstream layout fails the image build rather than silently
@@ -141,7 +141,7 @@ def main():
     p.add_argument('--check-only', action='store_true')
     args = p.parse_args()
     patch_root(args.hermes_root, args.check_only)
-    print('[PASS] Native Clarify Lite approval UI contract')
+    print('[PASS] Native Clarify DevKit approval UI contract')
 
 
 if __name__ == '__main__':
