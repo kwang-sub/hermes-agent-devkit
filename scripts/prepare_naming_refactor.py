@@ -98,7 +98,6 @@ def prepare():
     subprocess.run(['git', 'apply', '--unidiff-zero', '-'], input=patch, check=True)
     for name in TEMP_FILES:
         (ROOT / name).unlink()
-    # This checkout contains only the approved synthetic workbench changes.
     subprocess.run(['git', 'add', '-A'], check=True)
     subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
     tree = git('write-tree')
@@ -111,6 +110,12 @@ def prepare():
 def publish_tree():
     assert_context()
     assert git('write-tree') == EXPECTED_TREE, 'Index changed after tests'
+    # The job token is not allowed to change workflow files. Leave .github
+    # exactly as it was; the authorized connector publishes those separately.
+    old_github = git('rev-parse', 'HEAD:.github')
+    root_entries = git('ls-tree', EXPECTED_TREE).splitlines()
+    root_entries = [f'040000 tree {old_github}\t.github' if line.endswith('\t.github') else line for line in root_entries]
+    expected_published = subprocess.check_output(['git', 'mktree'], input=('\n'.join(root_entries) + '\n').encode()).decode().strip()
     base_tree = git('rev-parse', 'HEAD^{tree}')
     known = set()
     for line in git('ls-tree', '-r', '-z', 'HEAD', raw=True).split(b'\0'):
@@ -126,7 +131,7 @@ def publish_tree():
         index[name] = (mode, sha)
     entries = []
     for name in git('diff', '--cached', '--name-only', '--no-renames', '-z', raw=True).decode().split('\0'):
-        if not name:
+        if not name or name.startswith('.github/'):
             continue
         if name not in index:
             entries.append({'path': name, 'mode': '100644', 'type': 'blob', 'sha': None})
@@ -149,10 +154,10 @@ def publish_tree():
         with urllib.request.urlopen(request, timeout=90) as response:
             result = json.load(response)
     except urllib.error.HTTPError as exc:
-        # Only GitHub's JSON error; never request headers or tokens.
         raise RuntimeError('Git tree creation failed: ' + exc.read().decode('utf-8')[:2000]) from None
-    assert result['sha'] == EXPECTED_TREE, 'GitHub tree differs from locally tested tree'
-    report = {'tree': result['sha'], 'parent': os.environ['GITHUB_SHA'],
+    assert result['sha'] == expected_published, 'GitHub non-workflow tree differs from tested content'
+    report = {'tree': result['sha'], 'tested_tree': EXPECTED_TREE,
+              'parent': os.environ['GITHUB_SHA'], 'workflow_changes_deferred': True,
               'workflow_run': os.environ['GITHUB_RUN_ID'], 'refs_updated': False}
     (Path(os.environ['RUNNER_TEMP']) / 'naming-candidate.json').write_text(json.dumps(report, indent=2))
     print(json.dumps(report, sort_keys=True))
