@@ -1,7 +1,7 @@
 ---
 name: dev-session
 description: Hermes DevKit 기본 대화형 개발 정책. 논의는 자유롭게 진행하고 실제 변경 직전에 구현 계획·사용 스킬을 공개해 한 번 승인받은 뒤 직접 구현·검증한다.
-version: 0.4.0
+version: 0.5.0
 author: local
 platforms: [linux]
 metadata:
@@ -98,6 +98,7 @@ Hermes DevKit에서 새 대화 세션을 시작할 때 자동으로 읽는 기�
 ## 개발 규칙과 검증
 - 대상 프로젝트에 이미 존재하는 AGENTS.md/관례/빌드 설정이 소스 변경의 기준이다. 역할 기반 승인·인계 계약은 적용하지 않는다.
 - Java/Spring/Kotlin/Frontend/DB에 해당하는 shared capability 스킬을 필요한 경우에만 불러온다. 모든 스킬 본문을 한꺼번에 읽지 않는다.
+- 백엔드 테스트 작성·수정이 포함되면 `/opt/data/shared/references/backend-test-style-policy.md`를 읽고 기존 구현 계획의 검증 항목에 선택한 테스트 스타일만 한 줄로 안내한다. 테스트 단순 실행이나 무관한 작업에는 강제하지 않는다. 별도 선택창·새 챕터·추가 승인을 만들거나 동일 실행·재시도마다 반복하지 않는다. 기존 승인과 최종 실행 결과 보고는 유지한다.
 - 기존 Devkit의 Docker Workspace·JDK·Maven·Gradle·Node·pnpm 격리 방식을 유지한다.
 - 실질적 테스트를 실행하고 통과/실패/미실행 이유를 보고한다. `dev-review`는 선택적 자체 검토이므로 독립 Reviewer와 동일하게 표현하지 않는다.
 - 변경 내용은 최소화하고 기존 코드·파일 및 미커밋 변경을 보존한다. Git commit/push/PR/merge는 사용자가 요청할 때만 수행한다.
