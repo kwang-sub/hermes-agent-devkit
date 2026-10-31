@@ -1,7 +1,7 @@
 ---
 name: dev-spring-test
 description: Spring/Spring Data JPA 기능의 테스트를 프로젝트 기존 테스트 프레임워크와 스타일에 맞춰 작성하고 변경 위험에 비례한 최소 검증을 수행한다.
-version: 0.3.0
+version: 0.4.0
 author: local
 platforms: [linux]
 metadata:
@@ -48,7 +48,7 @@ Repository/QueryDSL/mapping → repository/integration test
 
 ## 테스트 작성 원칙
 
-- 기존 test naming/arrange-act-assert/Given-When-Then style을 따른다.
+- 백엔드 테스트 작성·수정에는 `/opt/data/shared/references/backend-test-style-policy.md`를 읽고 적용한다. 신규 클래스는 검증 대상과 기존 도구에 맞는 스타일을 선택하고, 기존 테스트 파일은 스타일을 유지한다. 기존 구현 계획에는 선택한 테스트 스타일만 한 줄로 안내한다. 샘플·템플릿이나 별도 승인 절차는 추가하지 않는다.
 - 구현 세부사항보다 외부 behavior와 contract를 검증한다.
 - bug fix에는 가능하면 기존 실패를 재현하는 regression test를 추가한다.
 - validation/error response 변경은 성공 케이스와 실패 contract를 함께 확인한다.

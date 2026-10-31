@@ -1,7 +1,7 @@
 ---
 name: dev-review
 description: Hermes DevKit 직접 개발의 선택적 자체 검증. 변경 diff와 기존 프로젝트 관례, 회귀 테스트, 위험을 점검하되 Kanban 작업 할당·독립 Reviewer 인계·완료 승인 절차는 요구하지 않는다.
-version: 0.3.0
+version: 0.4.0
 author: local
 platforms: [linux]
 metadata:
@@ -48,6 +48,7 @@ metadata:
 - 현재 요구사항과 실제 diff를 대조해 P0(보안·데이터 손실·계약 파괴), P1(동작/회귀/트랜잭션 실패), 기타 개선을 구분한다. 프로젝트 규칙을 우선하며 근거 없는 스타일 취향으로 BLOCK하지 않는다.
 - Java/JPA: 실제 JDK 문법 호환, Optional·mutable entity·N+1·반복 I/O, 예외 처리·동시성·트랜잭션을 확인한다. 변경한 코드의 운영 로깅 문구는 영어다.
 - Java/Kotlin 테스트: `jvm-test-display-name-policy.md`에 따라 신규·변경 JUnit Jupiter 테스트의 한글 `@DisplayName` 누락을 확인한다. 미지원 엔진은 대체 표시명과 사유를 확인하고, 관련 없는 기존 테스트까지 일괄 변경하지 않는다.
+- 백엔드 테스트 스타일: `/opt/data/shared/references/backend-test-style-policy.md`에 따라 검증 대상과 실제 도구에 맞게 선택했는지, 기존 파일의 스타일을 보존했는지 확인한다. 스타일 통일을 위한 의존성 추가·무관한 전환·샘플 생성은 하지 않는다. 스타일 안내만으로 실제 테스트 PASS를 인정하지 않는다.
 - Spring: Controller/Service/DTO/Validation/Error Contract와 책임 혼재, 구조적 변경을 확인한다. DB schema/API는 기존 소비자·데이터와의 호환성을 검증하고 변경 범위에 맞춰 후속 점검한다.
 - Frontend: 기존 디자인 Reference/컴포넌트·반응형·접근성·API 계약을 대조한다. 실제 UI/browser 영향을 근거로 검증을 선택하며 일괄 Screenshot/Package Build 강제 금지.
 - 검증은 `/opt/data/shared/references/verification-level-policy.md`의 위험별 `STATIC_COMPILE / TARGETED_TEST / PACKAGE_BUILD`를 기준으로 선택한다. 실제 프로젝트 기존 검증 명령을 우선한다.
