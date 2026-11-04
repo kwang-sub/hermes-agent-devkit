@@ -24,6 +24,7 @@ JDK 8/17/21, Git 상대 Worktree, Maven·Gradle·Node/pnpm의 Linux 내부 캐�
 | 병합 후 Worktree·브랜치 정리 | `git-workspace-cleanup` |
 | 기능 논의·문서화·진행 상태 확인 | `dev-feature-docs` |
 | 자연스러운 문서 작성·수정 및 여러 포맷 출력 | `dev-document-author` |
+| 에러 로그·코드 동작 분석과 공식 문서 근거 보고 | `dev-analysis-report` |
 | 프로젝트 구조·패턴 분석 | `dev-project-pattern` |
 | 선택적 프로젝트 툴체인·설정 보안 준비 | `dev-project-setup` |
 | Jira 요구사항 읽기 | `dev-work-intake` |
@@ -34,6 +35,8 @@ JDK 8/17/21, Git 상대 Worktree, Maven·Gradle·Node/pnpm의 Linux 내부 캐�
 `dev-session`만 기본 자동 로드한다. 스킬 전체 본문을 매번 로드하지 않는다. 별도 Managed Project 등록, Board 생성, 모델 등급 선택, Worker 소유권 검사는 없다.
 
 `dev-document-author`는 자연스러운 한국어와 내용 보존을 우선한다. 실제 DOCX/PPTX/XLSX/CSV/PDF 작업은 설치된 Hermes 공식 스킬에 맡기며, 문서 요청에서만 필요한 정책을 읽는다. [사용 방법과 검증 범위](docs/document-author.md)를 참고한다.
+
+`dev-analysis-report`는 로그 원인·코드 흐름·동작 차이를 **결론 → 확인 근거 → 원인 또는 동작 → 조치와 확인 방법 → 공식 문서** 순서로 간결하게 보고한다. 확인·추정·미확인을 구분하고, `dev-official-docs-context`로 확인한 공식 문서 URL을 해당 판단에 연결한다. `/dev-analysis-report`로 요청할 수 있으며 기본 결과물은 대화의 분석 보고다.
 
 옛 스킬명과 경로는 업데이트 시 관리 항목만 새 이름으로 전환한다. 기존 백업과 복구 기록은 보존한다. [명칭 변경과 기존 설정 전환](docs/naming-migration.md)을 참고한다.
 

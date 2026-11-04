@@ -15,6 +15,7 @@ import time
 import uuid
 from .browser import BrowserPage, origin
 from .capture import TimeBudget
+from .hermes_compat import HermesRuntime
 from .suite import EnvironmentBlocked
 
 
@@ -23,19 +24,8 @@ class HermesBrowser:
         from tools.browser_use_cli import browser_exec
         from tools.browser_dialog_tool import browser_dialog
         from tools.browser_supervisor import SUPERVISOR_REGISTRY
-        from hermes_cli.config import read_raw_config
-        from tools.browser_tool_cloud import _get_cloud_provider
-        from tools.browser_tool_install import _find_agent_browser
-        executable = _find_agent_browser(validate=False)
-        if not executable or not Path(executable).is_file():
-            raise EnvironmentBlocked('installed agent-browser is required; no automatic dependency install')
-        cfg = (read_raw_config() or {}).get('browser', {}) or {}
-        overrides = ('BU_CDP_URL', 'BU_CDP_WS', 'BROWSER_CDP_URL', 'BU_AUTOSPAWN', 'CAMOFOX_URL')
-        if (any(os.environ.get(k) for k in overrides) or _get_cloud_provider() is not None
-                or cfg.get('cdp_url') or cfg.get('use_real_profile') or cfg.get('use_gateway')
-                or cfg.get('backend') not in (None, '', 'browser-use')
-                or cfg.get('engine') not in (None, '', 'auto', 'chromium', 'chrome')):
-            raise EnvironmentBlocked('use the approved project runner for a non-managed browser')
+        self.runtime = HermesRuntime()
+        self.runtime.require_managed()
         self.execute, self.dialog, self.registry = browser_exec, browser_dialog, SUPERVISOR_REGISTRY
         self.session = 'ui-' + uuid.uuid4().hex[:20]
         self.task_id = task_id + '-' + self.session
@@ -163,8 +153,10 @@ class HermesBrowser:
             try: supervisor.stop()
             except Exception as exc: errors.append('SUPERVISOR_' + type(exc).__name__)
         try:
-            from tools import browser_use_cli as cli
+            cli = self.runtime.cli
             command = cli._find_cli()
+            if not command:
+                raise RuntimeError('harness CLI missing during cleanup')
             names = {self.session}
             resolver = getattr(cli, '_sidecar_daemon_name', None)
             if callable(resolver): names.add(resolver(self.session))
@@ -176,11 +168,10 @@ class HermesBrowser:
                     if done.returncode: errors.append('HARNESS_RELOAD_NONZERO')
                 except Exception as exc:
                     errors.append('HARNESS_' + type(exc).__name__)
-            from tools.browser_tool_lifecycle import cleanup_browser
-            cleanup_browser(self.task_id)  # Exact task only, never all browser sessions.
-            from tools import browser_tool
-            sessions = getattr(browser_tool, '_active_sessions', None)
-            if sessions is None or any(k in sessions for k in (self.task_id, self.task_id+'::local')):
+        except Exception as exc:
+            errors.append('HARNESS_CLEANUP_' + type(exc).__name__)
+        try:
+            if not self.runtime.cleanup_owned(self.task_id, self.session):
                 errors.append('BROWSER_SESSION_CLEANUP_UNCONFIRMED')
         except Exception as exc:
             errors.append('BROWSER_CLEANUP_' + type(exc).__name__)

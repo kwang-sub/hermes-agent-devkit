@@ -88,11 +88,11 @@ RUN python3 /tmp/patch_hermes_parent_tracking_body.py --self-test \
          /opt/hermes/plugins/kanban/dashboard/plugin_api.py \
     && rm /tmp/patch_hermes_parent_tracking_body.py
 
-# Align the launcher policy with Hermes's explicit native-dialog responses.
-COPY scripts/patch_hermes_browser_dialog_policy.py /tmp/patch_hermes_browser_dialog_policy.py
+# Patch legacy agent-browser or verify the native Chromium supervisor contract.
+COPY scripts/patch_hermes_browser_dialog_policy.py scripts/check_hermes_native_dialog_policy.py /tmp/
 RUN /opt/hermes/.venv/bin/python /tmp/patch_hermes_browser_dialog_policy.py --hermes-root /opt/hermes \
     && /opt/hermes/.venv/bin/python /tmp/patch_hermes_browser_dialog_policy.py --check-only --hermes-root /opt/hermes \
-    && rm /tmp/patch_hermes_browser_dialog_policy.py
+    && rm /tmp/patch_hermes_browser_dialog_policy.py /tmp/check_hermes_native_dialog_policy.py
 # Fail the upstream compatibility stage immediately if a patched Hermes module no
 # longer compiles or the canonical CLI entry point disappears.
 RUN test -x /opt/hermes/.venv/bin/hermes \

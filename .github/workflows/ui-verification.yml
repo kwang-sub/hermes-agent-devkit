@@ -25,6 +25,7 @@ jobs:
       - name: Existing dialog contracts
         run: |
           python scripts/test_managed_dialog_policy.py
+          python scripts/test_hermes_native_dialog_policy.py
           python scripts/test_managed_dialog_evidence.py
           python scripts/test_managed_runtime_integration.py
           python scripts/test_browser_dialog_trace.py

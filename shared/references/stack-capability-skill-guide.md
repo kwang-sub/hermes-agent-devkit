@@ -12,3 +12,5 @@
 - `api-contract`: `dev-api-contract`
 
 Java/Kotlin/TypeScript는 각 language guideline, 기술 버전 확인은 `dev-official-docs-context`, 선택적 전체 자체 검토는 `dev-review`를 사용한다.
+
+에러 로그·코드 동작·두 구현의 차이를 일정한 형식으로 설명하는 요청에는 `dev-analysis-report`를 사용한다. 기술 동작의 공식 근거가 필요하면 `dev-official-docs-context`로 대상 버전의 문서를 확인하고, 보고에 공식 URL과 그 근거가 뒷받침하는 판단을 함께 적는다.

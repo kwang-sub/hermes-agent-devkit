@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Align managed agent-browser dialogs with Hermes's explicit-response policy.
+"""Align managed browser dialogs with Hermes's explicit-response policy.
 
-Patches only the managed launch environment after PM environment preparation.
-Does not replace native dialogs, modify an existing browser, or install software.
+Legacy Hermes needs a managed agent-browser launch-environment patch. Native
+Chromium Hermes instead verifies its installed supervisor's response behavior.
+Does not modify an existing browser or install software.
 """
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ import argparse
 import ast
 from pathlib import Path
 import tempfile
+from check_hermes_native_dialog_policy import check as check_native
 
 MARKER = "DEVKIT_MANAGED_DIALOG_POLICY_V1"
 FUNCTION = "_agent_browser_command_env"
@@ -54,6 +56,11 @@ def main() -> int:
     args = parser.parse_args()
     path = args.hermes_root / "tools/browser_tool_session.py"
     try:
+        if not path.exists():
+            check_native(args.hermes_root)
+            print("BROWSER_DIALOG_POLICY_CONTRACT=native-chromium-supervisor")
+            print("BROWSER_DIALOG_POLICY_PATCH=PASS")
+            return 0
         source = path.read_text(encoding="utf-8")
         updated = patch_source(source)
         if args.check_only:
@@ -70,9 +77,10 @@ def main() -> int:
                 tmp.replace(path)
             finally:
                 tmp.unlink(missing_ok=True)
+        print("BROWSER_DIALOG_POLICY_CONTRACT=legacy-agent-browser-patched")
         print("BROWSER_DIALOG_POLICY_PATCH=PASS")
         return 0
-    except (OSError, SyntaxError, RuntimeError) as exc:
+    except (OSError, SyntaxError, RuntimeError, ImportError, AttributeError, TypeError, ValueError) as exc:
         print(f"BROWSER_DIALOG_POLICY_PATCH=BLOCKED: {type(exc).__name__}: {exc}")
         return 2
 

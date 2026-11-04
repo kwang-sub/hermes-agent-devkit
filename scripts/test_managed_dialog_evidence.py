@@ -59,6 +59,36 @@ class ManagedEvidenceTests(unittest.TestCase):
 
     def test_all_six_official_cases(self):
         self.assertEqual(summarize(fixture())['execution_status'],'PASS')
+
+    def native_fixture(self):
+        value=fixture()
+        for case in value['cases']:
+            case.pop('effective_no_auto_dialog')
+            case.update(managed_dialog_backend='native-cdp',effective_dialog_policy='must_respond')
+        return value
+
+    def test_native_supervisor_evidence_without_retired_launcher_flag(self):
+        self.assertEqual(summarize(self.native_fixture())['execution_status'],'PASS')
+
+    def test_native_policy_must_be_observed_as_explicit_response(self):
+        for policy in (None,'auto_accept','auto_dismiss','unknown'):
+            x=self.native_fixture(); x['cases'][0]['effective_dialog_policy']=policy
+            self.assertNotEqual(summarize(x)['execution_status'],'PASS')
+
+    def test_unknown_backend_or_mixed_launcher_evidence_is_not_pass(self):
+        x=self.native_fixture(); x['cases'][0]['managed_dialog_backend']='unknown'
+        self.assertNotEqual(summarize(x)['execution_status'],'PASS')
+        x=self.native_fixture(); x['cases'][0]['effective_no_auto_dialog']='1'
+        self.assertNotEqual(summarize(x)['execution_status'],'PASS')
+
+    def test_native_policy_does_not_replace_real_response_or_preservation(self):
+        for field,value in (('response_owner','direct-CDP'),('page_preserved',False),
+                            ('cleanup',{'status':'WARNING'})):
+            x=self.native_fixture(); x['cases'][0][field]=value
+            self.assertNotEqual(summarize(x)['execution_status'],'PASS')
+        x=self.native_fixture(); x['cases'][0]['response']['sent_at']=4.0
+        self.assertNotEqual(summarize(x)['execution_status'],'PASS')
+
     def test_policy_model_is_not_official_pass(self):
         x=fixture(); x['source_policy_model']=True
         self.assertNotEqual(summarize(x)['execution_status'],'PASS')
