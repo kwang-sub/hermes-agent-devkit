@@ -2,17 +2,24 @@
 
 ## 수정 대상과 근거
 
-Hermes의 `browser.dialog_policy=must_respond`와, Chromium을 실행하는 `agent-browser`의
+기존 agent-browser 기반 Hermes에서는 `browser.dialog_policy=must_respond`와 Chromium을 실행하는 `agent-browser`의
 자동 응답 정책은 별개의 계층이다. agent-browser는 기본적으로 `alert`와 `beforeunload`를
 `accept=true`로 처리하고 `confirm`/`prompt`는 명시적 응답을 기다린다.
 따라서 Supervisor 설정만 확인해 하위 자동 승인을 배제해서는 안 된다.
 
-DevKit 이미지의 `patch_hermes_browser_dialog_policy.py`는
+DevKit 이미지의 `patch_hermes_browser_dialog_policy.py`는 기존 구조에서
 `tools/browser_tool_session.py::_agent_browser_command_env`에서 PM 환경 구성이 끝난 후,
 상위 정책이 `must_respond` 또는 `auto_dismiss`이면
 `AGENT_BROWSER_NO_AUTO_DIALOG=1`을 하위 실행 환경에 전달한다.
 명시적인 상위 `auto_accept` 설정은 변경하지 않는다. 상위 명시적 응답 정책이
 충돌하는 하위 `AGENT_BROWSER_NO_AUTO_DIALOG=0`보다 우선한다.
+
+최신 Hermes는 agent-browser를 제거하고 `browser_session.py`에서 Chromium을 직접 실행한다.
+이 구조에는 위 환경변수 패치를 적용하지 않는다. 대신 `check_hermes_native_dialog_policy.py`가
+실제 설치 소스의 실행 경로와 Supervisor 정책 전달을 확인하고, 해당 소스의 대화상자 처리 함수를
+메모리 내 CDP 대체 전송으로 실행한다. `must_respond`의 응답 대기와 승인·거절 값 전달이 확인되어야
+`native-chromium-supervisor` 계약을 통과한다. 기존 파일이 없다는 이유만으로 통과하지 않는다.
+이 검사는 브라우저 실행 검증이 아니며, 실제 capability는 아래 Probe로 별도 확인한다.
 
 기존 Chromium, Browser Harness, Playwright/Node 의존성, application source,
 window.confirm/beforeunload listener는 수정하지 않는다. 이미 떠 있는 daemon은 환경변수를
@@ -32,7 +39,7 @@ upstream 함수나 설치 anchor가 바뀌면 이미지를 추측으로 패치�
 
 위 경로의 실행 파일은 이미지 재빌드 후 설치된다. 저장소 스크립트를 직접 검사할 때는
 `/workspace/hermes-agent-devkit/scripts/verify_browser_dialog_runtime.py`를 사용할 수 있지만,
-실제 Hermes 모듈에 패치가 설치되지 않았으면 의도적으로 `BLOCKED`가 된다.
+기존 구조의 패치 또는 최신 구조의 명시적 응답 정책이 확인되지 않으면 `BLOCKED`가 된다.
 
 Probe는 설치된 `browser_exec`를 통해 **관리형 Chromium을 기동**한다.
 `BU_CDP_*`로 직접 기동한 Chrome을 끼워 넣지 않는다. `browser_dialog`와
@@ -40,6 +47,9 @@ Probe는 설치된 `browser_exec`를 통해 **관리형 Chromium을 기동**한�
 Supervisor를 fixture origin과 이번 검사 표식으로 focus한 뒤 pending dialog ID로만 응답한다.
 별도 CDP 연결은 관찰 및 결과 조회용이며 Hermes 모드에서 이탈 거절을 대신하지 않는다.
 외부 CDP/cloud/real-profile 설정이 있으면 임의 provider 전환 없이 중단한다.
+최신 구조의 결과에는 연결된 Supervisor에서 확인한 `effective_dialog_policy=must_respond`를 기록한다.
+기존 구조는 `effective_no_auto_dialog=1`을 기록하며, 최신 구조에서 이 환경변수 값을 만들어 채우지 않는다.
+두 구조 모두 실제 공식 응답·이벤트 순서·문서와 입력 보존·정리 결과를 모두 확인해야 PASS다.
 
 ## 검사 항목
 
@@ -70,7 +80,9 @@ Browser metadata/정책/검사 실패 단계가 같으면 같은 제품 작업�
 
 - agent-browser 공식 README의 Dialogs: `--no-auto-dialog`, `AGENT_BROWSER_NO_AUTO_DIALOG`
 - vercel-labs/agent-browser PR #1075의 native `start_dialog_handler`: `accept=true`
-- Hermes `browser_tool_session.py`의 관리형 Chromium 실행 환경 구성
+- [Hermes의 agent-browser 제거 변경](https://github.com/NousResearch/hermes-agent/commit/68500d9ff9456b52036ae2eb50c73468a6c2bae2)
+- [Hermes의 직접 Chromium 세션 생성](https://github.com/NousResearch/hermes-agent/blob/aac7f1b6962906efd73fbf70beae8d374a52f504/tools/browser_session.py)
+- [Hermes Supervisor 대화상자 정책과 응답 구현](https://github.com/NousResearch/hermes-agent/blob/aac7f1b6962906efd73fbf70beae8d374a52f504/tools/browser_supervisor_dialogs.py)
 - A~E 독립 진단은 raw Chromium/CDP 경로였으므로 관리형 launcher 정책의 검증과 구분
 
 ## Run 93 이후 대상 확인 간소화

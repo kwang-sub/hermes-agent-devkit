@@ -26,6 +26,7 @@ from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import ProxyHandler, build_opener
+from ui_runtime.hermes_compat import HermesRuntime
 
 HTML = b'''<!doctype html><meta charset="utf-8"><title>DevKit native dialog probe</title>
 <meta name="devkit-dialog-probe" content="__DEVKIT_NONCE__">
@@ -258,27 +259,14 @@ async def one_case(args, origin, scenario, action, automatic):
             'response_owner':None,'result':'BLOCKED','events':[],'cleanup':{'status':'NOT_RUN'}}
     root=Path(tempfile.mkdtemp(prefix='devkit-dialog-probe-'))
     proc=log=observer=controller=sup=registry=None
+    runtime=None; managed_started=False
     ab=None; env=None; phase='prepare'; task='devkit-'+name
     try:
         if args.mode=='hermes':
             # No A-E-style raw Chrome/CDP launch bypass, cloud, or human profile.
-            from hermes_cli.config import read_raw_config
-            cfg=(read_raw_config() or {}).get('browser',{}) or {}
-            if any(os.environ.get(k) for k in ('BU_CDP_URL','BU_CDP_WS','BROWSER_CDP_URL','BU_AUTOSPAWN',
-                                             'BROWSER_USE_API_KEY','BROWSERBASE_API_KEY','FIRECRAWL_API_KEY','CAMOFOX_URL')):
-                raise RuntimeError('external browser overrides are configured; refusing to replace provider')
-            if cfg.get('backend') not in (None,'','browser-use'):
-                raise RuntimeError('probe requires browser-use; refusing to switch the configured backend')
-            if cfg.get('cdp_url') or cfg.get('use_gateway') or cfg.get('cloud_provider') or cfg.get('use_real_profile') or cfg.get('engine') not in (None,'','auto','chromium','chrome'):
-                raise RuntimeError('probe requires the approved managed local Chromium configuration')
-            from tools.browser_tool_cloud import _get_cloud_provider
-            if _get_cloud_provider() is not None:
-                raise RuntimeError('cloud provider is resolved; refusing automatic provider changes')
-            from tools.browser_tool_session import _agent_browser_command_env
-            effective=_agent_browser_command_env(str(root/'preflight'))
-            report['effective_no_auto_dialog']=effective.get('AGENT_BROWSER_NO_AUTO_DIALOG')
-            if effective.get('AGENT_BROWSER_NO_AUTO_DIALOG')!='1':
-                raise RuntimeError('managed launch policy patch is absent; no retry of product task')
+            runtime=HermesRuntime()
+            runtime.require_managed()
+            report.update(runtime.dialog_policy_evidence(root/'preflight'))
             browser_exec,browser_dialog,registry=hermes_imports()
             async def tool(code):
                 response=await asyncio.to_thread(browser_exec,code=code,session=name,task_id=task,timeout_s=15)
@@ -287,9 +275,13 @@ async def one_case(args, origin, scenario, action, automatic):
                     raise RuntimeError('Hermes browser_exec failed; see task-scoped tool log')
                 return value
             phase='managed_launch'
+            managed_started=True
             await tool(f'# Open isolated native dialog fixture\nnew_tab({expected_url!r})\nprint(page_info())')
             sup=registry.get(task)
             if sup is None: raise RuntimeError('no task-scoped Supervisor attached to managed browser')
+            report['effective_dialog_policy']=getattr(sup,'dialog_policy',None)
+            if report['effective_dialog_policy']!='must_respond':
+                raise RuntimeError('attached Supervisor does not require explicit dialog responses')
             if not callable(getattr(sup,'focus_page',None)):
                 raise RuntimeError('installed Supervisor cannot explicitly focus the probe target')
             accept = "document.querySelector('meta[name=devkit-dialog-probe]')?.content === " + json.dumps(nonce)
@@ -467,12 +459,11 @@ async def one_case(args, origin, scenario, action, automatic):
         if sup:
             try: await asyncio.to_thread(sup.stop)
             except Exception as exc: errors.append('supervisor:'+type(exc).__name__)
-        if args.mode=='hermes':
+        if managed_started:
             try:
-                from tools.browser_use_cli import _find_cli
-                cli=_find_cli()
+                bu=runtime.cli
+                cli=bu._find_cli()
                 if not cli: raise RuntimeError('harness CLI missing during cleanup')
-                from tools import browser_use_cli as bu
                 names={name}
                 sidecar=getattr(bu,'_sidecar_daemon_name',None)
                 if callable(sidecar): names.add(sidecar(name))
@@ -483,11 +474,16 @@ async def one_case(args, origin, scenario, action, automatic):
         if controller:
             with contextlib.suppress(Exception): await controller.close()
         if observer:
-            if args.mode=='hermes':
+            if managed_started and not runtime.native:
                 # It was launched by this unique task. Close that owned browser only.
                 try: await observer.call('Browser.close',timeout=2)
                 except Exception: pass  # Browser.close may end the socket before its reply.
             with contextlib.suppress(Exception): await observer.close()
+        if managed_started:
+            try:
+                cleaned=await asyncio.to_thread(runtime.cleanup_owned,task,name)
+                if not cleaned: errors.append('browser:SESSION_CLEANUP_UNCONFIRMED')
+            except Exception as exc: errors.append('browser:'+type(exc).__name__)
         if ab:
             try: await command([ab,'--session',name,'--json','close'],env,8)
             except Exception as exc: errors.append('agent-browser:'+type(exc).__name__)

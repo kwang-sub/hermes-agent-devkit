@@ -12,6 +12,14 @@ def _time(value):
     return type(value) in (int,float) and math.isfinite(value)
 
 
+def _explicit_policy(case):
+    backend=case.get('managed_dialog_backend','legacy-agent-browser')
+    if backend=='native-cdp':
+        return (case.get('effective_dialog_policy')=='must_respond'
+                and 'effective_no_auto_dialog' not in case)
+    return backend=='legacy-agent-browser' and case.get('effective_no_auto_dialog')=='1'
+
+
 def summarize(data):
     def result(status, reason, next_action):
         return outcome(status, reason, capability='managed-native-dialog-v1')
@@ -64,7 +72,7 @@ def summarize(data):
             return result('BLOCKED_ENV','CLOSED_BEFORE_RESPONSE','STOP_RETRY_ESCALATE')
         if (case.get('result')!='PASS' or case.get('automatic_control') is not False
                 or case.get('response_owner')!='hermes.browser_dialog'
-                or case.get('effective_no_auto_dialog')!='1'
+                or not _explicit_policy(case)
                 or case.get('cleanup',{}).get('status')!='PASS'):
             return blocked('OFFICIAL_DIALOG_CASE_UNVERIFIED')
         response=case.get('response',{})
