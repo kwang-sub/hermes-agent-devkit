@@ -129,7 +129,7 @@ USER root
 # Fail closed BEFORE upstream 02-reconcile-profiles can start gateways.
 ENV S6_BEHAVIOUR_IF_STAGE2_FAILS=2
 ENV HERMES_KANBAN_DISPATCH_IN_GATEWAY=false
-COPY --chmod=0755 scripts/devkit_default_profile.py /opt/devkit/bin/devkit_default_profile.py
+COPY --chmod=0755 scripts/devkit_default_profile.py scripts/devkit_s6_runtime.py /opt/devkit/bin/
 COPY --chmod=0755 docker/cont-init.d/018-devkit-init /etc/cont-init.d/018-devkit-init
 COPY --chmod=0755 docker/cont-init.d/02-devkit-reconcile-guard /opt/devkit/bin/reconcile-guard
 RUN mkdir -p /opt/devkit/upstream \
@@ -141,7 +141,7 @@ COPY custom-skills/_lib/process_execution.py /opt/devkit/custom-skills/_lib/proc
 RUN test -f /etc/cont-init.d/02-reconcile-profiles \
     && sed -i 's/\r$//' /etc/cont-init.d/018-devkit-init \
     && sh -n /etc/cont-init.d/018-devkit-init \
-    && /opt/hermes/.venv/bin/python -m compileall -q /opt/devkit/scripts/verification /opt/devkit/bin/devkit_default_profile.py
+    && /opt/hermes/.venv/bin/python -m compileall -q /opt/devkit/scripts/verification /opt/devkit/bin/devkit_default_profile.py /opt/devkit/bin/devkit_s6_runtime.py
 
 # DevKit notification bridge: one additional s6-supervised process in the same
 # container. It reads Hermes Kanban task_events without modifying Hermes source,

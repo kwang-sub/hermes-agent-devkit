@@ -162,45 +162,6 @@ Invoke-DockerCheck -Label "Kanban board inventory CLI" -DockerArgs @(
     "/opt/hermes/.venv/bin/hermes", "kanban", "boards", "list", "--json"
 )
 
-$S6ScandirWriteProbe = @'
-from pathlib import Path
-import os
-
-root = Path("/run/service")
-probe = root / ".devkit-runtime-write-check"
-if probe.exists():
-    if probe.is_dir():
-        probe.rmdir()
-    else:
-        probe.unlink()
-probe.mkdir()
-probe.rmdir()
-
-for name in ("control", "lock"):
-    path = root / ".s6-svscan" / name
-    if path.exists() and not os.access(path, os.W_OK):
-        raise SystemExit(f"hermes cannot write {path}")
-
-print("true")
-'@
-
-$S6ScandirWriteProbe | & docker exec -i --user hermes $Container /opt/hermes/.venv/bin/python -
-if ($LASTEXITCODE -ne 0) {
-    throw "[FAIL] s6 dynamic Gateway scandir hermes-write contract. Re-run .\update-devkit.ps1 or rebuild/recreate the container."
-}
-Write-Host "[OK] s6 dynamic Gateway scandir is hermes-writable"
-
-
-Invoke-DockerCheck -Label "DevKit Kanban notifier dynamic service" -DockerArgs @(
-    "exec", "--user", "root", $Container, "test", "-x",
-    "/run/service/devkit-notifier/run"
-)
-
-Invoke-DockerExactOutputCheck -Label "DevKit Kanban notifier service is running" -DockerArgs @(
-    "exec", $Container, "/package/admin/s6/command/s6-svstat", "-o", "up",
-    "/run/service/devkit-notifier"
-) -Expected "true"
-
 Invoke-DockerCheck -Label "DevKit Kanban notifier self-test" -DockerArgs @(
     "exec", "--user", "hermes", $Container,
     "/opt/hermes/.venv/bin/python", "/opt/devkit/bin/devkit_kanban_notifier.py", "--self-test"
@@ -242,11 +203,6 @@ if ($MultiplexEnvEntry -ne "GATEWAY_MULTIPLEX_PROFILES=true") {
 }
 Write-Host "[OK] DevKit Gateway topology -> default multiplex"
 
-Invoke-DockerExactOutputCheck -Label "Default Gateway service is running" -DockerArgs @(
-    "exec", $Container, "/package/admin/s6/command/s6-svstat", "-o", "up",
-    "/run/service/gateway-default"
-) -Expected "true"
-
 # The s6 'up' state is distinct from the live default Gateway identity and
 # multiplex served-profile publication. The probe inspects both, waits for
 # bounded startup, attempts one control-socket rescan only for a live host,
@@ -256,6 +212,18 @@ Invoke-DockerCheck -Label "Default DevKit Gateway served-profile contract" -Dock
     "/opt/hermes/.venv/bin/python",
     "/opt/devkit/bin/devkit_gateway_readiness.py",
     "--wait-seconds", "60"
+)
+
+# Wait for Gateway startup before checking the nested svscan controls. Share
+# these checks with the actual-image smoke test, using the same runtime users.
+Invoke-DockerCheck -Label "s6 dynamic Gateway scandir and default service" -DockerArgs @(
+    "exec", "--user", "hermes", $Container,
+    "/opt/hermes/.venv/bin/python", "/opt/devkit/bin/devkit_s6_runtime.py", "gateway"
+)
+
+Invoke-DockerCheck -Label "DevKit Kanban notifier service is running" -DockerArgs @(
+    "exec", "--user", "root", $Container,
+    "/opt/hermes/.venv/bin/python", "/opt/devkit/bin/devkit_s6_runtime.py", "notifier"
 )
 
 Write-Host "[OK] Default DevKit Gateway serves default"

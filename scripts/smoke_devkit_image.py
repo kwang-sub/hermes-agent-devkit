@@ -65,6 +65,14 @@ def diagnostics(name):
         print(result.stdout[-12000:]+result.stderr[-12000:],flush=True)
 
 
+def check_s6_runtime(name):
+    # Exercise the same helper and users as the Windows post-update verifier.
+    for user, service in (('hermes', 'gateway'), ('root', 'notifier')):
+        result = run(['exec', '--user', user, name, PYTHON,
+                      '/opt/devkit/bin/devkit_s6_runtime.py', service])
+        print(result.stdout, end='', flush=True)
+
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--image',required=True);a=parser.parse_args()
     tag='devkit-test-'+uuid.uuid4().hex[:12]
@@ -126,11 +134,13 @@ def main():
                     if time.monotonic()>deadline:raise RuntimeError('Boot status timeout: '+kind)
                     time.sleep(1)
                 run(['exec','--user','hermes',name,PYTHON,'/opt/devkit/bin/devkit_gateway_readiness.py','--wait-seconds','90'])
+                check_s6_runtime(name)
                 exec_python(name,"import os\nfrom gateway.kanban_watchers import GatewayKanbanWatchersMixin\nassert os.environ['HERMES_KANBAN_DISPATCH_IN_GATEWAY']=='false'\nassert GatewayKanbanWatchersMixin()._kanban_dispatcher_boot() is None\n")
                 run(['exec','-i','--user','hermes',name,PYTHON,'-','verify'],code=fixture)
                 before=run(['inspect','--format','{{json .Mounts}}',name]).stdout
                 run(['restart',name])
                 run(['exec','--user','hermes',name,PYTHON,'/opt/devkit/bin/devkit_gateway_readiness.py','--wait-seconds','90'])
+                check_s6_runtime(name)
                 run(['exec','-i','--user','hermes',name,PYTHON,'-','verify'],code=fixture)
                 assert_mounts_preserved(before, run(['inspect','--format','{{json .Mounts}}',name]).stdout)
                 assert (temp/'external/sentinel').read_text()=='readonly-external-data'
