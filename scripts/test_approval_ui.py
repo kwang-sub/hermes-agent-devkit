@@ -105,6 +105,68 @@ class ApprovalAdapterTests(unittest.TestCase):
             self.assertEqual(list(Path(temp).rglob('*')),[])
 
 
+class CoreResultSignatureTests(unittest.TestCase):
+    def wrap(self, native):
+        space={'CLARIFY_SCHEMA':{'parameters':{'properties':{'questions':{'items':{'properties':{}}}}}},
+               '_normalize_questions':lambda q:(deepcopy(q),None), '_result':native}
+        ui.install_core(space)
+        return space['_result']
+
+    def test_strict_legacy_two_argument_result_is_unchanged(self):
+        normalized=[{'question':'normal'}]; answer={'answers':{'q0':'A'}}
+        native_result='{"unchanged": true}'; calls=[]
+        def native(questions, response):
+            calls.append((questions,response))
+            return native_result
+        self.assertEqual(self.wrap(native)(normalized,answer),native_result)
+        self.assertEqual(len(calls),1)
+        self.assertIs(calls[0][0],normalized)
+        self.assertIs(calls[0][1],answer)
+
+    def test_current_shown_argument_is_forwarded_by_position_and_keyword(self):
+        for approval in (False,True):
+            for keyword in (False,True):
+                with self.subTest(approval=approval,keyword=keyword):
+                    normalized=[entry() if approval else {'question':'normal'}]
+                    answer=reply(); shown=[{'question':'actually displayed'}]; calls=[]
+                    native_result='{"responses": [{"status": "answered", "native_field": "preserved"}]}'
+                    def current(questions, response, shown):
+                        calls.append((questions,response,shown))
+                        return native_result
+                    wrapped=self.wrap(current)
+                    result=wrapped(normalized,answer,shown=shown) if keyword else wrapped(normalized,answer,shown)
+                    self.assertEqual(len(calls),1)
+                    self.assertIs(calls[0][0],normalized)
+                    self.assertIs(calls[0][1],answer)
+                    self.assertIs(calls[0][2],shown)
+                    if approval:
+                        response=json.loads(result)['responses'][0]
+                        self.assertEqual(response['native_field'],'preserved')
+                        self.assertTrue(response['approval']['approved'])
+                        self.assertEqual(response['approval']['action'],'proceed')
+                    else:
+                        self.assertEqual(result,native_result)
+
+    def test_native_type_error_is_propagated_once_without_retry(self):
+        for modern in (False,True):
+            with self.subTest(modern=modern):
+                failure=TypeError('native result conversion failed'); calls=[]
+                def legacy(questions, response):
+                    calls.append((questions,response))
+                    raise failure
+                def current(questions, response, shown):
+                    calls.append((questions,response,shown))
+                    raise failure
+                wrapped=self.wrap(current if modern else legacy)
+                with self.assertRaises(TypeError) as caught:
+                    if modern:
+                        wrapped([entry()],reply(),shown=[entry()])
+                    else:
+                        wrapped([entry()],reply())
+                self.assertIs(caught.exception,failure)
+                self.assertEqual(len(calls),1)
+
+
 class ApprovalPolicyTests(unittest.TestCase):
     def test_skill_calls_real_single_question_ui(self):
         text=(ROOT/'custom-skills/core/dev-session/SKILL.md').read_text()

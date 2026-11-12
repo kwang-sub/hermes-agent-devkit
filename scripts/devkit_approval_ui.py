@@ -106,8 +106,9 @@ def install_core(namespace: dict) -> None:
                 entry[FIELD] = True
         return normalized, error
 
-    def result(normalized, reply):
-        native = original_result(normalized, reply)
+    def result(normalized, reply, *args, **kwargs):
+        # Newer Hermes passes its display copy; preserve legacy two-argument calls.
+        native = original_result(normalized, reply, *args, **kwargs)
         if not any(is_approval(q) for q in normalized):
             return native
         data = json.loads(native)

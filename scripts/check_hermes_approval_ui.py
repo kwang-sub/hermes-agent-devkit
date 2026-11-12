@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Model-free executable tests against installed Hermes Clarify methods.
 
-The real schema, normalizer, result builder, renderers, native key handlers and
-Gateway adapters are extracted from the selected source tree. Only unrelated
-agent/model/notification infrastructure is stubbed. One test drives a real
-prompt_toolkit input pipeline. This is not a live LLM compliance test.
+The real schema, public dispatcher, normalizer, result builder, renderers, native
+key handlers and Gateway adapters are extracted from the selected source tree.
+Only unrelated agent/model/notification infrastructure is stubbed. One test drives
+a real prompt_toolkit input pipeline. This is not a live LLM compliance test.
 """
 from __future__ import annotations
 import argparse
 import ast
 import asyncio
+from contextlib import nullcontext
 import json
 from pathlib import Path
 import queue
@@ -85,7 +86,8 @@ def load(root):
         raise AssertionError('Install approval UI patch before running native tests')
     tree = ast.parse(source)
     body = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.Assign, ast.AnnAssign))]
-    CORE = {'json': json, 'Callable': Callable, 'Dict': Dict, 'List': List, 'Optional': Optional}
+    CORE = {'json': json, 'Callable': Callable, 'Dict': Dict, 'List': List, 'Optional': Optional,
+            'tool_error': lambda message: json.dumps({'error': message})}
     exec(compile(ast.Module(body=body, type_ignores=[]), str(root/'tools/clarify_tool.py'), 'exec'), CORE)
     adapter.install_core(CORE)
     render = load_panel_renderers(root)
@@ -94,9 +96,18 @@ def load(root):
     CLI_MODULE._panel_box_width = render['_panel_box_width']; CLI_MODULE._wrap_panel_text = render['_wrap_panel_text']
     timeout = types.ModuleType('tools.clarify_gateway'); timeout.resolve_clarify_timeout = lambda _: 0; timeout.get_clarify_timeout = lambda: 0
     tools = types.ModuleType('tools'); tools.__path__ = []; tools.clarify_gateway = timeout
+    # Keep the native public dispatcher, including its result call and exception
+    # handling. Only external display/observer infrastructure is stubbed.
+    human_input = types.ModuleType('tools.human_input_hooks')
+    human_input.human_input_request = lambda *args, **kwargs: nullcontext(types.SimpleNamespace(outcome=None))
+    tools.human_input_hooks = human_input
+    agent = types.ModuleType('agent'); agent.__path__ = []
+    redact = types.ModuleType('agent.redact'); redact.redact_approval_display = lambda text, **kwargs: text
+    agent.redact = redact
     gateway = types.ModuleType('tui_gateway'); gateway.__path__ = []
     sr = types.ModuleType('tui_gateway.server_requests'); gateway.server_requests = sr
     MODULES = {'cli': CLI_MODULE, 'tools': tools, 'tools.clarify_gateway': timeout,
+               'tools.human_input_hooks': human_input, 'agent': agent, 'agent.redact': redact,
                'tui_gateway': gateway, 'tui_gateway.server_requests': sr}
     owner = types.ModuleType('gateway'); owner.__path__ = []
     owner_requests = types.ModuleType('gateway.session_server_requests'); owner.session_server_requests = owner_requests
@@ -134,10 +145,10 @@ def question(**extra):
             'devkit_approval': True, **extra}
 
 
-def normalized(q=None):
-    qs, error = CORE['_normalize_questions']([q or question()])
-    if error: raise AssertionError(error)
-    return qs
+def clarify(questions, callback):
+    value = json.loads(CORE['clarify_tool'](questions, callback))
+    if 'error' in value: raise AssertionError('Clarify tool failed: ' + value['error'])
+    return value
 
 
 class Buffer:
@@ -149,16 +160,28 @@ def event(text=''):
     return types.SimpleNamespace(app=types.SimpleNamespace(current_buffer=Buffer(text), invalidate=lambda: None))
 
 
-def start(cli, qs):
+def start(cli, questions):
+    """Run raw questions through the public tool and the native CLI callback."""
     result = {}
+    def callback(shown):
+        result['shown'] = shown
+        result['reply'] = cli._clarify_callback(shown)
+        return result['reply']
     def run():
-        try: result['reply'] = cli._clarify_callback(qs)
+        try: result['value'] = clarify(questions, callback)
         except BaseException as exc: result['error'] = exc
     thread = threading.Thread(target=run, daemon=True); thread.start()
     until = time.monotonic()+2
     while cli._clarify_state is None and thread.is_alive() and time.monotonic()<until: time.sleep(.005)
     if cli._clarify_state is None: raise AssertionError('Native panel did not open: ' + str(result))
     return thread, result
+
+
+def finish(thread, result):
+    thread.join(2)
+    if thread.is_alive(): raise AssertionError('Clarify tool did not settle')
+    if 'error' in result: raise result['error']
+    return result['value']
 
 
 class NativePanelTests(unittest.TestCase):
@@ -187,14 +210,13 @@ class NativePanelTests(unittest.TestCase):
 class NativeApprovalTests(unittest.TestCase):
     def setUp(self):
         self.mods = patch.dict(sys.modules, MODULES); self.mods.start(); self.addCleanup(self.mods.stop)
-        self.cli = CLI(); self.qs = normalized(); self.thread, self.result = start(self.cli, self.qs)
+        self.cli = CLI(); self.thread, self.result = start(self.cli, [question()])
         self.addCleanup(self.stop)
     def stop(self):
         if self.cli._clarify_state: self.cli._clarify_state['response_queue'].put(None)
         self.thread.join(2)
     def finish(self):
-        self.thread.join(2); self.assertFalse(self.thread.is_alive(), 'Callback did not settle')
-        return json.loads(CORE['_result'](self.qs, self.result['reply']))
+        return finish(self.thread, self.result)
     def render(self):
         return ''.join(t for _, t in self.cli._get_clarify_display_fragments())
     def test_exact_three_rows_and_native_style(self):
@@ -252,11 +274,14 @@ class NativeApprovalTests(unittest.TestCase):
     def test_late_reply_cannot_change_cancelled_result(self):
         old=self.cli._clarify_state; self.cli._tui_handle_escape_modal(event())
         data=self.finish()
-        self.cli._clarify_batch_lock(old, self.qs[0]['choices'][0], {'kind':'choice'})
+        self.cli._clarify_batch_lock(old, self.result['shown'][0]['choices'][0], {'kind':'choice'})
         self.assertEqual(data['outcome'],'cancelled'); self.assertFalse(data['responses'][0]['approval']['approved'])
 
 
 class ProtocolTests(unittest.TestCase):
+    def setUp(self):
+        self.mods = patch.dict(sys.modules, MODULES); self.mods.start(); self.addCleanup(self.mods.stop)
+
     def test_schema_opt_in_and_bad_shape_rejected(self):
         prop=CORE['CLARIFY_SCHEMA']['parameters']['properties']['questions']['items']['properties']
         self.assertEqual(prop['devkit_approval']['type'], 'boolean')
@@ -264,16 +289,33 @@ class ProtocolTests(unittest.TestCase):
             self.assertIsNotNone(CORE['_normalize_questions']([q])[1])
         self.assertIsNotNone(CORE['_normalize_questions']([question(), question()])[1])
     def test_normal_questions_and_results_unchanged(self):
-        qs=normalized({'question':'Color?', 'choices':['Red','Blue']})
-        self.assertNotIn('devkit_approval',qs[0])
-        value=json.loads(CORE['_result'](qs,{'answers':{'q0':'Red (Recommended)'},'outcome':'submitted'}))
+        def callback(questions):
+            self.assertNotIn('devkit_approval',questions[0])
+            return {'answers':{'q0':questions[0]['choices'][0]},'outcome':'submitted'}
+        value=clarify([{'question':'Color?', 'choices':['Red','Blue']}],callback)
         self.assertEqual(value,{'responses':[{'question':'Color?', 'choices_offered':['Red','Blue'], 'status':'answered', 'user_response':'Red'}], 'outcome':'submitted'})
+    def test_display_choices_map_back_to_original_values(self):
+        choices=['first-secret','second-secret']
+        def redact(text, **kwargs):
+            return '[redacted]' if text in choices else 'Displayed question'
+        # Current Hermes redacts and disambiguates the display copy; legacy
+        # Hermes sends raw labels. Both must return the original selected value.
+        for multi in (False,True):
+            with self.subTest(multi_select=multi), patch.object(MODULES['agent.redact'], 'redact_approval_display', redact):
+                def callback(questions):
+                    shown=questions[0]
+                    self.assertNotIn('devkit_approval',shown)
+                    self.assertEqual(len(set(shown['choices_offered'])),2)
+                    answer=shown['choices'] if multi else shown['choices'][1]
+                    return {'answers':{shown['qid']:answer},'outcome':'submitted'}
+                value=clarify([{'question':'Original question','choices':choices,'multi_select':multi}],callback)
+                self.assertEqual(value,{'responses':[{'question':'Original question','choices_offered':choices,
+                    'status':'answered','user_response':choices if multi else choices[1]}],'outcome':'submitted'})
     def test_unsupported_client_cannot_approve_by_text(self):
-        value=json.loads(CORE['_result'](normalized(),{'answers':{'q0':'작업 진행'},'outcome':'submitted'}))
+        value=clarify([question()],lambda _: {'answers':{'q0':'작업 진행'},'outcome':'submitted'})
         self.assertFalse(value['responses'][0]['approval']['approved'])
         self.assertEqual(value['responses'][0]['approval']['reason'], 'APPROVAL_UI_UNSUPPORTED')
     def test_transport_preserves_question_and_answer_origin(self):
-        qs=normalized()
         def callback(questions):
             self.assertTrue(questions[0]['devkit_approval'])
             return {'answers':{'q0':questions[0]['choices'][0]}, 'outcome':'submitted',
@@ -282,10 +324,10 @@ class ProtocolTests(unittest.TestCase):
             self.assertEqual(method,'clarify')
             return CLIENT(callback,params)
         MODULES['tui_gateway.server_requests'].send=send
-        with patch.dict(sys.modules,MODULES): reply=SERVER('fixture',qs)
-        value=json.loads(CORE['_result'](qs,reply)); self.assertTrue(value['responses'][0]['approval']['approved'])
+        value=clarify([question()],lambda shown: SERVER('fixture',shown))
+        self.assertTrue(value['responses'][0]['approval']['approved'])
     def test_canonical_session_owner_preserves_choice_and_requirements_origin(self):
-        qs=normalized(); live=types.SimpleNamespace(event_stream=object())
+        live=types.SimpleNamespace(event_stream=object())
         turn=types.SimpleNamespace(_approval_owner=(types.SimpleNamespace(sessions={'fixture':live}), 'fixture', 1),
                                    _ctx=types.SimpleNamespace(agent_holder=[None]))
         for kind in ('choice','other'):
@@ -297,31 +339,32 @@ class ProtocolTests(unittest.TestCase):
                 def ask(events,sid,method,params,**kwargs):
                     self.assertEqual(method,'clarify');return CLIENT(callback,params)
                 MODULES['gateway.session_server_requests'].ask_viewer_result=ask
-                with patch.dict(sys.modules,MODULES): reply=SESSION(turn,qs)
-                decision=json.loads(CORE['_result'](qs,reply))['responses'][0]['approval']
+                decision=clarify([question()],lambda shown: SESSION(turn,shown))['responses'][0]['approval']
                 self.assertEqual(decision['action'],'proceed' if kind=='choice' else 'requirements')
                 self.assertEqual(decision['approved'],kind=='choice')
 
     def test_cancelled_partial_choice_not_consent(self):
-        qs=normalized()
         for outcome in ('cancelled','timed_out','undelivered','error'):
-            reply={'answers':{'q0':qs[0]['choices'][0]},'outcome':outcome,
-                   'devkit_approval':adapter.PROTOCOL,'answer_meta':{'q0':{'kind':'choice'}}}
-            value=json.loads(CORE['_result'](qs,reply))
-            self.assertFalse(value['responses'][0]['approval']['approved'])
+            with self.subTest(outcome=outcome):
+                def callback(questions):
+                    return {'answers':{'q0':questions[0]['choices'][0]},'outcome':outcome,
+                            'devkit_approval':adapter.PROTOCOL,'answer_meta':{'q0':{'kind':'choice'}}}
+                value=clarify([question()],callback)
+                self.assertFalse(value['responses'][0]['approval']['approved'])
     def test_generic_batch_callback_shape_is_unchanged(self):
         with patch.dict(sys.modules,MODULES):
-            cli=CLI(); qs,error=CORE['_normalize_questions']([{'question':'A','choices':['yes','no']},{'question':'B'}])
-            t,r=start(cli,qs)
+            cli=CLI(); t,r=start(cli,[{'question':'A','choices':['yes','no']},{'question':'B'}])
             cli._tui_make_clarify_number_handler(0)(event()); self.assertTrue(cli._clarify_freetext)
-            cli._tui_enter_clarify_freetext(event('typed')); t.join(2)
+            cli._tui_enter_clarify_freetext(event('typed')); value=finish(t,r)
             self.assertEqual(set(r['reply']), {'answers','outcome'}); self.assertEqual(r['reply']['answers']['q1'], 'typed')
+            self.assertEqual([entry['user_response'] for entry in value['responses']], ['yes','typed'])
     def test_generic_other_label_not_changed(self):
         with patch.dict(sys.modules,MODULES):
-            cli=CLI(); qs=normalized({'question':'Color?', 'choices':['Red','Blue']}); t,r=start(cli,qs)
+            cli=CLI(); t,r=start(cli,[{'question':'Color?', 'choices':['Red','Blue']}])
             rendered=''.join(x for _,x in cli._get_clarify_display_fragments());self.assertIn('Other (type your answer)',rendered)
-            cli._tui_make_clarify_number_handler(2)(event()); cli._tui_enter_clarify_freetext(event('')); t.join(2)
+            cli._tui_make_clarify_number_handler(2)(event()); cli._tui_enter_clarify_freetext(event('')); value=finish(t,r)
             self.assertEqual(r['reply']['answers']['q0'], None)
+            self.assertEqual(value['responses'][0]['status'], 'skipped')
     def test_pydantic_wire_accepts_opt_in_fields(self):
         from pydantic import BaseModel, ConfigDict, JsonValue
         class Strict(BaseModel): model_config=ConfigDict(extra='forbid')
@@ -344,7 +387,7 @@ class ProtocolTests(unittest.TestCase):
         from prompt_toolkit.filters import Condition
         async def run():
             with patch.dict(sys.modules,MODULES), create_pipe_input() as pipe:
-                cli=CLI(); qs=normalized(); t,r=start(cli,qs); area=TextArea(); kb=KeyBindings()
+                cli=CLI(); t,r=start(cli,[question()]); area=TextArea(); kb=KeyBindings()
                 nav=Condition(lambda:bool(cli._clarify_state) and not cli._clarify_freetext)
                 kb.add('3',filter=nav)(cli._tui_make_clarify_number_handler(2))
                 @kb.add('enter')
@@ -362,7 +405,7 @@ class ProtocolTests(unittest.TestCase):
                 finally:
                     if cli._clarify_state:cli._clarify_state['response_queue'].put(None)
                     t.join(2)
-                value=json.loads(CORE['_result'](qs,r['reply']))['responses'][0]['approval']
+                value=finish(t,r)['responses'][0]['approval']
                 self.assertEqual(value['requirements'],'한글 추가 테스트');self.assertFalse(value['approved'])
         asyncio.run(run())
 
