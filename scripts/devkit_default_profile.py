@@ -401,7 +401,11 @@ def status(root: Path, skills_root='/opt/custom-skills') -> dict:
 
 def assert_boot_quiet() -> None:
     """Do not archive a profile beneath a live s6 gateway when invoked manually."""
-    for slot in Path('/run/service').glob('gateway-*'):
+    # Plan/status are also sent over stdin into older images without this helper.
+    from devkit_s6_runtime import STATIC_SCANDIR, gateway_scandir
+    scandirs = dict.fromkeys((gateway_scandir(), STATIC_SCANDIR))
+    slots = (slot for scandir in scandirs for slot in scandir.glob('gateway-*'))
+    for slot in slots:
         probe = subprocess.run(['/command/s6-svstat', '-o', 'up', str(slot)], capture_output=True, text=True, timeout=5)
         if probe.returncode == 0 and probe.stdout.strip() == 'true':
             raise RuntimeError('Live gateway detected; migration is only allowed before service startup')

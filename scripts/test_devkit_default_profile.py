@@ -2,12 +2,14 @@
 """Filesystem regressions for safe DevKit cutover; no live credentials or Docker."""
 from __future__ import annotations
 import hashlib
+import io
 import json
 from pathlib import Path
 import sqlite3
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from unittest.mock import patch
 
@@ -205,6 +207,79 @@ class MigrationTest(unittest.TestCase):
         self.assertEqual(proc.returncode,1)
         self.assertIn('boot',proc.stderr)
         self.assertEqual(before,self.snapshot())
+
+    def s6_runtime(self, root, shared_scandir=False):
+        helper=types.ModuleType('devkit_s6_runtime')
+        helper.STATIC_SCANDIR=root/'service'
+        dynamic=helper.STATIC_SCANDIR if shared_scandir else root/'hermes-service'
+        helper.gateway_scandir=lambda:dynamic
+        return helper
+
+    def test_live_gateway_in_dynamic_or_legacy_tree_blocks_before_migration(self):
+        for legacy in (False,True):
+            with self.subTest(legacy=legacy),tempfile.TemporaryDirectory() as temp:
+                helper=self.s6_runtime(Path(temp))
+                scandir=helper.STATIC_SCANDIR if legacy else helper.gateway_scandir()
+                slot=scandir/'gateway-default';slot.mkdir(parents=True)
+                run=slot/'run';run.write_bytes(b'owned service script')
+                before=self.snapshot()
+                args=['devkit_default_profile.py','apply','--boot','--data-root',str(self.root)]
+                with patch.dict(sys.modules,{'devkit_s6_runtime':helper}), \
+                     patch.object(m.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'true\n','')) as probe, \
+                     patch.object(sys,'argv',args),patch('sys.stderr',new_callable=io.StringIO) as stderr:
+                    self.assertEqual(m.main(),1)
+                self.assertIn('Live gateway detected',stderr.getvalue())
+                probe.assert_called_once_with(['/command/s6-svstat','-o','up',str(slot)],capture_output=True,text=True,timeout=5)
+                self.assertEqual(self.snapshot(),before)
+                self.assertEqual(run.read_bytes(),b'owned service script')
+
+    def test_quiet_gateway_trees_and_unrelated_files_remain_unchanged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);helper=self.s6_runtime(root)
+            slots=[helper.gateway_scandir()/'gateway-default',helper.STATIC_SCANDIR/'gateway-legacy']
+            for slot in slots:
+                slot.mkdir(parents=True);(slot/'run').write_bytes(b'owned service script')
+            other=helper.STATIC_SCANDIR/'devkit-notifier';other.mkdir()
+            (other/'run').write_bytes(b'owned notifier script')
+            (root/'notes.txt').write_bytes(b'keep unrelated file')
+            before={p.relative_to(root):p.read_bytes() for p in root.rglob('*') if p.is_file()}
+            with patch.dict(sys.modules,{'devkit_s6_runtime':helper}), \
+                 patch.object(m.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'false\n','')) as probe:
+                m.assert_boot_quiet()
+            self.assertEqual([call.args[0][-1] for call in probe.call_args_list],[str(slot) for slot in slots])
+            self.assertEqual({p.relative_to(root):p.read_bytes() for p in root.rglob('*') if p.is_file()},before)
+
+    def test_legacy_shared_scandir_is_checked_once(self):
+        with tempfile.TemporaryDirectory() as temp:
+            helper=self.s6_runtime(Path(temp),shared_scandir=True)
+            slot=helper.STATIC_SCANDIR/'gateway-default';slot.mkdir(parents=True)
+            with patch.dict(sys.modules,{'devkit_s6_runtime':helper}), \
+                 patch.object(m.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'false\n','')) as probe:
+                m.assert_boot_quiet()
+            self.assertEqual(probe.call_count,1)
+
+    def test_unresolved_gateway_scandir_blocks_without_probing_or_writes(self):
+        helper=self.s6_runtime(self.root/'runtime');before=self.snapshot()
+        with patch.dict(sys.modules,{'devkit_s6_runtime':helper}), \
+             patch.object(helper,'gateway_scandir',side_effect=RuntimeError('Unable to resolve gateway scandir')), \
+             patch.object(m.subprocess,'run') as probe:
+            with self.assertRaisesRegex(RuntimeError,'Unable to resolve gateway scandir'):
+                m.assert_boot_quiet()
+        probe.assert_not_called()
+        self.assertEqual(self.snapshot(),before)
+
+    def test_plan_and_status_from_stdin_do_not_require_s6_helper(self):
+        before=self.snapshot();source=Path(m.__file__).read_text()
+        for action,expected in (('plan',0),('status',1)):
+            with self.subTest(action=action):
+                proc=subprocess.run([sys.executable,'-I','-',action,'--data-root',str(self.root)],
+                                    input=source,cwd=self.root,capture_output=True,text=True)
+                self.assertEqual(proc.returncode,expected,proc.stderr)
+                self.assertEqual(proc.stderr,'')
+                result=json.loads(proc.stdout)
+                if action=='plan':self.assertEqual(result['status'],'planned')
+                else:self.assertFalse(result['ready'])
+                self.assertEqual(self.snapshot(),before)
 
     def test_status_reports_actual_configuration_not_only_marker(self):
         self.assertFalse(m.status(self.root)['ready'])
