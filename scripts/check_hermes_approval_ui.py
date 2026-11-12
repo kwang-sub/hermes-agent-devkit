@@ -13,6 +13,7 @@ import asyncio
 import json
 from pathlib import Path
 import queue
+import re
 import shutil
 import sys
 import textwrap
@@ -61,6 +62,22 @@ def translate(key, **kwargs):
     return messages.get(key, key).format(**kwargs)
 
 
+def load_panel_renderers(root):
+    """Keep native cell-width dependencies without importing the whole CLI.
+
+    Older supported sources have no cell helpers. Select them when present so
+    wrapping, row padding and panel titles share the upstream implementation.
+    """
+    path = root/'hermes_cli/cli_render.py'
+    names = ['_panel_box_width', '_wrap_panel_text', '_append_panel_line', '_append_blank_panel_line']
+    names.extend(node.name for node in ast.parse(path.read_text(encoding='utf-8')).body
+                 if isinstance(node, ast.FunctionDef) and node.name in ('_cells', '_wrap_cells'))
+    render = {'shutil': shutil, 'textwrap': textwrap, 're': re}
+    selected_source(path, names, render)
+    selected_source(root/'hermes_cli/cli_panel.py', ['_Panel'], render)
+    return render
+
+
 def load(root):
     global CORE, CLI, CLIENT, SERVER, SESSION, CLI_MODULE, MODULES
     source = (root/'tools/clarify_tool.py').read_text(encoding='utf-8')
@@ -71,10 +88,7 @@ def load(root):
     CORE = {'json': json, 'Callable': Callable, 'Dict': Dict, 'List': List, 'Optional': Optional}
     exec(compile(ast.Module(body=body, type_ignores=[]), str(root/'tools/clarify_tool.py'), 'exec'), CORE)
     adapter.install_core(CORE)
-    render = {'shutil': shutil, 'textwrap': textwrap}
-    selected_source(root/'hermes_cli/cli_render.py',
-                    ['_panel_box_width', '_wrap_panel_text', '_append_panel_line', '_append_blank_panel_line'], render)
-    selected_source(root/'hermes_cli/cli_panel.py', ['_Panel'], render)
+    render = load_panel_renderers(root)
     CLI_MODULE = types.ModuleType('cli')
     CLI_MODULE.CLI_CONFIG = {}; CLI_MODULE._DIM = ''; CLI_MODULE._RST = ''; CLI_MODULE._cprint = lambda *_: None
     CLI_MODULE._panel_box_width = render['_panel_box_width']; CLI_MODULE._wrap_panel_text = render['_wrap_panel_text']
@@ -145,6 +159,29 @@ def start(cli, qs):
     while cli._clarify_state is None and thread.is_alive() and time.monotonic()<until: time.sleep(.005)
     if cli._clarify_state is None: raise AssertionError('Native panel did not open: ' + str(result))
     return thread, result
+
+
+class NativePanelTests(unittest.TestCase):
+    def test_native_wrapping_and_panel_alignment(self):
+        from prompt_toolkit.utils import get_cwidth
+        render = load_panel_renderers(ROOT)
+        # The pinned legacy renderer measures characters; newer Hermes measures
+        # terminal cells. Exercise each source's native layout contract.
+        measure = get_cwidth if '_cells' in render else len
+        width = 14
+        for text in ('Review the plan before continuing',
+                     '승인 확인 추가 요구사항을 입력', '승인 🌟 e\u0301 추가 요구사항'):
+            with self.subTest(text=text):
+                rows = render['_wrap_panel_text'](text, width, subsequent_indent='  ')
+                self.assertGreater(len(rows), 1)
+                self.assertEqual(' '.join(row.strip() for row in rows), text)
+                self.assertTrue(all(measure(row) <= width for row in rows), rows)
+                panel = render['_Panel']('border', width + 2, '승인 UI', 'title')
+                for row in rows:
+                    panel.row('body', row)
+                panel.blank()
+                lines = ''.join(value for _, value in panel.close()).splitlines()
+                self.assertTrue(all(measure(line) == width + 4 for line in lines), lines)
 
 
 class NativeApprovalTests(unittest.TestCase):
