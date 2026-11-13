@@ -13,6 +13,17 @@
 
 Humanizer의 의미 보존·독자에 맞는 문체·과장과 반복 줄이기는 참고했다. 영어 표현 목록, 감정·의견 추가, 탐지 회피, 초안/자기평가 반복 출력은 한국어 업무 문서의 기본 규칙으로 채택하지 않았다. 한국어 단어의 사용 빈도를 측정했다는 주장은 하지 않는다.
 
+## HTML 시안 연동 참고 자료
+
+확인일: 2026-11-13. 최초 도입 pack이 고정한 `mock-review` 1.2.0의 아래 커밋을 기준으로 native JSON과 CLI 인수만 확인했다. community 플러그인이며 Nous Research의 직접 유지보수 또는 보안 감사 완료를 뜻하지 않는다.
+
+- JSON 블록·HTML 정제·피드백 규격: https://github.com/apelabs-dev/hermes-mock-review/blob/4ec3b90d63ef82efa2c91c6e62845e1f16f66d88/docs/decisions-format.md
+- CLI: https://github.com/apelabs-dev/hermes-mock-review/blob/4ec3b90d63ef82efa2c91c6e62845e1f16f66d88/docs/cli.md
+- 로컬·no-wake 설정: https://github.com/apelabs-dev/hermes-mock-review/blob/4ec3b90d63ef82efa2c91c6e62845e1f16f66d88/plugin.yaml
+- 저장소 `shared/design-plugins/hermes-pack.yaml`, `docs/design-plugins.md`: 버전·로컬 노출·수동 운영의 기준. 실행할 때 설치 버전의 도움말과 도구 스키마를 다시 확인한다.
+
+HTML 시안 선행, 실제 내용으로 A/B 비교, 선택 대기, 편집 가능한 PPT 제작 규칙은 이 작업을 위해 새로 작성한 DevKit 정책이다. 플러그인이 PPT를 자동 재디자인하거나 HTML을 PPT로 무손실 변환한다는 주장이 아니다.
+
 ## 저장소의 기존 기준
 
 - `custom-skills/core/dev-session/SKILL.md`: 변경 승인과 필요 시 스킬 로딩.
