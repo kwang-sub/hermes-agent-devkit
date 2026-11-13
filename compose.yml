@@ -133,6 +133,9 @@ services:
       - "${HERMES_PORT_BIND_ADDRESS:-127.0.0.1}:${HERMES_DASHBOARD_HOST_PORT:-9119}:${HERMES_DASHBOARD_CONTAINER_PORT:-9119}"
       - "${HERMES_PORT_BIND_ADDRESS:-127.0.0.1}:${HERMES_API_SERVER_HOST_PORT:-8642}:${HERMES_API_SERVER_CONTAINER_PORT:-8642}"
 
+      # Mock Review has no login. Never inherit the dashboard bind address.
+      - "127.0.0.1:8790:8790"
+
     stdin_open: true
     tty: true
 
