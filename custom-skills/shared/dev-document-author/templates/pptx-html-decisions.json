@@ -1,0 +1,46 @@
+{
+  "preset": "design",
+  "intro": "PPT 제작용 HTML 시안 · 최종 PPT 렌더링 아님. 형식 참고 템플릿입니다. 모든 {{...}}를 이번 문서의 실제 내용으로 교체한 뒤 게시합니다.",
+  "next": "원하는 시안과 수정 의견을 저장한 뒤 같은 Hermes 세션에서 반영을 요청하세요. Send는 의견 저장이며 작업을 자동 재개하지 않습니다.",
+  "extra_css": "/* Reference canvas only: replace tokens with the approved project design. */\n.doc-slide { box-sizing:border-box; position:relative; width:1280px; height:720px; overflow:hidden; background:#fff; color:#17212b; font-family:\"Malgun Gothic\",\"Noto Sans KR\",sans-serif; padding:56px; }\n.doc-slide * { box-sizing:border-box; }\n.doc-slide h1 { font-size:40px; line-height:1.25; margin:0 0 28px; }\n.doc-slide h2 { font-size:28px; line-height:1.3; margin:0 0 20px; }\n.doc-slide p, .doc-slide li { font-size:24px; line-height:1.5; margin:0 0 18px; }\n.doc-slide .foot { position:absolute; bottom:28px; left:56px; right:56px; font-size:16px; }\n.doc-slide .split { display:grid; grid-template-columns: 3fr 2fr; gap:56px; }\n.doc-slide .row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:40px; }\n.doc-slide .rail { border-left:3px solid #17212b; padding-left:28px; }\n.doc-slide .wide { max-width:960px; }\n",
+  "blocks": [
+    {
+      "type": "decision",
+      "id": "summary",
+      "title": "개요 페이지 구성",
+      "layout": "side",
+      "desktop_width": 1280,
+      "options": [
+        {
+          "id": "a",
+          "label": "A안 · 본문과 핵심 설명 분리",
+          "html": "<section class=\"doc-slide\"><h1>{{SUMMARY_TITLE}}</h1><div class=\"split\"><div><p>{{SUMMARY_LEAD}}</p><p>{{SUMMARY_BODY}}</p></div><aside class=\"rail\"><h2>{{SUMMARY_KEY_TITLE}}</h2><p>{{SUMMARY_KEY_BODY}}</p></aside></div><p class=\"foot\">PPT 제작용 HTML 시안 · 최종 PPT 렌더링 아님</p></section>"
+        },
+        {
+          "id": "b",
+          "label": "B안 · 순서대로 읽는 구성",
+          "html": "<section class=\"doc-slide\"><h1>{{SUMMARY_TITLE}}</h1><div class=\"wide\"><p>{{SUMMARY_LEAD}}</p><h2>{{SUMMARY_KEY_TITLE}}</h2><p>{{SUMMARY_KEY_BODY}}</p><p>{{SUMMARY_BODY}}</p></div><p class=\"foot\">PPT 제작용 HTML 시안 · 최종 PPT 렌더링 아님</p></section>"
+        }
+      ]
+    },
+    {
+      "type": "decision",
+      "id": "steps",
+      "title": "절차 페이지 구성",
+      "layout": "switch",
+      "desktop_width": 1280,
+      "options": [
+        {
+          "id": "a",
+          "label": "A안 · 가로 단계",
+          "html": "<section class=\"doc-slide\"><h1>{{STEPS_TITLE}}</h1><div class=\"row\"><div><h2>{{STEP_1_TITLE}}</h2><p>{{STEP_1_BODY}}</p></div><div><h2>{{STEP_2_TITLE}}</h2><p>{{STEP_2_BODY}}</p></div><div><h2>{{STEP_3_TITLE}}</h2><p>{{STEP_3_BODY}}</p></div></div><p class=\"foot\">PPT 제작용 HTML 시안 · 최종 PPT 렌더링 아님</p></section>"
+        },
+        {
+          "id": "b",
+          "label": "B안 · 세로 순서",
+          "html": "<section class=\"doc-slide\"><h1>{{STEPS_TITLE}}</h1><div class=\"rail\"><p><strong>{{STEP_1_TITLE}}</strong> — {{STEP_1_BODY}}</p><p><strong>{{STEP_2_TITLE}}</strong> — {{STEP_2_BODY}}</p><p><strong>{{STEP_3_TITLE}}</strong> — {{STEP_3_BODY}}</p></div><p class=\"foot\">PPT 제작용 HTML 시안 · 최종 PPT 렌더링 아님</p></section>"
+        }
+      ]
+    }
+  ]
+}
