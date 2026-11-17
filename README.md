@@ -25,6 +25,7 @@ JDK 8/17/21, Git 상대 Worktree, Maven·Gradle·Node/pnpm의 Linux 내부 캐�
 | 기능 논의·문서화·진행 상태 확인 | `dev-feature-docs` |
 | 자연스러운 문서 작성·수정 및 여러 포맷 출력 | `dev-document-author` |
 | 에러 로그·코드 동작 분석과 공식 문서 근거 보고 | `dev-analysis-report` |
+| 장기 세션 즐겨찾기 등록·목록·재개·Pin 해제 | `dev-favorite-session` ([사용법](docs/favorite-session.md)) |
 | 프로젝트 구조·패턴 분석 | `dev-project-pattern` |
 | 선택적 프로젝트 툴체인·설정 보안 준비 | `dev-project-setup` |
 | Jira 요구사항 읽기 | `dev-work-intake` |

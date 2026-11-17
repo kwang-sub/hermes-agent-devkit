@@ -86,5 +86,9 @@ docker run --rm --user hermes --entrypoint /opt/hermes/.venv/bin/python \
     "$IMAGE_NAME" /opt/devkit-tests/scripts/smoke_maven_runtime.py \
         --launcher-dir /usr/local/bin --extension-source-root /usr/local/share/hermes-maven-output \
         --verifier /opt/devkit/scripts/verification/maven_verification.py
+# Exercise the real Hermes pin/rename/unpin commands in a disposable profile, never /opt/data.
+docker run --rm --user hermes --entrypoint /opt/hermes/.venv/bin/python \
+    --mount "type=bind,source=$REPO_ROOT,target=/opt/devkit-tests,readonly" \
+    "$IMAGE_NAME" /opt/devkit-tests/scripts/smoke_favorite_session_runtime.py
 python3 scripts/smoke_devkit_image.py --image "$IMAGE_NAME"
 printf '[PASS] Latest Hermes, JDK/Git/pnpm/Maven, actual DevKit boot and persistent data safety.\n'
